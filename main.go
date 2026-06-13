@@ -185,6 +185,9 @@ func main() {
 		SameSite: http.SameSiteStrictMode,
 	})
 	server.Use(sessions.Sessions("session", store))
+	// Resolve the sub-site (white-label tenant) from the Host header for every request.
+	// Pure resolver — sets request context only, never blocks.
+	server.Use(middleware.SiteResolver())
 
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
@@ -288,6 +291,11 @@ func InitResources() error {
 
 	// Initialize options, should after model.InitDB()
 	model.InitOptionMap()
+
+	// Load the sub-site (white-label) domain cache after the schema is ready.
+	if err := model.ReloadSiteCache(); err != nil {
+		common.SysError("failed to load sub-site cache: " + err.Error())
+	}
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()

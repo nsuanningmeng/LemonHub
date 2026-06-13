@@ -46,6 +46,10 @@ var auditContentTemplates = map[string]string{
 	"channel.upstream_apply_all": "Applied upstream model changes to ${count} channels",
 
 	"redemption.create": "Created ${count} redemption codes named ${name} (${quota} each)",
+
+	"site.create": "Created sub-site ${name} (ID: ${id})",
+	"site.update": "Updated sub-site ${name} (ID: ${id})",
+	"site.delete": "Deleted sub-site (ID: ${id})",
 }
 
 // auditContentEN 按 action 模板渲染英文兜底文本；未登记的 action 退回 action 本身。

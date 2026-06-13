@@ -42,6 +42,13 @@ const (
 	ContextKeyAutoGroupIndex      ContextKey = "auto_group_index"
 	ContextKeyAutoGroupRetryIndex ContextKey = "auto_group_retry_index"
 
+	/* sub-site (multi-tenant white-label) related keys */
+	// ContextKeySiteId stores the resolved sub-site id for the current request.
+	// 0 means the main site (default). Set by middleware.SiteResolver based on the request Host.
+	ContextKeySiteId ContextKey = "site_id"
+	// ContextKeySite stores the resolved *model.Site pointer for the current request (nil for main site).
+	ContextKeySite ContextKey = "site"
+
 	/* user related keys */
 	ContextKeyUserId      ContextKey = "id"
 	ContextKeyUserSetting ContextKey = "user_setting"

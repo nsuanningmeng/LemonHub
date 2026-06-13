@@ -161,6 +161,19 @@ func GetStatus(c *gin.Context) {
 		data["custom_oauth_providers"] = providersInfo
 	}
 
+	// White-label override: when the request resolves to a sub-site, return that
+	// site's branding instead of the main site's. The main site (site_id=0) keeps
+	// its original global branding untouched.
+	if site := middleware.GetRequestSite(c); site != nil {
+		data["system_name"] = site.Name
+		data["logo"] = site.Logo
+		data["footer_html"] = site.Footer
+		data["site_id"] = site.Id
+		data["site_status"] = site.Status
+	} else {
+		data["site_id"] = 0
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -172,10 +185,15 @@ func GetStatus(c *gin.Context) {
 func GetNotice(c *gin.Context) {
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
+	notice := common.OptionMap["Notice"]
+	// White-label override: a sub-site shows its own notice (homepage announcement).
+	if site := middleware.GetRequestSite(c); site != nil {
+		notice = site.Notice
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    common.OptionMap["Notice"],
+		"data":    notice,
 	})
 	return
 }

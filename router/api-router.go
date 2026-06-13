@@ -299,6 +299,18 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.DELETE("/invalid", controller.DeleteInvalidRedemption)
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
+
+		// Sub-site (white-label) management — main-site admin only.
+		siteRoute := apiRouter.Group("/site")
+		siteRoute.Use(middleware.AdminAuth())
+		{
+			siteRoute.GET("/", controller.GetAllSites)
+			siteRoute.GET("/search", controller.SearchSites)
+			siteRoute.GET("/:id", controller.GetSite)
+			siteRoute.POST("/", controller.AddSite)
+			siteRoute.PUT("/", controller.UpdateSite)
+			siteRoute.DELETE("/:id", controller.DeleteSite)
+		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.DELETE("/", middleware.AdminAuth(), controller.DeleteHistoryLogs)
