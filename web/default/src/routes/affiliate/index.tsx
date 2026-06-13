@@ -16,17 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type TopNavLink } from '../types'
+import { createFileRoute } from '@tanstack/react-router'
+import { Affiliate } from '@/features/affiliate'
 
-/**
- * Default top navigation links
- *
- * In practice, navigation links are dynamically fetched from backend.
- * Priority: Backend dynamic links > Provided navLinks > defaultTopNavLinks
- *
- * Used as a fallback when no backend nav links are configured. Titles are
- * passed through `t()` in the header, so use i18n keys here.
- */
-export const defaultTopNavLinks: TopNavLink[] = [
-  { title: 'Affiliate Program', href: '/affiliate' },
-]
+export const Route = createFileRoute('/affiliate/')({
+  component: Affiliate,
+})

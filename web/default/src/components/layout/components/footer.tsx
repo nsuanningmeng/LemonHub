@@ -168,6 +168,10 @@ export function Footer(props: FooterProps) {
         title: t('footer.columns.about.title'),
         links: [
           {
+            text: t('footer.columns.about.links.affiliate'),
+            href: '/affiliate',
+          },
+          {
             text: t('footer.columns.about.links.aboutProject'),
             href: 'https://docs.newapi.pro/wiki/project-introduction/',
           },
