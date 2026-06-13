@@ -309,24 +309,26 @@ func checkDomainConflict(tx *gorm.DB, domains []string, excludeSiteId int) error
 	return nil
 }
 
-// resolveOwnerId looks up the user id for a sub-site owner username among MAIN-SITE
-// accounts (site_id = 0). Since usernames are only unique per-site now, a global
-// username lookup would be ambiguous; a sub-site owner is always a main-site agent
-// account (its promotion to RoleSubSiteAdmin and re-assignment to the sub-site is
-// wired in phase 3 alongside the sub-site admin console).
-func resolveOwnerId(tx *gorm.DB, username string) (int, error) {
+// resolveOwner looks up a sub-site owner by username among MAIN-SITE accounts
+// (site_id = 0). Since usernames are only unique per-site now, a global lookup would be
+// ambiguous; a sub-site owner is always a main-site agent account. Platform admins/root
+// are rejected — their main-site privileges must not be scoped down to a sub-site.
+func resolveOwner(tx *gorm.DB, username string) (*User, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
-		return 0, errors.New("归属代理账号不能为空")
+		return nil, errors.New("归属代理账号不能为空")
 	}
 	var user User
-	if err := tx.Select("id").Where("username = ? AND site_id = ?", username, 0).First(&user).Error; err != nil {
+	if err := tx.Where("username = ? AND site_id = ?", username, 0).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, errors.New("归属代理账号不存在（须为主站账号）: " + username)
+			return nil, errors.New("归属代理账号不存在（须为主站账号）: " + username)
 		}
-		return 0, err
+		return nil, err
 	}
-	return user.Id, nil
+	if user.Role >= common.RoleAdminUser {
+		return nil, errors.New("归属账号不能是平台管理员")
+	}
+	return &user, nil
 }
 
 // CreateSite creates a sub-site and its domains atomically, then reloads the cache.
@@ -347,14 +349,14 @@ func CreateSite(site *Site) error {
 	}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		ownerId, err := resolveOwnerId(tx, site.OwnerUsername)
+		owner, err := resolveOwner(tx, site.OwnerUsername)
 		if err != nil {
 			return err
 		}
 		if err := checkDomainConflict(tx, domains, 0); err != nil {
 			return err
 		}
-		site.OwnerUserId = ownerId
+		site.OwnerUserId = owner.Id
 		site.CreatedTime = common.GetTimestamp()
 		site.UpdatedTime = site.CreatedTime
 		// Persist core row (transient Domains/OwnerUsername are gorm:"-").
@@ -366,10 +368,17 @@ func CreateSite(site *Site) error {
 				return err
 			}
 		}
-		// NOTE(phase3): promoting the owner to RoleSubSiteAdmin and re-assigning their
-		// user.site_id to this sub-site is wired in phase 3 (sub-site admin console),
-		// together with the SiteAdminAuth-gated tenant endpoints and per-resource
-		// site_id ownership checks. Phase 2 only records the owner link (owner_user_id).
+		// Promote the owner to a sub-site admin and bind their account to this sub-site,
+		// so they administer it via SiteAdminAuth-gated endpoints. Role is only raised
+		// (never lowered) for a common user; site_id is repointed to the new sub-site
+		// (the brand-new site has no users, so the composite (site_id,username) is free).
+		ownerUpdates := map[string]interface{}{"site_id": site.Id}
+		if owner.Role < common.RoleSubSiteAdmin {
+			ownerUpdates["role"] = common.RoleSubSiteAdmin
+		}
+		if err := tx.Model(&User{}).Where("id = ?", owner.Id).Updates(ownerUpdates).Error; err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
@@ -401,15 +410,8 @@ func UpdateSite(site *Site) error {
 		if err := tx.First(&existing, "id = ?", site.Id).Error; err != nil {
 			return err
 		}
-		// Owner can be re-pointed only when an owner username is explicitly provided.
-		ownerId := existing.OwnerUserId
-		if strings.TrimSpace(site.OwnerUsername) != "" {
-			resolved, err := resolveOwnerId(tx, site.OwnerUsername)
-			if err != nil {
-				return err
-			}
-			ownerId = resolved
-		}
+		// The owner is fixed at creation (it carries a role+site_id promotion that is not
+		// safe to flip in an update); branding/status/discount edits keep the same owner.
 		if err := checkDomainConflict(tx, domains, site.Id); err != nil {
 			return err
 		}
@@ -419,7 +421,6 @@ func UpdateSite(site *Site) error {
 			"logo":                  site.Logo,
 			"notice":                site.Notice,
 			"footer":                site.Footer,
-			"owner_user_id":         ownerId,
 			"status":                site.Status,
 			"discount_rate":         site.DiscountRate,
 			"wallet_warn_threshold": site.WalletWarnThreshold,

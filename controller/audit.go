@@ -47,9 +47,13 @@ var auditContentTemplates = map[string]string{
 
 	"redemption.create": "Created ${count} redemption codes named ${name} (${quota} each)",
 
-	"site.create": "Created sub-site ${name} (ID: ${id})",
-	"site.update": "Updated sub-site ${name} (ID: ${id})",
-	"site.delete": "Deleted sub-site (ID: ${id})",
+	"site.create":          "Created sub-site ${name} (ID: ${id})",
+	"site.update":          "Updated sub-site ${name} (ID: ${id})",
+	"site.delete":          "Deleted sub-site (ID: ${id})",
+	"site.wallet_recharge": "Recharged sub-site ${id} wallet by ${amount} (厘)",
+	"site.wallet_adjust":   "Adjusted sub-site ${id} wallet by ${amount} (厘)",
+
+	"redemption.void": "Voided redemption (ID: ${id}) and refunded its cost",
 }
 
 // auditContentEN 按 action 模板渲染英文兜底文本；未登记的 action 退回 action 本身。

@@ -186,3 +186,83 @@ func DeleteSite(c *gin.Context) {
 	})
 	common.ApiSuccess(c, nil)
 }
+
+// ---- Main-site admin wallet operations (procurement wallet settlement) ----
+
+// WalletAmountRequest carries a 厘-denominated amount and a remark for wallet ops.
+type WalletAmountRequest struct {
+	Amount int64  `json:"amount"` // 厘 (0.001 CNY); signed for adjust, positive for recharge
+	Remark string `json:"remark"`
+}
+
+// RechargeSiteWallet credits a sub-site's procurement wallet (platform → agent, type=1).
+func RechargeSiteWallet(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var req WalletAmountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.RechargeSiteWallet(id, req.Amount, req.Remark, c.GetInt("id")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	recordManageAudit(c, "site.wallet_recharge", map[string]interface{}{"id": id, "amount": req.Amount})
+	balance, _ := model.GetSiteWalletBalance(id)
+	common.ApiSuccess(c, gin.H{"wallet_balance": balance})
+}
+
+// AdjustSiteWallet applies a signed manual wallet adjustment (type=5, remark required).
+func AdjustSiteWallet(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var req WalletAmountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.AdjustSiteWallet(id, req.Amount, req.Remark, c.GetInt("id")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	recordManageAudit(c, "site.wallet_adjust", map[string]interface{}{"id": id, "amount": req.Amount})
+	balance, _ := model.GetSiteWalletBalance(id)
+	common.ApiSuccess(c, gin.H{"wallet_balance": balance})
+}
+
+// GetSiteWalletLogs returns a page of a sub-site's wallet flow records (main admin view).
+func GetSiteWalletLogs(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	logType, _ := strconv.Atoi(c.Query("type"))
+	pageInfo := common.GetPageQuery(c)
+	logs, total, err := model.GetSiteWalletLogs(id, logType, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(logs)
+	common.ApiSuccess(c, pageInfo)
+}
+
+// ReconcileSiteWallets returns, for every sub-site, whether wallet_balance equals the
+// sum of its wallet flow records (zero discrepancy = consistent).
+func ReconcileSiteWallets(c *gin.Context) {
+	results, err := model.ReconcileSiteWallets()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, results)
+}

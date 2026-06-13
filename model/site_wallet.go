@@ -115,6 +115,57 @@ func lockedWalletBalance(tx *gorm.DB, siteId int) (int64, error) {
 	return site.WalletBalance, nil
 }
 
+// RechargeSiteWallet credits a sub-site's procurement wallet (platform → agent, flow
+// type=1). amount is in 厘 and must be positive. Used by the main-site admin.
+func RechargeSiteWallet(siteId int, amount int64, remark string, operatorUserId int) error {
+	if siteId <= 0 {
+		return errors.New("无效的子站")
+	}
+	if amount <= 0 {
+		return errors.New("充值金额必须为正")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return AddSiteWallet(tx, siteId, amount, WalletLogTypeRecharge, "", remark, operatorUserId)
+	})
+}
+
+// AdjustSiteWallet applies a signed manual adjustment (flow type=5) to a sub-site's
+// wallet: positive credits, negative debits (and fails closed if the debit exceeds the
+// balance). remark is mandatory for audit. Used by the main-site admin.
+func AdjustSiteWallet(siteId int, delta int64, remark string, operatorUserId int) error {
+	if siteId <= 0 {
+		return errors.New("无效的子站")
+	}
+	if delta == 0 {
+		return errors.New("调整金额不能为 0")
+	}
+	if remark == "" {
+		return errors.New("手动调整必须填写备注")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if delta > 0 {
+			return AddSiteWallet(tx, siteId, delta, WalletLogTypeManualAdjust, "", remark, operatorUserId)
+		}
+		return DeductSiteWallet(tx, siteId, -delta, WalletLogTypeManualAdjust, "", remark, operatorUserId)
+	})
+}
+
+// SetSiteWalletWarnThreshold updates a sub-site's low-balance alert threshold (厘).
+func SetSiteWalletWarnThreshold(siteId int, threshold int64) error {
+	if siteId <= 0 {
+		return errors.New("无效的子站")
+	}
+	if threshold < 0 {
+		return errors.New("警戒线不能为负")
+	}
+	if err := DB.Model(&Site{}).Where("id = ?", siteId).
+		Update("wallet_warn_threshold", threshold).Error; err != nil {
+		return err
+	}
+	reloadSiteCacheSoft()
+	return nil
+}
+
 // GetSiteWalletBalance returns a sub-site's current wallet balance straight from the DB
 // (never the domain cache, whose copy may be stale after wallet changes).
 func GetSiteWalletBalance(siteId int) (int64, error) {

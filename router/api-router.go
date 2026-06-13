@@ -296,6 +296,7 @@ func SetApiRouter(router *gin.Engine) {
 			redemptionRoute.GET("/:id", controller.GetRedemption)
 			redemptionRoute.POST("/", controller.AddRedemption)
 			redemptionRoute.PUT("/", controller.UpdateRedemption)
+			redemptionRoute.POST("/:id/void", controller.VoidRedemption)
 			redemptionRoute.DELETE("/invalid", controller.DeleteInvalidRedemption)
 			redemptionRoute.DELETE("/:id", controller.DeleteRedemption)
 		}
@@ -306,10 +307,14 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			siteRoute.GET("/", controller.GetAllSites)
 			siteRoute.GET("/search", controller.SearchSites)
+			siteRoute.GET("/reconcile", controller.ReconcileSiteWallets)
 			siteRoute.GET("/:id", controller.GetSite)
 			siteRoute.POST("/", controller.AddSite)
 			siteRoute.PUT("/", controller.UpdateSite)
 			siteRoute.DELETE("/:id", controller.DeleteSite)
+			siteRoute.POST("/:id/wallet/recharge", controller.RechargeSiteWallet)
+			siteRoute.POST("/:id/wallet/adjust", controller.AdjustSiteWallet)
+			siteRoute.GET("/:id/wallet/logs", controller.GetSiteWalletLogs)
 		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)

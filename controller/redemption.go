@@ -161,6 +161,24 @@ func DeleteRedemption(c *gin.Context) {
 	return
 }
 
+// VoidRedemption disables an unused code and refunds its cost to the owning sub-site's
+// wallet (原路退, type=3) in one transaction. EffectiveSiteScope enforces ownership:
+// a sub-site admin may only void their own site's codes; a main admin (SiteScopeAll)
+// may void any.
+func VoidRedemption(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.VoidRedemption(id, middleware.EffectiveSiteScope(c), c.GetInt("id")); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	recordManageAudit(c, "redemption.void", map[string]interface{}{"id": id})
+	common.ApiSuccess(c, nil)
+}
+
 func UpdateRedemption(c *gin.Context) {
 	statusOnly := c.Query("status_only")
 	redemption := model.Redemption{}
