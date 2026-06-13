@@ -94,17 +94,21 @@ export function useTopNavLinks(): TopNavLink[] {
     }
   }
 
-  // About
+  // Affiliate program (代理加盟) — gated by HeaderNavModules, default on so
+  // regular users can discover the white-label / sub-site agent program.
+  if (modules?.affiliate !== false) {
+    links.push({ title: t('Affiliate Program'), href: '/affiliate' })
+  }
+
+  // Contact (联系我们) — gated by HeaderNavModules, default on.
+  if (modules?.contact !== false) {
+    links.push({ title: t('Contact Us'), href: '/contact' })
+  }
+
+  // About — placed last per product requirement.
   if (modules?.about !== false) {
     links.push({ title: t('About'), href: '/about' })
   }
-
-  // Affiliate program (代理加盟) — always shown so regular users can discover
-  // the white-label / sub-site agent program. Not gated by HeaderNavModules.
-  links.push({ title: t('Affiliate Program'), href: '/affiliate' })
-
-  // Contact (联系我们) — always shown.
-  links.push({ title: t('Contact Us'), href: '/contact' })
 
   return links
 }

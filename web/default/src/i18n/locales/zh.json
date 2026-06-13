@@ -4766,6 +4766,23 @@
     "Community & Online Support": "社区 / 在线支持",
     "Join our group for real-time help": "加入交流群获取实时帮助",
     "We typically respond within 1 business day.": "我们通常在 1 个工作日内回复。",
-    "Back to Affiliate Program": "返回代理加盟"
+    "Back to Affiliate Program": "返回代理加盟",
+    "User payments land directly in your own account — set your own retail price, the margin is yours": "用户付款直接进入你自己的收款账户——自定义售价，差价全归你",
+    "Turn your fan traffic into your own paying users — their payments land directly in your account.": "把粉丝流量沉淀为自有付费用户——他们的付款直接进入你的收款账户。",
+    "Payments Go Straight to You": "收款直接进账",
+    "Users pay into your own payment account and it arrives instantly — no platform split and nothing to withdraw.": "用户付款进入你自己的收款账户并即时到账——平台不分账，也无需提现。",
+    "Sell card keys and collect payments — the money lands in your own account, and you stock at your wholesale discount.": "卖卡密、收款项——钱直接进你自己的账户，你按进货折扣拿货。",
+    "How does the money flow — is there any commission or withdrawal?": "钱怎么收？有抽成或提现吗？",
+    "There is no commission, revenue share or withdrawal. Users pay directly into your own payment account. When you generate redemption codes or a payment is processed, the platform deducts the cost from your wholesale wallet at your discount — the difference between the retail price you set and your wholesale cost is entirely yours.": "没有任何抽成、分成或提现。用户付款直接进入你自己的收款账户；当你生成兑换码或有订单结算时，平台按你的进货折扣从你的进货钱包扣除货款——你设定的售价与进货成本之间的差价，全部归你。",
+    "With just a domain, you can own an AI site under your own brand. Stock at a wholesale discount, set your own retail price, and keep the full margin — user payments land directly in your own account, while the platform handles the tech and models.": "只需一个域名，即可拥有自己品牌的 AI 站点。按进货折扣拿货、自定义售价、差价全归你——用户付款直接进入你自己的收款账户，技术与模型由平台负责。",
+    "Wholesale Pricing": "进货价",
+    "Wholesale Discount Tiers": "进货折扣档位",
+    "The lower your wholesale rate, the higher your margin — the tiers below are examples, final terms are subject to the actual agreement.": "进货折扣越低，你的利润越高——以下为示例方案，最终以实际签约为准。",
+    "of retail": "零售价",
+    "You stock at this rate; the full margin is yours.": "按此折扣进货，差价全归你。",
+    "One domain, one AI site under your own brand — set your price and start earning today.": "一个域名，一套自有品牌的 AI 站点——设定售价，从今天开始赚取利润。",
+    "Public landing page promoting the agent program.": "推广代理加盟计划的公开落地页。",
+    "Contact page with ways to reach you.": "展示联系方式的联系我们页面。",
+    "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.": "联系我们页面内容。支持 HTML 或 URL（以 iframe 嵌入）。留空则显示默认联系页。"
   }
 }

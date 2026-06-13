@@ -64,7 +64,7 @@ const HERO_SELLING_POINTS = [
   },
   {
     icon: Wallet,
-    text: 'Earn a share from user online top-ups and card-key sales',
+    text: 'User payments land directly in your own account — set your own retail price, the margin is yours',
   },
 ]
 
@@ -77,7 +77,7 @@ const AUDIENCES = [
   {
     icon: Megaphone,
     name: 'Influencers / KOLs',
-    desc: 'Turn your fan traffic into your own paying users and earn an ongoing share of their top-ups.',
+    desc: 'Turn your fan traffic into your own paying users — their payments land directly in your account.',
   },
   {
     icon: Users2,
@@ -109,8 +109,8 @@ const ADVANTAGES = [
   },
   {
     icon: Coins,
-    title: 'Real-time Settlement',
-    desc: 'Settled instantly at your wholesale discount the moment a top-up arrives — the spread is your profit.',
+    title: 'Payments Go Straight to You',
+    desc: "Users pay into your own payment account and it arrives instantly — no platform split and nothing to withdraw.",
   },
   {
     icon: Headphones,
@@ -143,28 +143,27 @@ const STEPS = [
   {
     icon: Coins,
     title: 'Start Earning',
-    desc: 'Sell card keys and collect top-ups, settled in real time at your wholesale discount.',
+    desc: 'Sell card keys and collect payments — the money lands in your own account, and you stock at your wholesale discount.',
   },
 ]
 
-// NOTE(替换): 下方分成数据为占位示例，请替换为你的真实分成比例 / 结算周期 / 起步门槛。
-const REVENUE_TIERS = [
+// 钱包模式：平台给代理「进货折扣」，代理按折扣从进货钱包扣货款拿货，自定义售价，
+// 差价全归代理（用户付款直接进代理自己的收款账户，无分成 / 抽成 / 提现）。
+// NOTE(替换): 下方折扣档位为占位示例，请替换为你的真实进货折扣 / 适用门槛。
+const WHOLESALE_TIERS = [
   {
     tier: 'Starter',
-    share: '70%',
-    settle: 'Real-time settlement',
+    rate: '80%',
     note: 'For individual agents just getting started',
   },
   {
     tier: 'Growth',
-    share: '78%',
-    settle: 'Real-time settlement',
+    rate: '70%',
     note: 'For operators with steady traffic',
   },
   {
     tier: 'Partner',
-    share: '85%',
-    settle: 'Real-time settlement + priority support',
+    rate: '60%',
     note: 'For resellers operating at scale',
   },
 ]
@@ -175,8 +174,8 @@ const FAQS = [
     a: 'No self-development is required. You only need a domain — point it to the deployment per the guide, and the platform opens your independent sub-site. Everything else is configured through a visual dashboard.',
   },
   {
-    q: 'How is the revenue share settled?',
-    a: 'When users top up online or redeem card keys on your sub-site, the funds go to your own payment account; the platform deducts the cost from your wholesale wallet at your discount, and the spread is your profit — settled in real time within the same transaction.',
+    q: 'How does the money flow — is there any commission or withdrawal?',
+    a: 'There is no commission, revenue share or withdrawal. Users pay directly into your own payment account. When you generate redemption codes or a payment is processed, the platform deducts the cost from your wholesale wallet at your discount — the difference between the retail price you set and your wholesale cost is entirely yours.',
   },
   {
     q: 'Will my users and data be mixed with other agents?',
@@ -279,7 +278,7 @@ function HeroSection() {
             style={{ animationDelay: '120ms' }}
           >
             {t(
-              'With just a domain, you can own an AI site under your own brand. Customize pricing and homepage, and earn a share from user top-ups and card-key sales — the platform handles the tech and models, you focus on running it.'
+              'With just a domain, you can own an AI site under your own brand. Stock at a wholesale discount, set your own retail price, and keep the full margin — user payments land directly in your own account, while the platform handles the tech and models.'
             )}
           </p>
 
@@ -322,7 +321,7 @@ function HeroSection() {
           </div>
         </div>
 
-        {/* 右：主视觉（aff.png，位于 web/default/public/aff.png → 访问路径 /aff.png） */}
+        {/* 右：主视觉（aff.webp，位于 web/default/public/aff.webp → 访问路径 /aff.webp） */}
         <div
           className='landing-animate-fade-up flex w-full justify-center opacity-0 lg:col-span-6'
           style={{ animationDelay: '320ms' }}
@@ -338,7 +337,7 @@ function HeroSection() {
               }}
             />
             <img
-              src='/aff.png'
+              src='/aff.webp'
               alt={t('Become Our Exclusive Agent')}
               className='relative z-10 w-full object-contain'
               loading='eager'
@@ -467,7 +466,7 @@ function StepsSection() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. 收益 / 分成说明
+// 5. 进货折扣档位（钱包模式：进货价越低、利润越高）
 // ---------------------------------------------------------------------------
 
 function RevenueSection() {
@@ -476,12 +475,12 @@ function RevenueSection() {
     <section className='border-border/40 relative z-10 border-t px-6 py-24 md:py-32'>
       <div className='mx-auto max-w-5xl'>
         <SectionHeading
-          eyebrow='Revenue Share'
-          title='Revenue & Settlement'
-          subtitle='The plans below are examples; final share rates and thresholds are subject to the actual agreement'
+          eyebrow='Wholesale Pricing'
+          title='Wholesale Discount Tiers'
+          subtitle='The lower your wholesale rate, the higher your margin — the tiers below are examples, final terms are subject to the actual agreement.'
         />
         <div className='grid gap-6 md:grid-cols-3 md:gap-8'>
-          {REVENUE_TIERS.map(({ tier, share, settle, note }, i) => {
+          {WHOLESALE_TIERS.map(({ tier, rate, note }, i) => {
             const featured = i === 1
             return (
               <AnimateInView
@@ -504,13 +503,15 @@ function RevenueSection() {
                 </span>
                 <div className='mt-3 flex items-end gap-1'>
                   <span className='text-4xl font-bold tracking-tight'>
-                    {share}
+                    {rate}
                   </span>
                   <span className='text-muted-foreground mb-1 text-sm'>
-                    {t('share')}
+                    {t('of retail')}
                   </span>
                 </div>
-                <p className='text-muted-foreground mt-2 text-sm'>{t(settle)}</p>
+                <p className='text-muted-foreground mt-2 text-sm'>
+                  {t('You stock at this rate; the full margin is yours.')}
+                </p>
                 <div className='border-border/50 mt-5 border-t pt-4'>
                   <p className='text-muted-foreground flex items-start gap-2 text-sm leading-relaxed'>
                     <CheckCircle2 className='text-foreground/70 mt-0.5 size-4 shrink-0' />
@@ -521,7 +522,7 @@ function RevenueSection() {
             )
           })}
         </div>
-        {/* NOTE(替换): 上方分成比例 / 结算周期 / 门槛为占位示例，请替换为真实数据。 */}
+        {/* NOTE(替换): 上方进货折扣 / 门槛为占位示例，请替换为真实数据。 */}
       </div>
     </section>
   )
@@ -586,7 +587,7 @@ function CtaSection() {
           </h2>
           <p className='text-muted-foreground/80 mx-auto mt-4 max-w-xl text-sm leading-relaxed md:text-base'>
             {t(
-              'One domain, one AI site under your own brand — start earning your share today.'
+              'One domain, one AI site under your own brand — set your price and start earning today.'
             )}
           </p>
           <div className='mt-8 flex justify-center'>

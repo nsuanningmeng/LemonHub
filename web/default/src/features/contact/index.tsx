@@ -16,15 +16,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ArrowLeft, Mail, Handshake, MessagesSquare, Clock } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
+import { Mail, Handshake, MessagesSquare, Clock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Markdown } from '@/components/ui/markdown'
+import { Skeleton } from '@/components/ui/skeleton'
 import { AnimateInView } from '@/components/animate-in-view'
-import { Button } from '@/components/ui/button'
 import { Footer } from '@/components/layout/components/footer'
 import { PublicLayout } from '@/components/layout'
+import { getContactContent } from './api'
 
-// NOTE(替换): 以下联系方式为占位，请替换为真实的邮箱 / 微信 / Telegram / QQ 群等。
+function isValidUrl(value: string) {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function isLikelyHtml(value: string) {
+  return /<\/?[a-z][\s\S]*>/i.test(value)
+}
+
+// NOTE(替换): 以下联系方式为占位（仅在管理员未在「系统设置 → 站点信息 → 联系我们」
+// 配置内容时作为默认页展示）。请替换为真实的邮箱 / 微信 / Telegram / QQ 群等。
 // value 为实际展示的联系信息（不走 i18n，按需直接改）；href 可留空或填 mailto:/外链。
 const CONTACT_METHODS = [
   {
@@ -95,70 +111,119 @@ function ContactMethodCard({
   )
 }
 
-export function Contact() {
+// 默认联系页（管理员未在系统设置配置内容时展示）
+function DefaultContactPage() {
   const { t } = useTranslation()
   return (
-    <PublicLayout showMainContainer={false}>
-      <main className='overflow-x-hidden'>
-        <section className='relative z-10 overflow-hidden px-6 pt-24 pb-24 md:pt-32 md:pb-32'>
-          {/* 径向渐变 + 网格背景，沿用项目设计语言 */}
-          <div
-            aria-hidden
-            className='pointer-events-none absolute inset-0 -z-10 opacity-25 dark:opacity-[0.12]'
-            style={{
-              background:
-                'radial-gradient(ellipse 60% 50% at 50% 0%, oklch(0.72 0.18 250 / 70%) 0%, transparent 70%)',
-            }}
-          />
-          <div
-            aria-hidden
-            className='absolute inset-0 -z-10 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_20%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.08]'
-          />
+    <main className='overflow-x-hidden'>
+      <section className='relative z-10 overflow-hidden px-6 pt-24 pb-24 md:pt-32 md:pb-32'>
+        <div
+          aria-hidden
+          className='pointer-events-none absolute inset-0 -z-10 opacity-25 dark:opacity-[0.12]'
+          style={{
+            background:
+              'radial-gradient(ellipse 60% 50% at 50% 0%, oklch(0.72 0.18 250 / 70%) 0%, transparent 70%)',
+          }}
+        />
+        <div
+          aria-hidden
+          className='absolute inset-0 -z-10 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_20%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.08]'
+        />
 
-          <div className='mx-auto max-w-5xl'>
-            <AnimateInView className='mb-14 text-center md:mb-16'>
-              <p className='text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase'>
-                {t('Get in Touch')}
-              </p>
-              <h1 className='text-[clamp(2rem,4vw,2.75rem)] leading-[1.15] font-bold tracking-tight'>
-                {t('Contact Us')}
-              </h1>
-              <p className='text-muted-foreground/80 mx-auto mt-4 max-w-2xl text-sm leading-relaxed md:text-base'>
-                {t(
-                  'Questions about the affiliate program, business cooperation, or support — reach us through any channel below.'
-                )}
-              </p>
-            </AnimateInView>
+        <div className='mx-auto max-w-5xl'>
+          <AnimateInView className='mb-14 text-center md:mb-16'>
+            <p className='text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase'>
+              {t('Get in Touch')}
+            </p>
+            <h1 className='text-[clamp(2rem,4vw,2.75rem)] leading-[1.15] font-bold tracking-tight'>
+              {t('Contact Us')}
+            </h1>
+            <p className='text-muted-foreground/80 mx-auto mt-4 max-w-2xl text-sm leading-relaxed md:text-base'>
+              {t(
+                'Questions about the affiliate program, business cooperation, or support — reach us through any channel below.'
+              )}
+            </p>
+          </AnimateInView>
 
-            <div className='grid gap-6 sm:grid-cols-2 lg:grid-cols-3'>
-              {CONTACT_METHODS.map((m, i) => (
-                <ContactMethodCard key={m.title} {...m} delay={i * 100} />
-              ))}
-            </div>
-
-            {/* 响应时效说明 */}
-            <AnimateInView delay={300} className='mt-10 flex justify-center'>
-              <div className='border-border/50 bg-muted/20 text-muted-foreground flex items-center gap-2 rounded-full border px-4 py-2 text-sm'>
-                <Clock className='size-4' strokeWidth={1.75} />
-                {t('We typically respond within 1 business day.')}
-              </div>
-            </AnimateInView>
-
-            {/* 返回代理加盟 */}
-            <div className='mt-12 flex justify-center'>
-              <Button
-                variant='outline'
-                className='border-border/50 hover:border-border hover:bg-muted/50 group h-11 rounded-lg px-5 text-sm font-medium'
-                render={<Link to='/affiliate' />}
-              >
-                <ArrowLeft className='mr-1.5 size-4 transition-transform duration-200 group-hover:-translate-x-0.5' />
-                {t('Back to Affiliate Program')}
-              </Button>
-            </div>
+          <div className='grid gap-6 sm:grid-cols-2 lg:grid-cols-3'>
+            {CONTACT_METHODS.map((m, i) => (
+              <ContactMethodCard key={m.title} {...m} delay={i * 100} />
+            ))}
           </div>
-        </section>
-        <Footer />
-      </main>
+
+          <AnimateInView delay={300} className='mt-10 flex justify-center'>
+            <div className='border-border/50 bg-muted/20 text-muted-foreground flex items-center gap-2 rounded-full border px-4 py-2 text-sm'>
+              <Clock className='size-4' strokeWidth={1.75} />
+              {t('We typically respond within 1 business day.')}
+            </div>
+          </AnimateInView>
+        </div>
+      </section>
+      <Footer />
+    </main>
+  )
+}
+
+export function Contact() {
+  const { t } = useTranslation()
+  const { data, isLoading } = useQuery({
+    queryKey: ['contact-content'],
+    queryFn: getContactContent,
+  })
+
+  const rawContent = data?.data?.trim() ?? ''
+  const hasContent = rawContent.length > 0
+  const isUrl = hasContent && isValidUrl(rawContent)
+  const isHtml = hasContent && !isUrl && isLikelyHtml(rawContent)
+
+  if (isLoading) {
+    return (
+      <PublicLayout>
+        <div className='mx-auto flex max-w-4xl flex-col gap-4 py-12'>
+          <Skeleton className='h-8 w-[45%]' />
+          <Skeleton className='h-4 w-full' />
+          <Skeleton className='h-4 w-[90%]' />
+          <Skeleton className='h-4 w-[80%]' />
+        </div>
+      </PublicLayout>
+    )
+  }
+
+  // Admin-configured content (set in System Settings → Site → Contact)
+  if (hasContent) {
+    if (isUrl) {
+      return (
+        <PublicLayout showMainContainer={false}>
+          <iframe
+            src={rawContent}
+            className='h-[calc(100vh-3.5rem)] w-full border-0'
+            title={t('Contact Us')}
+          />
+        </PublicLayout>
+      )
+    }
+    return (
+      <PublicLayout>
+        <div className='mx-auto max-w-6xl px-4 py-8'>
+          {isHtml ? (
+            <div
+              className='prose prose-neutral dark:prose-invert max-w-none'
+              dangerouslySetInnerHTML={{ __html: rawContent }}
+            />
+          ) : (
+            <Markdown className='prose-neutral dark:prose-invert max-w-none'>
+              {rawContent}
+            </Markdown>
+          )}
+        </div>
+      </PublicLayout>
+    )
+  }
+
+  // Default styled contact page
+  return (
+    <PublicLayout showMainContainer={false}>
+      <DefaultContactPage />
     </PublicLayout>
   )
 }

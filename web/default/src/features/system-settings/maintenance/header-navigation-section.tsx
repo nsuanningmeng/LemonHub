@@ -55,6 +55,8 @@ const headerNavSchema = z.object({
   rankingsRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
+  affiliate: z.boolean(),
+  contact: z.boolean(),
 })
 
 type HeaderNavFormValues = z.infer<typeof headerNavSchema>
@@ -93,6 +95,14 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.about === undefined
       ? HEADER_NAV_DEFAULT.about
       : Boolean(config.about),
+  affiliate:
+    config.affiliate === undefined
+      ? HEADER_NAV_DEFAULT.affiliate
+      : Boolean(config.affiliate),
+  contact:
+    config.contact === undefined
+      ? HEADER_NAV_DEFAULT.contact
+      : Boolean(config.contact),
 })
 
 export function HeaderNavigationSection({
@@ -119,6 +129,8 @@ export function HeaderNavigationSection({
       console: values.console,
       docs: values.docs,
       about: values.about,
+      affiliate: values.affiliate,
+      contact: values.contact,
       pricing: {
         ...(config.pricing ?? HEADER_NAV_DEFAULT.pricing),
         enabled: values.pricingEnabled,
@@ -170,6 +182,16 @@ export function HeaderNavigationSection({
       key: 'about',
       title: t('About'),
       description: t('Static page describing the platform.'),
+    },
+    {
+      key: 'affiliate',
+      title: t('Affiliate Program'),
+      description: t('Public landing page promoting the agent program.'),
+    },
+    {
+      key: 'contact',
+      title: t('Contact Us'),
+      description: t('Contact page with ways to reach you.'),
     },
   ]
 
