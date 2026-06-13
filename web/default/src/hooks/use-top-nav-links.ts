@@ -99,5 +99,12 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('About'), href: '/about' })
   }
 
+  // Affiliate program (代理加盟) — always shown so regular users can discover
+  // the white-label / sub-site agent program. Not gated by HeaderNavModules.
+  links.push({ title: t('Affiliate Program'), href: '/affiliate' })
+
+  // Contact (联系我们) — always shown.
+  links.push({ title: t('Contact Us'), href: '/contact' })
+
   return links
 }

@@ -16,20 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type TopNavLink } from '../types'
+import { createFileRoute } from '@tanstack/react-router'
+import { Contact } from '@/features/contact'
 
-/**
- * Default top navigation links
- *
- * In practice, navigation links are dynamically fetched from backend.
- * Priority: Backend dynamic links > Provided navLinks > defaultTopNavLinks
- *
- * This is intentionally empty to encourage backend configuration.
- * If you need fallback links, add them here.
- *
- * Note: the "Affiliate Program" and "Contact Us" entries are injected directly
- * in `useTopNavLinks()` so they always appear, since the dynamic link list is
- * never empty (Home/Console/Docs/About defaults), which means this fallback
- * array is never actually used.
- */
-export const defaultTopNavLinks: TopNavLink[] = []
+export const Route = createFileRoute('/contact/')({
+  component: Contact,
+})

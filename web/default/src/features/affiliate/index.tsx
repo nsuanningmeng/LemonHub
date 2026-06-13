@@ -32,8 +32,8 @@ import {
   Server,
   Coins,
   CheckCircle2,
-  Sparkles,
 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { AnimateInView } from '@/components/animate-in-view'
 import {
@@ -46,9 +46,8 @@ import { Button } from '@/components/ui/button'
 import { Footer } from '@/components/layout/components/footer'
 import { PublicLayout } from '@/components/layout'
 
-// NOTE(替换): "立即申请" 的目标。当前用锚点滚动到底部 CTA / 占位锚点；
-// 接好真实申请入口（如代理申请表单页 / 联系表单 / 客服链接）后替换 APPLY_HREF。
-const APPLY_HREF = '#affiliate-apply'
+// "立即申请" 跳转到「联系我们」页（/contact）。如后续有专门的代理申请表单页，
+// 把下方两个 Button 的 `<Link to='/contact' />` 改成对应路由即可。
 
 // ---------------------------------------------------------------------------
 // 数据（文案为 i18n key = 英文源串，zh.json 提供中文翻译；图标用 lucide-react）
@@ -308,7 +307,7 @@ function HeroSection() {
           >
             <Button
               className='group h-11 rounded-lg px-5 text-sm font-medium'
-              render={<a href={APPLY_HREF} />}
+              render={<Link to='/contact' />}
             >
               {t('Apply Now')}
               <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
@@ -323,34 +322,27 @@ function HeroSection() {
           </div>
         </div>
 
-        {/* 右：科技感主视觉占位 */}
-        {/* NOTE(替换): 此处用占位块，替换为科技感主视觉插画 / 3D 图（建议透明 PNG 或 SVG，约 560×460） */}
+        {/* 右：主视觉（aff.png，位于 web/default/public/aff.png → 访问路径 /aff.png） */}
         <div
           className='landing-animate-fade-up flex w-full justify-center opacity-0 lg:col-span-6'
           style={{ animationDelay: '320ms' }}
         >
-          <div className='relative aspect-[6/5] w-full max-w-lg'>
-            <div className='border-border/60 bg-card/60 absolute inset-0 overflow-hidden rounded-3xl border shadow-sm backdrop-blur-sm'>
-              <div
-                aria-hidden
-                className='absolute inset-0 opacity-60'
-                style={{
-                  background:
-                    'radial-gradient(ellipse 70% 60% at 50% 30%, oklch(0.72 0.16 255 / 25%) 0%, transparent 70%)',
-                }}
-              />
-              <div className='relative flex h-full flex-col items-center justify-center gap-4 p-8 text-center'>
-                <span className='border-border/50 bg-background/70 text-foreground flex size-16 items-center justify-center rounded-2xl border'>
-                  <Sparkles className='size-7' strokeWidth={1.5} />
-                </span>
-                <span className='text-muted-foreground/70 text-xs font-medium tracking-widest uppercase'>
-                  {t('Hero Visual')}
-                </span>
-                <span className='text-muted-foreground/50 text-[11px]'>
-                  {t('Replace with a tech-style hero illustration / 3D image')}
-                </span>
-              </div>
-            </div>
+          <div className='relative w-full max-w-lg'>
+            {/* 主视觉后方的柔光，呼应项目径向渐变风格 */}
+            <div
+              aria-hidden
+              className='pointer-events-none absolute inset-0 -z-0 opacity-50 dark:opacity-30'
+              style={{
+                background:
+                  'radial-gradient(ellipse 70% 60% at 50% 45%, oklch(0.72 0.16 255 / 28%) 0%, transparent 70%)',
+              }}
+            />
+            <img
+              src='/aff.png'
+              alt={t('Become Our Exclusive Agent')}
+              className='relative z-10 w-full object-contain'
+              loading='eager'
+            />
           </div>
         </div>
       </div>
@@ -600,7 +592,7 @@ function CtaSection() {
           <div className='mt-8 flex justify-center'>
             <Button
               className='group h-11 rounded-lg px-6 text-sm font-medium'
-              render={<a href={APPLY_HREF} />}
+              render={<Link to='/contact' />}
             >
               {t('Apply Now')}
               <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
