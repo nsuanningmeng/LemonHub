@@ -59,6 +59,7 @@ var auditContentTemplates = map[string]string{
 	"site_admin.redemption_create": "Sub-site admin created ${count} redemption codes named ${name} (${quota} each)",
 	"site_admin.redemption_void":   "Sub-site admin voided redemption (ID: ${id})",
 	"site_admin.warn_threshold":    "Sub-site admin set wallet warn threshold to ${threshold} (厘) for site ${id}",
+	"site_admin.pay_config":        "Sub-site admin updated payment (收款) config for site ${id}",
 }
 
 // auditContentEN 按 action 模板渲染英文兜底文本；未登记的 action 退回 action 本身。

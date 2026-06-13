@@ -478,6 +478,23 @@ func UpdateSiteBranding(siteId int, name, logo, notice, footer string) error {
 	return nil
 }
 
+// UpdateSitePayConfig stores a sub-site's own payment (收款) configuration JSON. Only the
+// pay_config column is touched; the cache is reloaded so callbacks/recharge see it.
+func UpdateSitePayConfig(siteId int, payConfig string) error {
+	if siteId <= 0 {
+		return errors.New("无效的子站")
+	}
+	res := DB.Model(&Site{}).Where("id = ?", siteId).Update("pay_config", payConfig)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errors.New("子站不存在")
+	}
+	reloadSiteCacheSoft()
+	return nil
+}
+
 // DeleteSite removes a site and its domain bindings, then reloads the cache.
 func DeleteSite(id int) error {
 	if id == 0 {

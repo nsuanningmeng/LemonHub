@@ -307,3 +307,62 @@ func SiteAdminUpdateBranding(c *gin.Context) {
 	})
 	common.ApiSuccess(c, nil)
 }
+
+type siteAdminPayConfigRequest struct {
+	EpayId     string   `json:"epay_id"`
+	EpayKey    string   `json:"epay_key"`
+	PayAddress string   `json:"pay_address"`
+	PayMethods []string `json:"pay_methods"`
+}
+
+// SiteAdminGetPayConfig returns the operator's own sub-site 收款 (epay) configuration so
+// the agent can review/edit their own merchant credentials. Scope: GetSiteById(siteId).
+func SiteAdminGetPayConfig(c *gin.Context) {
+	siteId, ok := requireSiteScope(c)
+	if !ok {
+		return
+	}
+	site, err := model.GetSiteById(siteId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	cfg, _ := parseSitePayConfig(site.PayConfig)
+	common.ApiSuccess(c, gin.H{
+		"epay_id":     cfg.EpayId,
+		"epay_key":    cfg.EpayKey,
+		"pay_address": cfg.PayAddress,
+		"pay_methods": cfg.PayMethods,
+	})
+}
+
+// SiteAdminUpdatePayConfig stores the operator's own sub-site 收款 configuration. Scope:
+// UpdateSitePayConfig is forced to siteId — a sub-site admin can only configure their own.
+func SiteAdminUpdatePayConfig(c *gin.Context) {
+	siteId, ok := requireSiteScope(c)
+	if !ok {
+		return
+	}
+	var req siteAdminPayConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	cfg := sitePayConfig{
+		EpayId:     strings.TrimSpace(req.EpayId),
+		EpayKey:    strings.TrimSpace(req.EpayKey),
+		PayAddress: strings.TrimSpace(req.PayAddress),
+		PayMethods: req.PayMethods,
+	}
+	data, err := common.Marshal(cfg)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.UpdateSitePayConfig(siteId, string(data)); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	recordManageAudit(c, "site_admin.pay_config", map[string]interface{}{"id": siteId})
+	common.ApiSuccess(c, nil)
+}

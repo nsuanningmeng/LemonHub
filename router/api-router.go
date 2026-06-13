@@ -328,6 +328,8 @@ func SetApiRouter(router *gin.Engine) {
 			siteAdminRoute.GET("/wallet/logs", controller.SiteAdminGetWalletLogs)
 			siteAdminRoute.PUT("/wallet/warn-threshold", controller.SiteAdminSetWarnThreshold)
 			siteAdminRoute.PUT("/branding", controller.SiteAdminUpdateBranding)
+			siteAdminRoute.GET("/pay-config", controller.SiteAdminGetPayConfig)
+			siteAdminRoute.PUT("/pay-config", controller.SiteAdminUpdatePayConfig)
 
 			siteAdminRedemptionRoute := siteAdminRoute.Group("/redemption")
 			{
