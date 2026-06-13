@@ -1,10 +1,89 @@
 package model
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 )
+
+// TestTopUpSettlementFailClosedAndRetry covers the codex-flagged robustness paths:
+// a sub-site order whose wholesale cost cannot be resolved (costMilli<=0) must FAIL CLOSED
+// (never free-credit the user, order stays pending for retry); an insufficient wallet parks
+// it for manual review; and a platform admin can re-settle it after the agent funds the
+// wallet (RetryManualReviewTopUp).
+func TestTopUpSettlementFailClosedAndRetry(t *testing.T) {
+	if err := DB.AutoMigrate(&Site{}, &SiteWalletLog{}, &TopUp{}, &User{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	const siteC = 5503
+	cleanup := func() {
+		DB.Where("id = ?", siteC).Delete(&Site{})
+		DB.Where("site_id = ?", siteC).Delete(&SiteWalletLog{})
+		DB.Where("trade_no = ?", "P4RETRY").Delete(&TopUp{})
+	}
+	cleanup()
+	defer cleanup()
+
+	const amount = int64(10)
+	wantQuota := int(amount * int64(common.QuotaPerUnit))
+	pw, _ := common.Password2Hash("x")
+	uC := &User{Username: "p4retryu", SiteId: siteC, Password: pw, Status: common.UserStatusEnabled, Role: common.RoleCommonUser, AffCode: "p4retryaff"}
+	if err := DB.Create(uC).Error; err != nil {
+		t.Fatalf("user: %v", err)
+	}
+	defer DB.Where("id = ?", uC.Id).Delete(&User{})
+	DB.Create(&Site{Id: siteC, Name: "C", Status: SiteStatusNormal, WalletBalance: 0, DiscountRate: DiscountRateBase})
+	DB.Create(&TopUp{SiteId: siteC, UserId: uC.Id, Amount: amount, Money: 100, TradeNo: "P4RETRY",
+		PaymentProvider: PaymentProviderEpay, PaymentMethod: "alipay", Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()})
+	uQuota := func() int {
+		var u User
+		DB.Select("quota").First(&u, uC.Id)
+		return u.Quota
+	}
+	orderStatus := func() string {
+		var o TopUp
+		DB.Where("trade_no = ?", "P4RETRY").First(&o)
+		return o.Status
+	}
+
+	// 1. Fail-closed: sub-site order settled with costMilli=0 must NOT credit the user.
+	if _, added, err := CompleteEpayTopUp("P4RETRY", 0, 1); !errors.Is(err, ErrSiteTopUpUnresolved) || added != 0 {
+		t.Fatalf("cost=0 sub-site settle must fail closed, got added=%d err=%v", added, err)
+	}
+	if uQuota() != 0 {
+		t.Fatalf("fail-closed must not credit, quota=%d", uQuota())
+	}
+	if orderStatus() != common.TopUpStatusPending {
+		t.Fatalf("fail-closed must keep order pending, got %s", orderStatus())
+	}
+
+	// 2. Insufficient wallet (0 < 70000) → manual_review, credit nothing.
+	if status, added, err := CompleteEpayTopUp("P4RETRY", 70000, 1); err != nil || status != TopUpStatusManualReview || added != 0 {
+		t.Fatalf("insufficient settle want manual_review/0, got %s/%d err=%v", status, added, err)
+	}
+	if uQuota() != 0 {
+		t.Fatalf("manual_review must not credit, quota=%d", uQuota())
+	}
+
+	// 3. Admin funds the wallet and retries → settles (credit + debit).
+	if err := RechargeSiteWallet(siteC, 100000, "fund", 1); err != nil {
+		t.Fatalf("fund: %v", err)
+	}
+	if status, added, err := RetryManualReviewTopUp("P4RETRY", 70000, 1); err != nil || status != common.TopUpStatusSuccess || added != wantQuota {
+		t.Fatalf("retry want success/%d, got %s/%d err=%v", wantQuota, status, added, err)
+	}
+	if uQuota() != wantQuota {
+		t.Fatalf("retry must credit, quota=%d want %d", uQuota(), wantQuota)
+	}
+	if bal, _ := GetSiteWalletBalance(siteC); bal != 100000-70000 {
+		t.Fatalf("retry must debit wallet, bal=%d want %d", bal, 100000-70000)
+	}
+	// 4. Retrying a settled order fails (not manual_review anymore).
+	if _, _, err := RetryManualReviewTopUp("P4RETRY", 70000, 1); err == nil {
+		t.Fatal("retrying a settled order must fail")
+	}
+}
 
 // TestCompleteEpayTopUpSettlement covers the phase-4 online-recharge settlement core:
 // a sub-site order credits the user AND debits the agent wallet atomically (flow type=4);

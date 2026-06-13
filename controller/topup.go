@@ -392,11 +392,10 @@ func UnlockOrder(tradeNo string) {
 }
 
 func EpayNotify(c *gin.Context) {
-	if !isEpayWebhookEnabled() {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
-	}
+	// NOTE: the global epay enablement is NOT checked here — that would wrongly reject a
+	// sub-site's callback when only sub-sites (not the main site) have epay configured. The
+	// per-order client resolution below (getEpayClientForSite) gates each callback by the
+	// owning site's own config instead.
 
 	var params map[string]string
 
@@ -446,9 +445,18 @@ func EpayNotify(c *gin.Context) {
 		return
 	}
 
+	// Load the owning sub-site from the DB (not the cache) so settlement always has the
+	// authoritative pay_config + discount; a cache miss must not lead to a free credit.
 	var site *model.Site
 	if topUp.SiteId > 0 {
-		site = model.GetSiteByIdCached(topUp.SiteId)
+		site, _ = model.GetSiteById(topUp.SiteId)
+		if site == nil {
+			// Sub-site order but its site can't be loaded: fail (retry) rather than fall back
+			// to the global client / a zero cost, which would credit the user for free.
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 子站订单无法加载子站 trade_no=%s site_id=%d client_ip=%s", tradeNo, topUp.SiteId, c.ClientIP()))
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
 	}
 	client := getEpayClientForSite(site)
 	if client == nil {
@@ -602,4 +610,47 @@ func AdminCompleteTopUp(c *gin.Context) {
 		return
 	}
 	common.ApiSuccess(c, nil)
+}
+
+type RetryTopUpRequest struct {
+	TradeNo string `json:"trade_no"`
+}
+
+// AdminRetryManualReviewTopUp re-settles a parked (manual_review) sub-site recharge order
+// after the agent has funded their procurement wallet: it re-runs the atomic settlement
+// (debit agent wallet + credit user) using the order's owning site discount. Main admin only.
+func AdminRetryManualReviewTopUp(c *gin.Context) {
+	var req RetryTopUpRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.TradeNo) == "" {
+		common.ApiErrorMsg(c, "未提供订单号")
+		return
+	}
+	LockOrder(req.TradeNo)
+	defer UnlockOrder(req.TradeNo)
+
+	topUp := model.GetTopUpByTradeNo(req.TradeNo)
+	if topUp == nil {
+		common.ApiErrorMsg(c, "订单不存在")
+		return
+	}
+	var cost int64
+	if topUp.SiteId > 0 {
+		site, err := model.GetSiteById(topUp.SiteId)
+		if err != nil || site == nil {
+			common.ApiErrorMsg(c, "订单所属子站不存在")
+			return
+		}
+		cost = siteTopupCostMilli(topUp.Money, site.DiscountRate)
+		if cost <= 0 {
+			common.ApiErrorMsg(c, "无法计算子站成本，请检查支付金额与折扣率")
+			return
+		}
+	}
+	finalStatus, quotaAdded, err := model.RetryManualReviewTopUp(req.TradeNo, cost, c.GetInt("id"))
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	recordManageAudit(c, "topup.retry_settlement", map[string]interface{}{"trade_no": req.TradeNo, "status": finalStatus})
+	common.ApiSuccess(c, gin.H{"status": finalStatus, "quota_added": quotaAdded})
 }
