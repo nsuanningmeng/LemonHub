@@ -160,7 +160,7 @@ export function SubSiteMutateDrawer({
             {isUpdate
               ? t('Update the sub-site by providing necessary info.')
               : t('Add a new sub-site by providing necessary info.')}{' '}
-            {t('Click save when you&apos;re done.')}
+            {t("Click save when you're done.")}
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>

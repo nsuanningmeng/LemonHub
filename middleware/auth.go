@@ -40,6 +40,11 @@ func authHelper(c *gin.Context, minRole int) {
 	id := session.Get("id")
 	status := session.Get("status")
 	useAccessToken := false
+	// operatorSiteId is the operator's own sub-site (0 = main site), taken from the
+	// authoritative account on BOTH auth paths. operatorSiteIdKnown distinguishes
+	// "genuinely main site (0)" from "unknown" so EffectiveSiteScope can fail closed.
+	operatorSiteId := 0
+	operatorSiteIdKnown := false
 	if username == nil {
 		// Check access token
 		accessToken := c.Request.Header.Get("Authorization")
@@ -83,6 +88,8 @@ func authHelper(c *gin.Context, minRole int) {
 			id = user.Id
 			status = user.Status
 			useAccessToken = true
+			operatorSiteId = user.SiteId
+			operatorSiteIdKnown = true
 		} else {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -152,10 +159,18 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("group", session.Get("group"))
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
-	// Operator's own sub-site (0 = main site), set at login. Used by EffectiveSiteScope
-	// to restrict sub-site admins to their own site. Absent on legacy sessions → 0.
-	if siteId, ok := session.Get("site_id").(int); ok {
-		c.Set("operator_site_id", siteId)
+	// Operator's own sub-site, used by EffectiveSiteScope to restrict sub-site admins to
+	// their own site. Prefer the token-authenticated account's site_id; otherwise the
+	// session value persisted at login. Left unset on legacy sessions (pre-upgrade) so
+	// EffectiveSiteScope fails closed rather than defaulting a scoped operator to site 0.
+	if !operatorSiteIdKnown {
+		if siteId, ok := session.Get("site_id").(int); ok {
+			operatorSiteId = siteId
+			operatorSiteIdKnown = true
+		}
+	}
+	if operatorSiteIdKnown {
+		c.Set("operator_site_id", operatorSiteId)
 	}
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth

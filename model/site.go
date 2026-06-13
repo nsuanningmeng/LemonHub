@@ -56,6 +56,10 @@ const (
 	// "no site filter" (main-site admins see every sub-site). A value >= 0 restricts
 	// the query to that specific site_id (0 = main site).
 	SiteScopeAll = -1
+	// SiteScopeDenied is the fail-closed sentinel for a scoped operator whose own site
+	// could not be determined. It is filtered as `site_id = -2`, which matches no rows,
+	// so a request can never widen to the main site by accident.
+	SiteScopeDenied = -2
 )
 
 // ---- In-memory cache: domain -> *Site and id -> *Site ----
@@ -229,17 +233,22 @@ func SearchSites(keyword string, startIdx int, num int) ([]*Site, int64, error) 
 	var sites []*Site
 	var total int64
 	keyword = strings.TrimSpace(keyword)
-	like := "%" + keyword + "%"
+	// Escape LIKE wildcards/specials in the user keyword (consistent with the rest of the
+	// repo), then wrap as a substring pattern with an explicit ESCAPE char.
+	escaped, err := sanitizeLikePattern(keyword)
+	if err != nil {
+		return nil, 0, err
+	}
+	like := "%" + escaped + "%"
 
 	// Match by site name, or by any bound domain.
-	sub := DB.Model(&SiteDomain{}).Select("site_id").Where("domain LIKE ?", like)
-	query := DB.Model(&Site{}).Where("name LIKE ? OR id IN (?)", like, sub)
+	sub := DB.Model(&SiteDomain{}).Select("site_id").Where("domain LIKE ? ESCAPE '!'", like)
+	query := DB.Model(&Site{}).Where("name LIKE ? ESCAPE '!' OR id IN (?)", like, sub)
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&sites).Error
-	if err != nil {
+	if err := query.Order("id desc").Limit(num).Offset(startIdx).Find(&sites).Error; err != nil {
 		return nil, 0, err
 	}
 	if err := fillSiteAux(sites); err != nil {
@@ -444,15 +453,17 @@ func DeleteSite(id int) error {
 		return errors.New("invalid site id")
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("site_id = ?", id).Delete(&SiteDomain{}).Error; err != nil {
-			return err
-		}
+		// Lock/delete the sites row FIRST (same Site-then-Domain order as UpdateSite) so
+		// concurrent Update/Delete on the same site id cannot ABBA-deadlock on MySQL/PG.
 		res := tx.Delete(&Site{}, "id = ?", id)
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected == 0 {
 			return errors.New("子站不存在")
+		}
+		if err := tx.Where("site_id = ?", id).Delete(&SiteDomain{}).Error; err != nil {
+			return err
 		}
 		return nil
 	})

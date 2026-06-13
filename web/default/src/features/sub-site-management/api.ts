@@ -46,7 +46,7 @@ export async function searchSites(
 ): Promise<GetSitesResponse> {
   const { keyword = '', p = 1, page_size = 10 } = params
   const res = await api.get(
-    `/api/site/search?keyword=${keyword}&p=${p}&page_size=${page_size}`
+    `/api/site/search?keyword=${encodeURIComponent(keyword)}&p=${p}&page_size=${page_size}`
   )
   return res.data
 }
