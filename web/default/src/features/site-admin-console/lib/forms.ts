@@ -23,6 +23,7 @@ import { REDEMPTION_VALIDATION } from '../constants'
 import {
   type BrandingPayload,
   type CreateRedemptionPayload,
+  type PayConfig,
 } from '../types'
 
 // ============================================================================
@@ -109,5 +110,66 @@ export function transformBrandingFormToPayload(
     logo: data.logo || '',
     notice: data.notice || '',
     footer: data.footer || '',
+  }
+}
+
+// ============================================================================
+// Pay Config Form
+// ============================================================================
+
+export function getPayConfigFormSchema(t: TFunction) {
+  return z.object({
+    epay_id: z.string().min(1, t('Merchant ID is required')),
+    epay_key: z.string().min(1, t('Merchant Key is required')),
+    pay_address: z
+      .string()
+      .min(1, t('Payment Gateway URL is required'))
+      .url(t('Payment Gateway URL must be a valid URL')),
+    pay_methods: z.string().optional(),
+  })
+}
+
+export type PayConfigFormValues = {
+  epay_id: string
+  epay_key: string
+  pay_address: string
+  pay_methods?: string
+}
+
+export const PAY_CONFIG_FORM_DEFAULT_VALUES: PayConfigFormValues = {
+  epay_id: '',
+  epay_key: '',
+  pay_address: '',
+  pay_methods: '',
+}
+
+export function transformPayConfigFormToPayload(
+  data: PayConfigFormValues
+): PayConfig {
+  const raw = data.pay_methods?.trim() ?? ''
+  const methods = raw
+    ? raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : []
+  return {
+    epay_id: data.epay_id,
+    epay_key: data.epay_key,
+    pay_address: data.pay_address,
+    pay_methods: methods,
+  }
+}
+
+export function transformPayConfigToFormValues(
+  config: PayConfig
+): PayConfigFormValues {
+  return {
+    epay_id: config.epay_id,
+    epay_key: config.epay_key,
+    pay_address: config.pay_address,
+    pay_methods: Array.isArray(config.pay_methods)
+      ? config.pay_methods.join(',')
+      : '',
   }
 }

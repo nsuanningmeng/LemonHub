@@ -70,6 +70,7 @@ export const SUCCESS_MESSAGES = {
   REDEMPTION_VOIDED: 'Redemption code voided successfully',
   WARN_THRESHOLD_UPDATED: 'Warn threshold updated successfully',
   BRANDING_UPDATED: 'Branding updated successfully',
+  PAY_CONFIG_UPDATED: 'Payment config saved successfully',
 } as const
 
 // ============================================================================

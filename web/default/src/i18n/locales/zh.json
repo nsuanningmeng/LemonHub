@@ -2337,7 +2337,7 @@
     "Medical Q&A, mental health support": "医疗问答与心理健康支持",
     "Memory Hits": "内存命中",
     "Memory Threshold (%)": "内存阈值 (%)",
-    "Merchant ID": "商户 ID",
+    "Merchant ID": "商户号",
     "Merchant ID is required": "商户 ID 为必填项",
     "Message Priority": "消息优先级",
     "Metadata": "元信息",
@@ -4675,6 +4675,15 @@
     "Void": "作废",
     "Void Redemption Code": "作废兑换码",
     "This will void the redemption code": "此操作将作废兑换码",
-    "Compare each sub-site wallet balance against its ledger sum. Inconsistent rows are highlighted.": "将每个子站的钱包余额与其流水合计进行比对，不一致的行将高亮显示。"
+    "Compare each sub-site wallet balance against its ledger sum. Inconsistent rows are highlighted.": "将每个子站的钱包余额与其流水合计进行比对，不一致的行将高亮显示。",
+    "Payment Settings": "收款配置",
+    "Merchant Key": "商户密钥",
+    "Payment Gateway URL": "支付网关地址",
+    "Payment config saved successfully": "收款配置保存成功",
+    "Merchant ID help text": "您的易支付商户号（pid）",
+    "Merchant Key help text": "您的易支付商户密钥",
+    "Payment Gateway URL help text": "易支付网关地址，例如 https://pay.example.com",
+    "Payment Methods help text": "可选。逗号分隔的支付方式，例如 alipay,wxpay。留空则使用默认值。",
+    "Online top-up is temporarily unavailable on this site": "本站在线充值暂时不可用"
   }
 }

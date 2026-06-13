@@ -25,4 +25,9 @@ export {
   type BrandingFormValues,
   BRANDING_FORM_DEFAULT_VALUES,
   transformBrandingFormToPayload,
+  getPayConfigFormSchema,
+  type PayConfigFormValues,
+  PAY_CONFIG_FORM_DEFAULT_VALUES,
+  transformPayConfigFormToPayload,
+  transformPayConfigToFormValues,
 } from './forms'

@@ -4675,6 +4675,15 @@
     "Void": "Void",
     "Void Redemption Code": "Void Redemption Code",
     "This will void the redemption code": "This will void the redemption code",
-    "Compare each sub-site wallet balance against its ledger sum. Inconsistent rows are highlighted.": "Compare each sub-site wallet balance against its ledger sum. Inconsistent rows are highlighted."
+    "Compare each sub-site wallet balance against its ledger sum. Inconsistent rows are highlighted.": "Compare each sub-site wallet balance against its ledger sum. Inconsistent rows are highlighted.",
+    "Payment Settings": "Payment Settings",
+    "Merchant Key": "Merchant Key",
+    "Payment Gateway URL": "Payment Gateway URL",
+    "Payment config saved successfully": "Payment config saved successfully",
+    "Merchant ID help text": "Your ePay merchant ID (pid)",
+    "Merchant Key help text": "Your ePay merchant secret key",
+    "Payment Gateway URL help text": "ePay gateway URL, e.g. https://pay.example.com",
+    "Payment Methods help text": "Optional. Comma-separated payment methods, e.g. alipay,wxpay. Leave empty for defaults.",
+    "Online top-up is temporarily unavailable on this site": "Online top-up is temporarily unavailable on this site"
   }
 }

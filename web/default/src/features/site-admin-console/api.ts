@@ -25,6 +25,7 @@ import type {
   GetRedemptionsResponse,
   GetWalletLogsParams,
   GetWalletLogsResponse,
+  PayConfig,
   SearchRedemptionsParams,
   SiteAdminDashboard,
 } from './types'
@@ -112,5 +113,17 @@ export async function updateBranding(
   data: BrandingPayload
 ): Promise<ApiResponse> {
   const res = await api.put('/api/site-admin/branding', data)
+  return res.data
+}
+
+// Get the current site pay config
+export async function getPayConfig(): Promise<ApiResponse<PayConfig>> {
+  const res = await api.get('/api/site-admin/pay-config')
+  return res.data
+}
+
+// Update the current site pay config
+export async function updatePayConfig(data: PayConfig): Promise<ApiResponse> {
+  const res = await api.put('/api/site-admin/pay-config', data)
   return res.data
 }

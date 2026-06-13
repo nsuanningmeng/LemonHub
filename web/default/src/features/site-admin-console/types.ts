@@ -126,3 +126,14 @@ export interface BrandingPayload {
   notice: string
   footer: string
 }
+
+// ============================================================================
+// Pay Config
+// ============================================================================
+
+export interface PayConfig {
+  epay_id: string
+  epay_key: string
+  pay_address: string
+  pay_methods: string[]
+}
