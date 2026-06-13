@@ -72,7 +72,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/nsuanningmeng/new-api
+          images: ghcr.io/nsuanningmeng/lemonhub
 
       - name: Build & push
         id: build
@@ -82,8 +82,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            ghcr.io/nsuanningmeng/new-api:${{ env.TAG }}-${{ matrix.arch }}
-            ghcr.io/nsuanningmeng/new-api:latest-${{ matrix.arch }}
+            ghcr.io/nsuanningmeng/lemonhub:${{ env.TAG }}-${{ matrix.arch }}
+            ghcr.io/nsuanningmeng/lemonhub:latest-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -94,13 +94,13 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       - name: Sign image with cosign
-        run: cosign sign --yes ghcr.io/nsuanningmeng/new-api@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes ghcr.io/nsuanningmeng/lemonhub@${{ steps.build.outputs.digest }}
 
       - name: Image summary
         run: |
           echo "### Docker Image Digest (${{ matrix.arch }})" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "ghcr.io/nsuanningmeng/new-api:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "ghcr.io/nsuanningmeng/lemonhub:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
@@ -128,20 +128,20 @@ jobs:
       - name: Create & push manifest (version)
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/nsuanningmeng/new-api:${TAG} \
-            ghcr.io/nsuanningmeng/new-api:${TAG}-amd64 \
-            ghcr.io/nsuanningmeng/new-api:${TAG}-arm64
+            -t ghcr.io/nsuanningmeng/lemonhub:${TAG} \
+            ghcr.io/nsuanningmeng/lemonhub:${TAG}-amd64 \
+            ghcr.io/nsuanningmeng/lemonhub:${TAG}-arm64
 
       - name: Create & push manifest (latest)
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/nsuanningmeng/new-api:latest \
-            ghcr.io/nsuanningmeng/new-api:latest-amd64 \
-            ghcr.io/nsuanningmeng/new-api:latest-arm64
+            -t ghcr.io/nsuanningmeng/lemonhub:latest \
+            ghcr.io/nsuanningmeng/lemonhub:latest-amd64 \
+            ghcr.io/nsuanningmeng/lemonhub:latest-arm64
 
       - name: Manifest summary
         run: |
           echo "### Multi-arch Manifest" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          docker buildx imagetools inspect ghcr.io/nsuanningmeng/new-api:${TAG} >> $GITHUB_STEP_SUMMARY
+          docker buildx imagetools inspect ghcr.io/nsuanningmeng/lemonhub:${TAG} >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
