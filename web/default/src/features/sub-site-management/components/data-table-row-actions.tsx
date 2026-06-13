@@ -21,6 +21,7 @@ import {
   Edit,
   MoreHorizontal as DotsHorizontalIcon,
   Trash2,
+  Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -70,6 +71,17 @@ export function DataTableRowActions<TData>({
             {t('Edit')}
             <DropdownMenuShortcut>
               <Edit size={16} />
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              setCurrentRow(site)
+              setOpen('wallet')
+            }}
+          >
+            {t('Wallet')}
+            <DropdownMenuShortcut>
+              <Wallet size={16} />
             </DropdownMenuShortcut>
           </DropdownMenuItem>
           <DropdownMenuSeparator />

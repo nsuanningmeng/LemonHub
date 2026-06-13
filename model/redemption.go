@@ -12,13 +12,13 @@ import (
 )
 
 type Redemption struct {
-	Id           int            `json:"id"`
-	SiteId       int            `json:"site_id" gorm:"type:int;default:0;index"` // white-label sub-site (0 = main site)
-	UserId       int            `json:"user_id"`
-	Key          string         `json:"key" gorm:"type:char(32);uniqueIndex"`
-	Status       int            `json:"status" gorm:"default:1"`
-	Name         string         `json:"name" gorm:"index"`
-	Quota        int            `json:"quota" gorm:"default:100"`
+	Id     int    `json:"id"`
+	SiteId int    `json:"site_id" gorm:"type:int;default:0;index"` // white-label sub-site (0 = main site)
+	UserId int    `json:"user_id"`
+	Key    string `json:"key" gorm:"type:char(32);uniqueIndex"`
+	Status int    `json:"status" gorm:"default:1"`
+	Name   string `json:"name" gorm:"index"`
+	Quota  int    `json:"quota" gorm:"default:100"`
 	// CostAmount is how much (厘) was debited from the owning sub-site's wallet when this
 	// code was generated. On void, exactly this amount is refunded (原路退). 0 for main-site codes.
 	CostAmount   int64          `json:"cost_amount" gorm:"type:bigint;default:0"`
@@ -83,9 +83,12 @@ func SearchRedemptions(keyword string, startIdx int, num int, siteScope int) (re
 	// Build query based on keyword type
 	query := tx.Model(&Redemption{})
 
-	// Only try to convert to ID if the string represents a valid integer
+	// Only try to convert to ID if the string represents a valid integer.
+	// Explicit parentheses keep the OR grouped so the site_id filter below ANDs against
+	// the WHOLE disjunction — a numeric search can never escape its site scope, without
+	// relying on GORM's implicit grouping of OR expressions.
 	if id, err := strconv.Atoi(keyword); err == nil {
-		query = query.Where("id = ? OR name LIKE ?", id, keyword+"%")
+		query = query.Where("(id = ? OR name LIKE ?)", id, keyword+"%")
 	} else {
 		query = query.Where("name LIKE ?", keyword+"%")
 	}

@@ -54,6 +54,11 @@ var auditContentTemplates = map[string]string{
 	"site.wallet_adjust":   "Adjusted sub-site ${id} wallet by ${amount} (厘)",
 
 	"redemption.void": "Voided redemption (ID: ${id}) and refunded its cost",
+
+	"site_admin.branding_update":   "Sub-site admin updated branding for site ${id} (name ${name})",
+	"site_admin.redemption_create": "Sub-site admin created ${count} redemption codes named ${name} (${quota} each)",
+	"site_admin.redemption_void":   "Sub-site admin voided redemption (ID: ${id})",
+	"site_admin.warn_threshold":    "Sub-site admin set wallet warn threshold to ${threshold} (厘) for site ${id}",
 }
 
 // auditContentEN 按 action 模板渲染英文兜底文本；未登记的 action 退回 action 本身。

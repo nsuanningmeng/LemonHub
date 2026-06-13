@@ -448,6 +448,36 @@ func UpdateSite(site *Site) error {
 	return nil
 }
 
+// UpdateSiteBranding updates ONLY a sub-site's four brand fields (name/logo/notice/footer)
+// plus updated_time, then refreshes the cache. A sub-site admin may edit branding but never
+// domains/discount_rate/owner/status/pay_config, so this helper deliberately touches no other
+// columns. A column map (not a struct) is used so that clearing notice/footer to empty strings
+// is actually persisted — GORM struct Updates would skip those zero values.
+func UpdateSiteBranding(siteId int, name, logo, notice, footer string) error {
+	if siteId <= 0 {
+		return errors.New("无效的子站")
+	}
+	if name == "" {
+		return errors.New("子站名称不能为空")
+	}
+	updates := map[string]interface{}{
+		"name":         name,
+		"logo":         logo,
+		"notice":       notice,
+		"footer":       footer,
+		"updated_time": common.GetTimestamp(),
+	}
+	res := DB.Model(&Site{}).Where("id = ?", siteId).Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errors.New("子站不存在")
+	}
+	reloadSiteCacheSoft()
+	return nil
+}
+
 // DeleteSite removes a site and its domain bindings, then reloads the cache.
 func DeleteSite(id int) error {
 	if id == 0 {

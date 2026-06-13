@@ -4,5 +4,8 @@
   "Footer text or HTML": "Footer text or HTML",
   "Update the sub-site by providing necessary info.": "Update the sub-site by providing necessary info.",
   "Failed to create sub-site": "Failed to create sub-site",
-  "Failed to update sub-site": "Failed to update sub-site"
+  "Failed to update sub-site": "Failed to update sub-site",
+  "Use a negative value to deduct from the balance.": "Use a negative value to deduct from the balance.",
+  "Copy and store these codes now. They will not be shown again in full.": "Copy and store these codes now. They will not be shown again in full.",
+  "This will void the redemption code": "This will void the redemption code"
 }

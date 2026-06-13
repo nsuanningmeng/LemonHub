@@ -42,6 +42,7 @@ import { Route as AuthenticatedUsageLogsIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedSystemSettingsIndexRouteImport } from './routes/_authenticated/system-settings/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
 import { Route as AuthenticatedSubSiteManagementIndexRouteImport } from './routes/_authenticated/sub-site-management/index'
+import { Route as AuthenticatedSiteAdminIndexRouteImport } from './routes/_authenticated/site-admin/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
@@ -237,6 +238,12 @@ const AuthenticatedSubSiteManagementIndexRoute =
   AuthenticatedSubSiteManagementIndexRouteImport.update({
     id: '/sub-site-management/',
     path: '/sub-site-management/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSiteAdminIndexRoute =
+  AuthenticatedSiteAdminIndexRouteImport.update({
+    id: '/site-admin/',
+    path: '/site-admin/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedRedemptionCodesIndexRoute =
@@ -437,6 +444,7 @@ export interface FileRoutesByFullPath {
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/site-admin/': typeof AuthenticatedSiteAdminIndexRoute
   '/sub-site-management/': typeof AuthenticatedSubSiteManagementIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -496,6 +504,7 @@ export interface FileRoutesByTo {
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/site-admin': typeof AuthenticatedSiteAdminIndexRoute
   '/sub-site-management': typeof AuthenticatedSubSiteManagementIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
   '/system-settings': typeof AuthenticatedSystemSettingsIndexRoute
@@ -559,6 +568,7 @@ export interface FileRoutesById {
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
+  '/_authenticated/site-admin/': typeof AuthenticatedSiteAdminIndexRoute
   '/_authenticated/sub-site-management/': typeof AuthenticatedSubSiteManagementIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
   '/_authenticated/system-settings/': typeof AuthenticatedSystemSettingsIndexRoute
@@ -621,6 +631,7 @@ export interface FileRouteTypes {
     | '/playground/'
     | '/profile/'
     | '/redemption-codes/'
+    | '/site-admin/'
     | '/sub-site-management/'
     | '/subscriptions/'
     | '/system-settings/'
@@ -680,6 +691,7 @@ export interface FileRouteTypes {
     | '/playground'
     | '/profile'
     | '/redemption-codes'
+    | '/site-admin'
     | '/sub-site-management'
     | '/subscriptions'
     | '/system-settings'
@@ -742,6 +754,7 @@ export interface FileRouteTypes {
     | '/_authenticated/playground/'
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
+    | '/_authenticated/site-admin/'
     | '/_authenticated/sub-site-management/'
     | '/_authenticated/subscriptions/'
     | '/_authenticated/system-settings/'
@@ -1017,6 +1030,13 @@ declare module '@tanstack/react-router' {
       path: '/sub-site-management'
       fullPath: '/sub-site-management/'
       preLoaderRoute: typeof AuthenticatedSubSiteManagementIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/site-admin/': {
+      id: '/_authenticated/site-admin/'
+      path: '/site-admin'
+      fullPath: '/site-admin/'
+      preLoaderRoute: typeof AuthenticatedSiteAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/redemption-codes/': {
@@ -1309,6 +1329,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
+  AuthenticatedSiteAdminIndexRoute: typeof AuthenticatedSiteAdminIndexRoute
   AuthenticatedSubSiteManagementIndexRoute: typeof AuthenticatedSubSiteManagementIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
@@ -1333,6 +1354,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
+  AuthenticatedSiteAdminIndexRoute: AuthenticatedSiteAdminIndexRoute,
   AuthenticatedSubSiteManagementIndexRoute:
     AuthenticatedSubSiteManagementIndexRoute,
   AuthenticatedSubscriptionsIndexRoute: AuthenticatedSubscriptionsIndexRoute,

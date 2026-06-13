@@ -17,6 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
+import { type WalletLog } from '@/components/wallet-logs-table'
+
+export { type WalletLog }
 
 // ============================================================================
 // Site Schema & Types
@@ -103,7 +106,57 @@ export interface SiteUpdatePayload {
 }
 
 // ============================================================================
+// Wallet Types (money fields are 厘 = int64, 0.001 CNY)
+// ============================================================================
+
+export interface WalletMutationResponse {
+  success: boolean
+  message?: string
+  data?: { wallet_balance: number }
+}
+
+export interface RechargeWalletPayload {
+  amount: number // 厘
+  remark?: string
+}
+
+export interface AdjustWalletPayload {
+  amount: number // 厘, may be negative
+  remark: string // required
+}
+
+export interface GetWalletLogsParams {
+  p?: number
+  page_size?: number
+  type?: number
+}
+
+export interface GetWalletLogsResponse {
+  success: boolean
+  message?: string
+  data?: {
+    items: WalletLog[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
+export interface ReconcileResult {
+  site_id: number
+  balance: number // 厘
+  ledger_sum: number // 厘
+  consistent: boolean
+  discrepancy: number // 厘
+}
+
+// ============================================================================
 // Dialog Types
 // ============================================================================
 
-export type SubSiteDialogType = 'create' | 'update' | 'delete'
+export type SubSiteDialogType =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'wallet'
+  | 'reconcile'

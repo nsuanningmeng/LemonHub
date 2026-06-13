@@ -29,6 +29,7 @@ import {
   MessageSquare,
   Radio,
   Settings,
+  Store,
   Ticket,
   User,
   Users,
@@ -110,6 +111,17 @@ export function useSidebarData(): SidebarData {
             title: t('Profile'),
             url: '/profile',
             icon: User,
+          },
+        ],
+      },
+      {
+        id: 'site_admin',
+        title: t('Agent Console'),
+        items: [
+          {
+            title: t('Agent Console'),
+            url: '/site-admin',
+            icon: Store,
           },
         ],
       },

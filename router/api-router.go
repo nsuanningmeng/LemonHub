@@ -316,6 +316,28 @@ func SetApiRouter(router *gin.Engine) {
 			siteRoute.POST("/:id/wallet/adjust", controller.AdjustSiteWallet)
 			siteRoute.GET("/:id/wallet/logs", controller.GetSiteWalletLogs)
 		}
+
+		// Sub-site admin self-service — gated by SiteAdminAuth (role >= RoleSubSiteAdmin), but
+		// every handler additionally scopes to the operator's OWN site via EffectiveSiteScope
+		// and rejects non-scoped operators (main admins / unknown). No site id is taken from the
+		// URL or body, so cross-tenant access is impossible.
+		siteAdminRoute := apiRouter.Group("/site-admin")
+		siteAdminRoute.Use(middleware.SiteAdminAuth())
+		{
+			siteAdminRoute.GET("/dashboard", controller.SiteAdminDashboard)
+			siteAdminRoute.GET("/wallet/logs", controller.SiteAdminGetWalletLogs)
+			siteAdminRoute.PUT("/wallet/warn-threshold", controller.SiteAdminSetWarnThreshold)
+			siteAdminRoute.PUT("/branding", controller.SiteAdminUpdateBranding)
+
+			siteAdminRedemptionRoute := siteAdminRoute.Group("/redemption")
+			{
+				siteAdminRedemptionRoute.GET("/", controller.SiteAdminGetRedemptions)
+				siteAdminRedemptionRoute.GET("/search", controller.SiteAdminSearchRedemptions)
+				siteAdminRedemptionRoute.GET("/export", controller.SiteAdminExportRedemptions)
+				siteAdminRedemptionRoute.POST("/", controller.SiteAdminAddRedemption)
+				siteAdminRedemptionRoute.POST("/:id/void", controller.SiteAdminVoidRedemption)
+			}
+		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.DELETE("/", middleware.AdminAuth(), controller.DeleteHistoryLogs)

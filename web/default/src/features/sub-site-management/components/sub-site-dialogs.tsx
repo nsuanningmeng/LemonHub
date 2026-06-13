@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 import { SubSiteDeleteDialog } from './sub-site-delete-dialog'
 import { SubSiteMutateDrawer } from './sub-site-mutate-drawer'
 import { useSubSite } from './sub-site-provider'
+import { SubSiteReconcileDialog } from './sub-site-reconcile-dialog'
+import { SubSiteWalletDialog } from './sub-site-wallet-dialog'
 
 export function SubSiteDialogs() {
   const { open, setOpen, currentRow } = useSubSite()
@@ -32,6 +34,8 @@ export function SubSiteDialogs() {
         currentRow={isUpdate ? (currentRow ?? undefined) : undefined}
       />
       <SubSiteDeleteDialog />
+      <SubSiteWalletDialog />
+      <SubSiteReconcileDialog />
     </>
   )
 }

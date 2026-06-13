@@ -25,6 +25,12 @@ import type {
   SearchSitesParams,
   SiteCreatePayload,
   SiteUpdatePayload,
+  RechargeWalletPayload,
+  AdjustWalletPayload,
+  WalletMutationResponse,
+  GetWalletLogsParams,
+  GetWalletLogsResponse,
+  ReconcileResult,
 } from './types'
 
 // ============================================================================
@@ -76,5 +82,46 @@ export async function updateSite(
 // Delete sub-site
 export async function deleteSite(id: number): Promise<ApiResponse> {
   const res = await api.delete(`/api/site/${id}`)
+  return res.data
+}
+
+// ============================================================================
+// Sub-site Wallet API (amounts in 厘 = 0.001 CNY)
+// ============================================================================
+
+// Recharge a sub-site wallet
+export async function rechargeSiteWallet(
+  id: number,
+  data: RechargeWalletPayload
+): Promise<WalletMutationResponse> {
+  const res = await api.post(`/api/site/${id}/wallet/recharge`, data)
+  return res.data
+}
+
+// Manually adjust a sub-site wallet (amount may be negative; remark required)
+export async function adjustSiteWallet(
+  id: number,
+  data: AdjustWalletPayload
+): Promise<WalletMutationResponse> {
+  const res = await api.post(`/api/site/${id}/wallet/adjust`, data)
+  return res.data
+}
+
+// Get paginated wallet ledger for a sub-site
+export async function getSiteWalletLogs(
+  id: number,
+  params: GetWalletLogsParams = {}
+): Promise<GetWalletLogsResponse> {
+  const { p = 1, page_size = 10, type } = params
+  const typeQuery = type !== undefined ? `&type=${type}` : ''
+  const res = await api.get(
+    `/api/site/${id}/wallet/logs?p=${p}&page_size=${page_size}${typeQuery}`
+  )
+  return res.data
+}
+
+// Reconcile all sub-site wallets against their ledgers
+export async function reconcileSites(): Promise<ApiResponse<ReconcileResult[]>> {
+  const res = await api.get('/api/site/reconcile')
   return res.data
 }

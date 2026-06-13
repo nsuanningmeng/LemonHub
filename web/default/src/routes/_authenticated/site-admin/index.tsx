@@ -16,22 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// ============================================================================
-// Form Utilities
-// ============================================================================
-export {
-  getSiteFormSchema,
-  type SiteFormValues,
-  SITE_FORM_DEFAULT_VALUES,
-  transformFormToPayload,
-  transformSiteToForm,
-} from './site-form'
-export {
-  getRechargeFormSchema,
-  type RechargeFormValues,
-  RECHARGE_FORM_DEFAULT_VALUES,
-  getAdjustFormSchema,
-  type AdjustFormValues,
-  ADJUST_FORM_DEFAULT_VALUES,
-  yuanToMilli,
-} from './wallet-form'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
+import { SiteAdminConsole } from '@/features/site-admin-console'
+
+export const Route = createFileRoute('/_authenticated/site-admin/')({
+  beforeLoad: () => {
+    const { auth } = useAuthStore.getState()
+
+    // Agent console is exclusive to sub-site administrators (ROLE.SITE_ADMIN).
+    if (!auth.user || auth.user.role !== ROLE.SITE_ADMIN) {
+      throw redirect({
+        to: '/403',
+      })
+    }
+  },
+  component: SiteAdminConsole,
+})

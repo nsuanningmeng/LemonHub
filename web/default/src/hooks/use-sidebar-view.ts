@@ -51,9 +51,13 @@ export function useSidebarView(): ResolvedSidebarView {
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
     const isAdmin = userRole !== undefined && userRole >= ROLE.ADMIN
-    return configFilteredRoot.filter((group) =>
-      group.id === 'admin' ? isAdmin : true
-    )
+    const isSiteAdmin = userRole === ROLE.SITE_ADMIN
+    return configFilteredRoot.filter((group) => {
+      if (group.id === 'admin') return isAdmin
+      // Agent console is exclusive to sub-site administrators.
+      if (group.id === 'site_admin') return isSiteAdmin
+      return true
+    })
   }, [configFilteredRoot, userRole])
 
   const view = resolveSidebarView(pathname)

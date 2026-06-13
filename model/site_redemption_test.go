@@ -2,10 +2,47 @@ package model
 
 import (
 	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 )
+
+// TestSearchRedemptionsNumericKeywordSiteScoped is a security regression for 越权: a
+// numeric-keyword search (which ORs `id = ?` into the predicate) must still be confined
+// to the caller's site scope, so a sub-site admin cannot find another tenant's code by
+// guessing its numeric id. Locks in the explicit OR grouping in SearchRedemptions.
+func TestSearchRedemptionsNumericKeywordSiteScoped(t *testing.T) {
+	if err := DB.AutoMigrate(&Redemption{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	const siteA, siteB = 6701, 6702
+	DB.Where("site_id IN ?", []int{siteA, siteB}).Delete(&Redemption{})
+	defer DB.Where("site_id IN ?", []int{siteA, siteB}).Delete(&Redemption{})
+
+	codeA := &Redemption{SiteId: siteA, Name: "acode", Key: common.GetUUID(), Status: common.RedemptionCodeStatusEnabled, Quota: 1, CreatedTime: common.GetTimestamp()}
+	if err := DB.Create(codeA).Error; err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	idKw := strconv.Itoa(codeA.Id)
+
+	// From site B's scope, searching site A's numeric id must return nothing.
+	res, total, err := SearchRedemptions(idKw, 0, 10, siteB)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if total != 0 || len(res) != 0 {
+		t.Fatalf("越权: numeric id search under siteB leaked a site-A code (total=%d)", total)
+	}
+	// From its own site, it is found.
+	if _, total, _ = SearchRedemptions(idKw, 0, 10, siteA); total != 1 {
+		t.Fatalf("own-site numeric search should find the code, total=%d", total)
+	}
+	// SiteScopeAll (main admin) finds it.
+	if _, total, _ = SearchRedemptions(idKw, 0, 10, SiteScopeAll); total != 1 {
+		t.Fatalf("SiteScopeAll numeric search should find the code, total=%d", total)
+	}
+}
 
 // TestRedemptionWalletIntegration covers the phase-3 wallet↔redemption invariants:
 // generation atomically debits the wallet (and fails wholesale when funds are short),
