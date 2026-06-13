@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"unicode/utf8"
@@ -13,7 +14,30 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
+
+// calcRedemptionCostMilli computes a sub-site's procurement cost (in 厘) for ONE
+// redemption code of the given quota face value at the site's discount rate:
+//
+//	face元 = quota / QuotaPerUnit (USD) × Price (CNY/USD)
+//	cost厘 = face元 × 1000 × discountRate / 10000
+//
+// Returns 0 when pricing is unconfigured (Price<=0) or inputs are non-positive, in which
+// case generation is free (no wallet debit). decimal keeps the money math exact.
+func calcRedemptionCostMilli(quota int, discountRate int) int64 {
+	if quota <= 0 || discountRate <= 0 || operation_setting.Price <= 0 || common.QuotaPerUnit <= 0 {
+		return 0
+	}
+	faceMilli := decimal.NewFromInt(int64(quota)).
+		Div(decimal.NewFromFloat(common.QuotaPerUnit)).
+		Mul(decimal.NewFromFloat(operation_setting.Price)).
+		Mul(decimal.NewFromInt(1000))
+	cost := faceMilli.
+		Mul(decimal.NewFromInt(int64(discountRate))).
+		Div(decimal.NewFromInt(int64(model.DiscountRateBase)))
+	return cost.Round(0).IntPart()
+}
 
 func GetAllRedemptions(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
@@ -89,29 +113,26 @@ func AddRedemption(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": msg})
 		return
 	}
-	var keys []string
-	for i := 0; i < redemption.Count; i++ {
-		key := common.GetUUID()
-		cleanRedemption := model.Redemption{
-			SiteId:      middleware.GetRequestSiteId(c),
-			UserId:      c.GetInt("id"),
-			Name:        redemption.Name,
-			Key:         key,
-			CreatedTime: common.GetTimestamp(),
-			Quota:       redemption.Quota,
-			ExpiredTime: redemption.ExpiredTime,
-		}
-		err = cleanRedemption.Insert()
-		if err != nil {
-			common.SysError("failed to insert redemption: " + err.Error())
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": i18n.T(c, i18n.MsgRedemptionCreateFailed),
-				"data":    keys,
-			})
+	// For a sub-site, generating codes atomically debits its procurement wallet
+	// (面值 × discount_rate) in the SAME transaction as the inserts — insufficient
+	// balance fails the whole batch. Main-site codes (site_id=0) are free.
+	siteId := middleware.GetRequestSiteId(c)
+	var costPerCode int64
+	if site := middleware.GetRequestSite(c); site != nil {
+		costPerCode = calcRedemptionCostMilli(redemption.Quota, site.DiscountRate)
+	}
+	keys, err := model.GenerateRedemptions(siteId, c.GetInt("id"), redemption.Name, redemption.Quota, redemption.Count, redemption.ExpiredTime, costPerCode)
+	if err != nil {
+		if errors.Is(err, model.ErrInsufficientWalletBalance) {
+			common.ApiErrorMsg(c, "子站钱包余额不足，无法生成兑换码")
 			return
 		}
-		keys = append(keys, key)
+		common.SysError("failed to generate redemptions: " + err.Error())
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": i18n.T(c, i18n.MsgRedemptionCreateFailed),
+		})
+		return
 	}
 	recordManageAudit(c, "redemption.create", map[string]interface{}{
 		"name":  redemption.Name,

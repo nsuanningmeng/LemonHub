@@ -19,6 +19,9 @@ type Redemption struct {
 	Status       int            `json:"status" gorm:"default:1"`
 	Name         string         `json:"name" gorm:"index"`
 	Quota        int            `json:"quota" gorm:"default:100"`
+	// CostAmount is how much (厘) was debited from the owning sub-site's wallet when this
+	// code was generated. On void, exactly this amount is refunded (原路退). 0 for main-site codes.
+	CostAmount   int64          `json:"cost_amount" gorm:"type:bigint;default:0"`
 	CreatedTime  int64          `json:"created_time" gorm:"bigint"`
 	RedeemedTime int64          `json:"redeemed_time" gorm:"bigint"`
 	Count        int            `json:"count" gorm:"-:all"` // only for api request

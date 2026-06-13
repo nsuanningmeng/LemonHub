@@ -1194,7 +1194,9 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	quota, err := model.Redeem(req.Key, id)
+	// Site-isolated redeem: a code is only valid on the site it was generated for
+	// (main-site codes have site_id=0). Cross-site codes are rejected as invalid.
+	quota, err := model.RedeemForSite(req.Key, id, middleware.GetRequestSiteId(c))
 	if err != nil {
 		if errors.Is(err, model.ErrRedeemFailed) {
 			common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
