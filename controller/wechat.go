@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -70,11 +71,13 @@ func WeChatAuth(c *gin.Context) {
 		})
 		return
 	}
+	// Resolve the sub-site from the request Host (0 = main site); scope lookups/insert to it.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		WeChatId: wechatId,
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId) {
-		err := user.FillUserByWeChatId()
+	if model.IsWeChatIdAlreadyTaken(wechatId, siteId) {
+		err := user.FillUserByWeChatId(siteId)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -95,6 +98,7 @@ func WeChatAuth(c *gin.Context) {
 			user.DisplayName = "WeChat User"
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
+			user.SiteId = siteId
 
 			if err := user.Insert(0); err != nil {
 				c.JSON(http.StatusOK, gin.H{
@@ -151,7 +155,9 @@ func WeChatBind(c *gin.Context) {
 		})
 		return
 	}
-	if model.IsWeChatIdAlreadyTaken(wechatId) {
+	// Binding happens on the logged-in user's own sub-site domain → request site.
+	siteId := middleware.GetRequestSiteId(c)
+	if model.IsWeChatIdAlreadyTaken(wechatId, siteId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该微信账号已被绑定",

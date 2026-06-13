@@ -160,13 +160,13 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 	}, nil
 }
 
-func (p *GitHubProvider) IsUserIDTaken(providerUserID string) bool {
-	return model.IsGitHubIdAlreadyTaken(providerUserID)
+func (p *GitHubProvider) IsUserIDTaken(providerUserID string, siteId int) bool {
+	return model.IsGitHubIdAlreadyTaken(providerUserID, siteId)
 }
 
-func (p *GitHubProvider) FillUserByProviderID(user *model.User, providerUserID string) error {
+func (p *GitHubProvider) FillUserByProviderID(user *model.User, providerUserID string, siteId int) error {
 	user.GitHubId = providerUserID
-	return user.FillUserByGitHubId()
+	return user.FillUserByGitHubId(siteId)
 }
 
 func (p *GitHubProvider) SetProviderUserID(user *model.User, providerUserID string) {

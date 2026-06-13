@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -31,8 +32,10 @@ func TelegramBind(c *gin.Context) {
 		})
 		return
 	}
+	// Binding happens on the logged-in user's own sub-site domain → request site.
+	siteId := middleware.GetRequestSiteId(c)
 	telegramId := params["id"][0]
-	if model.IsTelegramIdAlreadyTaken(telegramId) {
+	if model.IsTelegramIdAlreadyTaken(telegramId, siteId) {
 		c.JSON(200, gin.H{
 			"message": "该 Telegram 账户已被绑定",
 			"success": false,
@@ -86,9 +89,11 @@ func TelegramLogin(c *gin.Context) {
 		return
 	}
 
+	// Scope login to the sub-site resolved from the request Host (0 = main site).
+	siteId := middleware.GetRequestSiteId(c)
 	telegramId := params["id"][0]
 	user := model.User{TelegramId: telegramId}
-	if err := user.FillUserByTelegramId(); err != nil {
+	if err := user.FillUserByTelegramId(siteId); err != nil {
 		c.JSON(200, gin.H{
 			"message": err.Error(),
 			"success": false,

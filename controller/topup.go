@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -246,6 +247,7 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
+		SiteId:          middleware.GetRequestSiteId(c),
 		UserId:          id,
 		Amount:          amount,
 		Money:           payMoney,
@@ -472,10 +474,11 @@ func GetAllTopUps(c *gin.Context) {
 		total  int64
 		err    error
 	)
+	siteScope := middleware.EffectiveSiteScope(c)
 	if keyword != "" {
-		topups, total, err = model.SearchAllTopUps(keyword, pageInfo)
+		topups, total, err = model.SearchAllTopUps(keyword, pageInfo, siteScope)
 	} else {
-		topups, total, err = model.GetAllTopUps(pageInfo)
+		topups, total, err = model.GetAllTopUps(pageInfo, siteScope)
 	}
 	if err != nil {
 		common.ApiError(c, err)

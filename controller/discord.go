@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
@@ -127,11 +128,13 @@ func DiscordOAuth(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Resolve the sub-site from the request Host (0 = main site); scope lookups/insert to it.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		DiscordId: discordUser.UID,
 	}
-	if model.IsDiscordIdAlreadyTaken(user.DiscordId) {
-		err := user.FillUserByDiscordId()
+	if model.IsDiscordIdAlreadyTaken(user.DiscordId, siteId) {
+		err := user.FillUserByDiscordId(siteId)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -151,6 +154,7 @@ func DiscordOAuth(c *gin.Context) {
 			} else {
 				user.DisplayName = "Discord User"
 			}
+			user.SiteId = siteId
 			err := user.Insert(0)
 			if err != nil {
 				c.JSON(http.StatusOK, gin.H{
@@ -192,10 +196,12 @@ func DiscordBind(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Binding happens on the logged-in user's own sub-site domain → request site.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		DiscordId: discordUser.UID,
 	}
-	if model.IsDiscordIdAlreadyTaken(user.DiscordId) {
+	if model.IsDiscordIdAlreadyTaken(user.DiscordId, siteId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该 Discord 账户已被绑定",

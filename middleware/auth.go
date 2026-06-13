@@ -152,6 +152,11 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("group", session.Get("group"))
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
+	// Operator's own sub-site (0 = main site), set at login. Used by EffectiveSiteScope
+	// to restrict sub-site admins to their own site. Absent on legacy sessions → 0.
+	if siteId, ok := session.Get("site_id").(int); ok {
+		c.Set("operator_site_id", siteId)
+	}
 
 	// 管理/root 写操作审计兜底：内聚在鉴权链路里，保证任何经过 AdminAuth/RootAuth
 	// 的写接口都会自动留痕（无需在路由上单独挂审计中间件，避免漏挂）。

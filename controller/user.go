@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -51,6 +52,9 @@ func Login(c *gin.Context) {
 		Username: username,
 		Password: password,
 	}
+	// Scope login to the sub-site resolved from the request Host (0 = main site), so a
+	// username/email only authenticates against accounts belonging to that site.
+	user.SiteId = middleware.GetRequestSiteId(c)
 	err = user.ValidateAndFill()
 	if err != nil {
 		switch {
@@ -136,6 +140,9 @@ func setupLogin(user *model.User, c *gin.Context) {
 	session.Set("role", user.Role)
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
+	// Persist the operator's own sub-site so EffectiveSiteScope can restrict sub-site
+	// admins to their own site (read back as operator_site_id in the auth middleware).
+	session.Set("site_id", user.SiteId)
 	err := session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
@@ -202,7 +209,11 @@ func Register(c *gin.Context) {
 			return
 		}
 	}
-	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email)
+	// Resolve the sub-site from the request Host (0 = main site). Registration,
+	// the existence check, and the post-insert lookup are all scoped to it so the
+	// same username/email can be registered independently on different sub-sites.
+	siteId := middleware.GetRequestSiteId(c)
+	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email, siteId)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
 		common.SysLog(fmt.Sprintf("CheckUserExistOrDeleted error: %v", err))
@@ -220,6 +231,7 @@ func Register(c *gin.Context) {
 		DisplayName: user.Username,
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+		SiteId:      siteId,                // bind the account to the resolved sub-site
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
@@ -229,9 +241,9 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// 获取插入后的用户ID
+	// 获取插入后的用户ID（必须按 site_id 过滤，否则可能取到其它子站的同名用户）
 	var insertedUser model.User
-	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
+	if err := model.DB.Where("username = ? AND site_id = ?", cleanUser.Username, siteId).First(&insertedUser).Error; err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
 		return
 	}
@@ -246,6 +258,7 @@ func Register(c *gin.Context) {
 		// 生成默认令牌
 		token := model.Token{
 			UserId:             insertedUser.Id, // 使用插入后的用户ID
+			SiteId:             siteId,          // 令牌归属与用户一致的子站
 			Name:               cleanUser.Username + "的初始令牌",
 			Key:                key,
 			CreatedTime:        common.GetTimestamp(),
@@ -273,7 +286,8 @@ func Register(c *gin.Context) {
 
 func GetAllUsers(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.GetAllUsers(pageInfo)
+	// Sub-site admins only see their own site's users; main-site admins/root see all.
+	users, total, err := model.GetAllUsers(pageInfo, middleware.EffectiveSiteScope(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -302,7 +316,8 @@ func SearchUsers(c *gin.Context) {
 		}
 	}
 	pageInfo := common.GetPageQuery(c)
-	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	// Sub-site admins only search within their own site; main-site admins/root search all.
+	users, total, err := model.SearchUsers(keyword, group, role, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), middleware.EffectiveSiteScope(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -899,7 +914,8 @@ func CreateUser(c *gin.Context) {
 		Username:    user.Username,
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
-		Role:        user.Role, // 保持管理员设置的角色
+		Role:        user.Role,                      // 保持管理员设置的角色
+		SiteId:      middleware.GetRequestSiteId(c), // 新建用户归属当前请求的子站
 	}
 	if err := cleanUser.Insert(0); err != nil {
 		common.ApiError(c, err)

@@ -22,14 +22,18 @@ const UserNameMaxLength = 20
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int            `json:"id"`
-	Username         string         `json:"username" gorm:"unique;index" validate:"max=20"`
+	Id int `json:"id"`
+	// SiteId is the white-label sub-site this user belongs to (0 = main site).
+	// Uniqueness of username/email is scoped per site via the composite indexes below,
+	// so different sub-sites may have users with the same username/email.
+	SiteId           int            `json:"site_id" gorm:"type:int;default:0;index;uniqueIndex:idx_users_site_username,priority:1;index:idx_users_site_email,priority:1"`
+	Username         string         `json:"username" gorm:"index;uniqueIndex:idx_users_site_username,priority:2" validate:"max=20"`
 	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
 	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
 	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
 	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
 	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string         `json:"email" gorm:"index" validate:"max=50"`
+	Email            string         `json:"email" gorm:"index;index:idx_users_site_email,priority:2" validate:"max=50"`
 	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
 	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
 	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
@@ -161,17 +165,19 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	return string(configBytes)
 }
 
-// CheckUserExistOrDeleted check if user exist or deleted, if not exist, return false, nil, if deleted or exist, return true, nil
-func CheckUserExistOrDeleted(username string, email string) (bool, error) {
+// CheckUserExistOrDeleted check if user exist or deleted, if not exist, return false, nil, if deleted or exist, return true, nil.
+// The lookup is scoped to the given siteId so usernames/emails are only unique per sub-site.
+func CheckUserExistOrDeleted(username string, email string, siteId int) (bool, error) {
 	var user User
 
 	// err := DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
 	// check email if empty
+	// site_id must be matched explicitly (struct-query would drop site_id=0, the main site).
 	var err error
 	if email == "" {
-		err = DB.Unscoped().First(&user, "username = ?", username).Error
+		err = DB.Unscoped().First(&user, "username = ? AND site_id = ?", username, siteId).Error
 	} else {
-		err = DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
+		err = DB.Unscoped().First(&user, "(username = ? OR email = ?) AND site_id = ?", username, email, siteId).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -191,7 +197,11 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
-func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
+// GetAllUsers returns a page of users. When siteScope != SiteScopeAll the result is
+// restricted to that site_id (sub-site admins); SiteScopeAll keeps the global view
+// (main-site admins / root). site_id is filtered with an explicit condition so the
+// main site (site_id=0) is matched correctly.
+func GetAllUsers(pageInfo *common.PageInfo, siteScope int) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -204,14 +214,22 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	}()
 
 	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
+	countQuery := tx.Unscoped().Model(&User{})
+	if siteScope != SiteScopeAll {
+		countQuery = countQuery.Where("site_id = ?", siteScope)
+	}
+	err = countQuery.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	dataQuery := tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password")
+	if siteScope != SiteScopeAll {
+		dataQuery = dataQuery.Where("site_id = ?", siteScope)
+	}
+	err = dataQuery.Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -225,7 +243,10 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int) ([]*User, int64, error) {
+// SearchUsers searches users. When siteScope != SiteScopeAll the result is restricted
+// to that site_id (sub-site admins); SiteScopeAll keeps the global view. site_id is
+// filtered with an explicit condition so the main site (site_id=0) is matched correctly.
+func SearchUsers(keyword string, group string, role *int, status *int, startIdx int, num int, siteScope int) ([]*User, int64, error) {
 	var users []*User
 	var total int64
 	var err error
@@ -243,6 +264,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 
 	// 构建基础查询
 	query := tx.Unscoped().Model(&User{})
+	if siteScope != SiteScopeAll {
+		query = query.Where("site_id = ?", siteScope)
+	}
 
 	// 构建搜索条件
 	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
@@ -406,8 +430,9 @@ func (user *User) Insert(inviterId int) error {
 
 	// 用户创建成功后，根据角色初始化边栏配置
 	// 需要重新获取用户以确保有正确的ID和Role
+	// 必须按 site_id 过滤，否则可能取到其它子站的同名用户（用户名仅在站内唯一）。
 	var createdUser User
-	if err := DB.Where("username = ?", user.Username).First(&createdUser).Error; err == nil {
+	if err := DB.Where("username = ? AND site_id = ?", user.Username, user.SiteId).First(&createdUser).Error; err == nil {
 		// 生成基于角色的默认边栏配置
 		defaultSidebarConfig := generateDefaultSidebarConfigForRole(createdUser.Role)
 		if defaultSidebarConfig != "" {
@@ -603,8 +628,9 @@ func (user *User) ValidateAndFill() (err error) {
 	if username == "" || password == "" {
 		return ErrUserEmptyCredentials
 	}
-	// find by username or email
-	err = DB.Where("username = ? OR email = ?", username, username).First(user).Error
+	// find by username or email, scoped to the caller-provided site_id (set before
+	// calling, e.g. from the request Host) so sub-sites have isolated accounts.
+	err = DB.Where("(username = ? OR email = ?) AND site_id = ?", username, username, user.SiteId).First(user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrInvalidCredentials
@@ -626,19 +652,20 @@ func (user *User) FillUserById() error {
 	return nil
 }
 
-func (user *User) FillUserByEmail() error {
+func (user *User) FillUserByEmail(siteId int) error {
 	if user.Email == "" {
 		return errors.New("email 为空！")
 	}
-	DB.Where(User{Email: user.Email}).First(user)
+	// Explicit site_id condition: struct-query would drop site_id=0 (the main site).
+	DB.Where("email = ? AND site_id = ?", user.Email, siteId).First(user)
 	return nil
 }
 
-func (user *User) FillUserByGitHubId() error {
+func (user *User) FillUserByGitHubId(siteId int) error {
 	if user.GitHubId == "" {
 		return errors.New("GitHub id 为空！")
 	}
-	DB.Where(User{GitHubId: user.GitHubId}).First(user)
+	DB.Where("github_id = ? AND site_id = ?", user.GitHubId, siteId).First(user)
 	return nil
 }
 
@@ -650,66 +677,70 @@ func (user *User) UpdateGitHubId(newGitHubId string) error {
 	return DB.Model(user).Update("github_id", newGitHubId).Error
 }
 
-func (user *User) FillUserByDiscordId() error {
+func (user *User) FillUserByDiscordId(siteId int) error {
 	if user.DiscordId == "" {
 		return errors.New("discord id 为空！")
 	}
-	DB.Where(User{DiscordId: user.DiscordId}).First(user)
+	DB.Where("discord_id = ? AND site_id = ?", user.DiscordId, siteId).First(user)
 	return nil
 }
 
-func (user *User) FillUserByOidcId() error {
+func (user *User) FillUserByOidcId(siteId int) error {
 	if user.OidcId == "" {
 		return errors.New("oidc id 为空！")
 	}
-	DB.Where(User{OidcId: user.OidcId}).First(user)
+	DB.Where("oidc_id = ? AND site_id = ?", user.OidcId, siteId).First(user)
 	return nil
 }
 
-func (user *User) FillUserByWeChatId() error {
+func (user *User) FillUserByWeChatId(siteId int) error {
 	if user.WeChatId == "" {
 		return errors.New("WeChat id 为空！")
 	}
-	DB.Where(User{WeChatId: user.WeChatId}).First(user)
+	DB.Where("wechat_id = ? AND site_id = ?", user.WeChatId, siteId).First(user)
 	return nil
 }
 
-func (user *User) FillUserByTelegramId() error {
+func (user *User) FillUserByTelegramId(siteId int) error {
 	if user.TelegramId == "" {
 		return errors.New("Telegram id 为空！")
 	}
-	err := DB.Where(User{TelegramId: user.TelegramId}).First(user).Error
+	err := DB.Where("telegram_id = ? AND site_id = ?", user.TelegramId, siteId).First(user).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errors.New("该 Telegram 账户未绑定")
 	}
 	return nil
 }
 
-func IsEmailAlreadyTaken(email string) bool {
-	return DB.Unscoped().Where("email = ?", email).Find(&User{}).RowsAffected == 1
+func IsEmailAlreadyTaken(email string, siteId int) bool {
+	return DB.Unscoped().Where("email = ? AND site_id = ?", email, siteId).Find(&User{}).RowsAffected == 1
 }
 
-func IsWeChatIdAlreadyTaken(wechatId string) bool {
-	return DB.Unscoped().Where("wechat_id = ?", wechatId).Find(&User{}).RowsAffected == 1
+func IsWeChatIdAlreadyTaken(wechatId string, siteId int) bool {
+	return DB.Unscoped().Where("wechat_id = ? AND site_id = ?", wechatId, siteId).Find(&User{}).RowsAffected == 1
 }
 
-func IsGitHubIdAlreadyTaken(githubId string) bool {
-	return DB.Unscoped().Where("github_id = ?", githubId).Find(&User{}).RowsAffected == 1
+func IsGitHubIdAlreadyTaken(githubId string, siteId int) bool {
+	return DB.Unscoped().Where("github_id = ? AND site_id = ?", githubId, siteId).Find(&User{}).RowsAffected == 1
 }
 
-func IsDiscordIdAlreadyTaken(discordId string) bool {
-	return DB.Unscoped().Where("discord_id = ?", discordId).Find(&User{}).RowsAffected == 1
+func IsDiscordIdAlreadyTaken(discordId string, siteId int) bool {
+	return DB.Unscoped().Where("discord_id = ? AND site_id = ?", discordId, siteId).Find(&User{}).RowsAffected == 1
 }
 
-func IsOidcIdAlreadyTaken(oidcId string) bool {
-	return DB.Where("oidc_id = ?", oidcId).Find(&User{}).RowsAffected == 1
+func IsOidcIdAlreadyTaken(oidcId string, siteId int) bool {
+	return DB.Where("oidc_id = ? AND site_id = ?", oidcId, siteId).Find(&User{}).RowsAffected == 1
 }
 
-func IsTelegramIdAlreadyTaken(telegramId string) bool {
-	return DB.Unscoped().Where("telegram_id = ?", telegramId).Find(&User{}).RowsAffected == 1
+func IsTelegramIdAlreadyTaken(telegramId string, siteId int) bool {
+	return DB.Unscoped().Where("telegram_id = ? AND site_id = ?", telegramId, siteId).Find(&User{}).RowsAffected == 1
 }
 
-func ResetUserPasswordByEmail(email string, password string) error {
+// ResetUserPasswordByEmail resets the password for the account with the given email on
+// the given sub-site. site_id MUST be matched explicitly: without it the update would
+// rewrite (and the caller would return) the password of every same-email account across
+// all sites — a cross-site account-takeover vector.
+func ResetUserPasswordByEmail(email string, password string, siteId int) error {
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
 	}
@@ -717,7 +748,7 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	if err != nil {
 		return err
 	}
-	err = DB.Model(&User{}).Where("email = ?", email).Update("password", hashedPassword).Error
+	err = DB.Model(&User{}).Where("email = ? AND site_id = ?", email, siteId).Update("password", hashedPassword).Error
 	return err
 }
 
@@ -1051,17 +1082,17 @@ func GetUsernameById(id int, fromDB bool) (username string, err error) {
 	return username, nil
 }
 
-func IsLinuxDOIdAlreadyTaken(linuxDOId string) bool {
+func IsLinuxDOIdAlreadyTaken(linuxDOId string, siteId int) bool {
 	var user User
-	err := DB.Unscoped().Where("linux_do_id = ?", linuxDOId).First(&user).Error
+	err := DB.Unscoped().Where("linux_do_id = ? AND site_id = ?", linuxDOId, siteId).First(&user).Error
 	return !errors.Is(err, gorm.ErrRecordNotFound)
 }
 
-func (user *User) FillUserByLinuxDOId() error {
+func (user *User) FillUserByLinuxDOId(siteId int) error {
 	if user.LinuxDOId == "" {
 		return errors.New("linux do id is empty")
 	}
-	err := DB.Where("linux_do_id = ?", user.LinuxDOId).First(user).Error
+	err := DB.Where("linux_do_id = ? AND site_id = ?", user.LinuxDOId, siteId).First(user).Error
 	return err
 }
 

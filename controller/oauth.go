@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/gin-contrib/sessions"
@@ -149,14 +150,19 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 		return
 	}
 
+	// Binding is performed on the logged-in user's own sub-site domain, so the site is
+	// the request site. Scope the "already bound" checks to it so the same provider
+	// account can exist independently on different sub-sites.
+	siteId := middleware.GetRequestSiteId(c)
+
 	// Check if this OAuth account is already bound (check both new ID and legacy ID)
-	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
+	if provider.IsUserIDTaken(oauthUser.ProviderUserID, siteId) {
 		common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
 		return
 	}
 	// Also check legacy ID to prevent duplicate bindings during migration period
 	if legacyID, ok := oauthUser.Extra["legacy_id"].(string); ok && legacyID != "" {
-		if provider.IsUserIDTaken(legacyID) {
+		if provider.IsUserIDTaken(legacyID, siteId) {
 			common.ApiErrorI18n(c, i18n.MsgOAuthAlreadyBound, providerParams(provider.GetName()))
 			return
 		}
@@ -199,9 +205,13 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, session sessions.Session) (*model.User, error) {
 	user := &model.User{}
 
+	// Resolve the sub-site from the request Host (0 = main site). All identity lookups
+	// and the new-user insert below are scoped to it so sub-sites stay isolated.
+	siteId := middleware.GetRequestSiteId(c)
+
 	// Check if user already exists with new ID
-	if provider.IsUserIDTaken(oauthUser.ProviderUserID) {
-		err := provider.FillUserByProviderID(user, oauthUser.ProviderUserID)
+	if provider.IsUserIDTaken(oauthUser.ProviderUserID, siteId) {
+		err := provider.FillUserByProviderID(user, oauthUser.ProviderUserID, siteId)
 		if err != nil {
 			return nil, err
 		}
@@ -214,8 +224,8 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 	// Try to find user with legacy ID (for GitHub migration from login to numeric ID)
 	if legacyID, ok := oauthUser.Extra["legacy_id"].(string); ok && legacyID != "" {
-		if provider.IsUserIDTaken(legacyID) {
-			err := provider.FillUserByProviderID(user, legacyID)
+		if provider.IsUserIDTaken(legacyID, siteId) {
+			err := provider.FillUserByProviderID(user, legacyID, siteId)
 			if err != nil {
 				return nil, err
 			}
@@ -241,7 +251,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
 
 	if oauthUser.Username != "" {
-		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, ""); err == nil && !exists {
+		if exists, err := model.CheckUserExistOrDeleted(oauthUser.Username, "", siteId); err == nil && !exists {
 			// 防止索引退化
 			if len(oauthUser.Username) <= model.UserNameMaxLength {
 				user.Username = oauthUser.Username
@@ -261,6 +271,8 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	}
 	user.Role = common.RoleCommonUser
 	user.Status = common.UserStatusEnabled
+	// Bind the new account to the resolved sub-site so it is isolated from other sites.
+	user.SiteId = siteId
 
 	// Handle affiliate code
 	affCode := session.Get("aff")

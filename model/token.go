@@ -13,6 +13,7 @@ import (
 
 type Token struct {
 	Id                 int            `json:"id"`
+	SiteId             int            `json:"site_id" gorm:"type:int;default:0;index"` // white-label sub-site (0 = main site)
 	UserId             int            `json:"user_id" gorm:"index"`
 	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
 	Status             int            `json:"status" gorm:"default:1"`

@@ -51,6 +51,11 @@ const (
 
 	// DiscountRateBase is the denominator for DiscountRate (万分比).
 	DiscountRateBase = 10000
+
+	// SiteScopeAll is the sentinel passed to site-aware admin query helpers to mean
+	// "no site filter" (main-site admins see every sub-site). A value >= 0 restricts
+	// the query to that specific site_id (0 = main site).
+	SiteScopeAll = -1
 )
 
 // ---- In-memory cache: domain -> *Site and id -> *Site ----
@@ -295,16 +300,20 @@ func checkDomainConflict(tx *gorm.DB, domains []string, excludeSiteId int) error
 	return nil
 }
 
-// resolveOwnerId looks up the user id for an owner username.
+// resolveOwnerId looks up the user id for a sub-site owner username among MAIN-SITE
+// accounts (site_id = 0). Since usernames are only unique per-site now, a global
+// username lookup would be ambiguous; a sub-site owner is always a main-site agent
+// account (its promotion to RoleSubSiteAdmin and re-assignment to the sub-site is
+// wired in phase 3 alongside the sub-site admin console).
 func resolveOwnerId(tx *gorm.DB, username string) (int, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
 		return 0, errors.New("归属代理账号不能为空")
 	}
 	var user User
-	if err := tx.Select("id").Where("username = ?", username).First(&user).Error; err != nil {
+	if err := tx.Select("id").Where("username = ? AND site_id = ?", username, 0).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return 0, errors.New("归属代理账号不存在: " + username)
+			return 0, errors.New("归属代理账号不存在（须为主站账号）: " + username)
 		}
 		return 0, err
 	}
@@ -348,8 +357,10 @@ func CreateSite(site *Site) error {
 				return err
 			}
 		}
-		// NOTE(phase2): owner role promotion to RoleSubSiteAdmin and user.site_id
-		// assignment are wired in phase 2 once users.site_id exists.
+		// NOTE(phase3): promoting the owner to RoleSubSiteAdmin and re-assigning their
+		// user.site_id to this sub-site is wired in phase 3 (sub-site admin console),
+		// together with the SiteAdminAuth-gated tenant endpoints and per-resource
+		// site_id ownership checks. Phase 2 only records the owner link (owner_user_id).
 		return nil
 	})
 	if err != nil {

@@ -254,6 +254,12 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	// Relax the legacy global-unique on users.username to a per-site composite unique
+	// (site_id, username). MUST run before AutoMigrate so AutoMigrate can (re)create the
+	// composite unique index afterwards. Idempotent and data-preserving on all three DBs.
+	if err := migrateRelaxLegacyUsernameUnique(); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},

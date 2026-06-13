@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
@@ -129,11 +130,13 @@ func OidcAuth(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Resolve the sub-site from the request Host (0 = main site); scope lookups/insert to it.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		OidcId: oidcUser.OpenID,
 	}
-	if model.IsOidcIdAlreadyTaken(user.OidcId) {
-		err := user.FillUserByOidcId()
+	if model.IsOidcIdAlreadyTaken(user.OidcId, siteId) {
+		err := user.FillUserByOidcId(siteId)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -154,6 +157,7 @@ func OidcAuth(c *gin.Context) {
 			} else {
 				user.DisplayName = "OIDC User"
 			}
+			user.SiteId = siteId
 			err := user.Insert(0)
 			if err != nil {
 				c.JSON(http.StatusOK, gin.H{
@@ -195,10 +199,12 @@ func OidcBind(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Binding happens on the logged-in user's own sub-site domain → request site.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		OidcId: oidcUser.OpenID,
 	}
-	if model.IsOidcIdAlreadyTaken(user.OidcId) {
+	if model.IsOidcIdAlreadyTaken(user.OidcId, siteId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该 OIDC 账户已被绑定",

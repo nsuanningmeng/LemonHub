@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -43,11 +44,13 @@ func LinuxDoBind(c *gin.Context) {
 		return
 	}
 
+	// Binding happens on the logged-in user's own sub-site domain → request site.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		LinuxDOId: strconv.Itoa(linuxdoUser.Id),
 	}
 
-	if model.IsLinuxDOIdAlreadyTaken(user.LinuxDOId) {
+	if model.IsLinuxDOIdAlreadyTaken(user.LinuxDOId, siteId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该 Linux DO 账户已被绑定",
@@ -198,13 +201,15 @@ func LinuxdoOAuth(c *gin.Context) {
 		return
 	}
 
+	// Resolve the sub-site from the request Host (0 = main site); scope lookups/insert to it.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		LinuxDOId: strconv.Itoa(linuxdoUser.Id),
 	}
 
 	// Check if user exists
-	if model.IsLinuxDOIdAlreadyTaken(user.LinuxDOId) {
-		err := user.FillUserByLinuxDOId()
+	if model.IsLinuxDOIdAlreadyTaken(user.LinuxDOId, siteId) {
+		err := user.FillUserByLinuxDOId(siteId)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -226,6 +231,7 @@ func LinuxdoOAuth(c *gin.Context) {
 				user.DisplayName = linuxdoUser.Name
 				user.Role = common.RoleCommonUser
 				user.Status = common.UserStatusEnabled
+				user.SiteId = siteId
 
 				affCode := session.Get("aff")
 				inviterId := 0

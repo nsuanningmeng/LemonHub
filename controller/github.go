@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-contrib/sessions"
@@ -108,13 +109,14 @@ func GitHubOAuth(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Resolve the sub-site from the request Host (0 = main site) and scope every
+	// identity lookup / the new-user insert to it so sub-sites stay isolated.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		GitHubId: githubUser.Login,
 	}
-	// IsGitHubIdAlreadyTaken is unscoped
-	if model.IsGitHubIdAlreadyTaken(user.GitHubId) {
-		// FillUserByGitHubId is scoped
-		err := user.FillUserByGitHubId()
+	if model.IsGitHubIdAlreadyTaken(user.GitHubId, siteId) {
+		err := user.FillUserByGitHubId(siteId)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
@@ -141,6 +143,7 @@ func GitHubOAuth(c *gin.Context) {
 			user.Email = githubUser.Email
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
+			user.SiteId = siteId
 			affCode := session.Get("aff")
 			inviterId := 0
 			if affCode != nil {
@@ -187,10 +190,12 @@ func GitHubBind(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	// Binding happens on the logged-in user's own sub-site domain → request site.
+	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
 		GitHubId: githubUser.Login,
 	}
-	if model.IsGitHubIdAlreadyTaken(user.GitHubId) {
+	if model.IsGitHubIdAlreadyTaken(user.GitHubId, siteId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "该 GitHub 账户已被绑定",

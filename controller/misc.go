@@ -295,7 +295,7 @@ func SendEmailVerification(c *gin.Context) {
 		}
 	}
 
-	if model.IsEmailAlreadyTaken(email) {
+	if model.IsEmailAlreadyTaken(email, middleware.GetRequestSiteId(c)) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "邮箱地址已被占用",
@@ -329,7 +329,7 @@ func SendPasswordResetEmail(c *gin.Context) {
 		})
 		return
 	}
-	if model.IsEmailAlreadyTaken(email) {
+	if model.IsEmailAlreadyTaken(email, middleware.GetRequestSiteId(c)) {
 		code := common.GenerateVerificationCode(0)
 		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
@@ -372,7 +372,9 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 	password := common.GenerateVerificationCode(12)
-	err = model.ResetUserPasswordByEmail(req.Email, password)
+	// Scope the reset to the requesting sub-site so it cannot overwrite a same-email
+	// account on another site (cross-site account takeover).
+	err = model.ResetUserPasswordByEmail(req.Email, password, middleware.GetRequestSiteId(c))
 	if err != nil {
 		common.ApiError(c, err)
 		return
