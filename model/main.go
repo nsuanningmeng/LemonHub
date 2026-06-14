@@ -248,8 +248,12 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
-	// Migrate price_amount column from float/double to decimal for existing tables
-	migrateSubscriptionPlanPriceAmount()
+	// Migrate price_amount column from float/double to decimal for existing tables.
+	// Fail-closed: a value that cannot be stored losslessly halts startup instead
+	// of silently truncating monetary data.
+	if err := migrateSubscriptionPlanPriceAmount(); err != nil {
+		return err
+	}
 	// Migrate model_limits column from varchar to text for existing tables
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
@@ -292,6 +296,13 @@ func migrateDB() error {
 		&SiteWalletLog{},
 	)
 	if err != nil {
+		return err
+	}
+	// Defensive: guarantee no NULL site_id rows remain so `WHERE site_id = 0`
+	// (main-site) queries never hide legacy data. The ADD COLUMN DEFAULT 0 above
+	// already backfills standard upgrades on all three engines; this closes the
+	// gap for non-standard / interrupted historical schemas. Idempotent.
+	if err := backfillNullSiteIds(DB); err != nil {
 		return err
 	}
 	if common.UsingSQLite {
@@ -382,6 +393,11 @@ func migrateDBFast() error {
 func migrateLOGDB() error {
 	var err error
 	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
+		return err
+	}
+	// Backfill NULL logs.site_id to 0 for the separate log database, matching the
+	// main DB's site-isolation guarantee.
+	if err = backfillModelNullSiteId(LOG_DB, &Log{}); err != nil {
 		return err
 	}
 	return nil
@@ -520,13 +536,17 @@ func migrateTokenModelLimitsToText() error {
 	return nil
 }
 
-// migrateSubscriptionPlanPriceAmount migrates price_amount column from float/double to decimal(10,6)
-// This is safe to run multiple times - it checks the column type first
-func migrateSubscriptionPlanPriceAmount() {
+// migrateSubscriptionPlanPriceAmount migrates price_amount column from float/double to decimal(10,6).
+// It is safe to run multiple times (it checks the column type first) and is
+// fail-closed: any error — including a pre-flight detecting values that cannot be
+// stored losslessly in decimal(10,6) — is returned so startup halts instead of
+// silently truncating monetary data (MySQL non-STRICT mode) or leaving a
+// half-migrated schema.
+func migrateSubscriptionPlanPriceAmount() error {
 	// SQLite doesn't support ALTER COLUMN, and its type affinity handles this automatically
 	// Skip early to avoid GORM parsing the existing table DDL which may cause issues
 	if common.UsingSQLite {
-		return
+		return nil
 	}
 
 	tableName := "subscription_plans"
@@ -534,12 +554,12 @@ func migrateSubscriptionPlanPriceAmount() {
 
 	// Check if table exists first
 	if !DB.Migrator().HasTable(tableName) {
-		return
+		return nil
 	}
 
 	// Check if column exists
 	if !DB.Migrator().HasColumn(&SubscriptionPlan{}, columnName) {
-		return
+		return nil
 	}
 
 	var alterSQL string
@@ -551,7 +571,7 @@ func migrateSubscriptionPlanPriceAmount() {
 			tableName, columnName).Scan(&dataType).Error; err != nil {
 			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
 		} else if dataType == "numeric" {
-			return // Already decimal/numeric
+			return nil // Already decimal/numeric
 		}
 		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE decimal(10,6) USING %s::decimal(10,6)`,
 			tableName, columnName, columnName)
@@ -563,21 +583,35 @@ func migrateSubscriptionPlanPriceAmount() {
 			tableName, columnName).Scan(&columnType).Error; err != nil {
 			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
 		} else if strings.HasPrefix(strings.ToLower(columnType), "decimal") {
-			return // Already decimal
+			return nil // Already decimal
 		}
 		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s decimal(10,6) NOT NULL DEFAULT 0",
 			tableName, columnName)
 	} else {
-		return
+		return nil
 	}
 
 	if alterSQL != "" {
-		if err := DB.Exec(alterSQL).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to migrate %s.%s to decimal: %v", tableName, columnName, err))
-		} else {
-			common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
+		// Fail-closed pre-flight: refuse to narrow the type if any existing value
+		// cannot be stored losslessly in decimal(10,6). On MySQL non-STRICT mode the
+		// MODIFY would otherwise silently truncate such values; on PostgreSQL the
+		// USING cast would abort the migration mid-way.
+		outOfRange, err := countOutOfRangePriceAmounts(DB)
+		if err != nil {
+			return fmt.Errorf("pre-flight check for %s.%s failed: %w", tableName, columnName, err)
 		}
+		if outOfRange > 0 {
+			return fmt.Errorf(
+				"cannot migrate %s.%s to decimal(10,6): %d row(s) have |price_amount| >= 10000 and would be truncated or rejected; correct these values before upgrading",
+				tableName, columnName, outOfRange,
+			)
+		}
+		if err := DB.Exec(alterSQL).Error; err != nil {
+			return fmt.Errorf("failed to migrate %s.%s to decimal(10,6): %w", tableName, columnName, err)
+		}
+		common.SysLog(fmt.Sprintf("Successfully migrated %s.%s to decimal(10,6)", tableName, columnName))
 	}
+	return nil
 }
 
 func closeDB(db *gorm.DB) error {
