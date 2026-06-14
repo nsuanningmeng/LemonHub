@@ -26,6 +26,13 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { formatUptimePct } from '@/features/performance-metrics/lib/format'
+import {
+  resolveSuccessRate,
+  successRateTone,
+  successRateToneTextClass,
+  useSuccessRateConfig,
+  type SuccessRateConfig,
+} from '@/features/performance-metrics/lib/success-rate'
 import { aggregateUptime, type UptimeDayPoint } from '../lib/mock-stats'
 
 // ---------------------------------------------------------------------------
@@ -50,34 +57,51 @@ type UptimeSparklineProps = {
   className?: string
 }
 
-function colourFor(uptime: number): string {
-  if (uptime >= 99.9) return 'bg-emerald-500'
-  if (uptime >= 99.0) return 'bg-emerald-400'
-  if (uptime >= 95.0) return 'bg-amber-500'
-  if (uptime >= 90.0) return 'bg-amber-600'
-  return 'bg-rose-500'
+function colourFor(uptime: number, config: SuccessRateConfig): string {
+  switch (successRateTone(uptime, config)) {
+    case 'success':
+      return 'bg-emerald-500'
+    case 'warning':
+      return 'bg-amber-500'
+    case 'destructive':
+      return 'bg-rose-500'
+    default:
+      return 'bg-muted-foreground/40'
+  }
 }
 
-function heightFor(uptime: number): string {
-  if (uptime >= 99.9) return 'h-full'
-  if (uptime >= 99.0) return 'h-[88%]'
-  if (uptime >= 95.0) return 'h-[72%]'
-  if (uptime >= 90.0) return 'h-[55%]'
-  return 'h-[40%]'
-}
-
-function overallTextColour(pct: number): string {
-  if (pct >= 99.9) return 'text-emerald-600 dark:text-emerald-400'
-  if (pct >= 99.0) return 'text-emerald-600 dark:text-emerald-400'
-  if (pct >= 95.0) return 'text-amber-600 dark:text-amber-400'
-  return 'text-rose-600 dark:text-rose-400'
+function heightFor(uptime: number, config: SuccessRateConfig): string {
+  switch (successRateTone(uptime, config)) {
+    case 'success':
+      return 'h-full'
+    case 'warning':
+      return 'h-[72%]'
+    default:
+      return 'h-[40%]'
+  }
 }
 
 export function UptimeSparkline(props: UptimeSparklineProps) {
+  const srConfig = useSuccessRateConfig()
   const size = props.size ?? 'md'
   const showOverall = props.showOverall ?? true
 
   if (props.series.length === 0) {
+    // No data in the window. When configured, present it as 100% healthy
+    // (green) rather than a neutral em dash.
+    if (srConfig.noDataAsFull) {
+      return (
+        <span
+          className={cn(
+            'font-mono text-sm font-semibold tabular-nums',
+            successRateToneTextClass(100, srConfig),
+            props.className
+          )}
+        >
+          {resolveSuccessRate(NaN, srConfig).toFixed(1)}%
+        </span>
+      )
+    }
     return (
       <span className={cn('text-muted-foreground text-xs', props.className)}>
         {props.emptyLabel ?? '—'}
@@ -116,8 +140,8 @@ export function UptimeSparkline(props: UptimeSparklineProps) {
               <div
                 className={cn(
                   'w-full rounded-sm',
-                  colourFor(day.uptime_pct),
-                  heightFor(day.uptime_pct)
+                  colourFor(day.uptime_pct, srConfig),
+                  heightFor(day.uptime_pct, srConfig)
                 )}
                 aria-hidden
               />
@@ -138,7 +162,7 @@ export function UptimeSparkline(props: UptimeSparklineProps) {
         <span
           className={cn(
             'font-mono text-sm font-semibold tabular-nums',
-            overallTextColour(overall)
+            successRateToneTextClass(overall, srConfig)
           )}
         >
           {overall.toFixed(1)}%
@@ -157,38 +181,28 @@ export function UptimeStatusRow(props: {
   className?: string
 }) {
   const { t } = useTranslation()
+  const srConfig = useSuccessRateConfig()
   const summary = useMemo(() => aggregateUptime(props.series), [props.series])
-  const status = useMemo(() => {
-    if (summary.uptime_pct >= 99.9) return 'operational'
-    if (summary.uptime_pct >= 99.0) return 'minor'
-    if (summary.uptime_pct >= 95.0) return 'degraded'
-    return 'major'
-  }, [summary.uptime_pct])
+  const uptimeRate = props.series.length === 0 ? NaN : summary.uptime_pct
+  const tone = successRateTone(uptimeRate, srConfig)
 
   const StatusIcon =
-    status === 'operational'
+    tone === 'success'
       ? CheckCircle2
-      : status === 'minor'
-        ? Activity
-        : AlertCircle
+      : tone === 'destructive'
+        ? AlertCircle
+        : Activity
 
-  const statusColour =
-    status === 'operational'
-      ? 'text-emerald-600 dark:text-emerald-400'
-      : status === 'minor'
-        ? 'text-emerald-600 dark:text-emerald-400'
-        : status === 'degraded'
-          ? 'text-amber-600 dark:text-amber-400'
-          : 'text-rose-600 dark:text-rose-400'
+  const statusColour = successRateToneTextClass(uptimeRate, srConfig)
 
   const statusLabel =
-    status === 'operational'
+    tone === 'success'
       ? t('All systems operational')
-      : status === 'minor'
-        ? t('Minor blips in the last 30 days')
-        : status === 'degraded'
-          ? t('Degraded performance recently')
-          : t('Significant outages detected')
+      : tone === 'warning'
+        ? t('Degraded performance recently')
+        : tone === 'destructive'
+          ? t('Significant outages detected')
+          : t('No data available')
 
   return (
     <div
@@ -218,7 +232,8 @@ export function UptimeStatusRow(props: {
           </span>
         )}
         <span className='text-muted-foreground hidden sm:inline'>
-          {formatUptimePct(summary.uptime_pct)} {t('overall')}
+          {formatUptimePct(resolveSuccessRate(uptimeRate, srConfig))}{' '}
+          {t('overall')}
         </span>
       </div>
     </div>

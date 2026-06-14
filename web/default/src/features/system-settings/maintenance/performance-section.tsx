@@ -94,6 +94,10 @@ const perfSchema = z.object({
     flush_interval: z.coerce.number().min(1),
     bucket_time: z.enum(['minute', '5min', 'hour']),
     retention_days: z.coerce.number().min(0),
+    success_rate_green_threshold: z.coerce.number().min(0).max(100),
+    success_rate_yellow_threshold: z.coerce.number().min(0).max(100),
+    error_code_whitelist: z.string(),
+    no_data_as_full: z.boolean(),
   }),
 })
 
@@ -113,6 +117,10 @@ type FlatPerfDefaults = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'minute' | '5min' | 'hour'
   'perf_metrics_setting.retention_days': number
+  'perf_metrics_setting.success_rate_green_threshold': number
+  'perf_metrics_setting.success_rate_yellow_threshold': number
+  'perf_metrics_setting.error_code_whitelist': string
+  'perf_metrics_setting.no_data_as_full': boolean
 }
 
 const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
@@ -136,6 +144,13 @@ const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
     flush_interval: defaults['perf_metrics_setting.flush_interval'],
     bucket_time: defaults['perf_metrics_setting.bucket_time'],
     retention_days: defaults['perf_metrics_setting.retention_days'],
+    success_rate_green_threshold:
+      defaults['perf_metrics_setting.success_rate_green_threshold'],
+    success_rate_yellow_threshold:
+      defaults['perf_metrics_setting.success_rate_yellow_threshold'],
+    error_code_whitelist:
+      defaults['perf_metrics_setting.error_code_whitelist'] ?? '',
+    no_data_as_full: defaults['perf_metrics_setting.no_data_as_full'],
   },
 })
 
@@ -162,6 +177,14 @@ const normalizeFormValues = (values: PerfFormValues): FlatPerfDefaults => ({
   'perf_metrics_setting.bucket_time': values.perf_metrics_setting.bucket_time,
   'perf_metrics_setting.retention_days':
     values.perf_metrics_setting.retention_days,
+  'perf_metrics_setting.success_rate_green_threshold':
+    values.perf_metrics_setting.success_rate_green_threshold,
+  'perf_metrics_setting.success_rate_yellow_threshold':
+    values.perf_metrics_setting.success_rate_yellow_threshold,
+  'perf_metrics_setting.error_code_whitelist':
+    values.perf_metrics_setting.error_code_whitelist ?? '',
+  'perf_metrics_setting.no_data_as_full':
+    values.perf_metrics_setting.no_data_as_full,
 })
 
 function formatBytes(bytes: number, decimals = 2): string {
@@ -711,6 +734,112 @@ export function PerformanceSection(props: Props) {
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
+              )}
+            />
+          </div>
+
+          <div>
+            <h4 className='font-medium'>
+              {t('Success rate display & thresholds')}
+            </h4>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {t(
+                'Configure how the model success rate is colored, which error codes lower it, and how models with no traffic are displayed.'
+              )}
+            </p>
+          </div>
+
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-4'>
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.success_rate_green_threshold'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Green threshold (%)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      {...safeNumberFieldProps(field)}
+                      disabled={!perfMetricsEnabled}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Success rate at or above this value is shown green')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.success_rate_yellow_threshold'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Yellow threshold (%)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      {...safeNumberFieldProps(field)}
+                      disabled={!perfMetricsEnabled}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'At or above this (but below green) is yellow; below is red'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.error_code_whitelist'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Error code whitelist')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={t('e.g. 429,500,499-520')}
+                      value={field.value ?? ''}
+                      onChange={(event) => field.onChange(event.target.value)}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                      disabled={!perfMetricsEnabled}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Only these HTTP status codes count as failures. Leave empty to count all errors.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.no_data_as_full'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Treat no data as 100%')}</FormLabel>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={!perfMetricsEnabled}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
               )}
             />
           </div>

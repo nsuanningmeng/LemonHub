@@ -128,6 +128,11 @@ export interface SystemStatus {
     register_enabled?: boolean
     password_login_enabled?: boolean
     password_register_enabled?: boolean
+    seo_description?: string
+    seo_keywords?: string
+    perf_success_rate_green_threshold?: number
+    perf_success_rate_yellow_threshold?: number
+    perf_no_data_as_full?: boolean
     custom_oauth_providers?: CustomOAuthProviderInfo[]
     [key: string]: unknown
   }
@@ -171,6 +176,11 @@ export interface SystemStatus {
   register_enabled?: boolean
   password_login_enabled?: boolean
   password_register_enabled?: boolean
+  seo_description?: string
+  seo_keywords?: string
+  perf_success_rate_green_threshold?: number
+  perf_success_rate_yellow_threshold?: number
+  perf_no_data_as_full?: boolean
   custom_oauth_providers?: CustomOAuthProviderInfo[]
   [key: string]: unknown
 }

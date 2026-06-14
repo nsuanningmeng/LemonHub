@@ -26,8 +26,13 @@ import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import {
   formatLatency,
   formatThroughput,
-  formatUptimePct,
 } from '@/features/performance-metrics/lib/format'
+import {
+  formatSuccessRate,
+  successRateDotClass,
+  successRateTextClass,
+  useSuccessRateConfig,
+} from '@/features/performance-metrics/lib/success-rate'
 import type { PerfModelSummary } from '@/features/performance-metrics/types'
 
 const PERFORMANCE_WINDOW_HOURS = 24
@@ -51,22 +56,9 @@ function simpleAverage(
   return count > 0 ? total / count : NaN
 }
 
-function rateTextClass(rate: number): string {
-  if (!Number.isFinite(rate)) return 'text-muted-foreground'
-  if (rate >= 99.9) return 'text-success'
-  if (rate >= 99) return 'text-warning'
-  return 'text-destructive'
-}
-
-function rateDotClass(rate: number): string {
-  if (!Number.isFinite(rate)) return 'bg-muted-foreground'
-  if (rate >= 99.9) return 'bg-success'
-  if (rate >= 99) return 'bg-warning'
-  return 'bg-destructive'
-}
-
 export function PerformanceHealthPanel() {
   const { t } = useTranslation()
+  const srConfig = useSuccessRateConfig()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics-summary', PERFORMANCE_WINDOW_HOURS],
     queryFn: () => getPerfMetricsSummary(PERFORMANCE_WINDOW_HOURS),
@@ -119,9 +111,9 @@ export function PerformanceHealthPanel() {
           <MetricCell
             icon={HeartPulse}
             label={t('Success rate')}
-            value={formatUptimePct(summary.successRate)}
+            value={formatSuccessRate(summary.successRate, srConfig)}
             loading={loading}
-            valueClassName={rateTextClass(summary.successRate)}
+            valueClassName={successRateTextClass(summary.successRate, srConfig)}
           />
           <MetricCell
             icon={Timer}
@@ -162,17 +154,17 @@ export function PerformanceHealthPanel() {
                       <span
                         className={cn(
                           'size-1.5 rounded-full',
-                          rateDotClass(model.success_rate)
+                          successRateDotClass(model.success_rate, srConfig)
                         )}
                         aria-hidden='true'
                       />
                       <span
                         className={cn(
                           'font-mono text-[11px] font-semibold tabular-nums',
-                          rateTextClass(model.success_rate)
+                          successRateTextClass(model.success_rate, srConfig)
                         )}
                       >
-                        {formatUptimePct(model.success_rate)}
+                        {formatSuccessRate(model.success_rate, srConfig)}
                       </span>
                     </span>
                   </div>

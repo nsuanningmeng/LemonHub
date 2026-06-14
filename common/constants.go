@@ -17,6 +17,8 @@ var Version = "v0.0.0"            // this hard coding will be replaced automatic
 var SystemName = "New API"
 var Footer = ""
 var Logo = ""
+var SeoDescription = "" // <meta name="description"> for SEO, editable in system settings
+var SeoKeywords = ""    // <meta name="keywords"> for SEO, editable in system settings
 var TopUpLink = ""
 
 var themeValue atomic.Value // stores string; safe for concurrent read/write

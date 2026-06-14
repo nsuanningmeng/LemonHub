@@ -124,6 +124,27 @@ const rootElement = document.getElementById('root')!
       ) as HTMLMetaElement | null
       if (metaTitle) metaTitle.setAttribute('content', name)
     }
+    const ensureMeta = (metaName: string): HTMLMetaElement => {
+      let el = document.querySelector(
+        `meta[name="${metaName}"]`
+      ) as HTMLMetaElement | null
+      if (!el) {
+        el = document.createElement('meta')
+        el.setAttribute('name', metaName)
+        document.head.appendChild(el)
+      }
+      return el
+    }
+    // Apply admin-configured SEO meta tags. Empty values keep the static
+    // defaults in index.html instead of blanking them out.
+    const applySeo = (description?: unknown, keywords?: unknown) => {
+      if (typeof description === 'string' && description.trim() !== '') {
+        ensureMeta('description').setAttribute('content', description)
+      }
+      if (typeof keywords === 'string' && keywords.trim() !== '') {
+        ensureMeta('keywords').setAttribute('content', keywords)
+      }
+    }
     // Cache-first
     try {
       const saved = localStorage.getItem('status')
@@ -131,6 +152,7 @@ const rootElement = document.getElementById('root')!
         const s = JSON.parse(saved)
         if (s?.system_name) apply(s.system_name)
         if (s?.logo) applyFaviconToDom(s.logo)
+        applySeo(s?.seo_description, s?.seo_keywords)
       }
     } catch {
       /* empty */
@@ -147,6 +169,7 @@ const rootElement = document.getElementById('root')!
           }
         }
         if (s?.logo) applyFaviconToDom(s.logo as string)
+        applySeo(s?.seo_description, s?.seo_keywords)
       })
       .catch(() => {
         /* empty */

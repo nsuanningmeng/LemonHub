@@ -59,6 +59,8 @@ const _systemInfoSchema = z.object({
   ServerAddress: z.string().optional(),
   Logo: z.string().url().optional().or(z.literal('')),
   Footer: z.string().optional(),
+  SeoDescription: z.string().optional(),
+  SeoKeywords: z.string().optional(),
   About: z.string().optional(),
   Contact: z.string().optional(),
   HomePageContent: z.string().optional(),
@@ -92,6 +94,8 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     ServerAddress: normalizeValue(defaultValues.ServerAddress),
     Logo: normalizeValue(defaultValues.Logo),
     Footer: normalizeValue(defaultValues.Footer),
+    SeoDescription: normalizeValue(defaultValues.SeoDescription),
+    SeoKeywords: normalizeValue(defaultValues.SeoKeywords),
     About: normalizeValue(defaultValues.About),
     Contact: normalizeValue(defaultValues.Contact),
     HomePageContent: normalizeValue(defaultValues.HomePageContent),
@@ -111,6 +115,8 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     ServerAddress: z.string().optional(),
     Logo: z.string().url().optional().or(z.literal('')),
     Footer: z.string().optional(),
+    SeoDescription: z.string().optional(),
+    SeoKeywords: z.string().optional(),
     About: z.string().optional(),
     Contact: z.string().optional(),
     HomePageContent: z.string().optional(),
@@ -276,6 +282,53 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t('Footer text displayed at the bottom of pages')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='SeoDescription'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('SEO Description')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder={t(
+                          'A short description of your site for search engines (about 150-160 characters)'
+                        )}
+                        rows={3}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Sets the site description meta tag used by search engines and link previews.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='SeoKeywords'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('SEO Keywords')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('keyword1, keyword2, keyword3')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Comma-separated keywords for the site keywords meta tag (optional).'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

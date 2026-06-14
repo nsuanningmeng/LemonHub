@@ -30,8 +30,12 @@ import { getPerfMetrics } from '@/features/performance-metrics/api'
 import {
   formatLatency,
   formatThroughput,
-  formatUptimePct,
 } from '@/features/performance-metrics/lib/format'
+import {
+  formatSuccessRate,
+  successRateIntent,
+  useSuccessRateConfig,
+} from '@/features/performance-metrics/lib/success-rate'
 import type { PerformanceGroup } from '@/features/performance-metrics/types'
 import { type UptimeDayPoint } from '../lib/mock-stats'
 import type { PricingModel } from '../types'
@@ -43,7 +47,7 @@ function StatCard(props: {
   label: string
   value: React.ReactNode
   hint?: string
-  intent?: 'default' | 'warning' | 'success'
+  intent?: 'default' | 'warning' | 'success' | 'destructive'
 }) {
   const Icon = props.icon
   const intent = props.intent ?? 'default'
@@ -57,7 +61,8 @@ function StatCard(props: {
         className={cn(
           'text-foreground font-mono text-lg font-semibold tabular-nums',
           intent === 'warning' && 'text-amber-600 dark:text-amber-400',
-          intent === 'success' && 'text-emerald-600 dark:text-emerald-400'
+          intent === 'success' && 'text-emerald-600 dark:text-emerald-400',
+          intent === 'destructive' && 'text-rose-600 dark:text-rose-400'
         )}
       >
         {props.value}
@@ -152,6 +157,7 @@ function average(
 
 export function ModelDetailsPerformance(props: { model: PricingModel }) {
   const { t } = useTranslation()
+  const srConfig = useSuccessRateConfig()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics', props.model.model_name],
     queryFn: () => getPerfMetrics(props.model.model_name, 24),
@@ -182,10 +188,35 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
     return map
   }, [groups])
 
-  if (metricsQuery.isLoading || performances.length === 0) {
+  if (metricsQuery.isLoading) {
     return (
       <div className='text-muted-foreground rounded-lg border p-6 text-center text-sm'>
         {t('Performance data is not yet available for this model.')}
+      </div>
+    )
+  }
+
+  if (performances.length === 0) {
+    // No requests in the selected window. When configured, surface the model as
+    // 100% healthy (green) instead of hiding it behind a "no data" message.
+    if (!srConfig.noDataAsFull) {
+      return (
+        <div className='text-muted-foreground rounded-lg border p-6 text-center text-sm'>
+          {t('Performance data is not yet available for this model.')}
+        </div>
+      )
+    }
+    return (
+      <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
+        <StatCard icon={Timer} label='TPS' value='—' />
+        <StatCard icon={Timer} label={t('Average latency')} value='—' />
+        <StatCard
+          icon={HeartPulse}
+          label={t('Success rate')}
+          value={formatSuccessRate(NaN, srConfig)}
+          hint={t('No requests in the last 24 hours')}
+          intent={successRateIntent(NaN, srConfig)}
+        />
       </div>
     )
   }
@@ -207,12 +238,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
         successRates.length
       : 0
   const incidentCount = uptimeSeries.reduce((s, p) => s + p.incidents, 0)
-  let intent: 'default' | 'warning' | 'success' = 'warning'
-  if (successRate >= 99.9) {
-    intent = 'success'
-  } else if (successRate >= 99) {
-    intent = 'default'
-  }
+  const intent = successRateIntent(successRate, srConfig)
 
   return (
     <div className='flex flex-col gap-4'>
@@ -231,7 +257,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
         <StatCard
           icon={HeartPulse}
           label={t('Success rate')}
-          value={formatUptimePct(successRate)}
+          value={formatSuccessRate(successRate, srConfig)}
           hint={
             incidentCount > 0
               ? t('{{count}} incidents in the last 24 hours', {

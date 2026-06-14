@@ -62,6 +62,8 @@ export type SiteSettings = {
   SystemName: string
   Logo: string
   Footer: string
+  SeoDescription: string
+  SeoKeywords: string
   About: string
   Contact: string
   HomePageContent: string
@@ -307,6 +309,10 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  'perf_metrics_setting.success_rate_green_threshold': number
+  'perf_metrics_setting.success_rate_yellow_threshold': number
+  'perf_metrics_setting.error_code_whitelist': string
+  'perf_metrics_setting.no_data_as_full': boolean
 }
 
 export type SecuritySettings = {

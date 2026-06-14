@@ -26,8 +26,13 @@ import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import {
   formatLatency,
   formatThroughput,
-  formatUptimePct,
 } from '@/features/performance-metrics/lib/format'
+import {
+  formatSuccessRate,
+  successRateDotClass,
+  successRateTextClass,
+  useSuccessRateConfig,
+} from '@/features/performance-metrics/lib/success-rate'
 import type { PerfModelSummary } from '@/features/performance-metrics/types'
 
 const PERFORMANCE_WINDOW_HOURS = 24
@@ -79,22 +84,9 @@ function buildPerformanceSummary(rows: PerfModelSummary[]): PerformanceSummary {
   }
 }
 
-function successRateClassName(successRate: number): string {
-  if (!Number.isFinite(successRate)) return 'text-muted-foreground'
-  if (successRate >= 99.9) return 'text-success'
-  if (successRate >= 99) return 'text-warning'
-  return 'text-destructive'
-}
-
-function successDotClassName(successRate: number): string {
-  if (!Number.isFinite(successRate)) return 'bg-muted-foreground'
-  if (successRate >= 99.9) return 'bg-success'
-  if (successRate >= 99) return 'bg-warning'
-  return 'bg-destructive'
-}
-
 export function PerformanceOverview() {
   const { t } = useTranslation()
+  const srConfig = useSuccessRateConfig()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics-summary', PERFORMANCE_WINDOW_HOURS],
     queryFn: () => getPerfMetricsSummary(PERFORMANCE_WINDOW_HOURS),
@@ -151,8 +143,8 @@ export function PerformanceOverview() {
             <InlineMetric
               icon={HeartPulse}
               label={t('Success rate')}
-              value={formatUptimePct(summary.successRate)}
-              valueClassName={successRateClassName(summary.successRate)}
+              value={formatSuccessRate(summary.successRate, srConfig)}
+              valueClassName={successRateTextClass(summary.successRate, srConfig)}
             />
             <InlineMetric
               icon={Timer}
@@ -212,6 +204,7 @@ function InlineMetric(props: {
 
 function ModelBadge(props: { model: PerfModelSummary }) {
   const model = props.model
+  const srConfig = useSuccessRateConfig()
 
   return (
     <span className='bg-muted/50 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1'>
@@ -221,17 +214,17 @@ function ModelBadge(props: { model: PerfModelSummary }) {
       <span
         className={cn(
           'size-1.5 rounded-full',
-          successDotClassName(model.success_rate)
+          successRateDotClass(model.success_rate, srConfig)
         )}
         aria-hidden='true'
       />
       <span
         className={cn(
           'font-mono text-[11px] font-semibold tabular-nums',
-          successRateClassName(model.success_rate)
+          successRateTextClass(model.success_rate, srConfig)
         )}
       >
-        {formatUptimePct(model.success_rate)}
+        {formatSuccessRate(model.success_rate, srConfig)}
       </span>
     </span>
   )

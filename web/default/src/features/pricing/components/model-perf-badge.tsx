@@ -23,6 +23,11 @@ import {
   formatLatency,
   formatThroughput,
 } from '@/features/performance-metrics/lib/format'
+import {
+  resolveSuccessRate,
+  successRateSolidDotClass,
+  useSuccessRateConfig,
+} from '@/features/performance-metrics/lib/success-rate'
 
 export type ModelPerfBadgeData = {
   avg_latency_ms: number
@@ -42,19 +47,19 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
   props: ModelPerfBadgeProps
 ) {
   const { t } = useTranslation()
+  const srConfig = useSuccessRateConfig()
 
-  if (!props.perf) {
+  // When a model has no metrics yet, optionally treat it as 100% healthy
+  // (green) instead of hiding the badge entirely.
+  if (!props.perf && !srConfig.noDataAsFull) {
     return null
   }
 
-  const { avg_latency_ms, avg_tps, success_rate } = props.perf
-
-  let statusColor = 'bg-emerald-500'
-  if (success_rate < 99) {
-    statusColor = 'bg-red-500'
-  } else if (success_rate < 99.9) {
-    statusColor = 'bg-amber-500'
-  }
+  const avg_latency_ms = props.perf?.avg_latency_ms ?? 0
+  const avg_tps = props.perf?.avg_tps ?? 0
+  const success_rate = props.perf ? props.perf.success_rate : NaN
+  const resolvedRate = resolveSuccessRate(success_rate, srConfig)
+  const statusColor = successRateSolidDotClass(success_rate, srConfig)
 
   return (
     <div
@@ -80,7 +85,7 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
         </div>
       </div>
       <div
-        title={`${t('Success rate')}: ${success_rate.toFixed(1)}%`}
+        title={`${t('Success rate')}: ${Number.isFinite(resolvedRate) ? resolvedRate.toFixed(1) : '—'}%`}
         className='min-w-0'
       >
         <div className='text-muted-foreground/55 truncate text-[10px] leading-4'>

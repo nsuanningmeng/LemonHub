@@ -295,6 +295,16 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "perf_metrics_setting.error_code_whitelist":
+		// Validate the success-rate error-code whitelist up front so admins get
+		// immediate feedback instead of a silently-ignored (fail-open) value.
+		if _, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string)); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "console_setting.api_info":
 		err = console_setting.ValidateConsoleSettings(option.Value.(string), "ApiInfo")
 		if err != nil {

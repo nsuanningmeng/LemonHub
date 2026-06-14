@@ -36,6 +36,13 @@ const STATUS_RELATED_KEYS = [
   'general_setting.quota_display_type',
   'general_setting.custom_currency_symbol',
   'general_setting.custom_currency_exchange_rate',
+  // SEO meta tags are injected from /api/status (see main.tsx applySeo)
+  'SeoDescription',
+  'SeoKeywords',
+  // Model performance success-rate display config is read via /api/status
+  'perf_metrics_setting.success_rate_green_threshold',
+  'perf_metrics_setting.success_rate_yellow_threshold',
+  'perf_metrics_setting.no_data_as_full',
 ]
 
 export function useUpdateOption() {
