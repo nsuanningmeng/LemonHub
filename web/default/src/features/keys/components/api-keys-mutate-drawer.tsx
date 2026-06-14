@@ -75,10 +75,8 @@ import {
   transformApiKeyToFormDefaults,
 } from '../lib'
 import { type ApiKey } from '../types'
-import {
-  ApiKeyGroupCombobox,
-  type ApiKeyGroupOption,
-} from './api-key-group-combobox'
+import { type ApiKeyGroupOption } from './api-key-group-combobox'
+import { ApiKeyGroupPriorityList } from './api-key-group-priority-list'
 import { useApiKeys } from './api-keys-provider'
 
 type ApiKeyMutateDrawerProps = {
@@ -147,21 +145,27 @@ export function ApiKeysMutateDrawer({
     }
   }, [open, isUpdate, currentRow, form, defaultUseAutoGroup, backendHasAuto])
 
-  // Correct group after groups load: if the form value is not in available groups, fall back
+  // Correct groups after groups load: drop any selected group not in available groups.
   useEffect(() => {
-    if (groups.length === 0) return
-    const currentGroup = form.getValues('group')
-    if (currentGroup && !groups.some((g) => g.value === currentGroup)) {
-      const fallback =
-        groups.find((g) => g.value === 'default')?.value ??
-        groups[0]?.value ??
-        ''
-      form.setValue('group', fallback)
-      if (currentGroup === 'auto') {
+    if (!open || groups.length === 0) return
+    const available = new Set(groups.map((g) => g.value))
+    const currentGroups = form.getValues('groups') ?? []
+    const filtered = currentGroups.filter((g) => available.has(g))
+    if (filtered.length !== currentGroups.length) {
+      if (filtered.length === 0) {
+        const fallback =
+          groups.find((g) => g.value === 'default')?.value ??
+          groups[0]?.value ??
+          ''
+        form.setValue('groups', fallback ? [fallback] : [])
+      } else {
+        form.setValue('groups', filtered)
+      }
+      if (currentGroups.includes('auto') && !filtered.includes('auto')) {
         form.setValue('cross_group_retry', false)
       }
     }
-  }, [groups, form])
+  }, [open, groups, form])
 
   const onSubmit = async (data: ApiKeyFormValues) => {
     setIsSubmitting(true)
@@ -243,7 +247,7 @@ export function ApiKeysMutateDrawer({
   const quotaPlaceholder = tokensOnly
     ? t('Enter quota in tokens')
     : t('Enter quota in {{currency}}', { currency: currencyLabel })
-  const selectedGroup = form.watch('group')
+  const selectedGroups = form.watch('groups') ?? []
   const unlimitedQuota = form.watch('unlimited_quota')
 
   return (
@@ -297,24 +301,31 @@ export function ApiKeysMutateDrawer({
 
               <FormField
                 control={form.control}
-                name='group'
+                name='groups'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Group')}</FormLabel>
+                    <FormLabel>{t('Groups')}</FormLabel>
                     <FormControl>
-                      <ApiKeyGroupCombobox
+                      <ApiKeyGroupPriorityList
                         options={groups}
-                        value={field.value}
-                        onValueChange={field.onChange}
-                        placeholder={t('Select a group')}
+                        value={field.value ?? []}
+                        onChange={field.onChange}
+                        placeholder={t(
+                          'Select groups (top = highest priority)'
+                        )}
                       />
                     </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Requests use the highest-priority group first; on error they automatically fail over to the next group in order.'
+                      )}
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              {selectedGroup === 'auto' && (
+              {selectedGroups.length === 1 && selectedGroups[0] === 'auto' && (
                 <FormField
                   control={form.control}
                   name='cross_group_retry'

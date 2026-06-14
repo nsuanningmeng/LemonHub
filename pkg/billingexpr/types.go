@@ -51,6 +51,17 @@ type BillingSnapshot struct {
 	ExprVersion               int     `json:"expr_version"`
 }
 
+// SyncGroupRatio 在请求生命周期内分组发生变化（如多分组优先级失败转移切换到不同分组）时，
+// 用新的分组倍率更新快照，使后续 tiered_expr 结算按实际命中分组计费。
+// 表达式与 before-group 成本保持不变，仅重算分组相关的额度字段。
+func (s *BillingSnapshot) SyncGroupRatio(groupRatio float64) {
+	if s == nil || s.GroupRatio == groupRatio {
+		return
+	}
+	s.GroupRatio = groupRatio
+	s.EstimatedQuotaAfterGroup = QuotaRound(s.EstimatedQuotaBeforeGroup * groupRatio)
+}
+
 // TieredResult holds everything needed after running tiered settlement.
 type TieredResult struct {
 	ActualQuotaBeforeGroup float64 `json:"actual_quota_before_group"`

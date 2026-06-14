@@ -165,6 +165,22 @@ func GetTokenUsage(c *gin.Context) {
 	})
 }
 
+// maxTokenGroups 限制单个令牌可绑定的分组数量上限。
+// 多分组失败转移会让总尝试次数变为 分组数 × (RetryTimes+1)，需有界以避免请求放大。
+const maxTokenGroups = 8
+
+// validateTokenGroupCount 校验令牌分组数量未超过上限；超过则直接响应错误并返回 false。
+func validateTokenGroupCount(c *gin.Context, token *model.Token) bool {
+	if len(token.GetGroups()) > maxTokenGroups {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": fmt.Sprintf("分组数量不能超过 %d 个", maxTokenGroups),
+		})
+		return false
+	}
+	return true
+}
+
 func AddToken(c *gin.Context) {
 	token := model.Token{}
 	err := c.ShouldBindJSON(&token)
@@ -187,6 +203,9 @@ func AddToken(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return
 		}
+	}
+	if !validateTokenGroupCount(c, &token) {
+		return
 	}
 	// 检查用户令牌数量是否已达上限
 	maxTokens := operation_setting.GetMaxUserTokens()
@@ -221,7 +240,7 @@ func AddToken(c *gin.Context) {
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
-		Group:              token.Group,
+		Group:              model.NormalizeGroupString(token.Group),
 		CrossGroupRetry:    token.CrossGroupRetry,
 	}
 	err = cleanToken.Insert()
@@ -291,6 +310,9 @@ func UpdateToken(c *gin.Context) {
 	if statusOnly != "" {
 		cleanToken.Status = token.Status
 	} else {
+		if !validateTokenGroupCount(c, &token) {
+			return
+		}
 		// If you add more fields, please also update token.Update()
 		cleanToken.Name = token.Name
 		cleanToken.ExpiredTime = token.ExpiredTime
@@ -299,7 +321,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
-		cleanToken.Group = token.Group
+		cleanToken.Group = model.NormalizeGroupString(token.Group)
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 	}
 	err = cleanToken.Update()

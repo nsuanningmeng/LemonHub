@@ -195,6 +195,12 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
         const apiKey = row.original
         const group = row.getValue('group') as string
         const ratio = group && group !== 'auto' ? groupRatios[group] : undefined
+        const groupList = group
+          ? group
+              .split(',')
+              .map((g) => g.trim())
+              .filter(Boolean)
+          : []
 
         if (group === 'auto') {
           return (
@@ -223,6 +229,21 @@ export function useApiKeysColumns(): ColumnDef<ApiKey>[] {
             </Tooltip>
           )
         }
+        if (groupList.length > 1) {
+          // 多分组：按优先级顺序渲染多个徽章（从左到右优先级递减）。
+          return (
+            <span className='inline-flex flex-wrap items-center gap-1'>
+              {groupList.map((g) => (
+                <GroupBadge
+                  key={g}
+                  group={g}
+                  ratio={g !== 'auto' ? groupRatios[g] : undefined}
+                />
+              ))}
+            </span>
+          )
+        }
+
         return <GroupBadge group={group} ratio={ratio} />
       },
       size: 160,

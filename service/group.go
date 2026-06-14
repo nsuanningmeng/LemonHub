@@ -53,6 +53,33 @@ func GetUserAutoGroup(userGroup string) []string {
 	return autoGroups
 }
 
+// ResolveTokenPriorityGroups 把令牌的原始有序分组列表展开为最终的优先级分组序列：
+//   - "auto" 就地展开为 GetUserAutoGroup(userGroup)（保持既有 auto 语义）；
+//   - 其余分组原样保留；
+//   - 整体保序去重。
+//
+// 例：["vip","auto"] -> ["vip", <auto组1>, <auto组2>, ...]
+func ResolveTokenPriorityGroups(rawGroups []string, userGroup string) []string {
+	result := make([]string, 0, len(rawGroups))
+	seen := make(map[string]bool, len(rawGroups))
+	add := func(g string) {
+		if g != "" && !seen[g] {
+			seen[g] = true
+			result = append(result, g)
+		}
+	}
+	for _, g := range rawGroups {
+		if g == "auto" {
+			for _, ag := range GetUserAutoGroup(userGroup) {
+				add(ag)
+			}
+		} else {
+			add(g)
+		}
+	}
+	return result
+}
+
 // GetUserGroupRatio 获取用户使用某个分组的倍率
 // userGroup 用户分组
 // group 需要获取倍率的分组

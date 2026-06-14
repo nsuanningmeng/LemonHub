@@ -314,6 +314,13 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 
 	info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 
+	// 多分组优先级失败转移可能切换到不同分组。普通计费的分组倍率已由上面的
+	// HandleGroupRatio 按实际命中分组重算；但 tiered_expr 的分组倍率冻结在预扣快照中，
+	// 这里需同步更新，否则分层结算会沿用初始分组倍率导致按错误分组计费。
+	if info.TieredBillingSnapshot != nil {
+		info.TieredBillingSnapshot.SyncGroupRatio(info.PriceData.GroupRatioInfo.GroupRatio)
+	}
+
 	if err != nil {
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}

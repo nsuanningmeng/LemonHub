@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -178,7 +179,9 @@ type modelListGroups struct {
 func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 	tokenGroup := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
 	userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-	if userGroup == "" && (tokenGroup == "" || tokenGroup == "auto") {
+	// 令牌分组可能是逗号分隔的多分组，解析为有序列表。
+	tokenGroups := (&model.Token{Group: tokenGroup}).GetGroups()
+	if userGroup == "" && (len(tokenGroups) == 0 || slices.Contains(tokenGroups, "auto")) {
 		var err error
 		userGroup, err = model.GetUserGroup(c.GetInt("id"), false)
 		if err != nil {
@@ -186,22 +189,23 @@ func getModelListGroups(c *gin.Context) (modelListGroups, error) {
 		}
 	}
 
-	if tokenGroup == "auto" {
+	if len(tokenGroups) == 0 {
 		return modelListGroups{
 			userGroup:   userGroup,
 			tokenGroup:  tokenGroup,
-			ownerGroups: service.GetUserAutoGroup(userGroup),
+			ownerGroups: []string{userGroup},
 		}, nil
 	}
 
-	group := userGroup
-	if tokenGroup != "" {
-		group = tokenGroup
+	// 多分组（含 auto 展开）取所有分组并集；保证非空。
+	ownerGroups := service.ResolveTokenPriorityGroups(tokenGroups, userGroup)
+	if len(ownerGroups) == 0 {
+		ownerGroups = []string{userGroup}
 	}
 	return modelListGroups{
 		userGroup:   userGroup,
 		tokenGroup:  tokenGroup,
-		ownerGroups: []string{group},
+		ownerGroups: ownerGroups,
 	}, nil
 }
 
@@ -246,16 +250,17 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 	} else {
 		var models []string
-		if groups.tokenGroup == "auto" {
-			for _, autoGroup := range ownerGroups {
-				groupModels := model.GetGroupEnabledModels(autoGroup)
+		if len(ownerGroups) > 1 {
+			// 多分组（auto 展开或令牌多分组）：取所有分组可用模型的并集。
+			for _, ownerGroup := range ownerGroups {
+				groupModels := model.GetGroupEnabledModels(ownerGroup)
 				for _, g := range groupModels {
 					if !common.StringsContains(models, g) {
 						models = append(models, g)
 					}
 				}
 			}
-		} else {
+		} else if len(ownerGroups) > 0 {
 			models = model.GetGroupEnabledModels(ownerGroups[0])
 		}
 		for _, modelName := range models {

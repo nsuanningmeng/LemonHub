@@ -98,6 +98,8 @@ func Distribute() func(c *gin.Context) {
 						}
 						usingGroup = playgroundRequest.Group
 						common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
+						// playground 显式覆盖为单分组，同步覆盖优先级列表，避免沿用令牌的多分组列表。
+						common.SetContextKey(c, constant.ContextKeyTokenGroupList, []string{usingGroup})
 					}
 				}
 
@@ -105,24 +107,35 @@ func Distribute() func(c *gin.Context) {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil && preferred.Status == common.ChannelStatusEnabled {
-						if usingGroup == "auto" {
-							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := service.GetUserAutoGroup(userGroup)
-							for _, g := range autoGroups {
-								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
-									selectGroup = g
-									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
-									channel = preferred
-									affinityUsable = true
-									service.MarkChannelAffinityUsed(c, g, preferred.Id)
-									break
-								}
+						// 泛化为按令牌的有序优先级分组列表匹配亲和渠道（兼容 auto 展开与多分组）。
+						userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
+						var rawGroups []string
+						if v, exists := common.GetContextKey(c, constant.ContextKeyTokenGroupList); exists {
+							if list, ok := v.([]string); ok {
+								rawGroups = list
 							}
-						} else if model.IsChannelEnabledForGroupModel(usingGroup, modelRequest.Model, preferred.Id) {
-							channel = preferred
-							selectGroup = usingGroup
-							affinityUsable = true
-							service.MarkChannelAffinityUsed(c, usingGroup, preferred.Id)
+						}
+						if len(rawGroups) == 0 {
+							rawGroups = []string{usingGroup}
+						}
+						affinityGroups := service.ResolveTokenPriorityGroups(rawGroups, userGroup)
+						if len(affinityGroups) == 0 {
+							affinityGroups = []string{usingGroup}
+						}
+						// 仅在多分组 / auto 展开场景写 ContextKeyAutoGroup（用于按实际分组计费），
+						// 单一具体分组保持原行为不写该键。
+						trackSelectedGroup := len(rawGroups) > 1 || slices.Contains(rawGroups, "auto")
+						for _, g := range affinityGroups {
+							if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
+								channel = preferred
+								selectGroup = g
+								affinityUsable = true
+								if trackSelectedGroup {
+									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
+								}
+								service.MarkChannelAffinityUsed(c, g, preferred.Id)
+								break
+							}
 						}
 					}
 					if !affinityUsable && !service.ShouldKeepChannelAffinityOnChannelDisabled() {

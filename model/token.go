@@ -79,6 +79,32 @@ func (token *Token) GetIpLimits() []string {
 	return ipLimits
 }
 
+// GetGroups 解析令牌的逗号分隔有序分组列表（去空格、去重、保序）。
+// 空分组返回 nil。单分组令牌返回单元素切片，与旧行为完全兼容。
+func (token *Token) GetGroups() []string {
+	if token.Group == "" {
+		return nil
+	}
+	parts := strings.Split(strings.Trim(token.Group, ","), ",")
+	groups := make([]string, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
+	for _, p := range parts {
+		g := strings.TrimSpace(p)
+		if g == "" || seen[g] {
+			continue
+		}
+		seen[g] = true
+		groups = append(groups, g)
+	}
+	return groups
+}
+
+// NormalizeGroupString 清洗入库的分组字符串（trim/去空/去重/保序后用 "," 重新拼接）。
+func NormalizeGroupString(s string) string {
+	t := &Token{Group: s}
+	return strings.Join(t.GetGroups(), ",")
+}
+
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
 	var err error
