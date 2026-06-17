@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/model"
@@ -18,9 +19,52 @@ func GetRequestBaseURL(c *gin.Context) string {
 		return fallbackServerAddress()
 	}
 	if isTrustedRequestHost(host) {
-		return fmt.Sprintf("%s://%s", scheme, host)
+		if clean := sanitizeRequestHost(host); clean != "" {
+			return fmt.Sprintf("%s://%s", scheme, clean)
+		}
 	}
 	return fallbackServerAddress()
+}
+
+// sanitizeRequestHost reduces a Host header to a clean host[:port] authority that
+// is safe to embed in a generated URL: lowercased, with any scheme/userinfo/path/
+// query/fragment stripped, the trailing FQDN dot removed, and the port kept only
+// when numeric. The host placed into the base URL is therefore exactly the
+// registered domain that passed the trust whitelist — never raw, attacker-
+// influenced bytes (the whitelist check itself normalizes, so the two must agree).
+func sanitizeRequestHost(host string) string {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return ""
+	}
+	if i := strings.Index(host, "://"); i != -1 {
+		host = host[i+3:]
+	}
+	if i := strings.IndexAny(host, "/?#"); i != -1 {
+		host = host[:i]
+	}
+	if i := strings.LastIndex(host, "@"); i != -1 {
+		host = host[i+1:]
+	}
+	hostname, port := host, ""
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		hostname, port = h, p
+	}
+	hostname = strings.TrimPrefix(hostname, "[")
+	hostname = strings.TrimSuffix(hostname, "]")
+	hostname = strings.TrimSuffix(hostname, ".")
+	if hostname == "" {
+		return ""
+	}
+	if strings.Contains(hostname, ":") { // IPv6 literal → re-bracket for URL authority
+		hostname = "[" + hostname + "]"
+	}
+	if port != "" {
+		if _, err := strconv.Atoi(port); err == nil {
+			return hostname + ":" + port
+		}
+	}
+	return hostname
 }
 
 func IsRequestHostTrusted(c *gin.Context) bool {
@@ -65,19 +109,36 @@ func detectRequestScheme(c *gin.Context) string {
 	if c == nil || c.Request == nil {
 		return "http"
 	}
-	if proto := firstHeaderValue(c.GetHeader("X-Forwarded-Proto")); proto != "" {
-		return strings.ToLower(proto)
+	if proto := normalizeScheme(firstHeaderValue(c.GetHeader("X-Forwarded-Proto"))); proto != "" {
+		return proto
 	}
-	if proto := firstHeaderValue(c.GetHeader("X-Forwarded-Protocol")); proto != "" {
-		return strings.ToLower(proto)
+	if proto := normalizeScheme(firstHeaderValue(c.GetHeader("X-Forwarded-Protocol"))); proto != "" {
+		return proto
 	}
 	if c.Request.TLS != nil {
 		return "https"
 	}
-	if c.Request.URL != nil && c.Request.URL.Scheme != "" {
-		return strings.ToLower(c.Request.URL.Scheme)
+	if c.Request.URL != nil {
+		if proto := normalizeScheme(c.Request.URL.Scheme); proto != "" {
+			return proto
+		}
 	}
 	return "http"
+}
+
+// normalizeScheme accepts ONLY the exact tokens "http" / "https" (case-insensitive),
+// returning "" for anything else. This stops a forged X-Forwarded-Proto such as
+// "https://evil.example" from polluting a generated base URL's authority (which a
+// browser would otherwise re-parse as pointing at evil.example).
+func normalizeScheme(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "https":
+		return "https"
+	case "http":
+		return "http"
+	default:
+		return ""
+	}
 }
 
 func isTrustedRequestHost(host string) bool {
