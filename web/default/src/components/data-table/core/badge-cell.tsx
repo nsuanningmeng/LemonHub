@@ -16,17 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import '@tanstack/react-table'
+import * as React from 'react'
+import { cn } from '@/lib/utils'
 
-declare module '@tanstack/react-table' {
-  interface ColumnMeta<_TData, _TValue> {
-    label?: string
-    description?: string
-    className?: string
-    pinned?: 'left' | 'right'
-    // Mobile card list layout hints (used by MobileCardList)
-    mobileTitle?: boolean // card title area (left, larger text)
-    mobileBadge?: boolean // status badge alongside title (right)
-    mobileHidden?: boolean // hide this column on mobile entirely
-  }
+type BadgeCellProps = React.HTMLAttributes<HTMLDivElement>
+
+export function BadgeCell({ className, ...props }: BadgeCellProps) {
+  return (
+    <div
+      className={cn(
+        '-ml-1.5 flex max-w-full min-w-0 items-center gap-1 overflow-hidden [&_[data-slot=status-badge]]:max-w-full [&_[data-slot=status-badge]]:min-w-0',
+        className
+      )}
+      {...props}
+    />
+  )
 }
