@@ -282,6 +282,20 @@ export function DataTableRowActions<TData>({
               if (!realKey) return
               setResolvedKey(realKey)
               setCurrentRow(apiKey)
+              setOpen('connect')
+            }}
+          >
+            {t('Connect')}
+            <DropdownMenuShortcut>
+              <Link size={16} />
+            </DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={async () => {
+              const realKey = await resolveRealKey(apiKey.id)
+              if (!realKey) return
+              setResolvedKey(realKey)
+              setCurrentRow(apiKey)
               setOpen('cc-switch')
             }}
           >

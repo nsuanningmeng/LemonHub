@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -75,13 +75,13 @@ func GetStatus(c *gin.Context) {
 		"perf_success_rate_green_threshold":  perfSetting.SuccessRateGreenThreshold,
 		"perf_success_rate_yellow_threshold": perfSetting.SuccessRateYellowThreshold,
 		"perf_no_data_as_full":               perfSetting.NoDataAsFull,
-		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,
-		"wechat_login":                common.WeChatAuthEnabled,
-		"server_address":              system_setting.ServerAddress,
-		"turnstile_check":             common.TurnstileCheckEnabled,
-		"turnstile_site_key":          common.TurnstileSiteKey,
-		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
-		"quota_per_unit":              common.QuotaPerUnit,
+		"wechat_qrcode":                      common.WeChatAccountQRCodeImageURL,
+		"wechat_login":                       common.WeChatAuthEnabled,
+		"server_address":                     system_setting.ServerAddress,
+		"turnstile_check":                    common.TurnstileCheckEnabled,
+		"turnstile_site_key":                 common.TurnstileSiteKey,
+		"docs_link":                          operation_setting.GetGeneralSetting().DocsLink,
+		"quota_per_unit":                     common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type
 		"display_in_currency":           operation_setting.IsCurrencyDisplay(),
 		"quota_display_type":            operation_setting.GetQuotaDisplayType(),
@@ -180,8 +180,12 @@ func GetStatus(c *gin.Context) {
 		data["footer_html"] = site.Footer
 		data["site_id"] = site.Id
 		data["site_status"] = site.Status
+		data["server_address"] = service.GetRequestBaseURL(c)
 	} else {
 		data["site_id"] = 0
+		if service.IsRequestHostTrusted(c) {
+			data["server_address"] = service.GetRequestBaseURL(c)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -377,7 +381,7 @@ type PasswordResetRequest struct {
 
 func ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
-	err := json.NewDecoder(c.Request.Body).Decode(&req)
+	err := common.DecodeJson(c.Request.Body, &req)
 	if req.Email == "" || req.Token == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

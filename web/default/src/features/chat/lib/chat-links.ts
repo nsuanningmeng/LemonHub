@@ -189,6 +189,21 @@ export function resolveChatUrl({
     return replaceToken(url, '{deepchatConfig}', encoded)
   }
 
+  if (url.includes('{chatboxConfig}')) {
+    const payload = {
+      id: 'lemonhub',
+      name: 'LemonHub',
+      type: 'openai',
+      settings: {
+        apiHost: safeServerAddress,
+        apiKey: safeApiKey,
+        models: [],
+      },
+    }
+    const encoded = encodeURIComponent(toBase64(JSON.stringify(payload)))
+    return replaceToken(url, '{chatboxConfig}', encoded)
+  }
+
   if (safeServerAddress) {
     const encodedAddress = encodeURIComponent(safeServerAddress)
     url = replaceToken(url, '{address}', encodedAddress)
