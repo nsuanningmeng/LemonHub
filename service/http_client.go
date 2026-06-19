@@ -21,10 +21,20 @@ var (
 	proxyClients    = make(map[string]*http.Client)
 )
 
-func checkRedirect(req *http.Request, via []*http.Request) error {
+// ValidateRelayTargetURL applies the global SSRF fetch policy to an outbound relay
+// target URL. checkRedirect enforces this on every redirect hop; callers that build
+// their own target — e.g. Advanced Custom channels whose admin-configured route may
+// be an absolute upstream URL — must also call this on the INITIAL URL, which the
+// HTTP client's CheckRedirect hook never sees. It is a no-op when SSRF protection is
+// disabled (the default).
+func ValidateRelayTargetURL(urlStr string) error {
 	fetchSetting := system_setting.GetFetchSetting()
+	return common.ValidateURLWithFetchSetting(urlStr, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)
+}
+
+func checkRedirect(req *http.Request, via []*http.Request) error {
 	urlStr := req.URL.String()
-	if err := common.ValidateURLWithFetchSetting(urlStr, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
+	if err := ValidateRelayTargetURL(urlStr); err != nil {
 		return fmt.Errorf("redirect to %s blocked: %v", urlStr, err)
 	}
 	if len(via) >= 10 {

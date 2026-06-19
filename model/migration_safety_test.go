@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -106,4 +108,35 @@ func TestCountOutOfRangePriceAmountsNoTable(t *testing.T) {
 	if n != 0 {
 		t.Fatalf("expected 0 on missing table, got %d", n)
 	}
+}
+
+// TestCountPrecisionLossPriceAmounts proves the second fail-closed pre-flight gate
+// used by migrateSubscriptionPlanPriceAmount: it counts subscription_plans rows
+// whose price_amount needs more than 6 fractional digits and would be silently
+// rounded (not range-rejected) when MySQL/PostgreSQL narrow the column to
+// decimal(10,6). These values pass the magnitude check, so a dedicated precision
+// gate is required to avoid quietly mutating stored monetary data.
+func TestCountPrecisionLossPriceAmounts(t *testing.T) {
+	db := openMigSafetyDB(t)
+	require.NoError(t, db.Exec(
+		"CREATE TABLE subscription_plans (id integer primary key, price_amount real)",
+	).Error)
+	// 9.99 (2 dp) and 1.123456 (exactly 6 dp) fit decimal(10,6) losslessly;
+	// 1.1234567 (7 dp) and 0.0000001 (7 dp) would be rounded.
+	require.NoError(t, db.Exec(
+		"INSERT INTO subscription_plans (id, price_amount) VALUES (1, 9.99),(2, 1.123456),(3, 1.1234567),(4, 0.0000001)",
+	).Error)
+
+	n, err := countPrecisionLossPriceAmounts(db)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n, "only the two >6-fractional-digit rows must be flagged")
+}
+
+// TestCountPrecisionLossPriceAmountsNoTable proves the precision pre-flight is a
+// safe no-op when subscription_plans does not exist yet.
+func TestCountPrecisionLossPriceAmountsNoTable(t *testing.T) {
+	db := openMigSafetyDB(t)
+	n, err := countPrecisionLossPriceAmounts(db)
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
 }

@@ -302,6 +302,14 @@ func (a *Adaptor) routeURL(info *relaycommon.RelayInfo) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// SSRF guard: an Advanced Custom route can target an admin-configured absolute
+	// upstream URL (or a custom base URL), which the HTTP client's redirect check
+	// never validates because it is the initial request. Apply the same global fetch
+	// policy here so a route cannot be pointed at internal/metadata endpoints when
+	// SSRF protection is enabled.
+	if err := service.ValidateRelayTargetURL(parsedURL.String()); err != nil {
+		return "", fmt.Errorf("advanced custom upstream %s blocked: %v", parsedURL.Redacted(), err)
+	}
 	if shouldUseGeminiStreamURL(a.converter, info) {
 		useGeminiStreamGenerateContentURL(parsedURL)
 	}

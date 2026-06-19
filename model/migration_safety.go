@@ -2,6 +2,8 @@ package model
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -64,4 +66,44 @@ func countOutOfRangePriceAmounts(db *gorm.DB) (int64, error) {
 		Where("price_amount > ? OR price_amount < ?", priceAmountDecimalMax, -priceAmountDecimalMax).
 		Count(&n).Error
 	return n, err
+}
+
+// countPrecisionLossPriceAmounts returns how many subscription_plans rows hold a
+// price_amount that needs more than 6 fractional digits and therefore cannot be
+// stored losslessly in decimal(10,6). Unlike the magnitude check, such values pass
+// the range preflight yet are silently ROUNDED when MySQL/PostgreSQL narrow the
+// column, quietly changing stored monetary data — so the migration uses this as a
+// second fail-closed preflight.
+//
+// The check runs in Go (the table is tiny) using the shortest round-tripping decimal
+// representation, which avoids cross-DB ROUND/CAST dialect differences and float
+// noise. SQLite never reaches this path (it has no decimal precision enforcement, so
+// the narrowing is a no-op there).
+func countPrecisionLossPriceAmounts(db *gorm.DB) (int64, error) {
+	if !db.Migrator().HasTable(&SubscriptionPlan{}) ||
+		!db.Migrator().HasColumn(&SubscriptionPlan{}, "price_amount") {
+		return 0, nil
+	}
+	var amounts []float64
+	if err := db.Model(&SubscriptionPlan{}).Pluck("price_amount", &amounts).Error; err != nil {
+		return 0, err
+	}
+	var n int64
+	for _, a := range amounts {
+		if fractionalDigitCount(a) > 6 {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// fractionalDigitCount returns the number of fractional digits in the shortest
+// decimal string that round-trips to v (e.g. 19.99 -> 2, 1.1234567 -> 7). A value
+// needing more than 6 cannot be represented exactly by decimal(10,6).
+func fractionalDigitCount(v float64) int {
+	s := strconv.FormatFloat(v, 'f', -1, 64)
+	if i := strings.IndexByte(s, '.'); i >= 0 {
+		return len(s) - i - 1
+	}
+	return 0
 }

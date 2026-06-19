@@ -610,6 +610,16 @@ func migrateSubscriptionPlanPriceAmount() error {
 				tableName, columnName, outOfRange,
 			)
 		}
+		precisionLoss, err := countPrecisionLossPriceAmounts(DB)
+		if err != nil {
+			return fmt.Errorf("pre-flight precision check for %s.%s failed: %w", tableName, columnName, err)
+		}
+		if precisionLoss > 0 {
+			return fmt.Errorf(
+				"cannot migrate %s.%s to decimal(10,6): %d row(s) have more than 6 fractional digits and would be silently rounded; normalize these values before upgrading",
+				tableName, columnName, precisionLoss,
+			)
+		}
 		if err := DB.Exec(alterSQL).Error; err != nil {
 			return fmt.Errorf("failed to migrate %s.%s to decimal(10,6): %w", tableName, columnName, err)
 		}
