@@ -42,37 +42,46 @@ type BuildModelRatioColumnsOptions = {
   onDelete: (name: string) => void
   onEdit: (model: ModelRow) => void
   t: (key: string) => string
+  /**
+   * Unset-price view: drop the bulk-select column and the delete action so the
+   * only affordance is "edit to set a price", mirroring the classic frontend's
+   * read-mostly "未设置价格模型" editor.
+   */
+  unsetMode?: boolean
 }
 
 export function buildModelRatioColumns({
   onDelete,
   onEdit,
   t,
+  unsetMode = false,
 }: BuildModelRatioColumnsOptions): ColumnDef<ModelRow>[] {
+  const selectColumn: ColumnDef<ModelRow> = {
+    id: 'select',
+    header: ({ table }) => (
+      <Checkbox
+        checked={table.getIsAllPageRowsSelected()}
+        indeterminate={table.getIsSomePageRowsSelected()}
+        onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+        aria-label={t('Select all')}
+        className='translate-y-[2px]'
+      />
+    ),
+    cell: ({ row }) => (
+      <Checkbox
+        checked={row.getIsSelected()}
+        onCheckedChange={(value) => row.toggleSelected(!!value)}
+        aria-label={t('Select row')}
+        className='translate-y-[2px]'
+      />
+    ),
+    enableSorting: false,
+    enableHiding: false,
+    size: 40,
+  }
+
   return [
-    {
-      id: 'select',
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          indeterminate={table.getIsSomePageRowsSelected()}
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label={t('Select all')}
-          className='translate-y-[2px]'
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label={t('Select row')}
-          className='translate-y-[2px]'
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-      size: 40,
-    },
+    ...(unsetMode ? [] : [selectColumn]),
     {
       accessorKey: 'name',
       header: ({ column }) => (
@@ -152,13 +161,15 @@ export function buildModelRatioColumns({
           >
             <Pencil />
           </Button>
-          <Button
-            variant='ghost'
-            size='sm'
-            onClick={() => onDelete(row.original.name)}
-          >
-            <Trash2 />
-          </Button>
+          {!unsetMode && (
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => onDelete(row.original.name)}
+            >
+              <Trash2 />
+            </Button>
+          )}
         </div>
       ),
       enableHiding: false,

@@ -67,6 +67,15 @@ export async function getUpstreamChannels() {
   return res.data
 }
 
+export async function getEnabledModels() {
+  const res = await api.get<{
+    success: boolean
+    message?: string
+    data?: string[]
+  }>('/api/channel/models_enabled')
+  return res.data
+}
+
 export async function fetchUpstreamRatios(request: FetchUpstreamRatiosRequest) {
   const res = await api.post<UpstreamRatiosResponse>(
     '/api/ratio_sync/fetch',

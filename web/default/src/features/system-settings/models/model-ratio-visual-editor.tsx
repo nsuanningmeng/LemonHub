@@ -34,10 +34,12 @@ import {
   type VisibilityState,
   type SortingState,
 } from '@tanstack/react-table'
+import { useQuery } from '@tanstack/react-query'
 import { useMediaQuery } from '@/hooks'
 import { Copy, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DataTableBulkActions,
@@ -57,10 +59,13 @@ import {
 } from './model-pricing-sheet'
 import {
   buildModelSnapshots,
+  createUnsetModelRow,
   getSnapshotSignature,
+  isBasePricingUnset,
   type ModelRow,
 } from './model-pricing-snapshots'
 import { buildModelRatioColumns } from './model-ratio-table-columns'
+import { getEnabledModels } from '../api'
 
 type ModelRatioVisualEditorProps = {
   savedModelPrice: string
@@ -134,6 +139,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+  const [unsetOnly, setUnsetOnly] = useState(false)
   const editorPanelRef = useRef<ModelPricingEditorPanelHandle>(null)
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -178,7 +184,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     localStorage.setItem(STORAGE_KEY, JSON.stringify(columnVisibility))
   }, [columnVisibility])
 
-  const models = useMemo(() => {
+  const baseModels = useMemo<ModelRow[]>(() => {
     const savedRows = buildModelSnapshots({
       modelPrice: savedModelPrice,
       modelRatio: savedModelRatio,
@@ -250,9 +256,40 @@ const ModelRatioVisualEditorComponent = forwardRef<
     billingExpr,
   ])
 
+  // Models served by at least one enabled channel. Used to surface models that
+  // are reachable but have never had a price configured (they have no entry in
+  // any pricing map, so `baseModels` alone would miss them).
+  const enabledModelsQuery = useQuery({
+    queryKey: ['channel-enabled-models'],
+    queryFn: getEnabledModels,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const candidateModelNames = useMemo(
+    () => enabledModelsQuery.data?.data ?? [],
+    [enabledModelsQuery.data]
+  )
+
+  const unsetModels = useMemo(() => {
+    const existing = new Set(baseModels.map((row) => row.name))
+    // Evaluate the draft (to-be-saved) snapshot, not the saved-preferred
+    // displayed one, so a row leaves the list live once its price is set —
+    // matching the helper copy "They leave this list once priced."
+    const rows = baseModels.filter((row) =>
+      isBasePricingUnset(row.draft ?? row.saved ?? row)
+    )
+    for (const name of new Set(candidateModelNames)) {
+      if (!existing.has(name)) rows.push(createUnsetModelRow(name))
+    }
+    return rows.sort((a, b) => a.name.localeCompare(b.name))
+  }, [baseModels, candidateModelNames])
+
+  const unsetCount = unsetModels.length
+  const models = unsetOnly ? unsetModels : baseModels
+
   const modeCounts = useMemo(
     () =>
-      models.reduce(
+      baseModels.reduce(
         (acc, model) => {
           const mode =
             model.billingMode === 'per-request' ||
@@ -268,7 +305,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           tiered_expr: 0,
         } as Record<'per-token' | 'per-request' | 'tiered_expr', number>
       ),
-    [models]
+    [baseModels]
   )
 
   const handleEdit = useCallback(
@@ -304,6 +341,18 @@ const ModelRatioVisualEditorComponent = forwardRef<
     setEditorOpen(true)
     if (isMobile) setSheetOpen(true)
   }, [isMobile])
+
+  const toggleUnsetOnly = useCallback(() => {
+    setUnsetOnly((prev) => !prev)
+    setEditData(null)
+    setEditorOpen(false)
+    setSheetOpen(false)
+    setRowSelection({})
+    // The billing-mode facet is hidden in unset-only mode; clear any active
+    // selection so a stale filter doesn't hide the (per-token) unset rows.
+    setColumnFilters([])
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }))
+  }, [])
 
   const handleGlobalFilterChange = useCallback<OnChangeFn<string>>(
     (updater) => {
@@ -422,13 +471,15 @@ const ModelRatioVisualEditorComponent = forwardRef<
         onDelete: handleDelete,
         onEdit: handleEdit,
         t,
+        unsetMode: unsetOnly,
       }),
-    [handleEdit, handleDelete, t]
+    [handleEdit, handleDelete, t, unsetOnly]
   )
 
   const { table } = useDataTable({
     data: models,
     columns,
+    getRowId: (row) => row.name,
     sorting,
     columnFilters,
     globalFilter,
@@ -625,6 +676,13 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   const hasRows = table.getRowModel().rows.length > 0
 
+  let emptyStateMessage = t('No models configured. Use Add model to get started.')
+  if (table.getState().globalFilter) {
+    emptyStateMessage = t('No models match your search')
+  } else if (unsetOnly) {
+    emptyStateMessage = t('No unpriced models')
+  }
+
   return (
     <div className='flex flex-col gap-4'>
       <div className='grid h-[clamp(720px,calc(100vh-12rem),900px)] min-h-0 gap-4 md:grid-cols-[minmax(300px,0.72fr)_minmax(520px,1.28fr)] xl:grid-cols-[minmax(320px,0.68fr)_minmax(640px,1.32fr)]'>
@@ -632,42 +690,69 @@ const ModelRatioVisualEditorComponent = forwardRef<
           <DataTableToolbar
             table={table}
             searchPlaceholder={t('Search models...')}
-            filters={[
-              {
-                columnId: 'billingMode',
-                title: t('Mode'),
-                options: [
-                  {
-                    label: 'Per-token',
-                    value: 'per-token',
-                    count: modeCounts['per-token'],
-                  },
-                  {
-                    label: 'Per-request',
-                    value: 'per-request',
-                    count: modeCounts['per-request'],
-                  },
-                  {
-                    label: 'Expression',
-                    value: 'tiered_expr',
-                    count: modeCounts.tiered_expr,
-                  },
-                ],
-              },
-            ]}
-            preActions={
-              <Button onClick={handleAdd}>
-                <Plus data-icon='inline-start' />
-                {t('Add model')}
+            additionalSearch={
+              <Button
+                type='button'
+                variant={unsetOnly ? 'default' : 'outline'}
+                onClick={toggleUnsetOnly}
+                aria-pressed={unsetOnly}
+              >
+                {t('Unset price only')}
+                {unsetCount > 0 && (
+                  <Badge variant='secondary' className='ms-1.5'>
+                    {unsetCount}
+                  </Badge>
+                )}
               </Button>
+            }
+            filters={
+              unsetOnly
+                ? undefined
+                : [
+                    {
+                      columnId: 'billingMode',
+                      title: t('Mode'),
+                      options: [
+                        {
+                          label: 'Per-token',
+                          value: 'per-token',
+                          count: modeCounts['per-token'],
+                        },
+                        {
+                          label: 'Per-request',
+                          value: 'per-request',
+                          count: modeCounts['per-request'],
+                        },
+                        {
+                          label: 'Expression',
+                          value: 'tiered_expr',
+                          count: modeCounts.tiered_expr,
+                        },
+                      ],
+                    },
+                  ]
+            }
+            preActions={
+              unsetOnly ? undefined : (
+                <Button onClick={handleAdd}>
+                  <Plus data-icon='inline-start' />
+                  {t('Add model')}
+                </Button>
+              )
             }
           />
 
+          {unsetOnly && (
+            <p className='text-muted-foreground text-xs leading-5'>
+              {t(
+                'Only models served by enabled channels with no base price configured. They leave this list once priced.'
+              )}
+            </p>
+          )}
+
           {!hasRows ? (
             <div className='text-muted-foreground rounded-lg border border-dashed p-8 text-center'>
-              {table.getState().globalFilter
-                ? t('No models match your search')
-                : t('No models configured. Use Add model to get started.')}
+              {emptyStateMessage}
             </div>
           ) : (
             <DataTableView
@@ -688,7 +773,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
               ]}
               colgroup={
                 <colgroup>
-                  <col className='w-9' />
+                  {/* No select column in unset-only mode (see buildModelRatioColumns) */}
+                  {!unsetOnly && <col className='w-9' />}
                   <col className='w-[300px]' />
                   <col className='w-[120px]' />
                   <col className='w-[300px]' />
@@ -751,14 +837,18 @@ const ModelRatioVisualEditorComponent = forwardRef<
         </div>
       </div>
 
-      <DataTableBulkActions table={table} entityName={t('model')}>
-        <Button size='sm' disabled={!editData} onClick={handleBatchCopy}>
-          <Copy data-icon='inline-start' />
-          {editData
-            ? t('Copy {{name}} pricing', { name: editData.name })
-            : t('Open a source model first')}
-        </Button>
-      </DataTableBulkActions>
+      {/* Bulk-copy needs a priced source row; in unset-only mode every row is
+          unpriced, so the affordance is hidden (matches classic's reduced UI). */}
+      {!unsetOnly && (
+        <DataTableBulkActions table={table} entityName={t('model')}>
+          <Button size='sm' disabled={!editData} onClick={handleBatchCopy}>
+            <Copy data-icon='inline-start' />
+            {editData
+              ? t('Copy {{name}} pricing', { name: editData.name })
+              : t('Open a source model first')}
+          </Button>
+        </DataTableBulkActions>
+      )}
 
       {isMobile && (
         <ModelPricingSheet
