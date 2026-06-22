@@ -48,6 +48,9 @@ export interface SiteAdminDashboard {
   logo: string
   notice: string
   footer: string
+  home_badge: string
+  home_title_line1: string
+  home_title_line2: string
   status: number // 1 normal, 2 disabled
   discount_rate: number // basis of 10000
   wallet_balance: number // 厘
@@ -125,6 +128,9 @@ export interface BrandingPayload {
   logo: string
   notice: string
   footer: string
+  home_badge: string
+  home_title_line1: string
+  home_title_line2: string
 }
 
 // ============================================================================

@@ -38,6 +38,9 @@ export function getSiteFormSchema(t: TFunction) {
     logo: z.string().optional(),
     notice: z.string().optional(),
     footer: z.string().optional(),
+    home_badge: z.string().optional(),
+    home_title_line1: z.string().optional(),
+    home_title_line2: z.string().optional(),
     discount_rate: z.number().min(0).max(10000),
     status: z.number(),
     wallet_warn_threshold: z.number().min(0),
@@ -52,6 +55,9 @@ export type SiteFormValues = {
   logo?: string
   notice?: string
   footer?: string
+  home_badge?: string
+  home_title_line1?: string
+  home_title_line2?: string
   discount_rate: number
   status: number
   wallet_warn_threshold: number
@@ -69,6 +75,9 @@ export const SITE_FORM_DEFAULT_VALUES: SiteFormValues = {
   logo: '',
   notice: '',
   footer: '',
+  home_badge: '',
+  home_title_line1: '',
+  home_title_line2: '',
   discount_rate: 10000,
   status: 1,
   wallet_warn_threshold: 0,
@@ -96,6 +105,9 @@ export function transformFormToPayload(data: SiteFormValues): SiteCreatePayload 
     logo: data.logo || '',
     notice: data.notice || '',
     footer: data.footer || '',
+    home_badge: data.home_badge || '',
+    home_title_line1: data.home_title_line1 || '',
+    home_title_line2: data.home_title_line2 || '',
     discount_rate: data.discount_rate,
     status: data.status,
     wallet_warn_threshold: data.wallet_warn_threshold,
@@ -115,6 +127,9 @@ export function transformSiteToForm(site: Site): SiteFormValues {
     logo: site.logo || '',
     notice: site.notice || '',
     footer: site.footer || '',
+    home_badge: site.home_badge || '',
+    home_title_line1: site.home_title_line1 || '',
+    home_title_line2: site.home_title_line2 || '',
     discount_rate: site.discount_rate,
     status: site.status,
     wallet_warn_threshold: site.wallet_warn_threshold,

@@ -379,6 +379,63 @@ export function SubSiteMutateDrawer({
                 )}
               />
 
+              {/* Home Hero Badge (white-label homepage copy) */}
+              <FormField
+                control={form.control}
+                name='home_badge'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Home Hero Badge')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder={t('Leave empty to use the site title')}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Small pill shown above the homepage hero title.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Home Hero Title Line 1 */}
+              <FormField
+                control={form.control}
+                name='home_title_line1'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Home Hero Title Line 1')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder={t('Leave empty to use the default copy')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Home Hero Title Line 2 */}
+              <FormField
+                control={form.control}
+                name='home_title_line2'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Home Hero Title Line 2')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        placeholder={t('Leave empty to use the default copy')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Pay Config (advanced, collapsed) */}
               <div>
                 <Button

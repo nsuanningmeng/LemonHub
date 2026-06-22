@@ -59,6 +59,9 @@ func SiteAdminDashboard(c *gin.Context) {
 		"logo":                  site.Logo,
 		"notice":                site.Notice,
 		"footer":                site.Footer,
+		"home_badge":            site.HomeBadge,
+		"home_title_line1":      site.HomeTitleLine1,
+		"home_title_line2":      site.HomeTitleLine2,
 		"status":                site.Status,
 		"discount_rate":         site.DiscountRate,
 		"wallet_balance":        site.WalletBalance,
@@ -272,10 +275,13 @@ func SiteAdminExportRedemptions(c *gin.Context) {
 }
 
 type siteAdminBrandingRequest struct {
-	Name   string `json:"name"`
-	Logo   string `json:"logo"`
-	Notice string `json:"notice"`
-	Footer string `json:"footer"`
+	Name           string `json:"name"`
+	Logo           string `json:"logo"`
+	Notice         string `json:"notice"`
+	Footer         string `json:"footer"`
+	HomeBadge      string `json:"home_badge"`
+	HomeTitleLine1 string `json:"home_title_line1"`
+	HomeTitleLine2 string `json:"home_title_line2"`
 }
 
 // SiteAdminUpdateBranding updates ONLY the four brand fields (name/logo/notice/footer) of the
@@ -297,7 +303,7 @@ func SiteAdminUpdateBranding(c *gin.Context) {
 		common.ApiErrorMsg(c, "子站名称不能为空")
 		return
 	}
-	if err := model.UpdateSiteBranding(siteId, name, req.Logo, req.Notice, req.Footer); err != nil {
+	if err := model.UpdateSiteBranding(siteId, name, req.Logo, req.Notice, req.Footer, strings.TrimSpace(req.HomeBadge), strings.TrimSpace(req.HomeTitleLine1), strings.TrimSpace(req.HomeTitleLine2)); err != nil {
 		common.ApiErrorMsg(c, err.Error())
 		return
 	}

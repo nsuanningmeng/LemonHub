@@ -85,6 +85,9 @@ export function getBrandingFormSchema(t: TFunction) {
     logo: z.string().optional(),
     notice: z.string().optional(),
     footer: z.string().optional(),
+    home_badge: z.string().optional(),
+    home_title_line1: z.string().optional(),
+    home_title_line2: z.string().optional(),
   })
 }
 
@@ -93,6 +96,9 @@ export type BrandingFormValues = {
   logo?: string
   notice?: string
   footer?: string
+  home_badge?: string
+  home_title_line1?: string
+  home_title_line2?: string
 }
 
 export const BRANDING_FORM_DEFAULT_VALUES: BrandingFormValues = {
@@ -100,6 +106,9 @@ export const BRANDING_FORM_DEFAULT_VALUES: BrandingFormValues = {
   logo: '',
   notice: '',
   footer: '',
+  home_badge: '',
+  home_title_line1: '',
+  home_title_line2: '',
 }
 
 export function transformBrandingFormToPayload(
@@ -110,6 +119,9 @@ export function transformBrandingFormToPayload(
     logo: data.logo || '',
     notice: data.notice || '',
     footer: data.footer || '',
+    home_badge: data.home_badge || '',
+    home_title_line1: data.home_title_line1 || '',
+    home_title_line2: data.home_title_line2 || '',
   }
 }
 

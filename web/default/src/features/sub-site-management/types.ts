@@ -31,6 +31,9 @@ export const siteSchema = z.object({
   logo: z.string(),
   notice: z.string(),
   footer: z.string(),
+  home_badge: z.string().optional().default(''),
+  home_title_line1: z.string().optional().default(''),
+  home_title_line2: z.string().optional().default(''),
   owner_user_id: z.number(),
   owner_username: z.string(),
   status: z.number(), // 1: normal, 2: disabled
@@ -85,6 +88,9 @@ export interface SiteCreatePayload {
   logo?: string
   notice?: string
   footer?: string
+  home_badge?: string
+  home_title_line1?: string
+  home_title_line2?: string
   discount_rate?: number
   status?: number
   wallet_warn_threshold?: number
@@ -99,6 +105,9 @@ export interface SiteUpdatePayload {
   logo?: string
   notice?: string
   footer?: string
+  home_badge?: string
+  home_title_line1?: string
+  home_title_line2?: string
   discount_rate?: number
   status?: number
   wallet_warn_threshold?: number

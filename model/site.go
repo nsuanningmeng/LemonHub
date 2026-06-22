@@ -23,6 +23,9 @@ type Site struct {
 	Logo                string `json:"logo" gorm:"type:varchar(512)"`
 	Notice              string `json:"notice" gorm:"type:text"`
 	Footer              string `json:"footer" gorm:"type:text"`
+	HomeBadge           string `json:"home_badge" gorm:"type:varchar(255);default:''"`
+	HomeTitleLine1      string `json:"home_title_line1" gorm:"type:varchar(255);default:''"`
+	HomeTitleLine2      string `json:"home_title_line2" gorm:"type:varchar(255);default:''"`
 	OwnerUserId         int    `json:"owner_user_id" gorm:"index"`
 	Status              int    `json:"status" gorm:"type:int;default:1"`            // 1 normal, 2 disabled
 	WalletBalance       int64  `json:"wallet_balance" gorm:"type:bigint;default:0"` // 厘
@@ -421,6 +424,9 @@ func UpdateSite(site *Site) error {
 			"logo":                  site.Logo,
 			"notice":                site.Notice,
 			"footer":                site.Footer,
+			"home_badge":            site.HomeBadge,
+			"home_title_line1":      site.HomeTitleLine1,
+			"home_title_line2":      site.HomeTitleLine2,
 			"status":                site.Status,
 			"discount_rate":         site.DiscountRate,
 			"wallet_warn_threshold": site.WalletWarnThreshold,
@@ -453,7 +459,7 @@ func UpdateSite(site *Site) error {
 // domains/discount_rate/owner/status/pay_config, so this helper deliberately touches no other
 // columns. A column map (not a struct) is used so that clearing notice/footer to empty strings
 // is actually persisted — GORM struct Updates would skip those zero values.
-func UpdateSiteBranding(siteId int, name, logo, notice, footer string) error {
+func UpdateSiteBranding(siteId int, name, logo, notice, footer, homeBadge, homeTitleLine1, homeTitleLine2 string) error {
 	if siteId <= 0 {
 		return errors.New("无效的子站")
 	}
@@ -461,11 +467,14 @@ func UpdateSiteBranding(siteId int, name, logo, notice, footer string) error {
 		return errors.New("子站名称不能为空")
 	}
 	updates := map[string]interface{}{
-		"name":         name,
-		"logo":         logo,
-		"notice":       notice,
-		"footer":       footer,
-		"updated_time": common.GetTimestamp(),
+		"name":             name,
+		"logo":             logo,
+		"notice":           notice,
+		"footer":           footer,
+		"home_badge":       homeBadge,
+		"home_title_line1": homeTitleLine1,
+		"home_title_line2": homeTitleLine2,
+		"updated_time":     common.GetTimestamp(),
 	}
 	res := DB.Model(&Site{}).Where("id = ?", siteId).Updates(updates)
 	if res.Error != nil {

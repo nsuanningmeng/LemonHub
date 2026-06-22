@@ -17,6 +17,9 @@ type SiteRequest struct {
 	Logo                string   `json:"logo"`
 	Notice              string   `json:"notice"`
 	Footer              string   `json:"footer"`
+	HomeBadge           string   `json:"home_badge"`
+	HomeTitleLine1      string   `json:"home_title_line1"`
+	HomeTitleLine2      string   `json:"home_title_line2"`
 	OwnerUsername       string   `json:"owner_username"`
 	Status              int      `json:"status"`
 	DiscountRate        int      `json:"discount_rate"`
@@ -101,6 +104,9 @@ func AddSite(c *gin.Context) {
 		Logo:                req.Logo,
 		Notice:              req.Notice,
 		Footer:              req.Footer,
+		HomeBadge:           strings.TrimSpace(req.HomeBadge),
+		HomeTitleLine1:      strings.TrimSpace(req.HomeTitleLine1),
+		HomeTitleLine2:      strings.TrimSpace(req.HomeTitleLine2),
 		OwnerUsername:       strings.TrimSpace(req.OwnerUsername),
 		Status:              req.Status,
 		DiscountRate:        req.DiscountRate,
@@ -147,6 +153,9 @@ func UpdateSite(c *gin.Context) {
 		Logo:                req.Logo,
 		Notice:              req.Notice,
 		Footer:              req.Footer,
+		HomeBadge:           strings.TrimSpace(req.HomeBadge),
+		HomeTitleLine1:      strings.TrimSpace(req.HomeTitleLine1),
+		HomeTitleLine2:      strings.TrimSpace(req.HomeTitleLine2),
 		OwnerUsername:       strings.TrimSpace(req.OwnerUsername),
 		Status:              req.Status,
 		DiscountRate:        req.DiscountRate,

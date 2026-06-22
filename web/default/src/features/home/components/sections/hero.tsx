@@ -48,6 +48,15 @@ export function Hero(props: HeroProps) {
   const { status } = useStatus()
   const docsUrl =
     (status?.docs_link as string | undefined) || 'https://docs.newapi.pro'
+  // Hero copy is per-site customizable (white-label) with sensible fallbacks:
+  // the badge defaults to the site title; the two title lines fall back to the
+  // default localized copy; "site title" is the resolved system_name.
+  const siteTitle = status?.system_name?.trim() || 'New API'
+  const heroBadge = status?.home_badge?.trim() || siteTitle
+  const heroTitleLine1 =
+    status?.home_title_line1?.trim() || t('Unified API Gateway for')
+  const heroTitleLine2 =
+    status?.home_title_line2?.trim() || t('Vast Range of AI Models')
 
   const renderDocsButton = () => {
     const isExternal = docsUrl.startsWith('http')
@@ -109,17 +118,17 @@ export function Hero(props: HeroProps) {
               <span className='absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75' />
               <span className='relative inline-flex size-1.5 rounded-full bg-blue-500 dark:bg-blue-400' />
             </span>
-            <span>{t('AI Application Infrastructure Foundation')}</span>
+            <span>{heroBadge}</span>
           </div>
 
           <h1
             className='landing-animate-fade-up text-[clamp(2.25rem,4.5vw,3.25rem)] leading-[1.15] font-bold tracking-tight'
             style={{ animationDelay: '60ms' }}
           >
-            {t('Unified API Gateway for')}
+            {heroTitleLine1}
             <br />
             <span className='bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent'>
-              {t('Vast Range of AI Models')}
+              {heroTitleLine2}
             </span>
           </h1>
           <p
@@ -178,7 +187,8 @@ export function Hero(props: HeroProps) {
               </span>
               <p className='text-muted-foreground/60 text-xs leading-relaxed'>
                 {t(
-                  'Supports one-click configuration and perfectly adapts to NewAPI multi-protocol configuration.'
+                  'Supports one-click configuration and perfectly adapts to {{name}} multi-protocol configuration.',
+                  { name: siteTitle }
                 )}
               </p>
             </div>

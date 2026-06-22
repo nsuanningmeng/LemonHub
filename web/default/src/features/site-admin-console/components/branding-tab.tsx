@@ -77,6 +77,9 @@ export function BrandingTab() {
         logo: data.logo || '',
         notice: data.notice || '',
         footer: data.footer || '',
+        home_badge: data.home_badge || '',
+        home_title_line1: data.home_title_line1 || '',
+        home_title_line2: data.home_title_line2 || '',
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -173,6 +176,57 @@ export function BrandingTab() {
                   <FormLabel>{t('Footer')}</FormLabel>
                   <FormControl>
                     <Input {...field} placeholder={t('Footer text or HTML')} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='home_badge'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Home Hero Badge')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder={t('Leave empty to use the site title')}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t('Small pill shown above the homepage hero title.')}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='home_title_line1'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Home Hero Title Line 1')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder={t('Leave empty to use the default copy')}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name='home_title_line2'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Home Hero Title Line 2')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder={t('Leave empty to use the default copy')}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

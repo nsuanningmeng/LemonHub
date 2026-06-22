@@ -178,6 +178,9 @@ func GetStatus(c *gin.Context) {
 		data["system_name"] = site.Name
 		data["logo"] = site.Logo
 		data["footer_html"] = site.Footer
+		data["home_badge"] = site.HomeBadge
+		data["home_title_line1"] = site.HomeTitleLine1
+		data["home_title_line2"] = site.HomeTitleLine2
 		data["site_id"] = site.Id
 		data["site_status"] = site.Status
 		data["server_address"] = service.GetRequestBaseURL(c)

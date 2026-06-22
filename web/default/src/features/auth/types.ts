@@ -139,6 +139,9 @@ export interface SystemStatus {
   // Allow direct access to common properties
   version?: string
   system_name?: string
+  home_badge?: string
+  home_title_line1?: string
+  home_title_line2?: string
   logo?: string
   github_oauth?: boolean
   github_client_id?: string
