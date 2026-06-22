@@ -25,8 +25,8 @@ var (
 // target URL. checkRedirect enforces this on every redirect hop; callers that build
 // their own target — e.g. Advanced Custom channels whose admin-configured route may
 // be an absolute upstream URL — must also call this on the INITIAL URL, which the
-// HTTP client's CheckRedirect hook never sees. It is a no-op when SSRF protection is
-// disabled (the default).
+// HTTP client's CheckRedirect hook never sees. SSRF protection is ENABLED by default
+// (enable_ssrf_protection); this is a no-op only when an operator explicitly disables it.
 func ValidateRelayTargetURL(urlStr string) error {
 	fetchSetting := system_setting.GetFetchSetting()
 	return common.ValidateURLWithFetchSetting(urlStr, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain)

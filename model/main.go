@@ -318,6 +318,20 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	// Run the same fail-closed, order-sensitive preflight migrations as migrateDB()
+	// BEFORE any (parallel) AutoMigrate. These are not optional: skipping them can
+	// silently truncate monetary data (price_amount -> decimal) on MySQL non-STRICT
+	// mode, and the username-unique relax MUST run before AutoMigrate(&User{})
+	// recreates the composite unique index. Keep this in sync with migrateDB().
+	if err := migrateSubscriptionPlanPriceAmount(); err != nil {
+		return err
+	}
+	if err := migrateTokenModelLimitsToText(); err != nil {
+		return err
+	}
+	if err := migrateRelaxLegacyUsernameUnique(); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -376,6 +390,11 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	// Mirror migrateDB(): guarantee no NULL site_id rows remain so main-site
+	// (`WHERE site_id = 0`) queries never hide legacy data.
+	if err := backfillNullSiteIds(DB); err != nil {
+		return err
 	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {
