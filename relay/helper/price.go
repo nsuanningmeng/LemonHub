@@ -61,6 +61,24 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) types.
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
 
+	// LemonHub white-label (route A): apply the sub-site's per-call model price MARKUP. Keyed off
+	// the AUTHENTICATED token owner's site (operator_site_id, set in auth from user.SiteId) — NOT
+	// the request Host — so a sub-site user always pays their own site's markup regardless of the
+	// domain they call from, and main-site users (site 0) always pay platform retail. A sub-site
+	// may only mark UP (>= main retail; GetSiteModelPriceMultiplier clamps to >= 1.0), so the
+	// platform is never undercut. Folded into GroupRatio so it flows uniformly through pre-consume
+	// AND settlement with zero change to the billing math.
+	//
+	// v1 scope: async task / realtime settlement re-derive the group ratio WITHOUT this markup, so
+	// those formats are excluded here (they bill at the platform base price) — otherwise a marked-up
+	// pre-consume would be refunded through a non-uniform task path. Main / unknown site => 1.0.
+	switch relayInfo.RelayFormat {
+	case types.RelayFormatTask, types.RelayFormatMjProxy, types.RelayFormatOpenAIRealtime:
+		// excluded in v1 (settlement is not markup-aware on these paths)
+	default:
+		groupRatioInfo.GroupRatio *= model.GetSiteModelPriceMultiplier(ctx.GetInt("operator_site_id"))
+	}
+
 	return groupRatioInfo
 }
 

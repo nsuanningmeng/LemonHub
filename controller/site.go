@@ -25,6 +25,8 @@ type SiteRequest struct {
 	DiscountRate        int      `json:"discount_rate"`
 	WalletWarnThreshold int64    `json:"wallet_warn_threshold"`
 	PayConfig           string   `json:"pay_config"`
+	ModelPriceRate      int      `json:"model_price_rate"`     // 万分比, default 10000; sub-site model price markup
+	ModelPriceRateMax   int      `json:"model_price_rate_max"` // 万分比 cap (0 = no cap)
 	Domains             []string `json:"domains"`
 }
 
@@ -85,6 +87,18 @@ func validateSiteRequest(req *SiteRequest, requireOwner bool) (string, bool) {
 	if req.WalletWarnThreshold < 0 {
 		return "钱包警戒线不能为负", false
 	}
+	// ModelPriceRate: 0 means "use default (= main retail)"; otherwise must be >= 10000 (a sub-site
+	// may only mark prices UP, never below main retail). The cap, when set, must also be >= retail.
+	if req.ModelPriceRate != 0 && req.ModelPriceRate < model.DiscountRateBase {
+		return "模型加价率不能低于主站零售价（10000 表示与主站一致）", false
+	}
+	if req.ModelPriceRateMax != 0 && req.ModelPriceRateMax < model.DiscountRateBase {
+		return "模型加价率上限不能低于 10000（主站零售价）", false
+	}
+	// Reject a contradictory cap below the default rate (would otherwise be silently widened).
+	if req.ModelPriceRate != 0 && req.ModelPriceRateMax != 0 && req.ModelPriceRateMax < req.ModelPriceRate {
+		return "模型加价率上限不能低于默认加价率", false
+	}
 	return "", true
 }
 
@@ -112,6 +126,8 @@ func AddSite(c *gin.Context) {
 		DiscountRate:        req.DiscountRate,
 		WalletWarnThreshold: req.WalletWarnThreshold,
 		PayConfig:           req.PayConfig,
+		ModelPriceRate:      req.ModelPriceRate,
+		ModelPriceRateMax:   req.ModelPriceRateMax,
 		Domains:             req.Domains,
 	}
 	if err := model.CreateSite(site); err != nil {
@@ -161,6 +177,8 @@ func UpdateSite(c *gin.Context) {
 		DiscountRate:        req.DiscountRate,
 		WalletWarnThreshold: req.WalletWarnThreshold,
 		PayConfig:           req.PayConfig,
+		ModelPriceRate:      req.ModelPriceRate,
+		ModelPriceRateMax:   req.ModelPriceRateMax,
 		Domains:             req.Domains,
 	}
 	if err := model.UpdateSite(site); err != nil {

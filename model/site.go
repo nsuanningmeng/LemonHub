@@ -31,6 +31,14 @@ type Site struct {
 	WalletBalance       int64  `json:"wallet_balance" gorm:"type:bigint;default:0"` // 厘
 	DiscountRate        int    `json:"discount_rate" gorm:"type:int;default:10000"` // 万分比, 10000 = 原价
 	WalletWarnThreshold int64  `json:"wallet_warn_threshold" gorm:"type:bigint;default:0"`
+	// ModelPriceRate is the sub-site's per-call model price MARKUP, as a 万分比 of the platform
+	// retail price (10000 = same as main retail, the default; 13000 = +30%). A sub-site may only
+	// mark UP (>= 10000), never below main retail — so the platform's wholesale revenue is never
+	// undercut (route A). Applied as a uniform multiplier folded into the group ratio at billing.
+	ModelPriceRate int `json:"model_price_rate" gorm:"type:int;default:10000"`
+	// ModelPriceRateMax is the upper cap (万分比) the MAIN admin sets for this sub-site's markup.
+	// 0 means "no cap" (sub-site may set any value >= 10000). When > 0 it must be >= 10000.
+	ModelPriceRateMax int `json:"model_price_rate_max" gorm:"type:int;default:0"`
 	PayConfig           string `json:"pay_config" gorm:"type:text"` // JSON, per-site payment config (used from phase 4)
 	CreatedTime         int64  `json:"created_time" gorm:"bigint"`
 	UpdatedTime         int64  `json:"updated_time" gorm:"bigint"`
@@ -350,6 +358,7 @@ func CreateSite(site *Site) error {
 	if site.DiscountRate <= 0 {
 		site.DiscountRate = DiscountRateBase
 	}
+	normalizeSiteModelPriceRate(site)
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		owner, err := resolveOwner(tx, site.OwnerUsername)
@@ -407,11 +416,24 @@ func UpdateSite(site *Site) error {
 	if site.DiscountRate <= 0 {
 		site.DiscountRate = DiscountRateBase
 	}
-
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var existing Site
 		if err := tx.First(&existing, "id = ?", site.Id).Error; err != nil {
 			return err
+		}
+		// Preserve the sub-site's self-set model markup when the request OMITS it (sends 0): a
+		// partial admin update (e.g. only changing the discount) must not silently reset the
+		// agent's chosen model_price_rate back to retail. model_price_rate_max keeps its
+		// "0 = no cap" semantics (an admin may intentionally clear a cap). Then floor the rate to
+		// retail and keep a non-zero cap >= rate.
+		if site.ModelPriceRate <= 0 {
+			site.ModelPriceRate = existing.ModelPriceRate
+		}
+		if site.ModelPriceRate < DiscountRateBase {
+			site.ModelPriceRate = DiscountRateBase
+		}
+		if site.ModelPriceRateMax != 0 && site.ModelPriceRateMax < site.ModelPriceRate {
+			site.ModelPriceRateMax = site.ModelPriceRate
 		}
 		// The owner is fixed at creation (it carries a role+site_id promotion that is not
 		// safe to flip in an update); branding/status/discount edits keep the same owner.
@@ -427,11 +449,13 @@ func UpdateSite(site *Site) error {
 			"home_badge":            site.HomeBadge,
 			"home_title_line1":      site.HomeTitleLine1,
 			"home_title_line2":      site.HomeTitleLine2,
-			"status":                site.Status,
-			"discount_rate":         site.DiscountRate,
-			"wallet_warn_threshold": site.WalletWarnThreshold,
-			"pay_config":            site.PayConfig,
-			"updated_time":          common.GetTimestamp(),
+			"status":                 site.Status,
+			"discount_rate":          site.DiscountRate,
+			"wallet_warn_threshold":  site.WalletWarnThreshold,
+			"pay_config":             site.PayConfig,
+			"model_price_rate":       site.ModelPriceRate,
+			"model_price_rate_max":   site.ModelPriceRateMax,
+			"updated_time":           common.GetTimestamp(),
 		}
 		if err := tx.Model(&Site{}).Where("id = ?", site.Id).Updates(updates).Error; err != nil {
 			return err
@@ -494,6 +518,66 @@ func UpdateSitePayConfig(siteId int, payConfig string) error {
 		return errors.New("无效的子站")
 	}
 	res := DB.Model(&Site{}).Where("id = ?", siteId).Update("pay_config", payConfig)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return errors.New("子站不存在")
+	}
+	reloadSiteCacheSoft()
+	return nil
+}
+
+// normalizeSiteModelPriceRate floors the per-call model price markup to the platform retail
+// (>= 10000 — a sub-site may only mark UP, never undercut the platform) and keeps the cap
+// consistent (a non-zero cap is never below the rate it bounds).
+func normalizeSiteModelPriceRate(site *Site) {
+	if site.ModelPriceRate < DiscountRateBase {
+		site.ModelPriceRate = DiscountRateBase
+	}
+	if site.ModelPriceRateMax != 0 && site.ModelPriceRateMax < site.ModelPriceRate {
+		site.ModelPriceRateMax = site.ModelPriceRate
+	}
+}
+
+// GetSiteModelPriceMultiplier returns the per-site model price markup as a float multiplier
+// (>= 1.0). The main site (id 0) and unknown sites use 1.0 (platform retail). The value is
+// CLAMPED to >= 1.0 as defense-in-depth: a sub-site can only mark prices UP, so the platform's
+// wholesale revenue can never be undercut even if a smaller value were somehow persisted.
+func GetSiteModelPriceMultiplier(siteId int) float64 {
+	if siteId <= 0 {
+		return 1.0
+	}
+	s := GetSiteByIdCached(siteId)
+	if s == nil {
+		return 1.0
+	}
+	rate := s.ModelPriceRate
+	if rate < DiscountRateBase {
+		rate = DiscountRateBase
+	}
+	return float64(rate) / float64(DiscountRateBase)
+}
+
+// UpdateSiteModelPriceRate lets a sub-site admin set ONLY their own per-call model price markup
+// (model_price_rate). It is floored at the platform retail (10000) and capped by the main-admin
+// ModelPriceRateMax (when set). Only that one column is written; the cache is reloaded so billing
+// sees it. A sub-site admin can never price below retail or exceed the admin-set cap.
+func UpdateSiteModelPriceRate(siteId int, rate int) error {
+	if siteId <= 0 {
+		return errors.New("无效的子站")
+	}
+	site, err := GetSiteById(siteId)
+	if err != nil {
+		return err
+	}
+	if rate < DiscountRateBase {
+		return errors.New("模型加价率不能低于主站零售价（10000）")
+	}
+	if site.ModelPriceRateMax > 0 && rate > site.ModelPriceRateMax {
+		return errors.New("模型加价率超过主站允许的上限")
+	}
+	res := DB.Model(&Site{}).Where("id = ?", siteId).Update("model_price_rate", rate)
 	if res.Error != nil {
 		return res.Error
 	}

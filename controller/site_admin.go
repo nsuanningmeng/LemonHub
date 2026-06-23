@@ -66,8 +66,39 @@ func SiteAdminDashboard(c *gin.Context) {
 		"discount_rate":         site.DiscountRate,
 		"wallet_balance":        site.WalletBalance,
 		"wallet_warn_threshold": site.WalletWarnThreshold,
+		"model_price_rate":      site.ModelPriceRate,
+		"model_price_rate_max":  site.ModelPriceRateMax,
 		"domains":               site.Domains,
 	})
+}
+
+type siteAdminPricingRequest struct {
+	ModelPriceRate int `json:"model_price_rate"`
+}
+
+// SiteAdminUpdatePricing lets a sub-site admin set ONLY their own per-call model price markup
+// (model_price_rate). Scope: UpdateSiteModelPriceRate is forced to the operator's own siteId and
+// enforces the floor (>= main retail 10000) + the main-admin cap — a sub-site admin can never
+// price below the platform retail (so the platform is never undercut) nor exceed the admin's cap.
+func SiteAdminUpdatePricing(c *gin.Context) {
+	siteId, ok := requireSiteScope(c)
+	if !ok {
+		return
+	}
+	var req siteAdminPricingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := model.UpdateSiteModelPriceRate(siteId, req.ModelPriceRate); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	recordManageAudit(c, "site_admin.model_pricing", map[string]interface{}{
+		"id":               siteId,
+		"model_price_rate": req.ModelPriceRate,
+	})
+	common.ApiSuccess(c, nil)
 }
 
 // SiteAdminGetWalletLogs returns a page of the operator's own sub-site wallet flow records.

@@ -358,6 +358,7 @@ func SetApiRouter(router *gin.Engine) {
 			siteAdminRoute.PUT("/branding", controller.SiteAdminUpdateBranding)
 			siteAdminRoute.GET("/pay-config", controller.SiteAdminGetPayConfig)
 			siteAdminRoute.PUT("/pay-config", controller.SiteAdminUpdatePayConfig)
+			siteAdminRoute.PUT("/model-pricing", controller.SiteAdminUpdatePricing)
 
 			siteAdminRedemptionRoute := siteAdminRoute.Group("/redemption")
 			{
