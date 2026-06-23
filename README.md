@@ -1,10 +1,10 @@
 <div align="center">
 
-![new-api](/web/default/public/logo.png)
+![LemonHub](/web/default/public/logo.png)
 
-# New API
+# 🍋 LemonHub
 
-🍥 **Next-Generation LLM Gateway and AI Asset Management System**
+**Multi-tenant, white-label AI API Gateway with a built-in agent / reseller franchise system**
 
 <p align="center">
   <a href="./README.zh_CN.md">简体中文</a> |
@@ -15,93 +15,58 @@
 </p>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/Calcium-Ion/new-api/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Calcium-Ion/new-api?color=brightgreen" alt="license">
+  <a href="https://github.com/nsuanningmeng/LemonHub/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/nsuanningmeng/LemonHub?color=brightgreen" alt="license">
   </a><!--
-  --><a href="https://github.com/Calcium-Ion/new-api/releases/latest">
-    <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="release">
+  --><a href="https://github.com/nsuanningmeng/LemonHub/releases/latest">
+    <img src="https://img.shields.io/github/v/release/nsuanningmeng/LemonHub?color=brightgreen&include_prereleases" alt="release">
   </a><!--
-  --><a href="https://hub.docker.com/r/CalciumIon/new-api">
-    <img src="https://img.shields.io/badge/docker-dockerHub-blue" alt="docker">
-  </a><!--
-  --><a href="https://goreportcard.com/report/github.com/Calcium-Ion/new-api">
-    <img src="https://goreportcard.com/badge/github.com/Calcium-Ion/new-api" alt="GoReportCard">
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://trendshift.io/repositories/20180" target="_blank">
-    <img src="https://trendshift.io/api/badge/repositories/20180" alt="QuantumNous%2Fnew-api | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
-  </a>
-  <br>
-  <a href="https://hellogithub.com/repository/QuantumNous/new-api" target="_blank">
-    <img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=539ac4217e69431684ad4a0bab768811&claim_uid=tbFPfKIDHpc4TzR" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" />
-  </a><!--
-  --><a href="https://www.producthunt.com/products/new-api/launches/new-api?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-new-api" target="_blank" rel="noopener noreferrer">
-    <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1047693&theme=light&t=1769577875005" alt="New API - All-in-one AI asset management gateway. | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" />
+  --><a href="https://github.com/nsuanningmeng/LemonHub/pkgs/container/lemonhub">
+    <img src="https://img.shields.io/badge/ghcr.io-lemonhub-blue" alt="docker">
   </a>
 </p>
 
 <p align="center">
   <a href="#-quick-start">Quick Start</a> •
-  <a href="#-key-features">Key Features</a> •
+  <a href="#-what-makes-lemonhub-different">Why LemonHub</a> •
+  <a href="#-white-label--agent-franchise">White-label</a> •
   <a href="#-deployment">Deployment</a> •
-  <a href="#-documentation">Documentation</a> •
-  <a href="#-help-support">Help</a>
+  <a href="#-built-on-new-api">Built on new-api</a>
 </p>
 
 </div>
 
 ## 📝 Project Description
 
+**LemonHub** is a secondary-development fork of [new-api](https://github.com/QuantumNous/new-api) (which itself builds on [One API](https://github.com/songquanpeng/one-api)). It keeps the full power of new-api — a unified gateway in front of 40+ AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, …) with billing, rate-limiting and an admin dashboard — and adds a **multi-tenant, white-label, agent-franchise layer** on top:
+
+> One deployment + one database can serve **many independently-branded sub-sites**, each owned by an **agent (reseller)** who runs their own domain, collects payments into their **own payment merchant**, and purchases wholesale quota from the platform through a **prepaid procurement wallet**.
+
 > [!IMPORTANT]
-> - This project is intended solely for lawful and authorized AI API gateway, organization-level authentication, multi-model management, usage analytics, cost accounting, and private deployment scenarios.
-> - Users must lawfully obtain upstream API keys, accounts, model services, and interface permissions, and must comply with upstream terms of service and applicable laws and regulations.
-> - Users should ensure their use complies with upstream terms of service and applicable laws and regulations.
-> - When providing generative AI services to the public, users should comply with applicable regulatory requirements and fulfill all filing, licensing, content safety, real-name verification, log retention, tax, and upstream authorization obligations required by their jurisdiction.
+> - This project is intended solely for lawful and authorized AI API gateway, organization-level authentication, multi-model management, usage analytics, cost accounting, and private/reseller deployment scenarios.
+> - You must lawfully obtain upstream API keys, accounts, model services, and interface permissions, and comply with upstream terms of service and applicable laws and regulations.
+> - When providing generative AI services to the public, complete all required filing, licensing, content safety, real-name verification, log retention, tax, payment, and upstream authorization obligations required by your jurisdiction.
 
 ---
 
-## 🤝 Trusted Partners
+## ✨ What makes LemonHub different
 
-<p align="center">
-  <em>No particular order</em>
-</p>
+On top of everything new-api offers, LemonHub adds:
 
-<p align="center">
-  <a href="https://www.cherry-ai.com/" target="_blank">
-    <img src="./docs/images/cherry-studio.png" alt="Cherry Studio" height="80" />
-  </a><!--
-  --><a href="https://github.com/iOfficeAI/AionUi/" target="_blank">
-    <img src="./docs/images/aionui.png" alt="Aion UI" height="80" />
-  </a><!--
-  --><a href="https://bda.pku.edu.cn/" target="_blank">
-    <img src="./docs/images/pku.png" alt="Peking University" height="80" />
-  </a><!--
-  --><a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target="_blank">
-    <img src="./docs/images/ucloud.png" alt="UCloud" height="80" />
-  </a><!--
-  --><a href="https://www.aliyun.com/" target="_blank">
-    <img src="./docs/images/aliyun.png" alt="Alibaba Cloud" height="80" />
-  </a><!--
-  --><a href="https://io.net/" target="_blank">
-    <img src="./docs/images/io-net.png" alt="IO.NET" height="80" />
-  </a>
-</p>
+| Capability | Description |
+|---|---|
+| 🏢 **White-label sub-sites** | One deployment serves many branded tenants. Each sub-site has its own domain(s), name, logo, notice, footer and homepage hero copy. Requests are routed to a sub-site by their `Host`. |
+| 🤝 **Agent / reseller franchise** | The platform owner (main site) onboards **agents**; each agent owns and self-administers a sub-site through a dedicated **Agent Console**. |
+| 💰 **Procurement wallet (整数厘 ledger)** | Each agent prepays the platform into a wallet kept in integer *milli-CNY* (厘). Every user recharge atomically debits the wallet at wholesale price — never goes negative, every change writes a ledger entry. |
+| 🏷️ **Per-agent discount (wholesale) rate** | `DiscountRate` is a basis-of-10000 integer (`10000` = face price, `7000` = 70%). Wholesale cost = `face × DiscountRate / 10000`; the agent keeps the margin. |
+| 💳 **Per-site payment collection** | Each sub-site configures its **own** EasyPay (易支付) merchant. User recharges flow into the agent's own merchant account; the platform settles the wallet in the same DB transaction (credit user **+** debit agent wallet), idempotently. |
+| 🔻 **Auto-degradation** | When an agent's wallet is drained (or unconfigured), online recharge transparently disappears for that sub-site — issued quota and other gateways are unaffected. |
+| 🔒 **Per-site data isolation** | Every table carries a `site_id`; usernames are unique **per site** (`(site_id, username)`); passwords, 2FA and all OAuth bindings are isolated per site. |
+| 🎟️ **Per-site redemption codes** | Agents generate/void redemption codes scoped to their own site, with cross-site isolation and reconciliation. |
+| 🔌 **Connect Hub** | One-click client setup (Claude Code / Codex / Gemini CLI / Chatbox / Cherry Studio / VS Code …) that targets **the domain the user is actually visiting** — multi-domain aware. |
+| 🌐 **Multi-domain payment callbacks & titles** | Payment notify/return URLs and the first-paint `<title>` follow the visited (trusted) domain, with Host-spoofing protection. |
 
----
-
-## 🙏 Special Thanks
-
-<p align="center">
-  <a href="https://www.jetbrains.com/?from=new-api" target="_blank">
-    <img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.png" alt="JetBrains Logo" width="120" />
-  </a>
-</p>
-
-<p align="center">
-  <strong>Thanks to <a href="https://www.jetbrains.com/?from=new-api">JetBrains</a> for providing free open-source development license for this project</strong>
-</p>
+> 📖 **New to the agent model? Read the step-by-step guide:** **[Sub-site / Agent Franchise Guide (中文)](./docs/subsite-guide.md)** · [English](./docs/subsite-guide.en.md)
 
 ---
 
@@ -111,379 +76,164 @@
 
 ```bash
 # Clone the project
-git clone https://github.com/QuantumNous/new-api.git
-cd new-api
+git clone https://github.com/nsuanningmeng/LemonHub.git
+cd LemonHub
 
-# Edit docker-compose.yml configuration
+# Review/edit the configuration (DB password, ServerAddress, etc.)
 nano docker-compose.yml
 
-# Start the service
-docker-compose up -d
+# Start (the compose file already points at the LemonHub image)
+docker compose up -d
 ```
 
 <details>
-<summary><strong>Using Docker Commands</strong></summary>
+<summary><strong>Using a plain Docker command</strong></summary>
 
 ```bash
 # Pull the latest image
-docker pull calciumion/new-api:latest
+docker pull ghcr.io/nsuanningmeng/lemonhub:latest
 
-# Using SQLite (default)
-docker run --name new-api -d --restart always \
+# SQLite (default — mount /data to persist)
+docker run --name lemonhub -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/new-api:latest
+  ghcr.io/nsuanningmeng/lemonhub:latest
 
-# Using MySQL
-docker run --name new-api -d --restart always \
+# MySQL / PostgreSQL (set SQL_DSN)
+docker run --name lemonhub -d --restart always \
   -p 3000:3000 \
-  -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
+  -e SQL_DSN="root:123456@tcp(localhost:3306)/lemonhub" \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/new-api:latest
+  ghcr.io/nsuanningmeng/lemonhub:latest
 ```
 
-> **💡 Tip:** `-v ./data:/data` will save data in the `data` folder of the current directory, you can also change it to an absolute path like `-v /your/custom/path:/data`
-
 </details>
 
----
-
-🎉 After deployment is complete, visit `http://localhost:3000` to start using!
+🎉 After deployment, open `http://localhost:3000`. The first registered account becomes the **root / platform (main-site) administrator**.
 
 > [!WARNING]
-> When operating this project as a public generative AI service or API resale service, users should first complete all required filing, licensing, content safety, real-name verification, log retention, tax, payment, and upstream authorization obligations.
-
-📖 For more deployment methods, please refer to [Deployment Guide](https://docs.newapi.pro/en/docs/installation)
+> When operating LemonHub as a public or reseller AI service, first complete all required filing, licensing, content safety, real-name verification, log retention, tax, payment, and upstream authorization obligations.
 
 ---
 
-## 📚 Documentation
+## 🤝 White-label / Agent Franchise
 
-<div align="center">
+LemonHub is built around two roles:
 
-### 📖 [Official Documentation](https://docs.newapi.pro/en/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/new-api)
+- **Main-site admin (platform owner / 主站站长)** — owns the deployment, the AI channels (upstream keys), and sells wholesale quota. Creates sub-sites, funds agent wallets, and sets each agent's discount rate.
+- **Sub-site admin (agent / reseller / 子站站长)** — runs a branded sub-site on their own domain, configures their own payment merchant and branding, and serves their own end-users.
 
-</div>
+**The money flow at a glance** (example, discount `7000` = 70%):
 
-**Quick Navigation:**
+```
+End-user pays ¥100  ──►  Agent's OWN EasyPay merchant   (agent keeps ¥100)
+        │
+        ▼ (callback, one DB transaction, idempotent)
+   User credited ¥100 of quota   +   Agent procurement wallet debited ¥70
+                                          └─ ¥30 is the agent's margin
+```
 
-| Category | Link |
-|------|------|
-| 🚀 Deployment Guide | [Installation Documentation](https://docs.newapi.pro/en/docs/installation) |
-| ⚙️ Environment Configuration | [Environment Variables](https://docs.newapi.pro/en/docs/installation/config-maintenance/environment-variables) |
-| 📡 API Documentation | [API Documentation](https://docs.newapi.pro/en/docs/api) |
-| ❓ FAQ | [FAQ](https://docs.newapi.pro/en/docs/support/faq) |
-| 💬 Community Interaction | [Communication Channels](https://docs.newapi.pro/en/docs/support/community-interaction) |
+The full, hand-holding walkthrough — what each role must prepare, and every click — is here:
 
----
-
-## ✨ Key Features
-
-> For detailed features, please refer to [Features Introduction](https://docs.newapi.pro/en/docs/guide/wiki/basic-concepts/features-introduction)
-
-### 🎨 Core Functions
-
-| Feature | Description |
-|------|------|
-| 🎨 New UI | Modern user interface design |
-| 🌍 Multi-language | Supports Simplified Chinese, Traditional Chinese, English, French, Japanese |
-| 🔄 Data Compatibility | Fully compatible with the original One API database |
-| 📈 Data Dashboard | Visual console and statistical analysis |
-| 🔒 Permission Management | Token grouping, model restrictions, user management |
-
-### 💰 Authorized Usage Accounting and Billing
-
-- ✅ Internal top-up and quota allocation for lawful authorized scenarios (EPay, Stripe)
-- ✅ Organization-level per-request, usage-based, and cache-hit cost accounting
-- ✅ Cache billing statistics for OpenAI, Azure, DeepSeek, Claude, Qwen, and supported models
-- ✅ Flexible billing policies for internal management or authorized enterprise customers
-
-### 🔐 Authorization and Security
-
-- 😈 Discord authorization login
-- 🤖 LinuxDO authorization login
-- 📱 Telegram authorization login
-- 🔑 OIDC unified authentication
-- 🔍 Key quota query usage (with [new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool))
-
-### 🚀 Advanced Features
-
-**API Format Support:**
-- ⚡ [OpenAI Responses](https://docs.newapi.pro/en/docs/api/ai-model/chat/openai/create-response)
-- ⚡ [OpenAI Realtime API](https://docs.newapi.pro/en/docs/api/ai-model/realtime/create-realtime-session) (including Azure)
-- ⚡ [Claude Messages](https://docs.newapi.pro/en/docs/api/ai-model/chat/create-message)
-- ⚡ [Google Gemini](https://doc.newapi.pro/en/api/google-gemini-chat)
-- 🔄 [Rerank Models](https://docs.newapi.pro/en/docs/api/ai-model/rerank/create-rerank) (Cohere, Jina)
-
-**Intelligent Routing:**
-- ⚖️ Channel weighted random
-- 🔄 Automatic retry on failure
-- 🚦 User-level model rate limiting
-
-**Format Conversion:**
-- 🔄 **OpenAI Compatible ⇄ Claude Messages**
-- 🔄 **OpenAI Compatible → Google Gemini**
-- 🔄 **Google Gemini → OpenAI Compatible** - Text only, function calling not supported yet
-- 🚧 **OpenAI Compatible ⇄ OpenAI Responses** - In development
-- 🔄 **Thinking-to-content functionality**
-
-**Reasoning Effort Support:**
-
-<details>
-<summary>View detailed configuration</summary>
-
-**OpenAI series models:**
-- `o3-mini-high` - High reasoning effort
-- `o3-mini-medium` - Medium reasoning effort
-- `o3-mini-low` - Low reasoning effort
-- `gpt-5-high` - High reasoning effort
-- `gpt-5-medium` - Medium reasoning effort
-- `gpt-5-low` - Low reasoning effort
-
-**Claude thinking models:**
-- `claude-3-7-sonnet-20250219-thinking` - Enable thinking mode
-
-**Google Gemini series models:**
-- `gemini-2.5-flash-thinking` - Enable thinking mode
-- `gemini-2.5-flash-nothinking` - Disable thinking mode
-- `gemini-2.5-pro-thinking` - Enable thinking mode
-- `gemini-2.5-pro-thinking-128` - Enable thinking mode with thinking budget of 128 tokens
-- You can also append `-low`, `-medium`, or `-high` to any Gemini model name to request the corresponding reasoning effort (no extra thinking-budget suffix needed).
-
-</details>
+➡️ **[📘 Sub-site / Agent Franchise Guide (中文，保姆级)](./docs/subsite-guide.md)** · **[English](./docs/subsite-guide.en.md)**
 
 ---
 
-## 🤖 Model Support
+## 🤖 Model & Feature Support (inherited from new-api)
 
-> For details, please refer to [API Documentation - Gateway Interface](https://docs.newapi.pro/en/docs/api)
+LemonHub inherits new-api's gateway capabilities, including:
 
-| Model Type | Description | Documentation |
-|---------|------|------|
-| 🤖 OpenAI-Compatible | OpenAI compatible models | [Documentation](https://docs.newapi.pro/en/docs/api/ai-model/chat/openai/createchatcompletion) |
-| 🤖 OpenAI Responses | OpenAI Responses format | [Documentation](https://docs.newapi.pro/en/docs/api/ai-model/chat/openai/createresponse) |
-| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [Documentation](https://doc.newapi.pro/api/midjourney-proxy-image) |
-| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [Documentation](https://doc.newapi.pro/api/suno-music) |
-| 🔄 Rerank | Cohere, Jina | [Documentation](https://docs.newapi.pro/en/docs/api/ai-model/rerank/creatererank) |
-| 💬 Claude | Messages format | [Documentation](https://docs.newapi.pro/en/docs/api/ai-model/chat/createmessage) |
-| 🌐 Gemini | Google Gemini format | [Documentation](https://docs.newapi.pro/en/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
-| 🔧 Dify | ChatFlow mode | - |
-| 🎯 Custom upstream | Supports configuring legally authorized upstream endpoints | - |
+- **Formats**: OpenAI Chat/Responses/Realtime, Claude Messages, Google Gemini, Rerank (Cohere/Jina), Image/Audio/Embedding, Midjourney-Proxy, Suno, Dify.
+- **Format conversion**: OpenAI ⇄ Claude Messages, OpenAI → Gemini, thinking-to-content, reasoning-effort suffixes.
+- **Intelligent routing**: weighted random channels, automatic retry on failure (configurable retry status codes), token multi-group priority failover, user-level rate limiting.
+- **Billing**: per-request / usage-based / cache-hit accounting, tiered/expression pricing, EasyPay & Stripe top-up.
+- **Auth**: JWT, WebAuthn/Passkeys, OAuth (GitHub, Discord, OIDC, LinuxDO, Telegram, WeChat).
+- **UI**: modern dashboard, multi-language (zh/en/fr/ja/vi…), data dashboard, model performance metrics.
 
-### 📡 Supported Interfaces
-
-<details>
-<summary>View complete interface list</summary>
-
-- [Chat Interface (Chat Completions)](https://docs.newapi.pro/en/docs/api/ai-model/chat/openai/createchatcompletion)
-- [Response Interface (Responses)](https://docs.newapi.pro/en/docs/api/ai-model/chat/openai/createresponse)
-- [Image Interface (Image)](https://docs.newapi.pro/en/docs/api/ai-model/images/openai/post-v1-images-generations)
-- [Audio Interface (Audio)](https://docs.newapi.pro/en/docs/api/ai-model/audio/openai/create-transcription)
-- [Video Interface (Video)](https://docs.newapi.pro/en/docs/api/ai-model/audio/openai/createspeech)
-- [Embedding Interface (Embeddings)](https://docs.newapi.pro/en/docs/api/ai-model/embeddings/createembedding)
-- [Rerank Interface (Rerank)](https://docs.newapi.pro/en/docs/api/ai-model/rerank/creatererank)
-- [Realtime Conversation (Realtime)](https://docs.newapi.pro/en/docs/api/ai-model/realtime/createrealtimesession)
-- [Claude Chat](https://docs.newapi.pro/en/docs/api/ai-model/chat/createmessage)
-- [Google Gemini Chat](https://docs.newapi.pro/en/docs/api/ai-model/chat/gemini/geminirelayv1beta)
-
-</details>
+> 📚 For gateway/API details, refer to the upstream [new-api documentation](https://docs.newapi.pro).
 
 ---
 
 ## 🚢 Deployment
 
 > [!TIP]
-> **Latest Docker image:** `calciumion/new-api:latest`
+> **Latest image:** `ghcr.io/nsuanningmeng/lemonhub:latest` (multi-arch: amd64 + arm64).
 
-### 📋 Deployment Requirements
+### Requirements
 
 | Component | Requirement |
-|------|------|
-| **Local database** | SQLite (Docker must mount `/data` directory)|
-| **Remote database** | MySQL ≥ 5.7.8 or PostgreSQL ≥ 9.6 |
-| **Container engine** | Docker / Docker Compose |
+|---|---|
+| **Local DB** | SQLite (Docker must mount `/data`) |
+| **Remote DB** | MySQL ≥ 5.7.8 or PostgreSQL ≥ 9.6 |
+| **Cache (recommended)** | Redis |
+| **Engine** | Docker / Docker Compose |
 
-### ⚙️ Environment Variable Configuration
+### Common environment variables
 
-<details>
-<summary>Common environment variable configuration</summary>
-
-| Variable Name | Description | Default Value |
-|--------|------|--------|
-| `SESSION_SECRET` | Session secret (required for multi-machine deployment) | - |
-| `CRYPTO_SECRET` | Encryption secret (required for Redis) | - |
-| `SQL_DSN` | Database connection string | - |
+| Variable | Description | Default |
+|---|---|---|
+| `SESSION_SECRET` | Session secret (**required** for multi-node) | - |
+| `CRYPTO_SECRET` | Encryption secret (**required** for shared Redis) | - |
+| `SQL_DSN` | Database connection string (MySQL/PostgreSQL) | - |
 | `REDIS_CONN_STRING` | Redis connection string | - |
-| `RELAY_IDLE_CONN_TIMEOUT` | Idle keep-alive timeout for relay HTTP clients, seconds. Defaults to Go standard library behavior; set `0` to disable | `90` |
-| `STREAMING_TIMEOUT` | Streaming timeout (seconds) | `300` |
-| `STREAM_SCANNER_MAX_BUFFER_MB` | Max per-line buffer (MB) for the stream scanner; increase when upstream sends huge image/base64 payloads | `64` |
-| `MAX_REQUEST_BODY_MB` | Max request body size (MB, counted **after decompression**; prevents huge requests/zip bombs from exhausting memory). Exceeding it returns `413` | `32` |
-| `AZURE_DEFAULT_API_VERSION` | Azure API version | `2025-04-01-preview` |
-| `ERROR_LOG_ENABLED` | Error log switch | `false` |
-| `PYROSCOPE_URL` | Pyroscope server address | - |
-| `PYROSCOPE_APP_NAME` | Pyroscope application name | `new-api` |
-| `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope basic auth user | - |
-| `PYROSCOPE_BASIC_AUTH_PASSWORD` | Pyroscope basic auth password | - |
-| `PYROSCOPE_MUTEX_RATE` | Pyroscope mutex sampling rate | `5` |
-| `PYROSCOPE_BLOCK_RATE` | Pyroscope block sampling rate | `5` |
-| `HOSTNAME` | Hostname tag for Pyroscope | `new-api` |
+| `TRUSTED_REDIRECT_DOMAINS` | Comma-separated trusted domains for payment redirect / multi-domain callbacks | - |
+| `PAYMENT_WEBHOOK_RATE_LIMIT` | Generous per-IP backstop for payment notify webhooks (requests / window) | `1800` |
+| `PAYMENT_WEBHOOK_RATE_LIMIT_DURATION` | Window for the above (seconds) | `60` |
+| `STREAMING_TIMEOUT` | Streaming no-response timeout (seconds) | `300` |
+| `MAX_REQUEST_BODY_MB` | Max request body (MB, after decompression) | `32` |
 
-📖 **Complete configuration:** [Environment Variables Documentation](https://docs.newapi.pro/en/docs/installation/config-maintenance/environment-variables)
+> Rate-limit and most tuning variables fall back to sensible code defaults, so they are **not** required in `.env`/compose. See `.env.example` for the documented optional knobs.
 
-</details>
-
-### 🔧 Deployment Methods
-
-<details>
-<summary><strong>Method 1: Docker Compose (Recommended)</strong></summary>
-
-```bash
-# Clone the project
-git clone https://github.com/QuantumNous/new-api.git
-cd new-api
-
-# Edit configuration
-nano docker-compose.yml
-
-# Start service
-docker-compose up -d
-```
-
-</details>
-
-<details>
-<summary><strong>Method 2: Docker Commands</strong></summary>
-
-**Using SQLite:**
-```bash
-docker run --name new-api -d --restart always \
-  -p 3000:3000 \
-  -e TZ=Asia/Shanghai \
-  -v ./data:/data \
-  calciumion/new-api:latest
-```
-
-**Using MySQL:**
-```bash
-docker run --name new-api -d --restart always \
-  -p 3000:3000 \
-  -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
-  -e TZ=Asia/Shanghai \
-  -v ./data:/data \
-  calciumion/new-api:latest
-```
-
-> **💡 Path explanation:**
-> - `./data:/data` - Relative path, data saved in the data folder of the current directory
-> - You can also use absolute path, e.g.: `/your/custom/path:/data`
-
-</details>
-
-<details>
-<summary><strong>Method 3: BaoTa Panel</strong></summary>
-
-1. Install BaoTa Panel (≥ 9.2.0 version)
-2. Search for **New-API** in the application store
-3. One-click installation
-
-📖 [Tutorial with images](./docs/BT.md)
-
-</details>
-
-### ⚠️ Multi-machine Deployment Considerations
+### Multi-node notes
 
 > [!WARNING]
-> - **Must set** `SESSION_SECRET` - Otherwise login status inconsistent
-> - **Shared Redis must set** `CRYPTO_SECRET` - Otherwise data cannot be decrypted
+> - **Set** `SESSION_SECRET` — otherwise login state is inconsistent across nodes.
+> - **With shared Redis, set** `CRYPTO_SECRET` — otherwise encrypted data cannot be decrypted.
 
-### 🔄 Channel Retry and Cache
+### Retry & cache
 
-**Retry configuration:** `Settings → Operation Settings → General Settings → Failure Retry Count`
-
-**Cache configuration:**
-- `REDIS_CONN_STRING`: Redis cache (recommended)
-- `MEMORY_CACHE_ENABLED`: Memory cache
+- **Retry**: `Settings → Operation Settings → Route Reliability` (failure retry count + auto-retry status-code ranges).
+- **Cache**: `REDIS_CONN_STRING` (recommended) or `MEMORY_CACHE_ENABLED`.
 
 ---
 
-## 🔗 Related Projects
+## 🧱 Built on new-api
 
-### Upstream Projects
+LemonHub is an AGPL-licensed fork. Huge credit to the upstream projects:
 
-| Project | Description |
-|------|------|
-| [One API](https://github.com/songquanpeng/one-api) | Original project base |
-| [Midjourney-Proxy](https://github.com/novicezk/midjourney-proxy) | Midjourney interface support |
+| Project | Role |
+|---|---|
+| [new-api](https://github.com/QuantumNous/new-api) | Direct upstream — the gateway LemonHub extends |
+| [One API](https://github.com/songquanpeng/one-api) | Original project base (MIT) |
 
-### Supporting Tools
-
-| Project | Description |
-|------|------|
-| [new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool) | Key quota query tool |
-| [new-api-horizon](https://github.com/Calcium-Ion/new-api-horizon) | New API high-performance optimized version |
-
----
-
-## 💬 Help Support
-
-### 📖 Documentation Resources
-
-| Resource | Link |
-|------|------|
-| 📘 FAQ | [FAQ](https://docs.newapi.pro/en/docs/support/faq) |
-| 💬 Community Interaction | [Communication Channels](https://docs.newapi.pro/en/docs/support/community-interaction) |
-| 🐛 Issue Feedback | [Issue Feedback](https://docs.newapi.pro/en/docs/support/feedback-issues) |
-| 📚 Complete Documentation | [Official Documentation](https://docs.newapi.pro/en/docs) |
-
-### 🤝 Contribution Guide
-
-Welcome all forms of contribution!
-
-- 🐛 Report Bugs
-- 💡 Propose New Features
-- 📝 Improve Documentation
-- 🔧 Submit Code
+LemonHub regularly syncs with upstream new-api. The relay / billing / channel-forwarding core is kept byte-for-byte compatible so upstream features and fixes can be merged cleanly; LemonHub's additions live around it (sub-site isolation, wallets, per-site payment, branding).
 
 ---
 
 ## 📜 License
 
-This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](./LICENSE).
+This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](./LICENSE), inheriting the upstream license.
 
-Additional terms under AGPLv3 Section 7 apply. Modified versions must preserve
-the author attribution notice `Frontend design and development by New API
-contributors.` in the appropriate legal notices and in any prominent about,
-legal, footer, or attribution location presented by the user interface.
-
-Modified versions that present a user interface must also preserve a visible
-link to the original project: <https://github.com/QuantumNous/new-api>.
+Per AGPLv3 Section 7 additional terms, modified versions must preserve the author attribution notice `Frontend design and development by New API contributors.` in the appropriate legal/about/footer location, and must preserve a visible link to the original project: <https://github.com/QuantumNous/new-api>.
 
 This is an open-source project developed based on [One API](https://github.com/songquanpeng/one-api) (MIT License).
 
-If your organization's policies do not permit the use of AGPLv3-licensed software, or if you wish to avoid the open-source obligations of AGPLv3, please contact us at: [support@quantumnous.com](mailto:support@quantumnous.com)
-
 ---
 
-## 🌟 Star History
+## 💬 Help & Contributing
+
+- 🐛 Issues & feature requests: [LemonHub Issues](https://github.com/nsuanningmeng/LemonHub/issues)
+- 📘 Sub-site guide: [中文](./docs/subsite-guide.md) · [English](./docs/subsite-guide.en.md)
+- 📚 Gateway/API reference: [new-api docs](https://docs.newapi.pro)
+
+Contributions of all kinds are welcome — bug reports, features, docs, and code.
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Calcium-Ion/new-api&type=Date)](https://star-history.com/#Calcium-Ion/new-api&Date)
+If LemonHub helps you, please consider giving it a ⭐️
 
-</div>
-
----
-
-<div align="center">
-
-### 💖 Thank you for using New API
-
-If this project is helpful to you, welcome to give us a ⭐️ Star！
-
-**[Official Documentation](https://docs.newapi.pro/en/docs)** • **[Issue Feedback](https://github.com/Calcium-Ion/new-api/issues)** • **[Latest Release](https://github.com/Calcium-Ion/new-api/releases)**
-
-<sub>Built with ❤️ by QuantumNous</sub>
+<sub>🍋 LemonHub — a white-label / agent-franchise layer on top of <a href="https://github.com/QuantumNous/new-api">new-api</a>.</sub>
 
 </div>

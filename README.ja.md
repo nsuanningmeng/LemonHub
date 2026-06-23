@@ -1,10 +1,10 @@
 <div align="center">
 
-![new-api](/web/default/public/logo.png)
+![LemonHub](/web/default/public/logo.png)
 
-# New API
+# 🍋 LemonHub
 
-🍥 **次世代大規模モデルゲートウェイとAI資産管理システム**
+**エージェント／リセラー・フランチャイズ機能を内蔵した、マルチテナント・ホワイトラベル対応の AI API ゲートウェイ**
 
 <p align="center">
   <a href="./README.zh_CN.md">简体中文</a> |
@@ -15,466 +15,225 @@
 </p>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/Calcium-Ion/new-api/main/LICENSE">
-    <img src="https://img.shields.io/github/license/Calcium-Ion/new-api?color=brightgreen" alt="license">
+  <a href="https://github.com/nsuanningmeng/LemonHub/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/nsuanningmeng/LemonHub?color=brightgreen" alt="license">
   </a><!--
-  --><a href="https://github.com/Calcium-Ion/new-api/releases/latest">
-    <img src="https://img.shields.io/github/v/release/Calcium-Ion/new-api?color=brightgreen&include_prereleases" alt="release">
+  --><a href="https://github.com/nsuanningmeng/LemonHub/releases/latest">
+    <img src="https://img.shields.io/github/v/release/nsuanningmeng/LemonHub?color=brightgreen&include_prereleases" alt="release">
   </a><!--
-  --><a href="https://hub.docker.com/r/CalciumIon/new-api">
-    <img src="https://img.shields.io/badge/docker-dockerHub-blue" alt="docker">
-  </a><!--
-  --><a href="https://goreportcard.com/report/github.com/Calcium-Ion/new-api">
-    <img src="https://goreportcard.com/badge/github.com/Calcium-Ion/new-api" alt="GoReportCard">
+  --><a href="https://github.com/nsuanningmeng/LemonHub/pkgs/container/lemonhub">
+    <img src="https://img.shields.io/badge/ghcr.io-lemonhub-blue" alt="docker">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/20180" target="_blank">
-    <img src="https://trendshift.io/api/badge/repositories/20180" alt="QuantumNous%2Fnew-api | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/>
-  </a>
-  <br>
-  <a href="https://hellogithub.com/repository/QuantumNous/new-api" target="_blank">
-    <img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=539ac4217e69431684ad4a0bab768811&claim_uid=tbFPfKIDHpc4TzR" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" />
-  </a><!--
-  --><a href="https://www.producthunt.com/products/new-api/launches/new-api?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-new-api" target="_blank" rel="noopener noreferrer">
-    <img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1047693&theme=light&t=1769577875005" alt="New API - All-in-one AI asset management gateway. | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" />
-  </a>
-</p>
-
-<p align="center">
-  <a href="#-クイックスタート">クイックスタート</a> •
-  <a href="#-主な機能">主な機能</a> •
-  <a href="#-デプロイ">デプロイ</a> •
-  <a href="#-ドキュメント">ドキュメント</a> •
-  <a href="#-ヘルプサポート">ヘルプ</a>
+  <a href="#-quick-start">クイックスタート</a> •
+  <a href="#-what-makes-lemonhub-different">LemonHub の特徴</a> •
+  <a href="#-white-label--agent-franchise">ホワイトラベル</a> •
+  <a href="#-deployment">デプロイ</a> •
+  <a href="#-built-on-new-api">new-api をベースに構築</a>
 </p>
 
 </div>
 
-## 📝 プロジェクト説明
+## 📝 プロジェクト概要
+
+**LemonHub** は [new-api](https://github.com/QuantumNous/new-api)（さらにその基盤は [One API](https://github.com/songquanpeng/one-api)）の二次開発フォークです。new-api の全機能 — 40 以上の AI プロバイダー（OpenAI、Claude、Gemini、Azure、AWS Bedrock、…）を統一ゲートウェイの背後に集約し、課金・レート制限・管理ダッシュボードを備える — をそのまま維持しつつ、その上に **マルチテナント・ホワイトラベル・エージェントフランチャイズのレイヤー** を追加します:
+
+> 1 つのデプロイ + 1 つのデータベースで、**独立したブランドを持つ多数のサブサイト** を運用できます。各サブサイトは **エージェント（リセラー）** が所有し、自身のドメインを運営し、支払いを **自身の決済加盟店** に集め、**前払いの仕入れウォレット** を通じてプラットフォームから卸値でクォータを購入します。
 
 > [!IMPORTANT]
-> - 本プロジェクトは、合法的に許可された AI API ゲートウェイ、組織レベルの認証、マルチモデル管理、利用量分析、コスト管理、プライベートデプロイのシナリオのみを対象としています。
-> - ユーザーは、上流の API キー、アカウント、モデルサービス、インターフェース権限を合法的に取得し、上流のサービス利用規約および適用される法律法規を遵守する必要があります。
-> - ユーザーは、利用方法が上流のサービス利用規約および適用される法律法規に準拠していることを確認してください。
-> - 生成 AI サービスを公衆に提供する場合、ユーザーは適用される規制要件を遵守し、管轄区域で求められる届出、ライセンス、コンテンツセキュリティ、本人確認、ログ保持、税務、上流認可などのすべての義務を履行してください。
+> - 本プロジェクトは、合法かつ正当に認可された AI API ゲートウェイ、組織レベルの認証、マルチモデル管理、使用状況分析、コスト計算、プライベート／リセラー型デプロイのシナリオでの利用のみを目的としています。
+> - 上流の API キー、アカウント、モデルサービス、インターフェース権限を合法的に取得し、上流の利用規約および適用される法令を遵守しなければなりません。
+> - 一般向けに生成 AI サービスを提供する場合は、お住まいの法域で求められる届出、ライセンス、コンテンツ安全性、実名確認、ログ保管、税務、決済、上流認可などの義務をすべて完了してください。
 
 ---
 
-## 🤝 信頼できるパートナー
+## ✨ LemonHub の特徴
 
-<p align="center">
-  <em>順不同</em>
-</p>
+new-api が提供するすべての機能に加えて、LemonHub は以下を追加します:
 
-<p align="center">
-  <a href="https://www.cherry-ai.com/" target="_blank">
-    <img src="./docs/images/cherry-studio.png" alt="Cherry Studio" height="80" />
-  </a><!--
-  --><a href="https://github.com/iOfficeAI/AionUi/" target="_blank">
-    <img src="./docs/images/aionui.png" alt="Aion UI" height="80" />
-  </a><!--
-  --><a href="https://bda.pku.edu.cn/" target="_blank">
-    <img src="./docs/images/pku.png" alt="北京大学" height="80" />
-  </a><!--
-  --><a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target="_blank">
-    <img src="./docs/images/ucloud.png" alt="UCloud 優刻得" height="80" />
-  </a><!--
-  --><a href="https://www.aliyun.com/" target="_blank">
-    <img src="./docs/images/aliyun.png" alt="Alibaba Cloud" height="80" />
-  </a><!--
-  --><a href="https://io.net/" target="_blank">
-    <img src="./docs/images/io-net.png" alt="IO.NET" height="80" />
-  </a>
-</p>
+| 機能 | 説明 |
+|---|---|
+| 🏢 **ホワイトラベル・サブサイト** | 1 つのデプロイで多数のブランド付きテナントを運用。各サブサイトは独自のドメイン、名称、ロゴ、お知らせ、フッター、ホームページのヒーロー文言を持ちます。リクエストは `Host` によってサブサイトへルーティングされます。 |
+| 🤝 **エージェント／リセラー・フランチャイズ** | プラットフォーム所有者（メインサイト）が **エージェント** をオンボーディングします。各エージェントは専用の **エージェントコンソール** を通じてサブサイトを所有し、自己管理します。 |
+| 💰 **仕入れウォレット（整数厘の台帳）** | 各エージェントは整数の *ミリ人民元*（厘）で管理されるウォレットへプラットフォームに前払いします。ユーザーのチャージごとに卸値でウォレットからアトミックに引き落とされ — 残高は決してマイナスにならず、すべての変更が台帳エントリとして記録されます。 |
+| 🏷️ **エージェント別の割引（卸値）レート** | `DiscountRate` は 10000 を基準とした整数です（`10000` = 表示価格、`7000` = 70%）。卸値コスト = `表示価格 × DiscountRate / 10000`。差額がエージェントの利幅となります。 |
+| 💳 **サイト別の決済集金** | 各サブサイトは **自身の** EasyPay（易支付）加盟店を設定します。ユーザーのチャージはエージェント自身の加盟店アカウントへ流入し、プラットフォームは同一の DB トランザクション内でウォレットを精算します（ユーザーへのクレジット **+** エージェントウォレットの引き落とし）。これは冪等に実行されます。 |
+| 🔻 **自動デグレード** | エージェントのウォレットが枯渇（または未設定）になると、そのサブサイトではオンラインチャージが透過的に非表示になります — 発行済みのクォータや他のゲートウェイには影響しません。 |
+| 🔒 **サイト別のデータ分離** | すべてのテーブルが `site_id` を保持します。ユーザー名は **サイトごと** に一意です（`(site_id, username)`）。パスワード、2FA、すべての OAuth 連携はサイトごとに分離されます。 |
+| 🎟️ **サイト別の引き換えコード** | エージェントは自身のサイトに限定した引き換えコードを生成／無効化でき、サイト間の分離と照合が行われます。 |
+| 🔌 **Connect Hub** | ワンクリックのクライアント設定（Claude Code / Codex / Gemini CLI / Chatbox / Cherry Studio / VS Code …）が、**ユーザーが実際にアクセスしているドメイン** を対象にします — マルチドメインに対応しています。 |
+| 🌐 **マルチドメインの決済コールバック＆タイトル** | 決済の notify／return URL および初回描画時の `<title>` は、アクセスされた（信頼済みの）ドメインに追従し、Host 偽装に対する保護が行われます。 |
 
----
-
-## 🙏 特別な感謝
-
-<p align="center">
-  <a href="https://www.jetbrains.com/?from=new-api" target="_blank">
-    <img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jb_beam.png" alt="JetBrains Logo" width="120" />
-  </a>
-</p>
-
-<p align="center">
-  <strong>感謝 <a href="https://www.jetbrains.com/?from=new-api">JetBrains</a> が本プロジェクトに無料のオープンソース開発ライセンスを提供してくれたことに感謝します</strong>
-</p>
+> 📖 **エージェントモデルが初めての方へ。ステップバイステップのガイドをご覧ください:** **[サブサイト／エージェントフランチャイズ・ガイド（中文）](./docs/subsite-guide.md)** · [English](./docs/subsite-guide.en.md)
 
 ---
 
 ## 🚀 クイックスタート
 
-### Docker Composeを使用（推奨）
+### Docker Compose を使う（推奨）
 
 ```bash
-# プロジェクトをクローン
-git clone https://github.com/QuantumNous/new-api.git
-cd new-api
+# Clone the project
+git clone https://github.com/nsuanningmeng/LemonHub.git
+cd LemonHub
 
-# docker-compose.yml 設定を編集
+# Review/edit the configuration (DB password, ServerAddress, etc.)
 nano docker-compose.yml
 
-# サービスを起動
-docker-compose up -d
+# Start (the compose file already points at the LemonHub image)
+docker compose up -d
 ```
 
 <details>
-<summary><strong>Dockerコマンドを使用</strong></summary>
+<summary><strong>素の Docker コマンドを使う</strong></summary>
 
 ```bash
-# 最新のイメージをプル
-docker pull calciumion/new-api:latest
+# Pull the latest image
+docker pull ghcr.io/nsuanningmeng/lemonhub:latest
 
-# SQLiteを使用（デフォルト）
-docker run --name new-api -d --restart always \
+# SQLite (default — mount /data to persist)
+docker run --name lemonhub -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/new-api:latest
+  ghcr.io/nsuanningmeng/lemonhub:latest
 
-# MySQLを使用
-docker run --name new-api -d --restart always \
+# MySQL / PostgreSQL (set SQL_DSN)
+docker run --name lemonhub -d --restart always \
   -p 3000:3000 \
-  -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
+  -e SQL_DSN="root:123456@tcp(localhost:3306)/lemonhub" \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
-  calciumion/new-api:latest
+  ghcr.io/nsuanningmeng/lemonhub:latest
 ```
 
-> **💡 ヒント:** `-v ./data:/data` は現在のディレクトリの `data` フォルダにデータを保存します。絶対パスに変更することもできます：`-v /your/custom/path:/data`
-
 </details>
 
----
-
-🎉 デプロイが完了したら、`http://localhost:3000` にアクセスして使用を開始してください！
+🎉 デプロイ後、`http://localhost:3000` を開きます。最初に登録されたアカウントが **root ／ プラットフォーム（メインサイト）管理者** になります。
 
 > [!WARNING]
-> 本プロジェクトを公衆向け生成 AI サービスまたは API 再販サービスとして運営する場合、ユーザーは届出、コンテンツセキュリティ、本人確認、ログ保持、税務、決済、上流認可などの必要なコンプライアンス義務を先に完了してください。
-
-📖 その他のデプロイ方法については[デプロイガイド](https://docs.newapi.pro/ja/docs/installation)を参照してください。
+> LemonHub を公開またはリセラー型の AI サービスとして運用する場合は、まず、求められる届出、ライセンス、コンテンツ安全性、実名確認、ログ保管、税務、決済、上流認可などの義務をすべて完了してください。
 
 ---
 
-## 📚 ドキュメント
+## 🤝 ホワイトラベル／エージェントフランチャイズ
 
-<div align="center">
+LemonHub は 2 つのロールを中心に構築されています:
 
-### 📖 [公式ドキュメント](https://docs.newapi.pro/ja/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/new-api)
+- **メインサイト管理者（プラットフォーム所有者 / 主站站长）** — デプロイ、AI チャネル（上流キー）を所有し、卸値でクォータを販売します。サブサイトを作成し、エージェントのウォレットに資金を入れ、各エージェントの割引レートを設定します。
+- **サブサイト管理者（エージェント / リセラー / 子站站长）** — 自身のドメイン上でブランド付きのサブサイトを運営し、自身の決済加盟店とブランディングを設定し、自身のエンドユーザーにサービスを提供します。
 
-</div>
+**お金の流れの概要**（例、割引 `7000` = 70%）:
 
-**クイックナビゲーション:**
+```
+End-user pays ¥100  ──►  Agent's OWN EasyPay merchant   (agent keeps ¥100)
+        │
+        ▼ (callback, one DB transaction, idempotent)
+   User credited ¥100 of quota   +   Agent procurement wallet debited ¥70
+                                          └─ ¥30 is the agent's margin
+```
 
-| カテゴリ | リンク |
-|------|------|
-| 🚀 デプロイガイド | [インストールドキュメント](https://docs.newapi.pro/ja/docs/installation) |
-| ⚙️ 環境設定 | [環境変数](https://docs.newapi.pro/ja/docs/installation/config-maintenance/environment-variables) |
-| 📡 APIドキュメント | [APIドキュメント](https://docs.newapi.pro/ja/docs/api) |
-| ❓ よくある質問 | [FAQ](https://docs.newapi.pro/ja/docs/support/faq) |
-| 💬 コミュニティ交流 | [交流チャネル](https://docs.newapi.pro/ja/docs/support/community-interaction) |
+各ロールが準備すべきこと、そしてすべてのクリック操作を網羅した、手取り足取りのウォークスルーはこちらです:
 
----
-
-## ✨ 主な機能
-
-> 詳細な機能については[機能説明](https://docs.newapi.pro/ja/docs/guide/wiki/basic-concepts/features-introduction)を参照してください。
-
-### 🎨 コア機能
-
-| 機能 | 説明 |
-|------|------|
-| 🎨 新しいUI | モダンなユーザーインターフェースデザイン |
-| 🌍 多言語 | 簡体字中国語、繁体字中国語、英語、フランス語、日本語をサポート |
-| 🔄 データ互換性 | オリジナルのOne APIデータベースと完全に互換性あり |
-| 📈 データダッシュボード | ビジュアルコンソールと統計分析 |
-| 🔒 権限管理 | トークングループ化、モデル制限、ユーザー管理 |
-
-### 💰 認可済み利用量とコスト管理
-
-- ✅ 合法的に許可されたシナリオでの内部チャージとクォータ割り当て（EPay、Stripe）
-- ✅ 組織レベルのリクエスト単位、使用量ベース、キャッシュヒットのコスト会計
-- ✅ OpenAI、Azure、DeepSeek、Claude、Qwen などのモデルのキャッシュ課金統計
-- ✅ 内部管理または認可済み企業顧客向けの柔軟な課金ポリシー
-
-### 🔐 認証とセキュリティ
-
-- 😈 Discord認証ログイン
-- 🤖 LinuxDO認証ログイン
-- 📱 Telegram認証ログイン
-- 🔑 OIDC統一認証
-- 🔍 Key使用量クォータ照会（[new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool)と併用）
-
-
-
-### 🚀 高度な機能
-
-**APIフォーマットサポート:**
-- ⚡ [OpenAI Responses](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/create-response)
-- ⚡ [OpenAI Realtime API](https://docs.newapi.pro/ja/docs/api/ai-model/realtime/create-realtime-session)（Azureを含む）
-- ⚡ [Claude Messages](https://docs.newapi.pro/ja/docs/api/ai-model/chat/create-message)
-- ⚡ [Google Gemini](https://doc.newapi.pro/ja/api/google-gemini-chat)
-- 🔄 [Rerankモデル](https://docs.newapi.pro/ja/docs/api/ai-model/rerank/create-rerank)（Cohere、Jina）
-
-**インテリジェントルーティング:**
-- ⚖️ チャネル重み付けランダム
-- 🔄 失敗自動リトライ
-- 🚦 ユーザーレベルモデルレート制限
-
-**フォーマット変換:**
-- 🔄 **OpenAI Compatible ⇄ Claude Messages**
-- 🔄 **OpenAI Compatible → Google Gemini**
-- 🔄 **Google Gemini → OpenAI Compatible** - テキストのみ、関数呼び出しはまだサポートされていません
-- 🚧 **OpenAI Compatible ⇄ OpenAI Responses** - 開発中
-- 🔄 **思考からコンテンツへの機能**
-
-**Reasoning Effort サポート:**
-
-<details>
-<summary>詳細設定を表示</summary>
-
-**OpenAIシリーズモデル:**
-- `o3-mini-high` - 高思考努力
-- `o3-mini-medium` - 中思考努力
-- `o3-mini-low` - 低思考努力
-- `gpt-5-high` - 高思考努力
-- `gpt-5-medium` - 中思考努力
-- `gpt-5-low` - 低思考努力
-
-**Claude思考モデル:**
-- `claude-3-7-sonnet-20250219-thinking` - 思考モードを有効にする
-
-**Google Geminiシリーズモデル:**
-- `gemini-2.5-flash-thinking` - 思考モードを有効にする
-- `gemini-2.5-flash-nothinking` - 思考モードを無効にする
-- `gemini-2.5-pro-thinking` - 思考モードを有効にする
-- `gemini-2.5-pro-thinking-128` - 思考モードを有効にし、思考予算を128トークンに設定する
-- Gemini モデル名の末尾に `-low` / `-medium` / `-high` を付けることで推論強度を直接指定できます（追加の思考予算サフィックスは不要です）。
-
-</details>
+➡️ **[📘 サブサイト／エージェントフランチャイズ・ガイド（中文，保姆级）](./docs/subsite-guide.md)** · **[English](./docs/subsite-guide.en.md)**
 
 ---
 
-## 🤖 モデルサポート
+## 🤖 モデル＆機能サポート（new-api から継承）
 
-> 詳細については[APIドキュメント - ゲートウェイインターフェース](https://docs.newapi.pro/ja/docs/api)
+LemonHub は new-api のゲートウェイ機能を継承しており、以下を含みます:
 
-| モデルタイプ | 説明 | ドキュメント |
-|---------|------|------|
-| 🤖 OpenAI-Compatible | OpenAI互換モデル | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/createchatcompletion) |
-| 🤖 OpenAI Responses | OpenAI Responsesフォーマット | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/createresponse) |
-| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [ドキュメント](https://doc.newapi.pro/api/midjourney-proxy-image) |
-| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [ドキュメント](https://doc.newapi.pro/api/suno-music) |
-| 🔄 Rerank | Cohere、Jina | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/rerank/creatererank) |
-| 💬 Claude | Messagesフォーマット | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/chat/createmessage) |
-| 🌐 Gemini | Google Geminiフォーマット | [ドキュメント](https://docs.newapi.pro/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta) |
-| 🔧 Dify | ChatFlowモード | - |
-| 🎯 カスタム上流 | 合法的に許可された上流エンドポイントの設定をサポート | - |
+- **フォーマット**: OpenAI Chat/Responses/Realtime、Claude Messages、Google Gemini、Rerank（Cohere/Jina）、Image/Audio/Embedding、Midjourney-Proxy、Suno、Dify。
+- **フォーマット変換**: OpenAI ⇄ Claude Messages、OpenAI → Gemini、thinking-to-content、reasoning-effort のサフィックス。
+- **インテリジェントルーティング**: 重み付きランダムチャネル、失敗時の自動リトライ（リトライ対象ステータスコードは設定可能）、トークンのマルチグループ優先フェイルオーバー、ユーザーレベルのレート制限。
+- **課金**: リクエスト単位／使用量ベース／キャッシュヒットの計算、段階的／式ベースの価格設定、EasyPay & Stripe チャージ。
+- **認証**: JWT、WebAuthn/Passkeys、OAuth（GitHub、Discord、OIDC、LinuxDO、Telegram、WeChat）。
+- **UI**: モダンなダッシュボード、多言語（zh/en/fr/ja/vi…）、データダッシュボード、モデルパフォーマンス指標。
 
-### 📡 サポートされているインターフェース
-
-<details>
-<summary>完全なインターフェースリストを表示</summary>
-
-- [チャットインターフェース (Chat Completions)](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/createchatcompletion)
-- [レスポンスインターフェース (Responses)](https://docs.newapi.pro/ja/docs/api/ai-model/chat/openai/createresponse)
-- [イメージインターフェース (Image)](https://docs.newapi.pro/ja/docs/api/ai-model/images/openai/post-v1-images-generations)
-- [オーディオインターフェース (Audio)](https://docs.newapi.pro/ja/docs/api/ai-model/audio/openai/create-transcription)
-- [ビデオインターフェース (Video)](https://docs.newapi.pro/ja/docs/api/ai-model/audio/openai/createspeech)
-- [エンベッドインターフェース (Embeddings)](https://docs.newapi.pro/ja/docs/api/ai-model/embeddings/createembedding)
-- [再ランク付けインターフェース (Rerank)](https://docs.newapi.pro/ja/docs/api/ai-model/rerank/creatererank)
-- [リアルタイム対話インターフェース (Realtime)](https://docs.newapi.pro/ja/docs/api/ai-model/realtime/createrealtimesession)
-- [Claudeチャット](https://docs.newapi.pro/ja/docs/api/ai-model/chat/createmessage)
-- [Google Geminiチャット](https://docs.newapi.pro/ja/docs/api/ai-model/chat/gemini/geminirelayv1beta)
-
-</details>
+> 📚 ゲートウェイ／API の詳細については、上流の [new-api ドキュメント](https://docs.newapi.pro) を参照してください。
 
 ---
 
 ## 🚢 デプロイ
 
 > [!TIP]
-> **最新のDockerイメージ:** `calciumion/new-api:latest`
+> **最新イメージ:** `ghcr.io/nsuanningmeng/lemonhub:latest`（マルチアーキテクチャ: amd64 + arm64）。
 
-### 📋 デプロイ要件
+### 要件
 
 | コンポーネント | 要件 |
-|------|------|
-| **ローカルデータベース** | SQLite（Dockerは `/data` ディレクトリをマウントする必要があります）|
-| **リモートデータベース** | MySQL ≥ 5.7.8 または PostgreSQL ≥ 9.6 |
-| **コンテナエンジン** | Docker / Docker Compose |
+|---|---|
+| **ローカル DB** | SQLite（Docker は `/data` をマウントする必要があります） |
+| **リモート DB** | MySQL ≥ 5.7.8 または PostgreSQL ≥ 9.6 |
+| **キャッシュ（推奨）** | Redis |
+| **エンジン** | Docker / Docker Compose |
 
-### ⚙️ 環境変数設定
+### 一般的な環境変数
 
-<details>
-<summary>一般的な環境変数設定</summary>
+| 変数 | 説明 | デフォルト |
+|---|---|---|
+| `SESSION_SECRET` | セッションシークレット（マルチノードでは **必須**） | - |
+| `CRYPTO_SECRET` | 暗号化シークレット（共有 Redis では **必須**） | - |
+| `SQL_DSN` | データベース接続文字列（MySQL/PostgreSQL） | - |
+| `REDIS_CONN_STRING` | Redis 接続文字列 | - |
+| `TRUSTED_REDIRECT_DOMAINS` | 決済リダイレクト／マルチドメインコールバック用の信頼済みドメイン（カンマ区切り） | - |
+| `PAYMENT_WEBHOOK_RATE_LIMIT` | 決済 notify webhook 向けの IP 単位の余裕を持たせた上限（リクエスト数／ウィンドウ） | `1800` |
+| `PAYMENT_WEBHOOK_RATE_LIMIT_DURATION` | 上記のウィンドウ（秒） | `60` |
+| `STREAMING_TIMEOUT` | ストリーミングの無応答タイムアウト（秒） | `300` |
+| `MAX_REQUEST_BODY_MB` | リクエストボディの最大サイズ（MB、解凍後） | `32` |
 
-| 変数名 | 説明 | デフォルト値 |
-|--------|------|--------|
-| `SESSION_SECRET` | セッションシークレット（マルチマシンデプロイに必須） | - |
-| `CRYPTO_SECRET` | 暗号化シークレット（Redisに必須） | - |
-| `SQL_DSN** | データベース接続文字列 | - |
-| `REDIS_CONN_STRING` | Redis接続文字列 | - |
-| `STREAMING_TIMEOUT` | ストリーミング応答のタイムアウト時間（秒） | `300` |
-| `STREAM_SCANNER_MAX_BUFFER_MB` | ストリームスキャナの1行あたりバッファ上限（MB）。4K画像など巨大なbase64 `data:` ペイロードを扱う場合は値を増加させてください | `64` |
-| `MAX_REQUEST_BODY_MB` | リクエストボディ最大サイズ（MB、**解凍後**に計測。巨大リクエスト/zip bomb によるメモリ枯渇を防止）。超過時は `413` | `32` |
-| `AZURE_DEFAULT_API_VERSION` | Azure APIバージョン | `2025-04-01-preview` |
-| `ERROR_LOG_ENABLED` | エラーログスイッチ | `false` |
-| `PYROSCOPE_URL` | Pyroscopeサーバーのアドレス | - |
-| `PYROSCOPE_APP_NAME` | Pyroscopeアプリ名 | `new-api` |
-| `PYROSCOPE_BASIC_AUTH_USER` | Pyroscope Basic Authユーザー | - |
-| `PYROSCOPE_BASIC_AUTH_PASSWORD` | Pyroscope Basic Authパスワード | - |
-| `PYROSCOPE_MUTEX_RATE` | Pyroscope mutexサンプリング率 | `5` |
-| `PYROSCOPE_BLOCK_RATE` | Pyroscope blockサンプリング率 | `5` |
-| `HOSTNAME` | Pyroscope用のホスト名タグ | `new-api` |
+> レート制限とほとんどのチューニング変数は、コードの妥当なデフォルト値にフォールバックするため、`.env`/compose で指定する必要は **ありません**。文書化されたオプションの設定項目については `.env.example` を参照してください。
 
-📖 **完全な設定:** [環境変数ドキュメント](https://docs.newapi.pro/ja/docs/installation/config-maintenance/environment-variables)
-
-</details>
-
-### 🔧 デプロイ方法
-
-<details>
-<summary><strong>方法 1: Docker Compose（推奨）</strong></summary>
-
-```bash
-# プロジェクトをクローン
-git clone https://github.com/QuantumNous/new-api.git
-cd new-api
-
-# 設定を編集
-nano docker-compose.yml
-
-# サービスを起動
-docker-compose up -d
-```
-
-</details>
-
-<details>
-<summary><strong>方法 2: Dockerコマンド</strong></summary>
-
-**SQLiteを使用:**
-```bash
-docker run --name new-api -d --restart always \
-  -p 3000:3000 \
-  -e TZ=Asia/Shanghai \
-  -v ./data:/data \
-  calciumion/new-api:latest
-```
-
-**MySQLを使用:**
-```bash
-docker run --name new-api -d --restart always \
-  -p 3000:3000 \
-  -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
-  -e TZ=Asia/Shanghai \
-  -v ./data:/data \
-  calciumion/new-api:latest
-```
-
-> **💡 パス説明:**
-> - `./data:/data` - 相対パス、データは現在のディレクトリのdataフォルダに保存されます
-> - 絶対パスを使用することもできます：`/your/custom/path:/data`
-
-</details>
-
-<details>
-<summary><strong>方法 3: 宝塔パネル</strong></summary>
-
-1. 宝塔パネル（**9.2.0バージョン**以上）をインストールし、アプリケーションストアで**New-API**を検索してインストールします。
-
-📖 [画像付きチュートリアル](./docs/BT.md)
-
-</details>
-
-### ⚠️ マルチマシンデプロイの注意事項
+### マルチノードに関する注意
 
 > [!WARNING]
-> - **必ず設定する必要があります** `SESSION_SECRET` - そうしないとマルチマシンデプロイ時にログイン状態が不一致になります
-> - **共有Redisは必ず設定する必要があります** `CRYPTO_SECRET` - そうしないとデータを復号化できません
+> - `SESSION_SECRET` を **設定** してください — そうしないとノード間でログイン状態が不整合になります。
+> - **共有 Redis を使用する場合は** `CRYPTO_SECRET` を **設定** してください — そうしないと暗号化されたデータを復号できません。
 
-### 🔄 チャネルリトライとキャッシュ
+### リトライ＆キャッシュ
 
-**リトライ設定:** `設定 → 運営設定 → 一般設定 → 失敗リトライ回数`
-
-**キャッシュ設定:**
-- `REDIS_CONN_STRING`：Redisキャッシュ（推奨）
-- `MEMORY_CACHE_ENABLED`：メモリキャッシュ
+- **リトライ**: `設定 → 運用設定 → ルート信頼性`（失敗時のリトライ回数 + 自動リトライ対象のステータスコード範囲）。
+- **キャッシュ**: `REDIS_CONN_STRING`（推奨）または `MEMORY_CACHE_ENABLED`。
 
 ---
 
-## 🔗 関連プロジェクト
+## 🧱 new-api をベースに構築
 
-### 上流プロジェクト
+LemonHub は AGPL ライセンスのフォークです。上流プロジェクトに多大な感謝を捧げます:
 
-| プロジェクト | 説明 |
-|------|------|
-| [One API](https://github.com/songquanpeng/one-api) | オリジナルプロジェクトベース |
-| [Midjourney-Proxy](https://github.com/novicezk/midjourney-proxy) | Midjourneyインターフェースサポート |
+| プロジェクト | 役割 |
+|---|---|
+| [new-api](https://github.com/QuantumNous/new-api) | 直接の上流 — LemonHub が拡張するゲートウェイ |
+| [One API](https://github.com/songquanpeng/one-api) | 元となるプロジェクト基盤（MIT） |
 
-### 補助ツール
-
-| プロジェクト | 説明 |
-|------|------|
-| [new-api-key-tool](https://github.com/Calcium-Ion/new-api-key-tool) | キー使用量クォータ照会ツール |
-| [new-api-horizon](https://github.com/Calcium-Ion/new-api-horizon) | New API高性能最適化版 |
-
----
-
-## 💬 ヘルプサポート
-
-### 📖 ドキュメントリソース
-
-| リソース | リンク |
-|------|------|
-| 📘 よくある質問 | [FAQ](https://docs.newapi.pro/ja/docs/support/faq) |
-| 💬 コミュニティ交流 | [交流チャネル](https://docs.newapi.pro/ja/docs/support/community-interaction) |
-| 🐛 問題のフィードバック | [問題フィードバック](https://docs.newapi.pro/ja/docs/support/feedback-issues) |
-| 📚 完全なドキュメント | [公式ドキュメント](https://docs.newapi.pro/ja/docs) |
-
-### 🤝 貢献ガイド
-
-あらゆる形の貢献を歓迎します！
-
-- 🐛 バグを報告する
-- 💡 新しい機能を提案する
-- 📝 ドキュメントを改善する
-- 🔧 コードを提出する
+LemonHub は上流の new-api と定期的に同期します。リレー／課金／チャネル転送のコアは、上流の機能や修正をクリーンにマージできるよう、バイト単位で互換性を保っています。LemonHub の追加機能はその周辺に存在します（サブサイト分離、ウォレット、サイト別決済、ブランディング）。
 
 ---
 
 ## 📜 ライセンス
 
-このプロジェクトは [GNU Affero General Public License v3.0 (AGPLv3)](./LICENSE) の下でライセンスされています。
+本プロジェクトは [GNU Affero General Public License v3.0（AGPLv3）](./LICENSE) の下でライセンスされており、上流のライセンスを継承します。
 
-本プロジェクトは、[One API](https://github.com/songquanpeng/one-api)（MITライセンス）をベースに開発されたオープンソースプロジェクトです。
+AGPLv3 第 7 条の追加条項に従い、改変版は適切な法的／About／フッターの箇所に著者帰属表示 `Frontend design and development by New API contributors.` を保持し、かつ元プロジェクトへの可視的なリンク <https://github.com/QuantumNous/new-api> を保持しなければなりません。
 
-お客様の組織のポリシーがAGPLv3ライセンスのソフトウェアの使用を許可していない場合、またはAGPLv3のオープンソース義務を回避したい場合は、こちらまでお問い合わせください：[support@quantumnous.com](mailto:support@quantumnous.com)
-
----
-
-## 🌟 スター履歴
-
-<div align="center">
-
-[![スター履歴チャート](https://api.star-history.com/svg?repos=Calcium-Ion/new-api&type=Date)](https://star-history.com/#Calcium-Ion/new-api&Date)
-
-</div>
+これは [One API](https://github.com/songquanpeng/one-api)（MIT ライセンス）をベースに開発されたオープンソースプロジェクトです。
 
 ---
 
+## 💬 ヘルプ＆コントリビュート
+
+- 🐛 Issue と機能リクエスト: [LemonHub Issues](https://github.com/nsuanningmeng/LemonHub/issues)
+- 📘 サブサイトガイド: [中文](./docs/subsite-guide.md) · [English](./docs/subsite-guide.en.md)
+- 📚 ゲートウェイ／API リファレンス: [new-api docs](https://docs.newapi.pro)
+
+あらゆる種類のコントリビュートを歓迎します — バグ報告、機能、ドキュメント、コード。
+
 <div align="center">
 
-### 💖 New APIをご利用いただきありがとうございます
+LemonHub が役に立ったら、ぜひ ⭐️ をお願いします
 
-このプロジェクトがあなたのお役に立てたなら、ぜひ ⭐️ スターをください！
-
-**[公式ドキュメント](https://docs.newapi.pro/ja/docs)** • **[問題フィードバック](https://github.com/Calcium-Ion/new-api/issues)** • **[最新リリース](https://github.com/Calcium-Ion/new-api/releases)**
-
-<sub>❤️ で構築された QuantumNous</sub>
+<sub>🍋 LemonHub — <a href="https://github.com/QuantumNous/new-api">new-api</a> の上に構築されたホワイトラベル／エージェントフランチャイズのレイヤー。</sub>
 
 </div>
