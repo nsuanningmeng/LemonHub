@@ -294,9 +294,18 @@ func RequestEpay(c *gin.Context) {
 		}
 	}
 
-	callBackAddress := service.GetCallbackAddressForRequest(c)
+	// Server-to-server epay notify must hit a STABLE, gateway-registered, reachable endpoint.
+	// For the MAIN site, always use the configured callback address: sending the async notify to
+	// whatever trusted domain the user happened to visit (a multi-domain change) can target a
+	// frontend-only / unregistered / unreachable domain and strand a paid order as unpaid. A
+	// SUB-site collects into its OWN epay merchant, registered against its OWN domain, so it must
+	// keep the per-request host. The return URL (browser redirect) stays per-domain in both cases.
+	notifyBase := strings.TrimRight(service.GetCallbackAddress(), "/")
+	if site != nil {
+		notifyBase = service.GetCallbackAddressForRequest(c)
+	}
 	returnUrl, _ := url.Parse(paymentReturnPath(c, "/console/log"))
-	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
+	notifyUrl, _ := url.Parse(notifyBase + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
 	client := getEpayClientForSite(site)
@@ -345,7 +354,7 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值订单创建成功 user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f uri=%q params=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, uri, common.GetJsonString(params)))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值订单创建成功 user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f site_id=%d notify_url=%q request_host=%q trusted_host=%v uri=%q params=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, middleware.GetRequestSiteId(c), notifyUrl.String(), c.Request.Host, service.IsRequestHostTrusted(c), uri, common.GetJsonString(params)))
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 

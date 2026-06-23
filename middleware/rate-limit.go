@@ -101,6 +101,16 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// PaymentWebhookRateLimit is a GENEROUS per-IP backstop for payment provider notify webhooks.
+// These routes are intentionally kept off the global API rate limit (a 429 would strand a paid
+// order whose gateway only retries a few times), but must not be left fully unthrottled: a flood
+// of bogus callbacks would otherwise drive an unauthenticated DB lookup per request (the order is
+// resolved before signature verification) and could exhaust the DB connection pool. The default
+// threshold sits far above any real epay callback volume, so legitimate retries never trip it.
+func PaymentWebhookRateLimit() func(c *gin.Context) {
+	return rateLimitFactory(common.PaymentWebhookRateLimitNum, common.PaymentWebhookRateLimitDuration, "PWH")
+}
+
 func CriticalRateLimit() func(c *gin.Context) {
 	if common.CriticalRateLimitEnable {
 		return rateLimitFactory(common.CriticalRateLimitNum, common.CriticalRateLimitDuration, "CT")

@@ -115,6 +115,9 @@ func InitEnv() {
 	GlobalApiRateLimitNum = GetEnvOrDefault("GLOBAL_API_RATE_LIMIT", 360)
 	GlobalApiRateLimitDuration = int64(GetEnvOrDefault("GLOBAL_API_RATE_LIMIT_DURATION", 180))
 
+	PaymentWebhookRateLimitNum = GetEnvOrDefault("PAYMENT_WEBHOOK_RATE_LIMIT", 1800)
+	PaymentWebhookRateLimitDuration = int64(GetEnvOrDefault("PAYMENT_WEBHOOK_RATE_LIMIT_DURATION", 60))
+
 	GlobalWebRateLimitEnable = GetEnvOrDefaultBool("GLOBAL_WEB_RATE_LIMIT_ENABLE", true)
 	GlobalWebRateLimitNum = GetEnvOrDefault("GLOBAL_WEB_RATE_LIMIT", 120)
 	GlobalWebRateLimitDuration = int64(GetEnvOrDefault("GLOBAL_WEB_RATE_LIMIT_DURATION", 180))

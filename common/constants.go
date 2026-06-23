@@ -216,6 +216,14 @@ var (
 	GlobalApiRateLimitNum      int
 	GlobalApiRateLimitDuration int64
 
+	// Payment provider notify webhooks (epay) are intentionally exempt from the global API
+	// rate limit (a 429 would strand a paid order), but must still keep a GENEROUS per-IP
+	// backstop so a flood of bogus callbacks cannot exhaust the DB connection pool (each
+	// EpayNotify does an indexed order lookup before signature verification). Sized far above
+	// any real epay callback volume; raise via env for extreme-volume deployments.
+	PaymentWebhookRateLimitNum      = 1800
+	PaymentWebhookRateLimitDuration = int64(60)
+
 	GlobalWebRateLimitEnable   bool
 	GlobalWebRateLimitNum      int
 	GlobalWebRateLimitDuration int64

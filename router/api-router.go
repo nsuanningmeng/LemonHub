@@ -18,6 +18,26 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
+
+	// Payment gateway notify callbacks (server-to-server) are registered on a sibling /api group
+	// that deliberately OMITS gzip + the global API rate limit:
+	//   - gzip would compress the plain "success" ack; EasyPay does a literal body=="success"
+	//     string compare, so a gzipped body reads as failure and the paid order stays unpaid.
+	//   - the global API rate limit (keyed by caller IP) can 429 a burst of callbacks arriving
+	//     from EasyPay's shared exit IP; the gateway only retries a few times, so a dropped
+	//     callback strands a paid order as unpaid.
+	// These endpoints authenticate via their own signature verification, so they do not need the
+	// global rate limit. Body-storage cleanup + anonymous body limit are still applied.
+	paymentWebhookRouter := router.Group("/api")
+	paymentWebhookRouter.Use(middleware.RouteTag("api"))
+	paymentWebhookRouter.Use(middleware.BodyStorageCleanup())
+	paymentWebhookRouter.Use(middleware.PaymentWebhookRateLimit()) // generous per-IP backstop (not the global limit)
+	{
+		paymentWebhookRouter.POST("/user/epay/notify", anonymousRequestBodyLimit, controller.EpayNotify)
+		paymentWebhookRouter.GET("/user/epay/notify", controller.EpayNotify)
+		paymentWebhookRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, controller.SubscriptionEpayNotify)
+		paymentWebhookRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
+	}
 	{
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
@@ -74,8 +94,8 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.POST("/passkey/login/finish", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.PasskeyLoginFinish)
 			//userRoute.POST("/tokenlog", middleware.CriticalRateLimit(), controller.TokenLog)
 			userRoute.GET("/logout", controller.Logout)
-			userRoute.POST("/epay/notify", anonymousRequestBodyLimit, controller.EpayNotify)
-			userRoute.GET("/epay/notify", controller.EpayNotify)
+			// /user/epay/notify (GET+POST) is registered on paymentWebhookRouter above
+			// (no gzip / no global rate limit) so EasyPay always receives a clean "success" ack.
 			userRoute.GET("/groups", controller.GetUserGroups)
 
 			selfRoute := userRoute.Group("/")
@@ -182,8 +202,8 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		// Subscription payment callbacks (no auth)
-		apiRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, controller.SubscriptionEpayNotify)
-		apiRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
+		// /subscription/epay/notify (GET+POST) is registered on paymentWebhookRouter above
+		// (no gzip / no global rate limit) so EasyPay always receives a clean "success" ack.
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
 		optionRoute := apiRouter.Group("/option")

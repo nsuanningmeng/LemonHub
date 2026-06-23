@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Calcium-Ion/go-epay/epay"
@@ -63,13 +64,17 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		}
 	}
 
+	// Browser return stays per-domain (the user is already on that domain); the server-to-server
+	// notify must hit the STABLE, gateway-registered callback address — subscription epay always
+	// uses the global merchant (GetEpayClient below), so a per-request-host notify could target an
+	// unreachable/unregistered domain and strand a paid order.
 	callBackAddress := service.GetCallbackAddressForRequest(c)
 	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
 	if err != nil {
 		common.ApiErrorMsg(c, "回调地址配置错误")
 		return
 	}
-	notifyUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/notify")
+	notifyUrl, err := url.Parse(strings.TrimRight(service.GetCallbackAddress(), "/") + "/api/subscription/epay/notify")
 	if err != nil {
 		common.ApiErrorMsg(c, "回调地址配置错误")
 		return
