@@ -194,7 +194,15 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		channel, channelErr := getChannel(c, relayInfo, retryParam)
 		if channelErr != nil {
 			logger.LogError(c, channelErr.Error())
-			newAPIError = channelErr
+			// On a retry, channel acquisition failed (pool exhausted — e.g. the only channel was
+			// auto-disabled by the upstream error we just hit — or group/selection failed). The
+			// REAL upstream failure is more useful to the client than the internal "channel not
+			// found", so surface LastError instead of masking it, then stop (nothing left to try).
+			if relayInfo.LastError != nil && retryParam.GetRetry() > 0 {
+				newAPIError = relayInfo.LastError
+			} else {
+				newAPIError = channelErr
+			}
 			break
 		}
 
@@ -363,7 +371,15 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 		return true
 	}
 	if operation_setting.IsAlwaysSkipRetryCode(openaiErr.GetErrorCode()) {
-		return false
+		// A garbled/non-JSON upstream body (BadResponseBody) is only truly un-retryable once we
+		// have already begun writing a response to the client (e.g. a stream has started) —
+		// retrying then would corrupt the client's response. If nothing has been written yet and
+		// the HTTP status is otherwise retryable (e.g. a 502/503 returning an HTML error page),
+		// fall through to the normal status-code policy so the retryable upstream failure is not
+		// silently dropped despite its status code being in the operator's retry list.
+		if c != nil && c.Writer != nil && c.Writer.Written() {
+			return false
+		}
 	}
 	return operation_setting.ShouldRetryByStatusCode(code)
 }

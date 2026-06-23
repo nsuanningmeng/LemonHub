@@ -62,10 +62,32 @@ func TestShouldRetryByStatusCode(t *testing.T) {
 
 	require.True(t, ShouldRetryByStatusCode(429))
 	require.True(t, ShouldRetryByStatusCode(500))
-	require.False(t, ShouldRetryByStatusCode(504))
-	require.False(t, ShouldRetryByStatusCode(524))
+	// 504/524 are honored when the operator's configured ranges explicitly cover them
+	// (here 500-599). The DEFAULT ranges still exclude them (asserted below).
+	require.True(t, ShouldRetryByStatusCode(504))
+	require.True(t, ShouldRetryByStatusCode(524))
 	require.False(t, ShouldRetryByStatusCode(400))
 	require.False(t, ShouldRetryByStatusCode(200))
+}
+
+func TestShouldRetryByStatusCode_504_524_NotRetriedUnlessConfigured(t *testing.T) {
+	orig := AutomaticRetryStatusCodeRanges
+	t.Cleanup(func() { AutomaticRetryStatusCodeRanges = orig })
+
+	// A range that deliberately carves out 504/524: they must not retry.
+	AutomaticRetryStatusCodeRanges = []StatusCodeRange{
+		{Start: 500, End: 503},
+		{Start: 505, End: 523},
+		{Start: 525, End: 599},
+	}
+	require.True(t, ShouldRetryByStatusCode(503))
+	require.False(t, ShouldRetryByStatusCode(504))
+	require.False(t, ShouldRetryByStatusCode(524))
+
+	// An explicit standalone entry for 504 makes it retry.
+	AutomaticRetryStatusCodeRanges = []StatusCodeRange{{Start: 504, End: 504}}
+	require.True(t, ShouldRetryByStatusCode(504))
+	require.False(t, ShouldRetryByStatusCode(524))
 }
 
 func TestShouldRetryByStatusCode_DefaultMatchesLegacyBehavior(t *testing.T) {

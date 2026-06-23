@@ -78,9 +78,13 @@ func IsAlwaysSkipRetryCode(errorCode types.ErrorCode) bool {
 }
 
 func ShouldRetryByStatusCode(code int) bool {
-	if IsAlwaysSkipRetryStatusCode(code) {
-		return false
-	}
+	// 504/524 (gateway/CDN timeouts) are excluded from the DEFAULT retry ranges, but an
+	// operator who explicitly configures a retry range that covers them must be honored —
+	// previously they were hard-skipped here, so adding 504/524 to the retry list silently
+	// did nothing ("the status code is in my retry list but it never retries"). The default
+	// ranges (AutomaticRetryStatusCodeRanges) still carve out 504/524, so default behavior is
+	// unchanged; only an explicit operator override now takes effect. The task-relay path keeps
+	// its own hard 504/524 skip via IsAlwaysSkipRetryStatusCode (timeouts there must not retry).
 	return shouldMatchStatusCodeRanges(AutomaticRetryStatusCodeRanges, code)
 }
 
