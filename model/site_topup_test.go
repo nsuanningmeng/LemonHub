@@ -2,9 +2,12 @@ package model
 
 import (
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestTopUpSettlementFailClosedAndRetry covers the codex-flagged robustness paths:
@@ -209,4 +212,64 @@ func TestCompleteEpayTopUpSettlement(t *testing.T) {
 	if q := userQuota(uM.Id); q != wantQuota {
 		t.Fatalf("main-site user quota=%d, want %d", q, wantQuota)
 	}
+}
+
+// TestCompleteEpayTopUpConcurrentIdempotent proves the settlement claim credits a paid order
+// EXACTLY ONCE under CONCURRENT duplicate callbacks. This invariant matters more now that the
+// epay notify route is no longer behind the global rate limit (concurrent duplicate callbacks
+// from EasyPay's retry + shared exit IP are more likely): N goroutines settling the SAME paid
+// main-site order must credit the user exactly once, never N times, and leave the order success.
+func TestCompleteEpayTopUpConcurrentIdempotent(t *testing.T) {
+	if err := DB.AutoMigrate(&TopUp{}, &User{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	const tradeNo = "P4CONC"
+	cleanup := func() {
+		DB.Unscoped().Where("trade_no = ?", tradeNo).Delete(&TopUp{})
+		DB.Unscoped().Where("username = ? AND site_id = ?", "p4concu", 0).Delete(&User{})
+	}
+	cleanup()
+	defer cleanup()
+
+	const amount = int64(10)
+	wantQuota := int(amount * int64(common.QuotaPerUnit))
+	pw, _ := common.Password2Hash("x")
+	u := &User{Username: "p4concu", SiteId: 0, Password: pw, Status: common.UserStatusEnabled, Role: common.RoleCommonUser, AffCode: "p4concaff"}
+	require.NoError(t, DB.Create(u).Error)
+
+	require.NoError(t, DB.Create(&TopUp{SiteId: 0, UserId: u.Id, Amount: amount, Money: 100, TradeNo: tradeNo,
+		PaymentProvider: PaymentProviderEpay, PaymentMethod: "alipay", Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}).Error)
+
+	const goroutines = 8
+	added := make([]int, goroutines)
+	errs := make([]error, goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			_, q, err := CompleteEpayTopUp(tradeNo, 0, 1)
+			added[idx], errs[idx] = q, err
+		}(i)
+	}
+	wg.Wait()
+
+	creditCount, totalCredited := 0, 0
+	for i := 0; i < goroutines; i++ {
+		require.NoErrorf(t, errs[i], "goroutine %d must not error (idempotent no-op expected)", i)
+		if added[i] > 0 {
+			creditCount++
+			totalCredited += added[i]
+		}
+	}
+	assert.Equal(t, 1, creditCount, "exactly one concurrent callback must credit the order")
+	assert.Equal(t, wantQuota, totalCredited, "total credited must equal the order quota (credited once)")
+
+	var got User
+	require.NoError(t, DB.Select("quota").First(&got, u.Id).Error)
+	assert.Equal(t, wantQuota, got.Quota, "user must be credited exactly once under concurrency")
+
+	var order TopUp
+	require.NoError(t, DB.Where("trade_no = ?", tradeNo).First(&order).Error)
+	assert.Equal(t, common.TopUpStatusSuccess, order.Status, "order must end success")
 }
