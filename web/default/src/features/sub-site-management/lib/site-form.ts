@@ -44,6 +44,10 @@ export function getSiteFormSchema(t: TFunction) {
     discount_rate: z.number().min(0).max(10000),
     status: z.number(),
     wallet_warn_threshold: z.number().min(0),
+    // Per-call model price markup default (>= 10000 = main retail; sub-site may only mark up).
+    model_price_rate: z.number().min(10000),
+    // Upper cap the agent may set (0 = no cap; otherwise >= 10000).
+    model_price_rate_max: z.number().min(0),
     pay_config: z.string().optional(),
   })
 }
@@ -61,6 +65,8 @@ export type SiteFormValues = {
   discount_rate: number
   status: number
   wallet_warn_threshold: number
+  model_price_rate: number
+  model_price_rate_max: number
   pay_config?: string
 }
 
@@ -81,6 +87,8 @@ export const SITE_FORM_DEFAULT_VALUES: SiteFormValues = {
   discount_rate: 10000,
   status: 1,
   wallet_warn_threshold: 0,
+  model_price_rate: 10000,
+  model_price_rate_max: 0,
   pay_config: '',
 }
 
@@ -111,6 +119,8 @@ export function transformFormToPayload(data: SiteFormValues): SiteCreatePayload 
     discount_rate: data.discount_rate,
     status: data.status,
     wallet_warn_threshold: data.wallet_warn_threshold,
+    model_price_rate: data.model_price_rate,
+    model_price_rate_max: data.model_price_rate_max,
     pay_config: data.pay_config || '',
   }
 }
@@ -133,6 +143,8 @@ export function transformSiteToForm(site: Site): SiteFormValues {
     discount_rate: site.discount_rate,
     status: site.status,
     wallet_warn_threshold: site.wallet_warn_threshold,
+    model_price_rate: site.model_price_rate ?? 10000,
+    model_price_rate_max: site.model_price_rate_max ?? 0,
     pay_config: site.pay_config || '',
   }
 }

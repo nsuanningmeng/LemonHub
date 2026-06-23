@@ -40,6 +40,10 @@ export const siteSchema = z.object({
   wallet_balance: z.number(), // integer 厘 (0.001 CNY)
   discount_rate: z.number(), // basis of 10000; 10000 = no discount
   wallet_warn_threshold: z.number(),
+  // Per-call model price MARKUP (basis of 10000; 10000 = same as main retail, the default).
+  // Sub-sites may only mark UP (>= 10000). model_price_rate_max (0 = no cap) is the admin ceiling.
+  model_price_rate: z.number().optional().default(10000),
+  model_price_rate_max: z.number().optional().default(0),
   pay_config: z.string(),
   // Backend returns the bound domains as a flat string array (read = write shape).
   domains: z.array(z.string()),
@@ -94,6 +98,8 @@ export interface SiteCreatePayload {
   discount_rate?: number
   status?: number
   wallet_warn_threshold?: number
+  model_price_rate?: number
+  model_price_rate_max?: number
   pay_config?: string
 }
 
@@ -111,6 +117,8 @@ export interface SiteUpdatePayload {
   discount_rate?: number
   status?: number
   wallet_warn_threshold?: number
+  model_price_rate?: number
+  model_price_rate_max?: number
   pay_config?: string
 }
 

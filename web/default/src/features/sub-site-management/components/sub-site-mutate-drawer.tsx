@@ -316,6 +316,60 @@ export function SubSiteMutateDrawer({
                 )}
               />
 
+              {/* Model Price Markup — default */}
+              <FormField
+                control={form.control}
+                name='model_price_rate'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Model Price Markup (default)')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='number'
+                        min='10000'
+                        placeholder='10000'
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value, 10) || 10000)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        '10000 = same as main retail. Sub-site may only mark UP (>= 10000), basis of 10000.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Model Price Markup — cap */}
+              <FormField
+                control={form.control}
+                name='model_price_rate_max'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Model Price Markup Cap')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='number'
+                        min='0'
+                        placeholder='0'
+                        onChange={(e) =>
+                          field.onChange(parseInt(e.target.value, 10) || 0)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Upper limit the agent may set themselves. 0 = no cap.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Wallet Warn Threshold */}
               <FormField
                 control={form.control}

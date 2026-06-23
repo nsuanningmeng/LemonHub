@@ -55,6 +55,8 @@ export interface SiteAdminDashboard {
   discount_rate: number // basis of 10000
   wallet_balance: number // 厘
   wallet_warn_threshold: number // 厘
+  model_price_rate: number // basis of 10000; per-call model price markup (>= 10000 = main retail)
+  model_price_rate_max: number // basis of 10000; admin cap (0 = no cap)
   domains: string[]
 }
 

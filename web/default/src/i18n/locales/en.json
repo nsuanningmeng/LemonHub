@@ -1,14 +1,14 @@
 {
   "translation": {
+    "360": "360",
+    "1000": "1000",
+    "10000": "10000",
     "Home Hero Badge": "Home Hero Badge",
     "Home Hero Title Line 1": "Home Hero Title Line 1",
     "Home Hero Title Line 2": "Home Hero Title Line 2",
     "Leave empty to use the site title": "Leave empty to use the site title",
     "Leave empty to use the default copy": "Leave empty to use the default copy",
     "Small pill shown above the homepage hero title.": "Small pill shown above the homepage hero title.",
-    "360": "360",
-    "1000": "1000",
-    "10000": "10000",
     "_copy": "_copy",
     "，": ", ",
     ", and": ", and",
@@ -963,7 +963,6 @@
     "Connection error": "Connection error",
     "Connection failed": "Connection failed",
     "Connection successful": "Connection successful",
-    "Connect": "Connect",
     "Connect to an App": "Connect to an App",
     "Configure Integration": "Configure Integration",
     "Desktop Apps": "Desktop Apps",
@@ -5011,6 +5010,18 @@
     "Contact page with ways to reach you.": "Contact page with ways to reach you.",
     "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.": "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.",
     "Contact details haven't been set up yet.": "Contact details haven't been set up yet.",
-    "The administrator can configure the contact content in System Settings → Site Information → Contact.": "The administrator can configure the contact content in System Settings → Site Information → Contact."
+    "The administrator can configure the contact content in System Settings → Site Information → Contact.": "The administrator can configure the contact content in System Settings → Site Information → Contact.",
+    "Model Price Markup (default)": "模型加价率（默认）",
+    "Model Price Markup Cap": "模型加价率上限",
+    "10000 = same as main retail. Sub-site may only mark UP (>= 10000), basis of 10000.": "10000 = 与主站零售价一致。子站只能加价（≥ 10000），以万分比计。",
+    "Upper limit the agent may set themselves. 0 = no cap.": "代理可自行设置的上限。0 = 不限制。",
+    "Model Price Markup (basis of 10000)": "模型加价率（万分比）",
+    "Set how much your users pay per model call relative to the platform retail price. 10000 = same as the platform (default); you may only mark UP. This does not change how your procurement wallet is debited.": "设置你的用户每次模型调用相对平台零售价支付多少。10000 = 与平台一致（默认）；只能加价。这不影响你的采购钱包如何扣款。",
+    "Markup cannot be below 10000 (the platform retail price).": "加价率不能低于 10000（平台零售价）。",
+    "Markup exceeds the cap set by the platform.": "加价率超过平台设置的上限。",
+    "Model pricing updated": "模型定价已更新",
+    "platform retail": "平台零售价",
+    "Max allowed": "最大允许",
+    "No upper cap": "无上限"
   }
 }

@@ -127,3 +127,14 @@ export async function updatePayConfig(data: PayConfig): Promise<ApiResponse> {
   const res = await api.put('/api/site-admin/pay-config', data)
   return res.data
 }
+
+// Update the current site's per-call model price markup (model_price_rate, basis of 10000).
+// The backend enforces the floor (>= 10000 = main retail) and the admin-set cap.
+export async function updateModelPricing(
+  modelPriceRate: number
+): Promise<ApiResponse> {
+  const res = await api.put('/api/site-admin/model-pricing', {
+    model_price_rate: modelPriceRate,
+  })
+  return res.data
+}

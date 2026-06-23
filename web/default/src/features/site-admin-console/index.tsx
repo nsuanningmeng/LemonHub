@@ -23,6 +23,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { BrandingTab } from './components/branding-tab'
 import { OverviewTab } from './components/overview-tab'
 import { PayConfigTab } from './components/pay-config-tab'
+import { PricingTab } from './components/pricing-tab'
 import { RedemptionTab } from './components/redemption-tab'
 
 export function SiteAdminConsole() {
@@ -45,6 +46,7 @@ export function SiteAdminConsole() {
             <TabsTrigger value='redemption'>{t('Redemption Codes')}</TabsTrigger>
             <TabsTrigger value='branding'>{t('Branding Settings')}</TabsTrigger>
             <TabsTrigger value='pay-config'>{t('Payment Settings')}</TabsTrigger>
+            <TabsTrigger value='pricing'>{t('Model Pricing')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value='overview'>
@@ -58,6 +60,9 @@ export function SiteAdminConsole() {
           </TabsContent>
           <TabsContent value='pay-config'>
             <PayConfigTab />
+          </TabsContent>
+          <TabsContent value='pricing'>
+            <PricingTab />
           </TabsContent>
         </Tabs>
       </SectionPageLayout.Content>
