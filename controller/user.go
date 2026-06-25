@@ -445,6 +445,41 @@ func GetAffCode(c *gin.Context) {
 	return
 }
 
+// GetAffStats returns the referral summary (pending/earned/invited/this-month commission)
+// for the current user, powering the referral dashboard header.
+func GetAffStats(c *gin.Context) {
+	id := c.GetInt("id")
+	stats, err := model.GetAffStats(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    stats,
+	})
+}
+
+// GetAffLeaderboard returns the current user's invitees ranked by the commission they
+// contributed (usernames masked). limit query defaults to 10, capped at 100.
+func GetAffLeaderboard(c *gin.Context) {
+	id := c.GetInt("id")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	items, err := model.GetAffLeaderboard(id, limit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"items": items,
+		},
+	})
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")

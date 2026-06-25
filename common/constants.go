@@ -146,6 +146,10 @@ var TelegramBotName = ""
 var QuotaForNewUser = 0
 var QuotaForInviter = 0
 var QuotaForInvitee = 0
+
+// AffRechargeCommissionPercent is the percentage (0-100) of an invited user's top-up
+// credited to the inviter on every successful real-payment recharge. Default 5.
+var AffRechargeCommissionPercent = 5.0
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false

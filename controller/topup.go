@@ -516,6 +516,9 @@ func EpayNotify(c *gin.Context) {
 		if quotaAdded > 0 {
 			logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值成功 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f", tradeNo, topUp.UserId, c.ClientIP(), quotaAdded, topUp.Money))
 			model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaAdded), topUp.Money), c.ClientIP(), topUp.PaymentMethod, "epay")
+			if serr := model.SettleReferralOnTopUp(topUp.UserId, tradeNo, int64(quotaAdded), "epay"); serr != nil {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("邀请返佣结算失败 trade_no=%s user_id=%d error=%q", tradeNo, topUp.UserId, serr.Error()))
+			}
 		}
 	}
 	_, _ = c.Writer.Write([]byte("success"))
@@ -614,6 +617,8 @@ func AdminCompleteTopUp(c *gin.Context) {
 	LockOrder(req.TradeNo)
 	defer UnlockOrder(req.TradeNo)
 
+	// NOTE: admin manual 补单 is intentionally NOT a referral-qualifying top-up — only real
+	// online payments settle referral rewards (see SettleReferralOnTopUp call sites).
 	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
 		common.ApiError(c, err)
 		return
@@ -661,5 +666,12 @@ func AdminRetryManualReviewTopUp(c *gin.Context) {
 		return
 	}
 	recordManageAudit(c, "topup.retry_settlement", map[string]interface{}{"trade_no": req.TradeNo, "status": finalStatus})
+	// A parked order is a real online (epay) payment that was only delayed by an insufficient
+	// agent wallet, so settling it here is consistent with the webhook paths. Idempotent.
+	if finalStatus == common.TopUpStatusSuccess && quotaAdded > 0 {
+		if serr := model.SettleReferralOnTopUp(topUp.UserId, req.TradeNo, int64(quotaAdded), "epay"); serr != nil {
+			common.SysError("referral settlement failed (epay manual retry): " + serr.Error())
+		}
+	}
 	common.ApiSuccess(c, gin.H{"status": finalStatus, "quota_added": quotaAdded})
 }

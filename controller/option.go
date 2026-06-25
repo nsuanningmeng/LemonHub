@@ -138,7 +138,13 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
-	case "QuotaForInviter", "QuotaForInvitee":
+	case "QuotaForInviter", "QuotaForInvitee", "AffRechargeCommissionPercent":
+		if option.Key == "AffRechargeCommissionPercent" {
+			if v, perr := strconv.ParseFloat(strings.TrimSpace(option.Value.(string)), 64); perr != nil || v < 0 || v > 100 {
+				common.ApiErrorMsg(c, "充值返佣比例必须是 0-100 之间的数字")
+				return
+			}
+		}
 		if isPositiveOptionValue(option.Value.(string)) && !operation_setting.IsPaymentComplianceConfirmed() {
 			common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
 			return

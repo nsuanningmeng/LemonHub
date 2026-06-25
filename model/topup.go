@@ -112,7 +112,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 		return errors.New("未提供支付单号")
 	}
 
-	var quota float64
+	var quota int64
 	topUp := &TopUp{}
 
 	refCol := "`trade_no`"
@@ -141,7 +141,7 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 			return err
 		}
 
-		quota = topUp.Money * common.QuotaPerUnit
+		quota = decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
 		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
 		if err != nil {
 			return err
@@ -156,6 +156,10 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(int(quota)), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
+
+	if serr := SettleReferralOnTopUp(topUp.UserId, topUp.TradeNo, int64(quota), PaymentProviderStripe); serr != nil {
+		common.SysError("referral settlement failed (stripe): " + serr.Error())
+	}
 
 	return nil
 }
@@ -470,6 +474,10 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用Creem充值成功，充值额度: %v，支付金额：%.2f", quota, topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodCreem)
 
+	if serr := SettleReferralOnTopUp(topUp.UserId, topUp.TradeNo, quota, PaymentProviderCreem); serr != nil {
+		common.SysError("referral settlement failed (creem): " + serr.Error())
+	}
+
 	return nil
 }
 
@@ -531,6 +539,9 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 
 	if quotaToAdd > 0 {
 		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
+		if serr := SettleReferralOnTopUp(topUp.UserId, topUp.TradeNo, int64(quotaToAdd), PaymentProviderWaffo); serr != nil {
+			common.SysError("referral settlement failed (waffo): " + serr.Error())
+		}
 	}
 
 	return nil
@@ -592,6 +603,9 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 
 	if quotaToAdd > 0 {
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo Pancake充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))
+		if serr := SettleReferralOnTopUp(topUp.UserId, topUp.TradeNo, int64(quotaToAdd), PaymentProviderWaffoPancake); serr != nil {
+			common.SysError("referral settlement failed (waffo pancake): " + serr.Error())
+		}
 	}
 
 	return nil
