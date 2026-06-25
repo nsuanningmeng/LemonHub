@@ -5022,6 +5022,25 @@
     "Model pricing updated": "模型定价已更新",
     "platform retail": "平台零售价",
     "Max allowed": "最大允许",
-    "No upper cap": "无上限"
+    "No upper cap": "无上限",
+    "Recharge Commission (%)": "充值返佣比例 (%)",
+    "Percentage of each invited user's top-up credited to the inviter. Default 5.": "被邀请用户每次充值，按此比例返还给邀请者。默认 5。",
+    "Referral Dashboard": "邀请返佣",
+    "Invite friends — earn rewards on their top-ups": "邀请好友，从其充值中获得返佣",
+    "Total Invited": "累计邀请",
+    "Activated": "已转化",
+    "This Month's Commission": "本月返佣",
+    "View Details": "查看详情",
+    "Top Contributors": "贡献榜",
+    "Who contributed the most commission": "谁贡献的返佣最多",
+    "Rank": "排名",
+    "Invitee": "被邀请人",
+    "Contribution": "贡献返佣",
+    "Recharges": "充值次数",
+    "Last Activity": "最近活动",
+    "No referral data yet": "暂无邀请数据",
+    "Referral Rules": "返佣规则",
+    "Rewards are credited only after your invitee's first successful top-up.": "奖励将在被邀请人首次充值成功后发放。",
+    "After that, you earn a commission on every top-up they make.": "此后，其每次充值你都将获得返佣。"
   }
 }

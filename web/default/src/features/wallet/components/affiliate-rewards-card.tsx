@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import { Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatQuota } from '@/lib/format'
@@ -67,9 +68,19 @@ export function AffiliateRewardsCard({
             <Share2 className='text-muted-foreground size-4' />
           </div>
           <div className='min-w-0'>
-            <h3 className='truncate text-sm font-semibold'>
-              {t('Referral Program')}
-            </h3>
+            <div className='flex items-center gap-2'>
+              <h3 className='truncate text-sm font-semibold'>
+                {t('Referral Program')}
+              </h3>
+              <Button
+                variant='link'
+                size='sm'
+                className='h-auto shrink-0 p-0 text-xs'
+                render={<Link to='/referral' />}
+              >
+                {t('View Details')}
+              </Button>
+            </div>
             <p className='text-muted-foreground line-clamp-1 text-xs'>
               {t(
                 'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'

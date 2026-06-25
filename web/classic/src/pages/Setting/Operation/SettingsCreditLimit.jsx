@@ -36,6 +36,7 @@ export default function SettingsCreditLimit(props) {
     PreConsumedQuota: '',
     QuotaForInviter: '',
     QuotaForInvitee: '',
+    AffRechargeCommissionPercent: '',
     'quota_setting.enable_free_model_pre_consume': true,
   });
   const refForm = useRef();
@@ -179,6 +180,24 @@ export default function SettingsCreditLimit(props) {
                     setInputs({
                       ...inputs,
                       QuotaForInvitee: String(value),
+                    })
+                  }
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={6}>
+                <Form.InputNumber
+                  label={t('充值返佣比例(%)')}
+                  field={'AffRechargeCommissionPercent'}
+                  step={1}
+                  min={0}
+                  max={100}
+                  suffix={'%'}
+                  extraText={t('被邀请用户每次充值返还邀请者的比例，默认5')}
+                  placeholder={''}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      AffRechargeCommissionPercent: String(value),
                     })
                   }
                 />

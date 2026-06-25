@@ -5022,6 +5022,25 @@
     "Model pricing updated": "模型定价已更新",
     "platform retail": "平台零售价",
     "Max allowed": "最大允许",
-    "No upper cap": "无上限"
+    "No upper cap": "无上限",
+    "Recharge Commission (%)": "Recharge Commission (%)",
+    "Percentage of each invited user's top-up credited to the inviter. Default 5.": "Percentage of each invited user's top-up credited to the inviter. Default 5.",
+    "Referral Dashboard": "Referral Dashboard",
+    "Invite friends — earn rewards on their top-ups": "Invite friends — earn rewards on their top-ups",
+    "Total Invited": "Total Invited",
+    "Activated": "Activated",
+    "This Month's Commission": "This Month's Commission",
+    "View Details": "View Details",
+    "Top Contributors": "Top Contributors",
+    "Who contributed the most commission": "Who contributed the most commission",
+    "Rank": "Rank",
+    "Invitee": "Invitee",
+    "Contribution": "Contribution",
+    "Recharges": "Recharges",
+    "Last Activity": "Last Activity",
+    "No referral data yet": "No referral data yet",
+    "Referral Rules": "Referral Rules",
+    "Rewards are credited only after your invitee's first successful top-up.": "Rewards are credited only after your invitee's first successful top-up.",
+    "After that, you earn a commission on every top-up they make.": "After that, you earn a commission on every top-up they make."
   }
 }

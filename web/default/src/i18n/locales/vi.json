@@ -5022,6 +5022,25 @@
     "Model pricing updated": "模型定价已更新",
     "platform retail": "平台零售价",
     "Max allowed": "最大允许",
-    "No upper cap": "无上限"
+    "No upper cap": "无上限",
+    "Recharge Commission (%)": "Hoa hồng nạp tiền (%)",
+    "Percentage of each invited user's top-up credited to the inviter. Default 5.": "Phần trăm mỗi lần nạp tiền của người được mời được hoàn lại cho người mời. Mặc định 5.",
+    "Referral Dashboard": "Bảng hoa hồng giới thiệu",
+    "Invite friends — earn rewards on their top-ups": "Mời bạn bè — nhận thưởng từ các lần nạp tiền của họ",
+    "Total Invited": "Tổng số đã mời",
+    "Activated": "Đã kích hoạt",
+    "This Month's Commission": "Hoa hồng tháng này",
+    "View Details": "Xem chi tiết",
+    "Top Contributors": "Người đóng góp hàng đầu",
+    "Who contributed the most commission": "Ai đóng góp nhiều hoa hồng nhất",
+    "Rank": "Hạng",
+    "Invitee": "Người được mời",
+    "Contribution": "Đóng góp",
+    "Recharges": "Số lần nạp",
+    "Last Activity": "Hoạt động gần nhất",
+    "No referral data yet": "Chưa có dữ liệu giới thiệu",
+    "Referral Rules": "Quy tắc giới thiệu",
+    "Rewards are credited only after your invitee's first successful top-up.": "Phần thưởng chỉ được ghi có sau lần nạp tiền thành công đầu tiên của người được mời.",
+    "After that, you earn a commission on every top-up they make.": "Sau đó, bạn nhận hoa hồng cho mỗi lần họ nạp tiền."
   }
 }

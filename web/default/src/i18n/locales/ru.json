@@ -5022,6 +5022,25 @@
     "Model pricing updated": "模型定价已更新",
     "platform retail": "平台零售价",
     "Max allowed": "最大允许",
-    "No upper cap": "无上限"
+    "No upper cap": "无上限",
+    "Recharge Commission (%)": "Комиссия с пополнений (%)",
+    "Percentage of each invited user's top-up credited to the inviter. Default 5.": "Процент от каждого пополнения приглашённого пользователя, начисляемый пригласившему. По умолчанию 5.",
+    "Referral Dashboard": "Реферальная панель",
+    "Invite friends — earn rewards on their top-ups": "Приглашайте друзей — получайте вознаграждение с их пополнений",
+    "Total Invited": "Всего приглашено",
+    "Activated": "Активировано",
+    "This Month's Commission": "Комиссия за месяц",
+    "View Details": "Подробнее",
+    "Top Contributors": "Лучшие участники",
+    "Who contributed the most commission": "Кто принёс больше всего комиссии",
+    "Rank": "Ранг",
+    "Invitee": "Приглашённый",
+    "Contribution": "Вклад",
+    "Recharges": "Пополнения",
+    "Last Activity": "Последняя активность",
+    "No referral data yet": "Пока нет данных о рефералах",
+    "Referral Rules": "Правила реферальной программы",
+    "Rewards are credited only after your invitee's first successful top-up.": "Вознаграждение начисляется только после первого успешного пополнения приглашённого.",
+    "After that, you earn a commission on every top-up they make.": "После этого вы получаете комиссию с каждого его пополнения."
   }
 }

@@ -5022,6 +5022,25 @@
     "Model pricing updated": "模型定价已更新",
     "platform retail": "平台零售价",
     "Max allowed": "最大允许",
-    "No upper cap": "无上限"
+    "No upper cap": "无上限",
+    "Recharge Commission (%)": "チャージ報酬率 (%)",
+    "Percentage of each invited user's top-up credited to the inviter. Default 5.": "招待したユーザーのチャージごとに、この割合が招待者へ還元されます。デフォルトは 5。",
+    "Referral Dashboard": "招待リワード",
+    "Invite friends — earn rewards on their top-ups": "友達を招待して、そのチャージから報酬を獲得",
+    "Total Invited": "累計招待数",
+    "Activated": "成約済み",
+    "This Month's Commission": "今月の報酬",
+    "View Details": "詳細を見る",
+    "Top Contributors": "貢献ランキング",
+    "Who contributed the most commission": "最も報酬を生み出したのは誰か",
+    "Rank": "順位",
+    "Invitee": "被招待者",
+    "Contribution": "貢献報酬",
+    "Recharges": "チャージ回数",
+    "Last Activity": "最終アクティビティ",
+    "No referral data yet": "招待データはまだありません",
+    "Referral Rules": "報酬ルール",
+    "Rewards are credited only after your invitee's first successful top-up.": "報酬は、被招待者が初回チャージに成功した後にのみ付与されます。",
+    "After that, you earn a commission on every top-up they make.": "その後は、被招待者がチャージするたびに報酬を獲得できます。"
   }
 }

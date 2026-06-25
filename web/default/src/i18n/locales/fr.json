@@ -5022,6 +5022,25 @@
     "Model pricing updated": "模型定价已更新",
     "platform retail": "平台零售价",
     "Max allowed": "最大允许",
-    "No upper cap": "无上限"
+    "No upper cap": "无上限",
+    "Recharge Commission (%)": "Commission sur recharge (%)",
+    "Percentage of each invited user's top-up credited to the inviter. Default 5.": "Pourcentage de chaque recharge d'un utilisateur invité reversé au parrain. Par défaut 5.",
+    "Referral Dashboard": "Tableau de bord de parrainage",
+    "Invite friends — earn rewards on their top-ups": "Invitez des amis — gagnez des récompenses sur leurs recharges",
+    "Total Invited": "Total des invités",
+    "Activated": "Activés",
+    "This Month's Commission": "Commission du mois",
+    "View Details": "Voir les détails",
+    "Top Contributors": "Meilleurs contributeurs",
+    "Who contributed the most commission": "Qui a généré le plus de commissions",
+    "Rank": "Rang",
+    "Invitee": "Invité",
+    "Contribution": "Contribution",
+    "Recharges": "Recharges",
+    "Last Activity": "Dernière activité",
+    "No referral data yet": "Aucune donnée de parrainage pour le moment",
+    "Referral Rules": "Règles de parrainage",
+    "Rewards are credited only after your invitee's first successful top-up.": "Les récompenses ne sont créditées qu'après la première recharge réussie de votre invité.",
+    "After that, you earn a commission on every top-up they make.": "Ensuite, vous gagnez une commission sur chacune de ses recharges."
   }
 }

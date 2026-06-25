@@ -661,6 +661,8 @@
     "充值方式设置不是合法的 JSON 字符串": "Top Up method settings is not a valid JSON string",
     "充值确认": "Top Up confirmation",
     "充值账单": "Top Up Bills",
+    "充值返佣比例(%)": "Recharge commission rate (%)",
+    "被邀请用户每次充值返还邀请者的比例，默认5": "Percentage of each invited user's top-up returned to the inviter. Default 5.",
     "充值金额折扣配置": "Top Up amount discount configuration",
     "充值金额折扣配置不是合法的 JSON 对象": "Top Up amount discount configuration is not a valid JSON object",
     "充值链接": "Top Up Link",

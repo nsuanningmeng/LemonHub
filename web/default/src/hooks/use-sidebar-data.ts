@@ -31,6 +31,7 @@ import {
   Settings,
   Store,
   Ticket,
+  TrendingUp,
   User,
   Users,
   Wallet,
@@ -106,6 +107,11 @@ export function useSidebarData(): SidebarData {
             title: t('Wallet'),
             url: '/wallet',
             icon: Wallet,
+          },
+          {
+            title: t('Referral Dashboard'),
+            url: '/referral',
+            icon: TrendingUp,
           },
           {
             title: t('Profile'),

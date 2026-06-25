@@ -18,6 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 import type {
+  AffStatsResponse,
+  AffLeaderboardResponse,
+} from '@/features/referral/types'
+import type {
   RedemptionRequest,
   PaymentRequest,
   AmountRequest,
@@ -183,6 +187,24 @@ export async function transferAffiliateQuota(
   request: AffiliateTransferRequest
 ): Promise<AffiliateTransferResponse> {
   const res = await api.post('/api/user/aff_transfer', request)
+  return res.data
+}
+
+/**
+ * Get aggregated referral statistics for the current user
+ */
+export async function getAffStats(): Promise<AffStatsResponse> {
+  const res = await api.get('/api/user/aff/stats')
+  return res.data
+}
+
+/**
+ * Get the referral "Top Contributors" leaderboard
+ */
+export async function getAffLeaderboard(
+  limit = 10
+): Promise<AffLeaderboardResponse> {
+  const res = await api.get(`/api/user/aff/leaderboard?limit=${limit}`)
   return res.data
 }
 
