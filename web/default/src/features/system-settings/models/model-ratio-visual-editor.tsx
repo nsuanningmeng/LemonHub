@@ -768,7 +768,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
                 {
                   columnId: 'actions',
                   side: 'right',
-                  className: 'w-24 min-w-24',
                 },
               ]}
               colgroup={
@@ -778,7 +777,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   <col className='w-[300px]' />
                   <col className='w-[120px]' />
                   <col className='w-[300px]' />
-                  <col className='w-24' />
+                  <col className='w-auto' />
                 </colgroup>
               }
               renderRow={(row, { getCellClassName }) => (

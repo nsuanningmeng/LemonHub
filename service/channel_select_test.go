@@ -24,13 +24,13 @@ func setupChannelSelectTestDB(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	orig := struct {
-		usingSQLite, usingMySQL, usingPG bool
-		master, memCache, redis          bool
-		sqlitePath                       string
-		retryTimes                       int
-		db                               *gorm.DB
+		mainDBType, logDBType   common.DatabaseType
+		master, memCache, redis bool
+		sqlitePath              string
+		retryTimes              int
+		db                      *gorm.DB
 	}{
-		common.UsingSQLite, common.UsingMySQL, common.UsingPostgreSQL,
+		common.MainDatabaseType(), common.LogDatabaseType(),
 		common.IsMasterNode, common.MemoryCacheEnabled, common.RedisEnabled,
 		common.SQLitePath, common.RetryTimes, model.DB,
 	}
@@ -40,9 +40,7 @@ func setupChannelSelectTestDB(t *testing.T) {
 				_ = sqlDB.Close()
 			}
 		}
-		common.UsingSQLite = orig.usingSQLite
-		common.UsingMySQL = orig.usingMySQL
-		common.UsingPostgreSQL = orig.usingPG
+		common.SetDatabaseTypes(orig.mainDBType, orig.logDBType)
 		common.IsMasterNode = orig.master
 		common.MemoryCacheEnabled = orig.memCache
 		common.RedisEnabled = orig.redis
@@ -51,8 +49,7 @@ func setupChannelSelectTestDB(t *testing.T) {
 		model.DB = orig.db
 	})
 
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.MemoryCacheEnabled = false // 走 DB 路径（model.GetChannel）以便构造确定性失败转移
 	common.IsMasterNode = false       // 让 InitDB 跳过迁移与初始账号，仅设置 commonGroupCol 并打开连接

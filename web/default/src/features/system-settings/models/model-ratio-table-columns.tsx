@@ -16,12 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
-import { Pencil, Trash2 } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
+import { Pencil } from 'lucide-react'
+import { DataTableColumnHeader } from '@/components/data-table/core/column-header'
+import { StaticRowActions } from '@/components/data-table/static/static-row-actions'
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { DataTableColumnHeader } from '@/components/data-table'
-import { StatusBadge } from '@/components/status-badge'
+
 import {
   getModeLabel,
   getModeVariant,
@@ -152,26 +154,28 @@ export function buildModelRatioColumns({
     {
       id: 'actions',
       header: () => <div>{t('Actions')}</div>,
-      cell: ({ row }) => (
-        <div className='flex justify-end gap-2'>
-          <Button
-            variant='ghost'
-            size='sm'
-            onClick={() => onEdit(row.original)}
-          >
-            <Pencil />
-          </Button>
-          {!unsetMode && (
+      cell: ({ row }) =>
+        unsetMode ? (
+          // Unset-price models can only be edited (to assign a price), not deleted.
+          <div className='flex justify-end gap-1'>
             <Button
               variant='ghost'
-              size='sm'
-              onClick={() => onDelete(row.original.name)}
+              size='icon-sm'
+              onClick={() => onEdit(row.original)}
+              aria-label={t('Edit')}
             >
-              <Trash2 />
+              <Pencil />
             </Button>
-          )}
-        </div>
-      ),
+          </div>
+        ) : (
+          <StaticRowActions
+            editLabel={t('Edit')}
+            deleteLabel={t('Delete')}
+            menuLabel={t('Open menu')}
+            onEdit={() => onEdit(row.original)}
+            onDelete={() => onDelete(row.original.name)}
+          />
+        ),
       enableHiding: false,
     },
   ]

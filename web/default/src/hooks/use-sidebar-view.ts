@@ -50,14 +50,22 @@ export function useSidebarView(): ResolvedSidebarView {
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const isAdmin = userRole !== undefined && userRole >= ROLE.ADMIN
-    const isSiteAdmin = userRole === ROLE.SITE_ADMIN
-    return configFilteredRoot.filter((group) => {
-      if (group.id === 'admin') return isAdmin
-      // Agent console is exclusive to sub-site administrators.
-      if (group.id === 'site_admin') return isSiteAdmin
-      return true
-    })
+    const role = userRole ?? ROLE.GUEST
+    const isAdmin = role >= ROLE.ADMIN
+    const isSiteAdmin = role === ROLE.SITE_ADMIN
+    return configFilteredRoot
+      .filter((group) => {
+        if (group.id === 'admin') return isAdmin
+        // Agent console is exclusive to sub-site administrators.
+        if (group.id === 'site_admin') return isSiteAdmin
+        return true
+      })
+      .map((group) => {
+        const items = group.items.filter(
+          (item) => item.requiredRole === undefined || role >= item.requiredRole
+        )
+        return items.length === group.items.length ? group : { ...group, items }
+      })
   }, [configFilteredRoot, userRole])
 
   const view = resolveSidebarView(pathname)

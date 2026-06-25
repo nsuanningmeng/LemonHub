@@ -32,9 +32,9 @@ func relaxLegacyUsernameUnique(db *gorm.DB) error {
 		return nil
 	}
 	switch {
-	case common.UsingSQLite:
+	case common.UsingMainDatabase(common.DatabaseTypeSQLite):
 		return relaxUsernameUniqueSQLite(db)
-	case common.UsingPostgreSQL:
+	case common.UsingMainDatabase(common.DatabaseTypePostgreSQL):
 		return relaxUsernameUniquePostgres(db)
 	default:
 		return relaxUsernameUniqueMySQL(db)
