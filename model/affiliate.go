@@ -56,8 +56,9 @@ func affiliateFirstBonusKey(inviteeId int) string {
 // and it is idempotent (webhook retries / concurrent callbacks never double-pay):
 //   - first_bonus: the fixed QuotaForInviter (to inviter aff_quota) + QuotaForInvitee (to
 //     invitee real quota) are granted exactly once, on the invitee's first qualifying top-up.
-//   - recharge_commission: AffRechargeCommissionPercent of the credited quota is granted to
-//     the inviter on every qualifying top-up (including the first).
+//   - recharge_commission: the inviter's effective commission rate (a per-user override on the
+//     inviter when set, otherwise the global AffRechargeCommissionPercent) of the credited quota
+//     is granted to the inviter on every qualifying top-up (including the first).
 //
 // creditedQuota is the quota actually added to the invitee by this top-up. Returns an error
 // only on unexpected DB failures; callers should log and continue (a settlement failure must
@@ -88,14 +89,15 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 	}
 
 	// Inviter must still exist (could have been deleted after the relationship was set).
-	// By design this also skips the invitee's own first-recharge bonus when the inviter is
-	// gone: the fixed bonus is a referral-pair reward, so a deleted inviter voids the pair.
-	var inviterCount int64
-	if err := DB.Model(&User{}).Where("id = ?", inviterId).Count(&inviterCount).Error; err != nil {
+	// Fetching the inviter row here doubles as that existence check and loads the optional
+	// per-user commission-rate override. By design a missing inviter voids the referral pair
+	// (the fixed first bonus is a pair reward), so we skip settlement entirely.
+	var inviter User
+	if err := DB.Select("id, aff_commission_percent").Where("id = ?", inviterId).First(&inviter).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
 		return err
-	}
-	if inviterCount == 0 {
-		return nil
 	}
 
 	inviterReward := int64(common.QuotaForInviter)
@@ -106,7 +108,13 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 		return err
 	}
 
-	commission := affiliateCommissionQuota(creditedQuota)
+	// Resolve the effective recharge-commission rate: a per-inviter override takes precedence;
+	// a nil override (the common case) inherits the global common.AffRechargeCommissionPercent.
+	commissionPercent := common.AffRechargeCommissionPercent
+	if inviter.AffCommissionPercent != nil {
+		commissionPercent = *inviter.AffCommissionPercent
+	}
+	commission := affiliateCommissionQuota(creditedQuota, commissionPercent)
 	commissionGranted, err := settleAffiliateRechargeCommission(inviterId, inviteeId, tradeNo, creditedQuota, commission)
 	if err != nil {
 		return err
@@ -134,11 +142,15 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 }
 
 // affiliateCommissionQuota computes floor(creditedQuota * percent / 100) using decimal to
-// avoid float drift. Returns 0 when the configured percent is non-positive.
-func affiliateCommissionQuota(creditedQuota int64) int64 {
-	percent := common.AffRechargeCommissionPercent
+// avoid float drift. percent is the effective rate already resolved by the caller (a per-inviter
+// override or the global default). Returns 0 when percent is non-positive; a percent above 100 is
+// clamped defensively (write-time validation already bounds overrides to 0-100).
+func affiliateCommissionQuota(creditedQuota int64, percent float64) int64 {
 	if percent <= 0 || creditedQuota <= 0 {
 		return 0
+	}
+	if percent > 100 {
+		percent = 100
 	}
 	return decimal.NewFromInt(creditedQuota).
 		Mul(decimal.NewFromFloat(percent)).

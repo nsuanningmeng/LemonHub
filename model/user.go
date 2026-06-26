@@ -25,37 +25,41 @@ type User struct {
 	// SiteId is the white-label sub-site this user belongs to (0 = main site).
 	// Uniqueness of username/email is scoped per site via the composite indexes below,
 	// so different sub-sites may have users with the same username/email.
-	SiteId           int            `json:"site_id" gorm:"type:int;default:0;index;uniqueIndex:idx_users_site_username,priority:1;index:idx_users_site_email,priority:1"`
-	Username         string         `json:"username" gorm:"index;uniqueIndex:idx_users_site_username,priority:2" validate:"max=20"`
-	Password         string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
-	OriginalPassword string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string         `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int            `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int            `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string         `json:"email" gorm:"index;index:idx_users_site_email,priority:2" validate:"max=50"`
-	GitHubId         string         `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string         `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string         `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string         `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string         `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string         `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
-	AccessToken      *string        `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int            `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int            `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int            `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string         `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string         `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int            `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int            `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int            `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	DeletedAt        gorm.DeletedAt `gorm:"index"`
-	LinuxDOId        string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string         `json:"setting" gorm:"type:text;column:setting"`
-	Remark           string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer   string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt        int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt      int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	SiteId           int     `json:"site_id" gorm:"type:int;default:0;index;uniqueIndex:idx_users_site_username,priority:1;index:idx_users_site_email,priority:1"`
+	Username         string  `json:"username" gorm:"index;uniqueIndex:idx_users_site_username,priority:2" validate:"max=20"`
+	Password         string  `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	OriginalPassword string  `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName      string  `json:"display_name" gorm:"index" validate:"max=20"`
+	Role             int     `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status           int     `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email            string  `json:"email" gorm:"index;index:idx_users_site_email,priority:2" validate:"max=50"`
+	GitHubId         string  `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId        string  `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId           string  `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId         string  `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId       string  `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode string  `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
+	AccessToken      *string `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota            int     `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota        int     `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	RequestCount     int     `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	Group            string  `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode          string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount         int     `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota         int     `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota  int     `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId        int     `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	// AffCommissionPercent is an optional per-inviter override (0-100) for the recharge
+	// commission rate. nil inherits the global common.AffRechargeCommissionPercent; a non-nil
+	// value (including 0) takes precedence for this inviter's referral commission payouts.
+	AffCommissionPercent *float64       `json:"aff_commission_percent" gorm:"column:aff_commission_percent"`
+	DeletedAt            gorm.DeletedAt `gorm:"index"`
+	LinuxDOId            string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting              string         `json:"setting" gorm:"type:text;column:setting"`
+	Remark               string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer       string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt            int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt          int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -530,7 +534,7 @@ func (user *User) Update(updatePassword bool) error {
 	return updateUserCache(*user)
 }
 
-func (user *User) Edit(updatePassword bool) error {
+func (user *User) Edit(updatePassword bool, updateAffCommission bool) error {
 	var err error
 	if updatePassword {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -548,6 +552,13 @@ func (user *User) Edit(updatePassword bool) error {
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password
+	}
+	// Only touch the per-user commission override when the caller indicates the field was present
+	// in the request body: a non-nil value sets it, an explicit nil clears it back to NULL (inherit
+	// the global rate). When the field is absent, the existing value is preserved so partial updates
+	// from other clients do not silently wipe an admin-configured override.
+	if updateAffCommission {
+		updates["aff_commission_percent"] = newUser.AffCommissionPercent
 	}
 
 	DB.First(&user, user.Id)

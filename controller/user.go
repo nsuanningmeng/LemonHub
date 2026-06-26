@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -652,12 +653,21 @@ func GetUserModels(c *gin.Context) {
 }
 
 func UpdateUser(c *gin.Context) {
-	var updatedUser model.User
-	err := json.NewDecoder(c.Request.Body).Decode(&updatedUser)
-	if err != nil || updatedUser.Id == 0 {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	var updatedUser model.User
+	if err := common.Unmarshal(body, &updatedUser); err != nil || updatedUser.Id == 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	// Detect whether the optional per-user commission override was present in the request body, so
+	// Edit can distinguish "clear to inherit" (explicit null) from "leave unchanged" (key omitted).
+	var rawFields map[string]json.RawMessage
+	_ = common.Unmarshal(body, &rawFields)
+	_, affCommissionProvided := rawFields["aff_commission_percent"]
 	if updatedUser.Password == "" {
 		updatedUser.Password = "$I_LOVE_U" // make Validator happy :)
 	}
@@ -679,11 +689,17 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
 	}
+	if updatedUser.AffCommissionPercent != nil {
+		if p := *updatedUser.AffCommissionPercent; p < 0 || p > 100 {
+			common.ApiErrorMsg(c, "用户返佣比例必须是 0-100 之间的数字")
+			return
+		}
+	}
 	if updatedUser.Password == "$I_LOVE_U" {
 		updatedUser.Password = "" // rollback to what it should be
 	}
 	updatePassword := updatedUser.Password != ""
-	if err := updatedUser.Edit(updatePassword); err != nil {
+	if err := updatedUser.Edit(updatePassword, affCommissionProvided); err != nil {
 		common.ApiError(c, err)
 		return
 	}

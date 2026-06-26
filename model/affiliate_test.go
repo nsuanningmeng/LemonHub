@@ -193,3 +193,62 @@ func TestAffStatsAndLeaderboard(t *testing.T) {
 	assert.Equal(t, 2, board[0].RechargeCount)              // two recharge_commission rows
 	assert.Equal(t, "in***2", board[0].Username)            // masked
 }
+
+// TestSettleReferralOnTopUp_PerUserCommissionOverride verifies an inviter-level commission rate
+// override takes precedence over the global default for the recharge commission.
+func TestSettleReferralOnTopUp_PerUserCommissionOverride(t *testing.T) {
+	inviterId, inviteeId := affiliateTestSetup(t, 0, 0, 5) // global 5%, no fixed bonus
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", inviterId).
+		Update("aff_commission_percent", 10.0).Error)
+
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "afftrade-ovr", 100000, "stripe"))
+
+	inviter := reloadUser(t, inviterId)
+	// 10% override of 100000 = 10000 (the global 5% would have been 5000).
+	assert.Equal(t, 10000, inviter.AffQuota)
+	assert.Equal(t, 10000, inviter.AffHistoryQuota)
+}
+
+// TestSettleReferralOnTopUp_ZeroOverrideDisablesCommission verifies an explicit 0% override
+// disables the recharge commission entirely (distinct from nil, which inherits the global rate),
+// while the one-time fixed bonus still applies.
+func TestSettleReferralOnTopUp_ZeroOverrideDisablesCommission(t *testing.T) {
+	inviterId, inviteeId := affiliateTestSetup(t, 2000, 1000, 5) // global 5%, fixed 2000/1000
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", inviterId).
+		Update("aff_commission_percent", 0.0).Error)
+
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "afftrade-zero", 100000, "stripe"))
+
+	inviter := reloadUser(t, inviterId)
+	// Fixed 2000 bonus only; the 0% override suppresses the recharge commission (no global 5%).
+	assert.Equal(t, 2000, inviter.AffQuota)
+	assert.Equal(t, 1, inviter.AffCount)
+	// Only the first_bonus ledger row exists — no recharge_commission row was written.
+	assert.Equal(t, int64(1), ledgerCount(t))
+}
+
+// TestUserEditAffCommissionPresence verifies the admin-edit contract for the per-user commission
+// override: omitting the field (updateAffCommission=false) preserves an existing override, while an
+// explicit clear (updateAffCommission=true with a nil value) resets it to NULL (inherit the global).
+func TestUserEditAffCommissionPresence(t *testing.T) {
+	require.NoError(t, DB.Unscoped().Where("id = ?", 8201).Delete(&User{}).Error)
+	t.Cleanup(func() { _ = DB.Unscoped().Where("id = ?", 8201).Delete(&User{}).Error })
+
+	override := 12.0
+	require.NoError(t, DB.Create(&User{
+		Id: 8201, Username: "affedit1", Status: common.UserStatusEnabled,
+		AffCode: "affedt01", AffCommissionPercent: &override,
+	}).Error)
+
+	// Edit WITHOUT the field present (updateAffCommission=false) must preserve the override.
+	absent := User{Id: 8201, Username: "affedit1", DisplayName: "n", Group: "default"}
+	require.NoError(t, absent.Edit(false, false))
+	got := reloadUser(t, 8201)
+	require.NotNil(t, got.AffCommissionPercent)
+	assert.Equal(t, 12.0, *got.AffCommissionPercent)
+
+	// Edit WITH the field present and nil (updateAffCommission=true) clears it back to NULL.
+	clear := User{Id: 8201, Username: "affedit1", DisplayName: "n", Group: "default"}
+	require.NoError(t, clear.Edit(false, true))
+	assert.Nil(t, reloadUser(t, 8201).AffCommissionPercent)
+}
