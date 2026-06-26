@@ -414,6 +414,41 @@ export function UsersMutateDrawer({
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name='aff_commission_percent'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Referral Commission (%)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            min={0}
+                            max={100}
+                            value={field.value ?? ''}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ''
+                                  ? undefined
+                                  : e.currentTarget.valueAsNumber
+                              )
+                            }
+                            name={field.name}
+                            onBlur={field.onBlur}
+                            ref={field.ref}
+                            placeholder={t('Leave empty to use the global rate')}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Per-user referral commission rate for this inviter. Leave empty to inherit the global rate.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </SideDrawerSection>
               )}
 

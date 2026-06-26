@@ -94,6 +94,7 @@ const EditUserModal = (props) => {
     quota_amount: 0,
     group: 'default',
     remark: '',
+    aff_commission_percent: '',
   });
 
   const fetchGroups = async () => {
@@ -150,6 +151,9 @@ const EditUserModal = (props) => {
     let payload = { ...values };
     delete payload.quota;
     delete payload.quota_amount;
+    if (payload.aff_commission_percent === '' || payload.aff_commission_percent === undefined || payload.aff_commission_percent === null) {
+      payload.aff_commission_percent = null;
+    }
     if (userId) {
       payload.id = parseInt(userId);
     }
@@ -365,6 +369,18 @@ const EditUserModal = (props) => {
                           allowAdditions
                           search
                           rules={[{ required: true, message: t('请选择分组') }]}
+                        />
+                      </Col>
+
+                      <Col span={24}>
+                        <Form.InputNumber
+                          field='aff_commission_percent'
+                          label={t('返佣比例 (%)')}
+                          placeholder={t('留空则使用全局返佣比例')}
+                          min={0}
+                          max={100}
+                          style={{ width: '100%' }}
+                          extraText={t('该用户作为邀请人时的返佣比例，留空则继承全局返佣比例')}
                         />
                       </Col>
 
