@@ -16,14 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
 import type {
   AffStatsResponse,
   AffLeaderboardResponse,
   AffAdminSummaryResponse,
   AffAdminLeaderboardResponse,
   AffAdminLeaderboardParams,
+  AffCashPayoutListResponse,
+  AffCashPayoutResponse,
+  AffCashPayoutRequest,
 } from '@/features/referral/types'
+import { api } from '@/lib/api'
+
 import type {
   RedemptionRequest,
   PaymentRequest,
@@ -234,6 +238,33 @@ export async function getAffAdminLeaderboard(
   const res = await api.get(
     `/api/user/aff/admin/leaderboard?${search.toString()}`
   )
+  return res.data
+}
+
+/**
+ * List off-platform cash settlements for one cash-settled promoter (admin only).
+ * Newest first.
+ */
+export async function getAffAdminCashPayouts(
+  inviterId: number,
+  limit = 50
+): Promise<AffCashPayoutListResponse> {
+  const params = new URLSearchParams({
+    inviter_id: String(inviterId),
+    limit: String(limit),
+  })
+  const res = await api.get(`/api/user/aff/admin/cash-payouts?${params.toString()}`)
+  return res.data
+}
+
+/**
+ * Record an off-platform cash settlement for a promoter (admin only).
+ * `amount` is in quota units; the server rejects amounts above the outstanding balance.
+ */
+export async function recordAffAdminCashPayout(
+  request: AffCashPayoutRequest
+): Promise<AffCashPayoutResponse> {
+  const res = await api.post('/api/user/aff/admin/cash-payout', request)
   return res.data
 }
 

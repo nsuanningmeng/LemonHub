@@ -16,15 +16,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
-import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+
+import {
+  SideDrawerSection,
+  sideDrawerContentClassName,
+  sideDrawerFooterClassName,
+  sideDrawerFormClassName,
+  sideDrawerHeaderClassName,
+  sideDrawerSwitchItemClassName,
+} from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -54,14 +61,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  SideDrawerSection,
-  sideDrawerContentClassName,
-  sideDrawerFooterClassName,
-  sideDrawerFormClassName,
-  sideDrawerHeaderClassName,
-} from '@/components/drawer-layout'
+import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
 import { createUser, updateUser, getUser, getGroups } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -88,6 +94,12 @@ export function UsersMutateDrawer({
 }: UsersMutateDrawerProps) {
   const { t } = useTranslation()
   const isUpdate = !!currentRow
+  // Per-user money policy (referral commission rate + cash-settled flag) is root-only; the
+  // backend rejects non-root admins, so hide these controls for them (existing values are
+  // preserved server-side when not submitted).
+  const isRoot = useAuthStore(
+    (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
+  )
   const { triggerRefresh } = useUsers()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
@@ -415,40 +427,75 @@ export function UsersMutateDrawer({
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name='aff_commission_percent'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Referral Commission (%)')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type='number'
-                            min={0}
-                            max={100}
-                            value={field.value ?? ''}
-                            onChange={(e) =>
-                              field.onChange(
-                                e.target.value === ''
-                                  ? undefined
-                                  : e.currentTarget.valueAsNumber
-                              )
-                            }
-                            name={field.name}
-                            onBlur={field.onBlur}
-                            ref={field.ref}
-                            placeholder={t('Leave empty to use the global rate')}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t(
-                            'Per-user referral commission rate for this inviter. Leave empty to inherit the global rate.'
-                          )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  {isRoot && (
+                    <>
+                      <FormField
+                        control={form.control}
+                        name='aff_commission_percent'
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              {t('Referral Commission (%)')}
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                type='number'
+                                min={0}
+                                max={100}
+                                value={field.value ?? ''}
+                                onChange={(e) =>
+                                  field.onChange(
+                                    e.target.value === ''
+                                      ? undefined
+                                      : e.currentTarget.valueAsNumber
+                                  )
+                                }
+                                name={field.name}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                placeholder={t(
+                                  'Leave empty to use the global rate'
+                                )}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              {t(
+                                'Per-user referral commission rate for this inviter. Leave empty to inherit the global rate.'
+                              )}
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name='aff_cash_settled'
+                        render={({ field }) => (
+                          <FormItem
+                            className={sideDrawerSwitchItemClassName()}
+                          >
+                            <div className='flex flex-col gap-0.5'>
+                              <FormLabel className='text-sm'>
+                                {t('Cash-settled promoter')}
+                              </FormLabel>
+                              <FormDescription className='line-clamp-2 text-xs sm:line-clamp-none'>
+                                {t(
+                                  'Suppresses the platform invitation bonus for this inviter; referral commission is recorded for off-platform cash settlement and not credited to their balance.'
+                                )}
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={!!field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </>
+                  )}
                 </SideDrawerSection>
               )}
 

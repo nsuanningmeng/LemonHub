@@ -103,6 +103,17 @@ export interface AffAdminLeaderboardItem {
   total_invited: number
   /** Commission earned this calendar month (quota) */
   month_commission_quota: number
+  /** Lifetime cash-settled commission, gross owed before any settlements (quota) */
+  cash_commission_total?: number
+  /** Total already settled off-platform in cash (quota) */
+  cash_commission_paid?: number
+  /**
+   * OUTSTANDING cash balance = total − paid, clamped ≥ 0 (quota). 0 for normal
+   * inviters; for cash-settled promoters this is the cash the operator still owes.
+   */
+  cash_commission_owed?: number
+  /** Whether this inviter is a cash-settled promoter (off-platform cash settlement) */
+  is_cash_settled?: boolean
   /** Last referral activity timestamp (unix seconds, 0 if none) */
   last_at: number
 }
@@ -132,3 +143,39 @@ export interface AffAdminLeaderboardParams {
 
 export type AffAdminSummaryResponse = ApiResponse<AffAdminSummary>
 export type AffAdminLeaderboardResponse = ApiResponse<AffAdminLeaderboardData>
+
+// ============================================================================
+// Admin — off-platform cash settlements for cash-settled promoters
+// ============================================================================
+
+/**
+ * A single off-platform cash settlement recorded against a cash-settled promoter.
+ * Each settlement reduces that promoter's outstanding cash balance.
+ */
+export interface AffCashPayout {
+  id: number
+  /** Inviter (promoter) this settlement belongs to */
+  inviter_id: number
+  /** Settled amount (quota units) */
+  amount: number
+  /** Optional free-text note recorded by the operator */
+  note: string
+  /** Admin user id who recorded the settlement */
+  operator_id: number
+  /** Settlement timestamp (unix seconds) */
+  created_at: number
+}
+
+export interface AffCashPayoutListData {
+  items: AffCashPayout[]
+}
+
+/** Payload for recording a new cash settlement. `amount` is in quota units. */
+export interface AffCashPayoutRequest {
+  inviter_id: number
+  amount: number
+  note?: string
+}
+
+export type AffCashPayoutListResponse = ApiResponse<AffCashPayoutListData>
+export type AffCashPayoutResponse = ApiResponse<AffCashPayout>

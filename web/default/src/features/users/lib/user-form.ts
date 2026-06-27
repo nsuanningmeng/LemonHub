@@ -17,7 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
+
 import { quotaUnitsToDollars } from '@/lib/format'
+
 import { DEFAULT_GROUP } from '../constants'
 import { type UserFormData, type User } from '../types'
 
@@ -34,6 +36,7 @@ export const userFormSchema = z.object({
   group: z.string().optional(),
   remark: z.string().optional(),
   aff_commission_percent: z.number().min(0).max(100).optional(),
+  aff_cash_settled: z.boolean().optional(),
 })
 
 export type UserFormValues = z.infer<typeof userFormSchema>
@@ -51,6 +54,7 @@ export const USER_FORM_DEFAULT_VALUES: UserFormValues = {
   group: DEFAULT_GROUP,
   remark: '',
   aff_commission_percent: undefined,
+  aff_cash_settled: false,
 }
 
 // ============================================================================
@@ -82,6 +86,7 @@ export function transformFormDataToPayload(
       data.aff_commission_percent === undefined
         ? null
         : data.aff_commission_percent
+    payload.aff_cash_settled = data.aff_cash_settled ?? false
     payload.id = userId
   }
 
@@ -101,5 +106,6 @@ export function transformUserToFormDefaults(user: User): UserFormValues {
     group: user.group || DEFAULT_GROUP,
     remark: user.remark || '',
     aff_commission_percent: user.aff_commission_percent ?? undefined,
+    aff_cash_settled: user.aff_cash_settled ?? false,
   }
 }

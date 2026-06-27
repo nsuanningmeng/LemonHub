@@ -62,6 +62,7 @@
   "Contact page with ways to reach you.": "Contact page with ways to reach you.",
   "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.": "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.",
   "The administrator can configure the contact content in System Settings → Site Information → Contact.": "The administrator can configure the contact content in System Settings → Site Information → Contact.",
+  "Suppresses the platform invitation bonus for this inviter; referral commission is recorded for off-platform cash settlement and not credited to their balance.": "Suppresses the platform invitation bonus for this inviter; referral commission is recorded for off-platform cash settlement and not credited to their balance.",
   "Get product announcements and promotional emails": "Get product announcements and promotional emails",
   "Describe your issue and our team will get back to you.": "Describe your issue and our team will get back to you.",
   "Failed to close ticket": "Failed to close ticket",
