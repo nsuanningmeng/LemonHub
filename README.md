@@ -2,7 +2,7 @@
 
 ![LemonHub](/web/default/public/logo.png)
 
-# 🍋 LemonHub
+#  LemonHub
 
 **Multi-tenant, white-label AI API Gateway with a built-in agent / reseller franchise system**
 
