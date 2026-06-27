@@ -55,6 +55,15 @@ func ledgerCount(t *testing.T) int64 {
 	return n
 }
 
+// ledgerRow fetches the single ledger row matching the where clause (fails if absent or
+// non-unique callers should scope tightly). Used to assert the recorded commission_quota.
+func ledgerRow(t *testing.T, query string, args ...interface{}) AffiliateCommission {
+	t.Helper()
+	var row AffiliateCommission
+	require.NoError(t, DB.Where(query, args...).First(&row).Error)
+	return row
+}
+
 // TestSettleReferralOnTopUp_FirstRechargeGrantsBonusAndCommission verifies the first
 // qualifying top-up grants BOTH the one-time fixed bonus (inviter + invitee) and the
 // percentage commission, and that the invitee's real quota is credited.
@@ -242,13 +251,127 @@ func TestUserEditAffCommissionPresence(t *testing.T) {
 
 	// Edit WITHOUT the field present (updateAffCommission=false) must preserve the override.
 	absent := User{Id: 8201, Username: "affedit1", DisplayName: "n", Group: "default"}
-	require.NoError(t, absent.Edit(false, false))
+	require.NoError(t, absent.Edit(false, false, false))
 	got := reloadUser(t, 8201)
 	require.NotNil(t, got.AffCommissionPercent)
 	assert.Equal(t, 12.0, *got.AffCommissionPercent)
 
 	// Edit WITH the field present and nil (updateAffCommission=true) clears it back to NULL.
 	clear := User{Id: 8201, Username: "affedit1", DisplayName: "n", Group: "default"}
-	require.NoError(t, clear.Edit(false, true))
+	require.NoError(t, clear.Edit(false, true, false))
 	assert.Nil(t, reloadUser(t, 8201).AffCommissionPercent)
+}
+
+// TestSettleReferralOnTopUp_CashSettledSuppressesInviterCredit pins the first-top-up contract for
+// the two settlement modes side by side: a cash-settled promoter's inviter-side rewards are
+// suppressed (aff_quota/aff_history stay at the starting 0), while a normal inviter is credited the
+// fixed bonus + commission. In BOTH modes the invitee bonus is paid, aff_count is incremented, and
+// both ledger kinds are written — only the inviter wallet credit differs. The cash-settled
+// recharge_commission row still records the full cash-basis amount; its first_bonus row records 0.
+func TestSettleReferralOnTopUp_CashSettledSuppressesInviterCredit(t *testing.T) {
+	const credited = int64(100000)
+	const commission = 5000 // floor(100000 * 5 / 100)
+
+	cases := []struct {
+		name                 string
+		cashSettled          bool
+		tradeNo              string
+		wantInviterAffQuota  int   // aff_quota and aff_history after settlement
+		wantFirstBonusRecord int64 // commission_quota on the first_bonus ledger row
+		wantCommissionRecord int64 // commission_quota on the recharge_commission ledger row
+	}{
+		{
+			name:                 "normal inviter is credited bonus+commission",
+			cashSettled:          false,
+			tradeNo:              "affcash-normal-1",
+			wantInviterAffQuota:  2000 + commission, // fixed 2000 + 5% of 100000
+			wantFirstBonusRecord: 2000,
+			wantCommissionRecord: commission,
+		},
+		{
+			name:                 "cash-settled promoter wallet untouched, ledger still recorded",
+			cashSettled:          true,
+			tradeNo:              "affcash-cash-1",
+			wantInviterAffQuota:  0,          // inviter reward fully suppressed
+			wantFirstBonusRecord: 0,          // first_bonus row records 0 for cash-settled inviter
+			wantCommissionRecord: commission, // cash basis still recorded in the ledger
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			inviterId, inviteeId := affiliateTestSetup(t, 2000, 1000, 5)
+			if tc.cashSettled {
+				require.NoError(t, DB.Model(&User{}).Where("id = ?", inviterId).
+					Update("aff_cash_settled", true).Error)
+			}
+
+			require.NoError(t, SettleReferralOnTopUp(inviteeId, tc.tradeNo, credited, "stripe"))
+
+			inviter := reloadUser(t, inviterId)
+			assert.Equal(t, tc.wantInviterAffQuota, inviter.AffQuota, "aff_quota")
+			assert.Equal(t, tc.wantInviterAffQuota, inviter.AffHistoryQuota, "aff_history")
+			// aff_count is incremented for an activated (paying) invitee in BOTH modes.
+			assert.Equal(t, 1, inviter.AffCount, "aff_count")
+
+			// The invitee acquisition bonus is independent of how the inviter is settled.
+			assert.Equal(t, 1000, reloadUser(t, inviteeId).Quota, "invitee quota")
+
+			// Both ledger kinds are written in both modes.
+			assert.Equal(t, int64(2), ledgerCount(t), "ledger rows")
+			firstBonus := ledgerRow(t, "invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonus)
+			assert.Equal(t, tc.wantFirstBonusRecord, firstBonus.CommissionQuota, "first_bonus commission_quota")
+			recharge := ledgerRow(t, "trade_no = ? AND kind = ?", tc.tradeNo, AffiliateKindRechargeCommission)
+			assert.Equal(t, tc.wantCommissionRecord, recharge.CommissionQuota, "recharge commission_quota")
+			assert.Equal(t, credited, recharge.RechargeQuota, "recharge_quota basis")
+		})
+	}
+}
+
+// TestSettleReferralOnTopUp_CashSettledSubsequentRecharge verifies a cash-settled promoter's SECOND
+// qualifying top-up (different trade_no) records another recharge_commission ledger row with the
+// correct cash-basis amount, with NO second first_bonus, NO wallet credit, and aff_count unchanged.
+func TestSettleReferralOnTopUp_CashSettledSubsequentRecharge(t *testing.T) {
+	inviterId, inviteeId := affiliateTestSetup(t, 2000, 1000, 5)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", inviterId).
+		Update("aff_cash_settled", true).Error)
+
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "affcash-2a", 100000, "stripe"))
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "affcash-2b", 200000, "stripe"))
+
+	inviter := reloadUser(t, inviterId)
+	// Wallet stays at the starting 0 across both top-ups (cash-settled: ledger-only).
+	assert.Equal(t, 0, inviter.AffQuota, "aff_quota stays 0")
+	assert.Equal(t, 0, inviter.AffHistoryQuota, "aff_history stays 0")
+	assert.Equal(t, 1, inviter.AffCount, "still one activated invitee, no second first_bonus")
+
+	// Invitee bonus paid exactly once.
+	assert.Equal(t, 1000, reloadUser(t, inviteeId).Quota, "invitee fixed bonus only once")
+
+	// first_bonus(1) + recharge_commission(2) = 3 ledger rows.
+	assert.Equal(t, int64(3), ledgerCount(t), "three ledger rows")
+
+	// The second recharge records floor(200000 * 5 / 100) = 10000 as the cash basis.
+	second := ledgerRow(t, "trade_no = ? AND kind = ?", "affcash-2b", AffiliateKindRechargeCommission)
+	assert.Equal(t, int64(10000), second.CommissionQuota, "second recharge commission_quota")
+	assert.Equal(t, int64(200000), second.RechargeQuota, "second recharge_quota basis")
+}
+
+// TestSettleReferralOnTopUp_CashSettledIdempotent verifies replaying the same trade_no for a
+// cash-settled promoter neither duplicates ledger rows nor changes any balance.
+func TestSettleReferralOnTopUp_CashSettledIdempotent(t *testing.T) {
+	inviterId, inviteeId := affiliateTestSetup(t, 2000, 1000, 5)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", inviterId).
+		Update("aff_cash_settled", true).Error)
+
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "affcash-idem", 100000, "stripe"))
+	// Replay the identical webhook.
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "affcash-idem", 100000, "stripe"))
+
+	inviter := reloadUser(t, inviterId)
+	assert.Equal(t, 0, inviter.AffQuota, "no wallet credit on replay")
+	assert.Equal(t, 0, inviter.AffHistoryQuota)
+	assert.Equal(t, 1, inviter.AffCount, "aff_count not double-incremented")
+	assert.Equal(t, 1000, reloadUser(t, inviteeId).Quota, "invitee bonus not double-paid")
+	assert.Equal(t, int64(2), ledgerCount(t), "no duplicate ledger rows")
 }

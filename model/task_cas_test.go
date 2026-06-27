@@ -42,6 +42,8 @@ func TestMain(m *testing.M) {
 		&Channel{},
 		&QuotaData{},
 		&Ability{},
+		&AffiliateCommission{},
+		&AffiliateCashPayout{},
 		&TopUp{},
 		&SubscriptionPlan{},
 		&SubscriptionOrder{},
