@@ -21,6 +21,8 @@ import { useTranslation } from 'react-i18next'
 import { SectionPageLayout } from '@/components/layout'
 import { TransferDialog } from '@/features/wallet/components/dialogs/transfer-dialog'
 import { useAffiliate } from '@/features/wallet/hooks'
+import { useIsAdmin } from '@/hooks/use-admin'
+import { ReferralAdminSection } from './components/referral-admin-section'
 import { ReferralLeaderboardTable } from './components/referral-leaderboard-table'
 import { ReferralRules } from './components/referral-rules'
 import { ReferralStatsCards } from './components/referral-stats-cards'
@@ -32,6 +34,7 @@ export function Referral() {
   const { affiliateLink, transferQuota, transferring } = useAffiliate()
   const stats = useReferralStats()
   const leaderboard = useReferralLeaderboard(10)
+  const isAdmin = useIsAdmin()
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
 
   const handleTransfer = async (amount: number): Promise<boolean> => {
@@ -65,6 +68,8 @@ export function Referral() {
               items={leaderboard.data}
               loading={leaderboard.isLoading}
             />
+
+            {isAdmin && <ReferralAdminSection />}
 
             <ReferralRules />
           </div>

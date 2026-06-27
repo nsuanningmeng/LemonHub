@@ -66,3 +66,69 @@ export interface AffLeaderboardData {
 
 export type AffStatsResponse = ApiResponse<AffStats>
 export type AffLeaderboardResponse = ApiResponse<AffLeaderboardData>
+
+// ============================================================================
+// Admin — site-wide referral views (admin only)
+// ============================================================================
+
+/** Site-wide referral overview surfaced on the admin section of the referral page. */
+export interface AffAdminSummary {
+  /** Lifetime commission paid to all inviters (quota) */
+  total_commission_paid: number
+  /** Currently un-transferred reward quota across all inviters */
+  total_pending_quota: number
+  /** Total activated invitees across the site */
+  total_activated: number
+  /** Number of distinct inviters (users who invited at least one person) */
+  inviter_count: number
+  /** Commission credited this calendar month (quota) */
+  month_commission_quota: number
+}
+
+/**
+ * One inviter row of the site-wide leaderboard.
+ * Unlike {@link AffLeaderboardItem}, the username is NOT masked (admin-only view).
+ */
+export interface AffAdminLeaderboardItem {
+  inviter_id: number
+  username: string
+  display_name: string
+  /** Lifetime commission earned (quota) */
+  total_earned_quota: number
+  /** Un-transferred reward quota (quota) */
+  pending_quota: number
+  /** Number of activated invitees */
+  activated_count: number
+  /** Total invited users */
+  total_invited: number
+  /** Commission earned this calendar month (quota) */
+  month_commission_quota: number
+  /** Last referral activity timestamp (unix seconds, 0 if none) */
+  last_at: number
+}
+
+export interface AffAdminLeaderboardData {
+  items: AffAdminLeaderboardItem[]
+  total: number
+  page: number
+  page_size: number
+}
+
+/** Server-side sortable columns for the admin leaderboard. */
+export type AffAdminSortColumn =
+  | 'total_earned'
+  | 'pending'
+  | 'activated'
+  | 'username'
+export type AffAdminSortOrder = 'asc' | 'desc'
+
+export interface AffAdminLeaderboardParams {
+  page: number
+  pageSize: number
+  keyword?: string
+  sort?: AffAdminSortColumn
+  order?: AffAdminSortOrder
+}
+
+export type AffAdminSummaryResponse = ApiResponse<AffAdminSummary>
+export type AffAdminLeaderboardResponse = ApiResponse<AffAdminLeaderboardData>

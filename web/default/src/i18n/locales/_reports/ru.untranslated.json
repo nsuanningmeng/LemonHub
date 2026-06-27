@@ -204,5 +204,15 @@
   "Contact page with ways to reach you.": "Contact page with ways to reach you.",
   "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.": "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.",
   "Contact details haven't been set up yet.": "Contact details haven't been set up yet.",
-  "The administrator can configure the contact content in System Settings → Site Information → Contact.": "The administrator can configure the contact content in System Settings → Site Information → Contact."
+  "The administrator can configure the contact content in System Settings → Site Information → Contact.": "The administrator can configure the contact content in System Settings → Site Information → Contact.",
+  "Global Referral Leaderboard": "Global Referral Leaderboard",
+  "All inviters ranked by referral earnings": "All inviters ranked by referral earnings",
+  "Admin · Site-wide Referrals": "Admin · Site-wide Referrals",
+  "Total Commission Paid": "Total Commission Paid",
+  "Total Pending": "Total Pending",
+  "Total Activated": "Total Activated",
+  "Inviters": "Inviters",
+  "This Month": "This Month",
+  "Search inviter": "Search inviter",
+  "Total inviters": "Total inviters"
 }

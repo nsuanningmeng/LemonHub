@@ -20,6 +20,9 @@ import { api } from '@/lib/api'
 import type {
   AffStatsResponse,
   AffLeaderboardResponse,
+  AffAdminSummaryResponse,
+  AffAdminLeaderboardResponse,
+  AffAdminLeaderboardParams,
 } from '@/features/referral/types'
 import type {
   RedemptionRequest,
@@ -205,6 +208,32 @@ export async function getAffLeaderboard(
   limit = 10
 ): Promise<AffLeaderboardResponse> {
   const res = await api.get(`/api/user/aff/leaderboard?limit=${limit}`)
+  return res.data
+}
+
+/**
+ * Get the site-wide referral overview (admin only).
+ */
+export async function getAffAdminSummary(): Promise<AffAdminSummaryResponse> {
+  const res = await api.get('/api/user/aff/admin/summary')
+  return res.data
+}
+
+/**
+ * Get the paginated site-wide inviter leaderboard (admin only).
+ */
+export async function getAffAdminLeaderboard(
+  params: AffAdminLeaderboardParams
+): Promise<AffAdminLeaderboardResponse> {
+  const search = new URLSearchParams()
+  search.set('page', String(params.page))
+  search.set('page_size', String(params.pageSize))
+  if (params.keyword) search.set('keyword', params.keyword)
+  if (params.sort) search.set('sort', params.sort)
+  if (params.order) search.set('order', params.order)
+  const res = await api.get(
+    `/api/user/aff/admin/leaderboard?${search.toString()}`
+  )
   return res.data
 }
 
