@@ -481,6 +481,45 @@ func GetAffLeaderboard(c *gin.Context) {
 	})
 }
 
+// GetAffAdminSummary returns the site-wide referral overview (admin only): total commission
+// paid, total pending, total activated invitees, distinct inviter count, and this-month commission.
+func GetAffAdminSummary(c *gin.Context) {
+	summary, err := model.GetAffAdminSummary()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    summary,
+	})
+}
+
+// GetAffAdminLeaderboard returns the paginated site-wide inviter leaderboard (admin only).
+// Query params: page (>=1), page_size (1-100, default 20), keyword (username/display_name),
+// sort (total_earned|pending|activated|username), order (asc|desc).
+func GetAffAdminLeaderboard(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
+	result, err := model.GetAffAdminLeaderboard(model.AffAdminLeaderboardQuery{
+		Page:     page,
+		PageSize: pageSize,
+		Keyword:  c.Query("keyword"),
+		Sort:     c.Query("sort"),
+		Order:    c.Query("order"),
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    result,
+	})
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")

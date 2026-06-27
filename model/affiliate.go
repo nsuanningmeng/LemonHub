@@ -409,3 +409,230 @@ func maskUsername(name string) string {
 		return string(r[0:2]) + "***" + string(r[n-1:])
 	}
 }
+
+// AffAdminSummary is the site-wide referral overview surfaced on the admin global
+// leaderboard. It is admin-only (the calling route is guarded by AdminAuth). The inviter
+// running totals are read straight off the users table (aff_history / aff_quota / aff_count),
+// while the current-month figure comes from the per-event ledger.
+type AffAdminSummary struct {
+	TotalCommissionPaid  int64 `json:"total_commission_paid"`  // SUM(aff_history) over all users (lifetime payout)
+	TotalPendingQuota    int64 `json:"total_pending_quota"`    // SUM(aff_quota) over all users (un-transferred)
+	TotalActivated       int64 `json:"total_activated"`        // SUM(aff_count) over all users (activated invitees)
+	InviterCount         int64 `json:"inviter_count"`          // distinct users who invited at least one (live) person
+	MonthCommissionQuota int64 `json:"month_commission_quota"` // commission credited this calendar month
+}
+
+// GetAffAdminSummary returns the site-wide referral overview for the admin dashboard.
+func GetAffAdminSummary() (*AffAdminSummary, error) {
+	summary := &AffAdminSummary{}
+
+	var totals struct {
+		Paid      int64
+		Pending   int64
+		Activated int64
+	}
+	if err := DB.Model(&User{}).
+		Select("COALESCE(SUM(aff_history), 0) AS paid, " +
+			"COALESCE(SUM(aff_quota), 0) AS pending, " +
+			"COALESCE(SUM(aff_count), 0) AS activated").
+		Scan(&totals).Error; err != nil {
+		return nil, err
+	}
+	summary.TotalCommissionPaid = totals.Paid
+	summary.TotalPendingQuota = totals.Pending
+	summary.TotalActivated = totals.Activated
+
+	// Number of inviters = distinct live users referenced as someone's inviter_id. Scoped the
+	// same way as GetAffAdminLeaderboard's base set (id IN subquery) so this "Inviters" card
+	// never disagrees with the rows the leaderboard can page through: a soft-deleted inviter
+	// that still has live invitees is excluded from both, not counted here only.
+	inviterIds := DB.Model(&User{}).Distinct("inviter_id").Where("inviter_id > 0")
+	if err := DB.Model(&User{}).
+		Where("id IN (?)", inviterIds).
+		Count(&summary.InviterCount).Error; err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
+	if err := DB.Model(&AffiliateCommission{}).
+		Where("created_at >= ?", monthStart).
+		Select("COALESCE(SUM(commission_quota), 0)").
+		Scan(&summary.MonthCommissionQuota).Error; err != nil {
+		return nil, err
+	}
+	return summary, nil
+}
+
+// AffAdminLeaderboardItem is one inviter row of the site-wide referral leaderboard.
+// Unlike the per-user board, usernames are NOT masked (this is an admin-only view).
+type AffAdminLeaderboardItem struct {
+	InviterId            int    `json:"inviter_id"`
+	Username             string `json:"username"`
+	DisplayName          string `json:"display_name"`
+	TotalEarnedQuota     int64  `json:"total_earned_quota"`     // aff_history
+	PendingQuota         int64  `json:"pending_quota"`          // aff_quota
+	ActivatedCount       int    `json:"activated_count"`        // aff_count
+	TotalInvited         int64  `json:"total_invited"`          // count of (live) users with inviter_id = this user
+	MonthCommissionQuota int64  `json:"month_commission_quota"` // commission credited this calendar month
+	LastAt               int64  `json:"last_at"`                // latest ledger event time (0 if none)
+}
+
+// AffAdminLeaderboardQuery parameterizes the admin global leaderboard read.
+type AffAdminLeaderboardQuery struct {
+	Page     int
+	PageSize int
+	Keyword  string // username / display_name LIKE filter
+	Sort     string // one of affAdminSortColumns keys; anything else falls back to total_earned
+	Order    string // "asc" | "desc" (default desc)
+}
+
+// AffAdminLeaderboardResult is the paginated admin leaderboard payload.
+type AffAdminLeaderboardResult struct {
+	Items    []AffAdminLeaderboardItem `json:"items"`
+	Total    int64                     `json:"total"`
+	Page     int                       `json:"page"`
+	PageSize int                       `json:"page_size"`
+}
+
+// affAdminSortColumns whitelists the user-native columns the admin leaderboard may sort on,
+// mapping a stable API token to a physical column. Anything outside this map falls back to
+// aff_history, which keeps the ORDER BY clause free of caller-controlled text (no injection).
+var affAdminSortColumns = map[string]string{
+	"total_earned": "aff_history",
+	"pending":      "aff_quota",
+	"activated":    "aff_count",
+	"username":     "username",
+}
+
+// GetAffAdminLeaderboard returns the site-wide inviter leaderboard, paginated and optionally
+// filtered by username/display_name. Inviters are all users referenced as someone's inviter_id
+// (so inviters with no settled commission yet still appear). Server-side sorting covers the
+// user-native columns in affAdminSortColumns (default: total earned, descending); the derived
+// columns (total_invited / month / last_at) are enriched per page via two grouped queries so
+// there is no N+1.
+func GetAffAdminLeaderboard(q AffAdminLeaderboardQuery) (*AffAdminLeaderboardResult, error) {
+	page := q.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := q.PageSize
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	sortCol, ok := affAdminSortColumns[q.Sort]
+	if !ok {
+		sortCol = "aff_history"
+	}
+	order := "DESC"
+	if strings.EqualFold(q.Order, "asc") {
+		order = "ASC"
+	}
+
+	// Candidate inviters: users referenced as someone's inviter_id. The subquery and the outer
+	// query both run under GORM's default soft-delete scope, so deleted users are excluded on
+	// both sides (we neither credit nor list deleted inviters/invitees).
+	inviterIds := DB.Model(&User{}).Distinct("inviter_id").Where("inviter_id > 0")
+	base := DB.Model(&User{}).Where("id IN (?)", inviterIds)
+	if kw := strings.TrimSpace(q.Keyword); kw != "" {
+		like := "%" + kw + "%"
+		base = base.Where("username LIKE ? OR display_name LIKE ?", like, like)
+	}
+
+	result := &AffAdminLeaderboardResult{Page: page, PageSize: pageSize, Items: []AffAdminLeaderboardItem{}}
+	if err := base.Count(&result.Total).Error; err != nil {
+		return nil, err
+	}
+	if result.Total == 0 {
+		return result, nil
+	}
+
+	var users []User
+	if err := base.
+		Select("id, username, display_name, aff_history, aff_quota, aff_count").
+		Order(sortCol+" "+order).
+		Order("id ASC"). // stable tiebreaker -> deterministic pagination
+		Limit(pageSize).
+		Offset((page-1)*pageSize).
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+	if len(users) == 0 {
+		return result, nil
+	}
+
+	ids := make([]int, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.Id)
+	}
+
+	// Enrich (1/2): total invited per inviter — one grouped query over the page ids.
+	invitedMap := make(map[int]int64, len(ids))
+	{
+		type invitedRow struct {
+			InviterId int   `gorm:"column:inviter_id"`
+			Cnt       int64 `gorm:"column:cnt"`
+		}
+		var rows []invitedRow
+		if err := DB.Model(&User{}).
+			Select("inviter_id, COUNT(*) AS cnt").
+			Where("inviter_id IN ?", ids).
+			Group("inviter_id").
+			Scan(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			invitedMap[r.InviterId] = r.Cnt
+		}
+	}
+
+	// Enrich (2/2): this-month commission + last activity per inviter — one grouped query.
+	now := time.Now()
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
+	type ledgerAgg struct {
+		Month  int64
+		LastAt int64
+	}
+	ledgerMap := make(map[int]ledgerAgg, len(ids))
+	{
+		type ledgerRow struct {
+			InviterId int   `gorm:"column:inviter_id"`
+			Month     int64 `gorm:"column:month"`
+			LastAt    int64 `gorm:"column:last_at"`
+		}
+		var rows []ledgerRow
+		if err := DB.Model(&AffiliateCommission{}).
+			Select("inviter_id, "+
+				"COALESCE(SUM(CASE WHEN created_at >= ? THEN commission_quota ELSE 0 END), 0) AS month, "+
+				"COALESCE(MAX(created_at), 0) AS last_at", monthStart).
+			Where("inviter_id IN ?", ids).
+			Group("inviter_id").
+			Scan(&rows).Error; err != nil {
+			return nil, err
+		}
+		for _, r := range rows {
+			ledgerMap[r.InviterId] = ledgerAgg{Month: r.Month, LastAt: r.LastAt}
+		}
+	}
+
+	items := make([]AffAdminLeaderboardItem, 0, len(users))
+	for _, u := range users {
+		lg := ledgerMap[u.Id]
+		items = append(items, AffAdminLeaderboardItem{
+			InviterId:            u.Id,
+			Username:             u.Username,
+			DisplayName:          u.DisplayName,
+			TotalEarnedQuota:     int64(u.AffHistoryQuota),
+			PendingQuota:         int64(u.AffQuota),
+			ActivatedCount:       u.AffCount,
+			TotalInvited:         invitedMap[u.Id],
+			MonthCommissionQuota: lg.Month,
+			LastAt:               lg.LastAt,
+		})
+	}
+	result.Items = items
+	return result, nil
+}
