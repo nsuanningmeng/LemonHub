@@ -52,7 +52,20 @@ type User struct {
 	// AffCommissionPercent is an optional per-inviter override (0-100) for the recharge
 	// commission rate. nil inherits the global common.AffRechargeCommissionPercent; a non-nil
 	// value (including 0) takes precedence for this inviter's referral commission payouts.
-	AffCommissionPercent *float64       `json:"aff_commission_percent" gorm:"column:aff_commission_percent"`
+	AffCommissionPercent *float64 `json:"aff_commission_percent" gorm:"column:aff_commission_percent"`
+	// AffCashSettled marks an inviter as a cash-settled promoter: their referral payouts are
+	// handled off-platform as cash, computed from the commission ledger. When true: the one-time
+	// first bonus (QuotaForInviter) is NOT credited to this inviter, and recharge commission is
+	// still recorded in the AffiliateCommission ledger (the cash basis) but NOT credited to the
+	// inviter's aff_quota/aff_history. The invitee's own bonus (QuotaForInvitee) is unaffected, as
+	// is aff_count. No gorm default tag (see SubscriptionPlan.Enabled) — false is the business
+	// default and a bool default tag triggers repeated AutoMigrate ALTER churn across MySQL/PG.
+	AffCashSettled       bool           `json:"aff_cash_settled" gorm:"column:aff_cash_settled"`
+	// AffCashPaid is the authoritative running total (quota units) of off-platform cash already
+	// settled to this inviter. It is only ever advanced by RecordAffiliateCashPayout via a capped
+	// conditional UPDATE (so concurrent settlements cannot over-pay without SELECT ... FOR UPDATE,
+	// which SQLite rejects); the AffiliateCashPayout rows are the human-readable settlement history.
+	AffCashPaid          int64          `json:"aff_cash_paid" gorm:"type:bigint;not null;default:0;column:aff_cash_paid"`
 	DeletedAt            gorm.DeletedAt `gorm:"index"`
 	LinuxDOId            string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting              string         `json:"setting" gorm:"type:text;column:setting"`
@@ -534,7 +547,7 @@ func (user *User) Update(updatePassword bool) error {
 	return updateUserCache(*user)
 }
 
-func (user *User) Edit(updatePassword bool, updateAffCommission bool) error {
+func (user *User) Edit(updatePassword bool, updateAffCommission bool, updateAffCashSettled bool) error {
 	var err error
 	if updatePassword {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -559,6 +572,11 @@ func (user *User) Edit(updatePassword bool, updateAffCommission bool) error {
 	// from other clients do not silently wipe an admin-configured override.
 	if updateAffCommission {
 		updates["aff_commission_percent"] = newUser.AffCommissionPercent
+	}
+	// Only touch the cash-settled-promoter flag when the caller indicates the field was present in
+	// the request body, so partial updates from other clients do not silently flip it back to false.
+	if updateAffCashSettled {
+		updates["aff_cash_settled"] = newUser.AffCashSettled
 	}
 
 	DB.First(&user, user.Id)

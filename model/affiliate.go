@@ -38,7 +38,27 @@ type AffiliateCommission struct {
 	RechargeQuota int64 `json:"recharge_quota" gorm:"type:bigint;not null;default:0"`
 	// CommissionQuota is the quota credited to the inviter for this ledger row.
 	CommissionQuota int64 `json:"commission_quota" gorm:"type:bigint;not null;default:0"`
-	CreatedAt       int64 `json:"created_at" gorm:"type:bigint;index"`
+	// CashSettled marks a recharge_commission row whose amount was NOT credited to the inviter's
+	// platform wallet because the inviter was a cash-settled promoter when it settled — i.e. it is
+	// owed as off-platform cash. false (the default, and the value of every pre-existing row) means
+	// the commission was credited to the wallet as usual, so the cash-owed total can sum only the
+	// CashSettled rows with no backfill, and an inviter toggled to cash mode mid-life only accrues
+	// cash from that point on. Not meaningful on first_bonus rows (a suppressed bonus is never cash).
+	CashSettled bool  `json:"cash_settled" gorm:"column:cash_settled"`
+	CreatedAt   int64 `json:"created_at" gorm:"type:bigint;index"`
+}
+
+// AffiliateCashPayout records one off-platform cash settlement an operator paid to a cash-settled
+// promoter, in the same quota unit as the commission ledger. It is the "已结清" watermark: the
+// outstanding cash owed for an inviter is SUM(cash_settled recharge commission) - SUM(payouts), so
+// the same commission is never settled twice and repeated payouts just accumulate here.
+type AffiliateCashPayout struct {
+	Id         int    `json:"id"`
+	InviterId  int    `json:"inviter_id" gorm:"index"`
+	Amount     int64  `json:"amount" gorm:"type:bigint;not null;default:0"` // quota settled this batch
+	Note       string `json:"note" gorm:"type:varchar(255)"`
+	OperatorId int    `json:"operator_id"` // admin user id who recorded the settlement (0 if unknown)
+	CreatedAt  int64  `json:"created_at" gorm:"type:bigint;index"`
 }
 
 // affiliateFirstBonusKey is the deterministic trade key used for a first_bonus ledger row.
@@ -59,6 +79,11 @@ func affiliateFirstBonusKey(inviteeId int) string {
 //   - recharge_commission: the inviter's effective commission rate (a per-user override on the
 //     inviter when set, otherwise the global AffRechargeCommissionPercent) of the credited quota
 //     is granted to the inviter on every qualifying top-up (including the first).
+//
+// When the inviter is a cash-settled promoter (User.AffCashSettled), the inviter-side first_bonus is
+// suppressed (inviter reward 0; the invitee bonus still applies) and recharge_commission is still
+// recorded in the ledger but NOT credited to the inviter's wallet — the ledger is then the basis for
+// an off-platform cash payout.
 //
 // creditedQuota is the quota actually added to the invitee by this top-up. Returns an error
 // only on unexpected DB failures; callers should log and continue (a settlement failure must
@@ -93,7 +118,7 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 	// per-user commission-rate override. By design a missing inviter voids the referral pair
 	// (the fixed first bonus is a pair reward), so we skip settlement entirely.
 	var inviter User
-	if err := DB.Select("id, aff_commission_percent").Where("id = ?", inviterId).First(&inviter).Error; err != nil {
+	if err := DB.Select("id, aff_commission_percent, aff_cash_settled").Where("id = ?", inviterId).First(&inviter).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil
 		}
@@ -102,6 +127,12 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 
 	inviterReward := int64(common.QuotaForInviter)
 	inviteeReward := int64(common.QuotaForInvitee)
+	// Cash-settled promoters are paid off-platform in cash (computed from the commission ledger),
+	// so the platform first bonus to the inviter is suppressed. The invitee's own bonus still
+	// applies — invitee acquisition incentive is independent of how the inviter is settled.
+	if inviter.AffCashSettled {
+		inviterReward = 0
+	}
 
 	firstBonusGranted, err := settleAffiliateFirstBonus(inviterId, inviteeId, inviterReward, inviteeReward)
 	if err != nil {
@@ -115,7 +146,10 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 		commissionPercent = *inviter.AffCommissionPercent
 	}
 	commission := affiliateCommissionQuota(creditedQuota, commissionPercent)
-	commissionGranted, err := settleAffiliateRechargeCommission(inviterId, inviteeId, tradeNo, creditedQuota, commission)
+	// Cash-settled promoters: record the commission in the ledger (it is the off-platform cash basis)
+	// but do NOT credit it to their platform wallet. Normal inviters: credit aff_quota as before.
+	creditCommissionToWallet := !inviter.AffCashSettled
+	commissionGranted, err := settleAffiliateRechargeCommission(inviterId, inviteeId, tradeNo, creditedQuota, commission, creditCommissionToWallet)
 	if err != nil {
 		return err
 	}
@@ -136,7 +170,13 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 		}
 	}
 	if commissionGranted > 0 {
-		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请返佣，被邀请用户充值返还 %s", logger.LogQuota(int(commissionGranted))))
+		if creditCommissionToWallet {
+			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请返佣，被邀请用户充值返还 %s", logger.LogQuota(int(commissionGranted))))
+		} else {
+			// Cash-settled promoter: the amount was recorded in the ledger as the cash basis, not
+			// credited to the platform wallet. Make that explicit in the audit trail.
+			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("推广返佣（现金结算）记账 %s，未计入平台额度", logger.LogQuota(int(commissionGranted))))
+		}
 	}
 	return nil
 }
@@ -213,9 +253,12 @@ func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeR
 	})
 }
 
-// settleAffiliateRechargeCommission grants the percentage commission exactly once per
-// trade_no. Returns the commission amount actually granted by THIS call (0 if skipped).
-func settleAffiliateRechargeCommission(inviterId, inviteeId int, tradeNo string, creditedQuota, commission int64) (int64, error) {
+// settleAffiliateRechargeCommission records the percentage commission exactly once per trade_no.
+// When creditPlatformQuota is true the commission is also credited to the inviter's aff_quota/
+// aff_history (normal inviters); when false the ledger row is still written but the wallet is left
+// untouched (cash-settled promoters: the ledger row is the off-platform cash basis). Returns the
+// commission amount RECORDED by THIS call (0 if skipped or already settled).
+func settleAffiliateRechargeCommission(inviterId, inviteeId int, tradeNo string, creditedQuota, commission int64, creditPlatformQuota bool) (int64, error) {
 	if commission <= 0 {
 		return 0, nil
 	}
@@ -237,10 +280,17 @@ func settleAffiliateRechargeCommission(inviterId, inviteeId int, tradeNo string,
 				Kind:            AffiliateKindRechargeCommission,
 				RechargeQuota:   creditedQuota,
 				CommissionQuota: commission,
-				CreatedAt:       common.GetTimestamp(),
+				// Owed as cash exactly when it was not credited to the platform wallet.
+				CashSettled: !creditPlatformQuota,
+				CreatedAt:   common.GetTimestamp(),
 			}
 			if err := tx.Create(row).Error; err != nil {
 				return err
+			}
+			// Cash-settled promoter: ledger-only. The row above is the cash basis; do not credit the
+			// platform wallet (avoids double-paying cash + platform quota).
+			if !creditPlatformQuota {
+				return nil
 			}
 			return tx.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
 				"aff_quota":   gorm.Expr("aff_quota + ?", commission),
@@ -475,6 +525,10 @@ type AffAdminLeaderboardItem struct {
 	ActivatedCount       int    `json:"activated_count"`        // aff_count
 	TotalInvited         int64  `json:"total_invited"`          // count of (live) users with inviter_id = this user
 	MonthCommissionQuota int64  `json:"month_commission_quota"` // commission credited this calendar month
+	CashCommissionTotal  int64  `json:"cash_commission_total"`  // lifetime recharge commission recorded as off-platform cash (uncredited); 0 for normal inviters
+	CashCommissionPaid   int64  `json:"cash_commission_paid"`   // total cash already settled to this inviter (sum of payouts)
+	CashCommissionOwed   int64  `json:"cash_commission_owed"`   // outstanding cash owed = total - paid (clamped >= 0)
+	IsCashSettled        bool   `json:"is_cash_settled"`        // cash-settled promoter: payouts handled off-platform
 	LastAt               int64  `json:"last_at"`                // latest ledger event time (0 if none)
 }
 
@@ -552,7 +606,7 @@ func GetAffAdminLeaderboard(q AffAdminLeaderboardQuery) (*AffAdminLeaderboardRes
 
 	var users []User
 	if err := base.
-		Select("id, username, display_name, aff_history, aff_quota, aff_count").
+		Select("id, username, display_name, aff_history, aff_quota, aff_count, aff_cash_settled, aff_cash_paid").
 		Order(sortCol+" "+order).
 		Order("id ASC"). // stable tiebreaker -> deterministic pagination
 		Limit(pageSize).
@@ -594,6 +648,7 @@ func GetAffAdminLeaderboard(q AffAdminLeaderboardQuery) (*AffAdminLeaderboardRes
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Unix()
 	type ledgerAgg struct {
 		Month  int64
+		Owed   int64
 		LastAt int64
 	}
 	ledgerMap := make(map[int]ledgerAgg, len(ids))
@@ -601,26 +656,40 @@ func GetAffAdminLeaderboard(q AffAdminLeaderboardQuery) (*AffAdminLeaderboardRes
 		type ledgerRow struct {
 			InviterId int   `gorm:"column:inviter_id"`
 			Month     int64 `gorm:"column:month"`
+			Owed      int64 `gorm:"column:owed"`
 			LastAt    int64 `gorm:"column:last_at"`
 		}
 		var rows []ledgerRow
+		// owed = lifetime recharge commission recorded as cash (cash_settled rows) and therefore not
+		// credited to the platform wallet. Summing only cash_settled rows means an inviter toggled to
+		// cash mode mid-life never has their earlier (already wallet-credited) commission counted as
+		// cash owed, and pre-existing rows (cash_settled=false) are correctly excluded.
 		if err := DB.Model(&AffiliateCommission{}).
 			Select("inviter_id, "+
 				"COALESCE(SUM(CASE WHEN created_at >= ? THEN commission_quota ELSE 0 END), 0) AS month, "+
-				"COALESCE(MAX(created_at), 0) AS last_at", monthStart).
+				"COALESCE(SUM(CASE WHEN kind = ? AND cash_settled = "+commonTrueVal+" THEN commission_quota ELSE 0 END), 0) AS owed, "+
+				"COALESCE(MAX(created_at), 0) AS last_at", monthStart, AffiliateKindRechargeCommission).
 			Where("inviter_id IN ?", ids).
 			Group("inviter_id").
 			Scan(&rows).Error; err != nil {
 			return nil, err
 		}
 		for _, r := range rows {
-			ledgerMap[r.InviterId] = ledgerAgg{Month: r.Month, LastAt: r.LastAt}
+			ledgerMap[r.InviterId] = ledgerAgg{Month: r.Month, Owed: r.Owed, LastAt: r.LastAt}
 		}
 	}
 
 	items := make([]AffAdminLeaderboardItem, 0, len(users))
 	for _, u := range users {
 		lg := ledgerMap[u.Id]
+		// Paid is read from the authoritative per-user counter (advanced atomically by
+		// RecordAffiliateCashPayout); outstanding = gross cash commission - paid, clamped >= 0.
+		cashTotal := lg.Owed
+		cashPaid := u.AffCashPaid
+		cashOwed := cashTotal - cashPaid
+		if cashOwed < 0 {
+			cashOwed = 0
+		}
 		items = append(items, AffAdminLeaderboardItem{
 			InviterId:            u.Id,
 			Username:             u.Username,
@@ -630,9 +699,115 @@ func GetAffAdminLeaderboard(q AffAdminLeaderboardQuery) (*AffAdminLeaderboardRes
 			ActivatedCount:       u.AffCount,
 			TotalInvited:         invitedMap[u.Id],
 			MonthCommissionQuota: lg.Month,
+			CashCommissionTotal:  cashTotal,
+			CashCommissionPaid:   cashPaid,
+			CashCommissionOwed:   cashOwed,
+			IsCashSettled:        u.AffCashSettled,
 			LastAt:               lg.LastAt,
 		})
 	}
 	result.Items = items
 	return result, nil
+}
+
+// affiliateCashCommissionTotal returns the lifetime recharge commission recorded as off-platform
+// cash (cash_settled rows) for an inviter — the gross amount owed before any settlement.
+func affiliateCashCommissionTotal(tx *gorm.DB, inviterId int) (int64, error) {
+	var total int64
+	if err := tx.Model(&AffiliateCommission{}).
+		Where("inviter_id = ? AND kind = ? AND cash_settled = "+commonTrueVal, inviterId, AffiliateKindRechargeCommission).
+		Select("COALESCE(SUM(commission_quota), 0)").
+		Scan(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// RecordAffiliateCashPayout records an off-platform cash settlement to an inviter. amount is in the
+// same quota unit as the commission ledger; it must be positive and not exceed the current
+// outstanding owed (total cash-settled commission - already-settled). The outstanding is recomputed
+// inside the transaction so concurrent settlements cannot over-pay. Returns the persisted payout row.
+func RecordAffiliateCashPayout(inviterId int, amount int64, note string, operatorId int) (*AffiliateCashPayout, error) {
+	if inviterId <= 0 {
+		return nil, errors.New("invalid inviter id")
+	}
+	if amount <= 0 {
+		return nil, errors.New("settlement amount must be positive")
+	}
+	note = strings.TrimSpace(note)
+	if r := []rune(note); len(r) > 255 {
+		note = string(r[:255])
+	}
+	var payout *AffiliateCashPayout
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var inviter User
+		if err := tx.Select("id, aff_cash_paid").Where("id = ?", inviterId).First(&inviter).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("inviter not found")
+			}
+			return err
+		}
+		total, err := affiliateCashCommissionTotal(tx, inviterId)
+		if err != nil {
+			return err
+		}
+		// Advance the authoritative paid counter with a CAPPED conditional UPDATE: the WHERE re-checks
+		// the inviter's CURRENT aff_cash_paid (under the row write-lock the UPDATE takes), so two
+		// concurrent settlements for the same inviter serialize and can never push paid past the gross
+		// owed. This is the cross-DB-safe substitute for SELECT ... FOR UPDATE (which SQLite rejects);
+		// new commissions only raise total, so a stale total can only under-credit, never over-pay.
+		// The cap is expressed as `aff_cash_paid <= total - amount` (computed in Go, both >= 0 here so
+		// no overflow) rather than `aff_cash_paid + amount <= total`, to avoid a signed-int64 overflow
+		// in the DB-side addition on corrupted/extreme data; a negative cap (amount > total) simply
+		// matches no row and is rejected below.
+		payCap := total - amount
+		res := tx.Model(&User{}).
+			Where("id = ? AND aff_cash_paid <= ?", inviterId, payCap).
+			UpdateColumn("aff_cash_paid", gorm.Expr("aff_cash_paid + ?", amount))
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			outstanding := total - inviter.AffCashPaid
+			if outstanding < 0 {
+				outstanding = 0
+			}
+			return fmt.Errorf("结算金额超过未结返佣，当前未结 %s", logger.LogQuota(int(outstanding)))
+		}
+		row := &AffiliateCashPayout{
+			InviterId:  inviterId,
+			Amount:     amount,
+			Note:       note,
+			OperatorId: operatorId,
+			CreatedAt:  common.GetTimestamp(),
+		}
+		if err := tx.Create(row).Error; err != nil {
+			return err
+		}
+		payout = row
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("推广返佣现金结算 %s（线下）", logger.LogQuota(int(amount))))
+	return payout, nil
+}
+
+// GetAffiliateCashPayouts returns an inviter's recorded cash settlements, newest first.
+func GetAffiliateCashPayouts(inviterId, limit int) ([]AffiliateCashPayout, error) {
+	if inviterId <= 0 {
+		return nil, errors.New("invalid inviter id")
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows := []AffiliateCashPayout{}
+	if err := DB.Where("inviter_id = ?", inviterId).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
 }

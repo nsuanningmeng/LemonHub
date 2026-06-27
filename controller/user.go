@@ -520,6 +520,60 @@ func GetAffAdminLeaderboard(c *gin.Context) {
 	})
 }
 
+type RecordAffCashPayoutRequest struct {
+	InviterId int    `json:"inviter_id" binding:"required"`
+	Amount    int64  `json:"amount" binding:"required"`
+	Note      string `json:"note"`
+}
+
+// RecordAffAdminCashPayout records an off-platform cash settlement to a cash-settled promoter
+// (admin only). Amount is in quota units and is rejected if it exceeds the inviter's outstanding owed.
+func RecordAffAdminCashPayout(c *gin.Context) {
+	var req RecordAffCashPayoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if req.InviterId <= 0 || req.Amount <= 0 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	payout, err := model.RecordAffiliateCashPayout(req.InviterId, req.Amount, req.Note, c.GetInt("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAuditFor(c, req.InviterId, "user.aff_cash_payout", map[string]interface{}{
+		"inviter_id": req.InviterId,
+		"amount":     req.Amount,
+		"payout_id":  payout.Id,
+		"note":       payout.Note,
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    payout,
+	})
+}
+
+// GetAffAdminCashPayouts lists the recorded cash settlements for an inviter (admin only), newest first.
+func GetAffAdminCashPayouts(c *gin.Context) {
+	inviterId, _ := strconv.Atoi(c.Query("inviter_id"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	items, err := model.GetAffiliateCashPayouts(inviterId, limit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"items": items,
+		},
+	})
+}
+
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
@@ -707,6 +761,7 @@ func UpdateUser(c *gin.Context) {
 	var rawFields map[string]json.RawMessage
 	_ = common.Unmarshal(body, &rawFields)
 	_, affCommissionProvided := rawFields["aff_commission_percent"]
+	_, affCashSettledProvided := rawFields["aff_cash_settled"]
 	if updatedUser.Password == "" {
 		updatedUser.Password = "$I_LOVE_U" // make Validator happy :)
 	}
@@ -728,6 +783,22 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
 	}
+	// Money-policy fields (promoter cash-settlement flag + per-user commission rate) may only be
+	// CHANGED by root/owner. Gate on an actual change, not mere presence: the edit form always sends
+	// these keys, so blocking on presence would lock non-root admins out of every user edit.
+	if myRole < common.RoleRootUser {
+		if affCashSettledProvided && updatedUser.AffCashSettled != originUser.AffCashSettled {
+			common.ApiErrorMsg(c, "仅站长(root)可修改推广者现金结算设置")
+			return
+		}
+		if affCommissionProvided {
+			a, b := updatedUser.AffCommissionPercent, originUser.AffCommissionPercent
+			if (a == nil) != (b == nil) || (a != nil && b != nil && *a != *b) {
+				common.ApiErrorMsg(c, "仅站长(root)可修改用户返佣比例")
+				return
+			}
+		}
+	}
 	if updatedUser.AffCommissionPercent != nil {
 		if p := *updatedUser.AffCommissionPercent; p < 0 || p > 100 {
 			common.ApiErrorMsg(c, "用户返佣比例必须是 0-100 之间的数字")
@@ -738,7 +809,7 @@ func UpdateUser(c *gin.Context) {
 		updatedUser.Password = "" // rollback to what it should be
 	}
 	updatePassword := updatedUser.Password != ""
-	if err := updatedUser.Edit(updatePassword, affCommissionProvided); err != nil {
+	if err := updatedUser.Edit(updatePassword, affCommissionProvided, affCashSettledProvided); err != nil {
 		common.ApiError(c, err)
 		return
 	}

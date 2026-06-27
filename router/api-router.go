@@ -156,6 +156,8 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/", controller.GetAllUsers)
 				adminRoute.GET("/aff/admin/summary", controller.GetAffAdminSummary)
 				adminRoute.GET("/aff/admin/leaderboard", controller.GetAffAdminLeaderboard)
+				adminRoute.GET("/aff/admin/cash-payouts", middleware.RootAuth(), controller.GetAffAdminCashPayouts)
+				adminRoute.POST("/aff/admin/cash-payout", middleware.RootAuth(), controller.RecordAffAdminCashPayout)
 				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
 				adminRoute.POST("/topup/retry", controller.AdminRetryManualReviewTopUp)
