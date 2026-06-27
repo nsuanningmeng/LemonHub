@@ -8,13 +8,16 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
+	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 )
 
@@ -348,6 +351,12 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	}
+	// Capture the previous announcements blob BEFORE the update so we can diff
+	// for newly-added entries and optionally email them to users.
+	var oldAnnouncements string
+	if option.Key == "console_setting.announcements" {
+		oldAnnouncements = console_setting.GetConsoleSetting().Announcements
+	}
 	err = model.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {
 		common.ApiError(c, err)
@@ -357,6 +366,16 @@ func UpdateOption(c *gin.Context) {
 	recordManageAudit(c, "option.update", map[string]interface{}{
 		"key": option.Key,
 	})
+	// When announcements change, optionally email newly-added entries to users
+	// (gated inside the service by email_promotion_setting.announcement_email_enabled).
+	if option.Key == "console_setting.announcements" {
+		newAnnouncements := option.Value.(string)
+		createdBy := c.GetInt("id")
+		siteId := middleware.GetRequestSiteId(c)
+		gopool.Go(func() {
+			service.MaybeSendAnnouncementEmails(oldAnnouncements, newAnnouncements, createdBy, siteId)
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

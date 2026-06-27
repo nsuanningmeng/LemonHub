@@ -210,6 +210,42 @@ func SetApiRouter(router *gin.Engine) {
 		// (no gzip / no global rate limit) so EasyPay always receives a clean "success" ack.
 		apiRouter.GET("/subscription/epay/return", controller.SubscriptionEpayReturn)
 		apiRouter.POST("/subscription/epay/return", anonymousRequestBodyLimit, controller.SubscriptionEpayReturn)
+		// Support tickets — user-facing endpoints
+		ticketRoute := apiRouter.Group("/ticket")
+		ticketRoute.Use(middleware.UserAuth())
+		{
+			ticketRoute.GET("/", controller.GetUserTickets)
+			// Create/reply are rate-limited to bound ticket spam and the admin
+			// notification amplification each new message triggers.
+			ticketRoute.POST("/", middleware.CriticalRateLimit(), controller.CreateTicket)
+			ticketRoute.GET("/config", controller.GetTicketConfig)
+			ticketRoute.POST("/attachment", middleware.UploadRateLimit(), controller.UploadTicketAttachment)
+			ticketRoute.GET("/attachment/:id", controller.GetTicketAttachment)
+			ticketRoute.GET("/:id", controller.GetTicketDetail)
+			ticketRoute.POST("/:id/reply", middleware.CriticalRateLimit(), controller.ReplyTicket)
+			ticketRoute.POST("/:id/close", controller.CloseTicket)
+		}
+		// Support tickets — admin management
+		ticketAdminRoute := apiRouter.Group("/ticket/admin")
+		ticketAdminRoute.Use(middleware.AdminAuth())
+		{
+			ticketAdminRoute.GET("/", controller.AdminGetAllTickets)
+			ticketAdminRoute.GET("/:id", controller.AdminGetTicketDetail)
+			ticketAdminRoute.POST("/:id/reply", controller.AdminReplyTicket)
+			ticketAdminRoute.POST("/:id/status", controller.AdminUpdateTicketStatus)
+			ticketAdminRoute.POST("/cleanup", controller.AdminCleanupAttachments)
+		}
+		// Email promotion / bulk email campaigns (admin)
+		emailCampaignRoute := apiRouter.Group("/email-campaign")
+		emailCampaignRoute.Use(middleware.AdminAuth())
+		{
+			emailCampaignRoute.GET("/", controller.ListEmailCampaigns)
+			// Rate-limit bulk-send creation so a careless/compromised admin session
+			// cannot trigger repeated full-audience email blasts.
+			emailCampaignRoute.POST("/", middleware.CriticalRateLimit(), controller.CreateEmailCampaign)
+			emailCampaignRoute.GET("/:id", controller.GetEmailCampaignDetail)
+		}
+
 		optionRoute := apiRouter.Group("/option")
 		optionRoute.Use(middleware.RootAuth())
 		{

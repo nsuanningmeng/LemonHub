@@ -1315,6 +1315,7 @@ type UpdateUserSettingRequest struct {
 	UpstreamModelUpdateNotifyEnabled *bool   `json:"upstream_model_update_notify_enabled,omitempty"`
 	AcceptUnsetModelRatioModel       bool    `json:"accept_unset_model_ratio_model"`
 	RecordIpLog                      bool    `json:"record_ip_log"`
+	MarketingEmailDisabled           *bool   `json:"marketing_email_disabled,omitempty"`
 }
 
 func UpdateUserSetting(c *gin.Context) {
@@ -1417,6 +1418,16 @@ func UpdateUserSetting(c *gin.Context) {
 		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
 		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
 		RecordIpLog:                      req.RecordIpLog,
+		// Preserve fields this notification form does not manage so saving notification
+		// preferences never clobbers unrelated user settings.
+		BillingPreference:      existingSettings.BillingPreference,
+		SidebarModules:         existingSettings.SidebarModules,
+		Language:               existingSettings.Language,
+		MarketingEmailDisabled: existingSettings.MarketingEmailDisabled,
+	}
+	// Marketing/announcement email opt-out toggle (defaults to receiving).
+	if req.MarketingEmailDisabled != nil {
+		settings.MarketingEmailDisabled = *req.MarketingEmailDisabled
 	}
 
 	// 如果是webhook类型,添加webhook相关设置

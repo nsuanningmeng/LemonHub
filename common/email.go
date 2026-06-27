@@ -76,6 +76,12 @@ func newSMTPClient(addr string) (*smtp.Client, error) {
 }
 
 func SendEmail(subject string, receiver string, content string) error {
+	// Defense-in-depth against SMTP header injection: the receiver and From values
+	// are written verbatim into raw mail headers below, so reject any CR/LF before
+	// they can inject additional headers (e.g. a smuggled Bcc).
+	if strings.ContainsAny(receiver, "\r\n") || strings.ContainsAny(SMTPFrom, "\r\n") || strings.ContainsAny(SystemName, "\r\n") {
+		return fmt.Errorf("invalid email header value")
+	}
 	if SMTPFrom == "" { // for compatibility
 		SMTPFrom = SMTPAccount
 	}
