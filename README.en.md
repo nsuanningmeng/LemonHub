@@ -2,9 +2,9 @@
 
 ![LemonHub](/web/default/public/logo.png)
 
-# 🍋 LemonHub
+# LemonHub
 
-**Multi-tenant, white-label AI API Gateway with a built-in agent / reseller franchise system**
+**Multi-tenant AI API gateway with a built-in agent/reseller franchise, an extended referral-commission system, and a support-ticket suite — built on new-api.**
 
 <p align="center">
   <a href="./README.zh_CN.md">简体中文</a> |
@@ -27,55 +27,107 @@
 </p>
 
 <p align="center">
-  <a href="#-quick-start">Quick Start</a> •
-  <a href="#-what-makes-lemonhub-different">Why LemonHub</a> •
-  <a href="#-white-label--agent-franchise">White-label</a> •
-  <a href="#-deployment">Deployment</a> •
-  <a href="#-built-on-new-api">Built on new-api</a>
+  <a href="#overview">Overview</a> •
+  <a href="#how-lemonhub-differs-from-new-api">Differences from new-api</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#agent--reseller-franchise">Agent franchise</a> •
+  <a href="#deployment">Deployment</a>
 </p>
 
 </div>
 
-## 📝 Project Description
+## Overview
 
-**LemonHub** is a secondary-development fork of [new-api](https://github.com/QuantumNous/new-api) (which itself builds on [One API](https://github.com/songquanpeng/one-api)). It keeps the full power of new-api — a unified gateway in front of 40+ AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, …) with billing, rate-limiting and an admin dashboard — and adds a **multi-tenant, white-label, agent-franchise layer** on top:
+LemonHub is a secondary-development fork of [new-api](https://github.com/QuantumNous/new-api) (which itself builds on [One API](https://github.com/songquanpeng/one-api)). It keeps the full new-api gateway — a unified API in front of 40+ AI providers (OpenAI, Claude, Gemini, Azure, AWS Bedrock, …) with billing, rate-limiting and an admin dashboard — and adds, on top of it:
 
-> One deployment + one database can serve **many independently-branded sub-sites**, each owned by an **agent (reseller)** who runs their own domain, collects payments into their **own payment merchant**, and purchases wholesale quota from the platform through a **prepaid procurement wallet**.
+- a **multi-tenant, agent-franchise layer** (one deployment serves many sub-sites, each run by a reseller with their own domain, payment merchant and prepaid procurement wallet);
+- an **extended referral-commission system** (first-recharge bonus, ongoing percentage commission, per-user rates, admin leaderboard, and a cash-settled promoter mode);
+- a **support-ticket and email-campaign suite**;
+- **one-click client onboarding** (Connect Hub);
+- and a series of **billing, payment, relay, security and migration** changes.
+
+The relay / channel-forwarding / billing core is kept compatible with upstream so new-api features and fixes merge cleanly; LemonHub's additions live around it.
 
 > [!IMPORTANT]
 > - This project is intended solely for lawful and authorized AI API gateway, organization-level authentication, multi-model management, usage analytics, cost accounting, and private/reseller deployment scenarios.
 > - You must lawfully obtain upstream API keys, accounts, model services, and interface permissions, and comply with upstream terms of service and applicable laws and regulations.
 > - When providing generative AI services to the public, complete all required filing, licensing, content safety, real-name verification, log retention, tax, payment, and upstream authorization obligations required by your jurisdiction.
 
----
+## How LemonHub differs from new-api
 
-## ✨ What makes LemonHub different
+Everything below is added or changed by the fork on top of upstream new-api, grouped by area. This is the cumulative list since the first LemonHub version, not a single release.
 
-On top of everything new-api offers, LemonHub adds:
+### 1. Multi-tenant sub-sites
 
-| Capability | Description |
-|---|---|
-| 🏢 **White-label sub-sites** | One deployment serves many branded tenants. Each sub-site has its own domain(s), name, logo, notice, footer and homepage hero copy. Requests are routed to a sub-site by their `Host`. |
-| 🤝 **Agent / reseller franchise** | The platform owner (main site) onboards **agents**; each agent owns and self-administers a sub-site through a dedicated **Agent Console**. |
-| 💰 **Procurement wallet (整数厘 ledger)** | Each agent prepays the platform into a wallet kept in integer *milli-CNY* (厘). Every user recharge atomically debits the wallet at wholesale price — never goes negative, every change writes a ledger entry. |
-| 🏷️ **Per-agent discount (wholesale) rate** | `DiscountRate` is a basis-of-10000 integer (`10000` = face price, `7000` = 70%). Wholesale cost = `face × DiscountRate / 10000`; the agent keeps the margin. |
-| 💳 **Per-site payment collection** | Each sub-site configures its **own** EasyPay (易支付) merchant. User recharges flow into the agent's own merchant account; the platform settles the wallet in the same DB transaction (credit user **+** debit agent wallet), idempotently. |
-| 🔻 **Auto-degradation** | When an agent's wallet is drained (or unconfigured), online recharge transparently disappears for that sub-site — issued quota and other gateways are unaffected. |
-| 🔒 **Per-site data isolation** | Every table carries a `site_id`; usernames are unique **per site** (`(site_id, username)`); passwords, 2FA and all OAuth bindings are isolated per site. |
-| 🎟️ **Per-site redemption codes** | Agents generate/void redemption codes scoped to their own site, with cross-site isolation and reconciliation. |
-| 🔌 **Connect Hub** | One-click client setup (Claude Code / Codex / Gemini CLI / Chatbox / Cherry Studio / VS Code …) that targets **the domain the user is actually visiting** — multi-domain aware. |
-| 🌐 **Multi-domain payment callbacks & titles** | Payment notify/return URLs and the first-paint `<title>` follow the visited (trusted) domain, with Host-spoofing protection. |
+- One deployment and one database serve many independent sub-sites; each incoming request is routed to a sub-site by its `Host` (domain middleware).
+- Per-site customization: name, logo, notice, footer and homepage hero copy, all configurable per sub-site.
+- Per-site data isolation: every table carries a `site_id`; usernames are unique **per site** (`(site_id, username)`); passwords, 2FA and all OAuth bindings are isolated per site; registration, login and OAuth are scoped to the current site. Cross-site access is covered by authorization tests.
+- A main-site management page to create and administer sub-sites.
 
-> 📖 **New to the agent model? Read the step-by-step guide:** **[Sub-site / Agent Franchise Guide (中文)](./docs/subsite-guide.md)** · [English](./docs/subsite-guide.en.md)
+### 2. Agent / reseller franchise
 
----
+- Two roles: **main-site admin** (platform owner — owns the deployment, the upstream channels, and sells wholesale quota) and **sub-site admin** (agent — runs a sub-site through a dedicated Agent Console backed by `SiteAdminAuth` endpoints).
+- **Procurement wallet**: each agent prepays the platform into a wallet kept in integer milli-CNY. Every end-user recharge atomically debits the wallet at wholesale price in the same transaction; the wallet never goes negative and every change writes a ledger entry. The main site can top up, adjust, reconcile, void and refund.
+- **Per-agent wholesale (discount) rate**: `DiscountRate` is a basis-of-10000 integer (`10000` = face price, `7000` = 70%). Wholesale cost = `face × DiscountRate / 10000`; the agent keeps the margin.
+- **Per-site payment collection**: each sub-site configures its **own** EasyPay (易支付) merchant. End-user recharges flow into the agent's merchant; the platform settles the wallet in the same DB transaction (credit user **and** debit agent wallet), idempotently, with **auto-degradation** — when an agent's wallet is drained or unconfigured, online recharge transparently disappears for that sub-site while issued quota and other gateways are unaffected.
+- **Per-site redemption codes**: agents generate and void codes scoped to their own site, with cross-site isolation and reconciliation.
+- **Per-site custom-model markup** (route A): an agent can mark up specific model calls on their site; the platform's wholesale settlement is never undercut.
+- A reseller-franchise landing page, a configurable Contact page, and nav/footer entries.
 
-## 🚀 Quick Start
+### 3. Referral commission system
 
-### Using Docker Compose (Recommended)
+Upstream ships a one-off invite bonus. LemonHub replaces it with a full commission system:
+
+- Referral reward is credited **after the invitee's first successful top-up** (not at registration), plus an **ongoing percentage commission** on every recharge the invitee makes; both run through an idempotent per-event ledger with stats APIs.
+- A user-facing referral detail page and personal contribution leaderboard.
+- **Per-user commission-rate override** that overrides the global rate (unset inherits the global; `0` disables commission for that inviter).
+- An **admin site-wide referral leaderboard** (summary cards + ranking with search, sort and pagination, behind `AdminAuth`).
+- **Cash-settled promoter mode**: a per-user flag for promoters who are paid off-platform in cash. When on, the platform invite bonus is suppressed and recharge commission is recorded in a ledger as cash owed (not credited to the platform balance); a cash-payout ledger tracks the outstanding balance with overpay-safe, concurrency-safe settlement. Money-policy operations (mark promoter, set commission rate, record/view cash settlement) are restricted to the root/owner account.
+
+### 4. Support tickets and email campaigns
+
+- A user ticket desk and an admin ticket-management view, with priority.
+- An email-campaign / bulk-promotion tool: schema migration, attachment upload, bulk send, rate-limiting, cleanup and audit.
+- Backend security tests covering upload handling, Markdown XSS, header injection, authorization and priority.
+
+### 5. Connect Hub (one-click client onboarding)
+
+- One-click client setup for Claude Code, Codex, Gemini CLI, Chatbox, Cherry Studio, VS Code and more. The generated configuration targets **the domain the user is actually visiting**, so it works correctly across multiple domains.
+
+### 6. Billing and token routing
+
+- **Token multi-group priority failover**: a token can carry an ordered group list and fail over between groups; **tiered/expression billing is computed against the group actually used**.
+- The default-frontend ratio editor surfaces models that currently have **no price set**, so they are not silently missed.
+
+### 7. Payment and relay reliability
+
+- EasyPay callbacks are exempted from gzip handling and the global rate-limiter and get a dedicated, lenient backstop limiter; `notify_url` is pinned to a stable domain.
+- Payment callback/return URLs and the first-paint page `<title>` follow the visited (trusted) domain, with Host-spoofing protection; a title-flicker bug is fixed.
+- Concurrency/idempotency tests for EasyPay settlement.
+- Relay retries honor configured 504/524 status codes; non-streaming `BadResponseBody` responses become retryable; when all channels are exhausted the real upstream error is returned instead of a generic one.
+- Subscription fix: an expired subscription correctly returns the user to their original group (`prev_user_group` is preserved across renewal).
+
+### 8. Model-performance settings
+
+- Success-rate threshold, error-code whitelist, and "no data = 100%" handling.
+
+### 9. Security and migration hardening
+
+- SSRF hardening for advanced custom channels.
+- Database-migration safety on all three engines (SQLite / MySQL / PostgreSQL): fail-closed preflight for `price_amount` precision, subscription price-precision preflight, fast-path fail-stop preflight, and a `site_id` NULL backfill so main-site queries never hide legacy rows.
+
+### 10. Packaging and documentation
+
+- Docker images are published to GitHub Container Registry (`ghcr.io/nsuanningmeng/lemonhub`), multi-arch (amd64 + arm64); `docker-compose` points at the fork image by default.
+- An all-language README plus step-by-step sub-site / agent guides.
+
+> New to the agent model? Read the step-by-step guide: **[Sub-site / Agent Franchise Guide (中文)](./docs/subsite-guide.md)** · [English](./docs/subsite-guide.en.md)
+
+## Quick Start
+
+### Docker Compose (recommended)
 
 ```bash
-# Clone the project
 git clone https://github.com/nsuanningmeng/LemonHub.git
 cd LemonHub
 
@@ -87,10 +139,9 @@ docker compose up -d
 ```
 
 <details>
-<summary><strong>Using a plain Docker command</strong></summary>
+<summary>Plain Docker command</summary>
 
 ```bash
-# Pull the latest image
 docker pull ghcr.io/nsuanningmeng/lemonhub:latest
 
 # SQLite (default — mount /data to persist)
@@ -111,21 +162,19 @@ docker run --name lemonhub -d --restart always \
 
 </details>
 
-🎉 After deployment, open `http://localhost:3000`. The first registered account becomes the **root / platform (main-site) administrator**.
+After deployment, open `http://localhost:3000`. The first registered account becomes the **root / platform (main-site) administrator**.
 
 > [!WARNING]
 > When operating LemonHub as a public or reseller AI service, first complete all required filing, licensing, content safety, real-name verification, log retention, tax, payment, and upstream authorization obligations.
 
----
-
-## 🤝 White-label / Agent Franchise
+## Agent / Reseller Franchise
 
 LemonHub is built around two roles:
 
-- **Main-site admin (platform owner / 主站站长)** — owns the deployment, the AI channels (upstream keys), and sells wholesale quota. Creates sub-sites, funds agent wallets, and sets each agent's discount rate.
-- **Sub-site admin (agent / reseller / 子站站长)** — runs a branded sub-site on their own domain, configures their own payment merchant and branding, and serves their own end-users.
+- **Main-site admin (platform owner)** — owns the deployment and the AI channels (upstream keys), and sells wholesale quota. Creates sub-sites, funds agent wallets, and sets each agent's discount rate.
+- **Sub-site admin (agent / reseller)** — runs a sub-site on their own domain, configures their own payment merchant and appearance, and serves their own end-users.
 
-**The money flow at a glance** (example, discount `7000` = 70%):
+Money flow at a glance (example, discount `7000` = 70%):
 
 ```
 End-user pays ¥100  ──►  Agent's OWN EasyPay merchant   (agent keeps ¥100)
@@ -135,47 +184,42 @@ End-user pays ¥100  ──►  Agent's OWN EasyPay merchant   (agent keeps ¥10
                                           └─ ¥30 is the agent's margin
 ```
 
-The full, hand-holding walkthrough — what each role must prepare, and every click — is here:
+The full walkthrough — what each role must prepare, and every step — is here:
+**[Sub-site / Agent Franchise Guide (中文)](./docs/subsite-guide.md)** · **[English](./docs/subsite-guide.en.md)**
 
-➡️ **[📘 Sub-site / Agent Franchise Guide (中文，保姆级)](./docs/subsite-guide.md)** · **[English](./docs/subsite-guide.en.md)**
+## Inherited from new-api
 
----
-
-## 🤖 Model & Feature Support (inherited from new-api)
-
-LemonHub inherits new-api's gateway capabilities, including:
+LemonHub keeps new-api's gateway capabilities, including:
 
 - **Formats**: OpenAI Chat/Responses/Realtime, Claude Messages, Google Gemini, Rerank (Cohere/Jina), Image/Audio/Embedding, Midjourney-Proxy, Suno, Dify.
 - **Format conversion**: OpenAI ⇄ Claude Messages, OpenAI → Gemini, thinking-to-content, reasoning-effort suffixes.
-- **Intelligent routing**: weighted random channels, automatic retry on failure (configurable retry status codes), token multi-group priority failover, user-level rate limiting.
-- **Billing**: per-request / usage-based / cache-hit accounting, tiered/expression pricing, EasyPay & Stripe top-up.
+- **Intelligent routing**: weighted random channels, automatic retry on failure (configurable retry status codes), user-level rate limiting.
+- **Billing**: per-request / usage-based / cache-hit accounting, tiered and expression pricing, EasyPay and Stripe top-up.
 - **Auth**: JWT, WebAuthn/Passkeys, OAuth (GitHub, Discord, OIDC, LinuxDO, Telegram, WeChat).
-- **UI**: modern dashboard, multi-language (zh/en/fr/ja/vi…), data dashboard, model performance metrics.
+- **UI**: modern dashboard, multi-language (zh/en/fr/ja/vi…), data dashboard, model-performance metrics.
 
-> 📚 For gateway/API details, refer to the upstream [new-api documentation](https://docs.newapi.pro).
+For gateway/API details, refer to the upstream [new-api documentation](https://docs.newapi.pro).
 
----
-
-## 🚢 Deployment
+## Deployment
 
 > [!TIP]
-> **Latest image:** `ghcr.io/nsuanningmeng/lemonhub:latest` (multi-arch: amd64 + arm64).
+> Latest image: `ghcr.io/nsuanningmeng/lemonhub:latest` (multi-arch: amd64 + arm64).
 
 ### Requirements
 
 | Component | Requirement |
 |---|---|
-| **Local DB** | SQLite (Docker must mount `/data`) |
-| **Remote DB** | MySQL ≥ 5.7.8 or PostgreSQL ≥ 9.6 |
-| **Cache (recommended)** | Redis |
-| **Engine** | Docker / Docker Compose |
+| Local DB | SQLite (Docker must mount `/data`) |
+| Remote DB | MySQL ≥ 5.7.8 or PostgreSQL ≥ 9.6 |
+| Cache (recommended) | Redis |
+| Engine | Docker / Docker Compose |
 
 ### Common environment variables
 
 | Variable | Description | Default |
 |---|---|---|
-| `SESSION_SECRET` | Session secret (**required** for multi-node) | - |
-| `CRYPTO_SECRET` | Encryption secret (**required** for shared Redis) | - |
+| `SESSION_SECRET` | Session secret (required for multi-node) | - |
+| `CRYPTO_SECRET` | Encryption secret (required for shared Redis) | - |
 | `SQL_DSN` | Database connection string (MySQL/PostgreSQL) | - |
 | `REDIS_CONN_STRING` | Redis connection string | - |
 | `TRUSTED_REDIRECT_DOMAINS` | Comma-separated trusted domains for payment redirect / multi-domain callbacks | - |
@@ -184,35 +228,31 @@ LemonHub inherits new-api's gateway capabilities, including:
 | `STREAMING_TIMEOUT` | Streaming no-response timeout (seconds) | `300` |
 | `MAX_REQUEST_BODY_MB` | Max request body (MB, after decompression) | `32` |
 
-> Rate-limit and most tuning variables fall back to sensible code defaults, so they are **not** required in `.env`/compose. See `.env.example` for the documented optional knobs.
+Rate-limit and most tuning variables fall back to sensible code defaults, so they are not required in `.env`/compose. See `.env.example` for the documented optional knobs.
 
-### Multi-node notes
+### Multi-node
 
 > [!WARNING]
-> - **Set** `SESSION_SECRET` — otherwise login state is inconsistent across nodes.
-> - **With shared Redis, set** `CRYPTO_SECRET` — otherwise encrypted data cannot be decrypted.
+> - Set `SESSION_SECRET`, otherwise login state is inconsistent across nodes.
+> - With shared Redis, set `CRYPTO_SECRET`, otherwise encrypted data cannot be decrypted.
 
-### Retry & cache
+### Retry and cache
 
-- **Retry**: `Settings → Operation Settings → Route Reliability` (failure retry count + auto-retry status-code ranges).
-- **Cache**: `REDIS_CONN_STRING` (recommended) or `MEMORY_CACHE_ENABLED`.
+- Retry: `Settings → Operation Settings → Route Reliability` (failure retry count + auto-retry status-code ranges).
+- Cache: `REDIS_CONN_STRING` (recommended) or `MEMORY_CACHE_ENABLED`.
 
----
+## Built on new-api
 
-## 🧱 Built on new-api
-
-LemonHub is an AGPL-licensed fork. Huge credit to the upstream projects:
+LemonHub is an AGPL-licensed fork. Credit to the upstream projects:
 
 | Project | Role |
 |---|---|
 | [new-api](https://github.com/QuantumNous/new-api) | Direct upstream — the gateway LemonHub extends |
 | [One API](https://github.com/songquanpeng/one-api) | Original project base (MIT) |
 
-LemonHub regularly syncs with upstream new-api. The relay / billing / channel-forwarding core is kept byte-for-byte compatible so upstream features and fixes can be merged cleanly; LemonHub's additions live around it (sub-site isolation, wallets, per-site payment, branding).
+LemonHub regularly syncs with upstream new-api.
 
----
-
-## 📜 License
+## License
 
 This project is licensed under the [GNU Affero General Public License v3.0 (AGPLv3)](./LICENSE), inheriting the upstream license.
 
@@ -220,20 +260,14 @@ Per AGPLv3 Section 7 additional terms, modified versions must preserve the autho
 
 This is an open-source project developed based on [One API](https://github.com/songquanpeng/one-api) (MIT License).
 
----
+## Help and Contributing
 
-## 💬 Help & Contributing
+- Issues and feature requests: [LemonHub Issues](https://github.com/nsuanningmeng/LemonHub/issues)
+- Sub-site guide: [中文](./docs/subsite-guide.md) · [English](./docs/subsite-guide.en.md)
+- Gateway/API reference: [new-api docs](https://docs.newapi.pro)
 
-- 🐛 Issues & feature requests: [LemonHub Issues](https://github.com/nsuanningmeng/LemonHub/issues)
-- 📘 Sub-site guide: [中文](./docs/subsite-guide.md) · [English](./docs/subsite-guide.en.md)
-- 📚 Gateway/API reference: [new-api docs](https://docs.newapi.pro)
-
-Contributions of all kinds are welcome — bug reports, features, docs, and code.
+Contributions of all kinds are welcome — bug reports, features, docs and code.
 
 <div align="center">
-
-If LemonHub helps you, please consider giving it a ⭐️
-
-<sub>🍋 LemonHub — a white-label / agent-franchise layer on top of <a href="https://github.com/QuantumNous/new-api">new-api</a>.</sub>
-
+<sub>LemonHub — an agent-franchise layer on top of <a href="https://github.com/QuantumNous/new-api">new-api</a>.</sub>
 </div>
