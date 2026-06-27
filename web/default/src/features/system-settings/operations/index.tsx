@@ -59,6 +59,21 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.success_rate_yellow_threshold': 99,
   'perf_metrics_setting.error_code_whitelist': '',
   'perf_metrics_setting.no_data_as_full': true,
+  'email_promotion_setting.announcement_email_enabled': false,
+  'email_promotion_setting.rate_per_minute': 60,
+  'ticket_setting.enabled': false,
+  'ticket_setting.admin_notify_enabled': false,
+  'ticket_setting.attachment_max_size_mb': 10,
+  'ticket_setting.max_attachments_per_message': 5,
+  'ticket_setting.attachment_retention_days': 0,
+  'ticket_setting.closed_ticket_retention_days': 0,
+  'ticket_setting.allowed_mime_types': [
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+  ],
+  'ticket_setting.types': [],
 }
 
 export function OperationsSettings() {

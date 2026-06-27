@@ -25,8 +25,10 @@ import {
   FlaskConical,
   Key,
   LayoutDashboard,
+  LifeBuoy,
   ListTodo,
   MessageSquare,
+  MessagesSquare,
   Radio,
   ServerCog,
   Settings,
@@ -38,8 +40,9 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
+import type { SidebarData } from '@/components/layout/types'
 import { ROLE } from '@/lib/roles'
-import { type SidebarData } from '@/components/layout/types'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -98,6 +101,11 @@ export function useSidebarData(): SidebarData {
             activeUrls: ['/usage-logs/drawing'],
             configUrls: ['/usage-logs/drawing', '/usage-logs/task'],
             icon: ListTodo,
+          },
+          {
+            title: t('Support Tickets'),
+            url: '/console/tickets',
+            icon: LifeBuoy,
           },
         ],
       },
@@ -161,6 +169,12 @@ export function useSidebarData(): SidebarData {
             title: t('Sub-site Management'),
             url: '/sub-site-management',
             icon: Building2,
+          },
+          {
+            title: t('Ticket Management'),
+            url: '/console/tickets-admin',
+            icon: MessagesSquare,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Subscriptions'),

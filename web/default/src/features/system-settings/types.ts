@@ -333,6 +333,13 @@ export type BillingSettings = {
   'checkin_setting.max_quota': number
 }
 
+export type TicketTypeConfig = {
+  key: string
+  name: string
+  prompt_template: string
+  enabled: boolean
+}
+
 export type OperationsSettings = {
   DefaultCollapseSidebar: boolean
   DemoSiteEnabled: boolean
@@ -367,6 +374,16 @@ export type OperationsSettings = {
   'perf_metrics_setting.success_rate_yellow_threshold': number
   'perf_metrics_setting.error_code_whitelist': string
   'perf_metrics_setting.no_data_as_full': boolean
+  'email_promotion_setting.announcement_email_enabled': boolean
+  'email_promotion_setting.rate_per_minute': number
+  'ticket_setting.enabled': boolean
+  'ticket_setting.admin_notify_enabled': boolean
+  'ticket_setting.attachment_max_size_mb': number
+  'ticket_setting.max_attachments_per_message': number
+  'ticket_setting.attachment_retention_days': number
+  'ticket_setting.closed_ticket_retention_days': number
+  'ticket_setting.allowed_mime_types': string[]
+  'ticket_setting.types': TicketTypeConfig[]
 }
 
 export type SecuritySettings = {

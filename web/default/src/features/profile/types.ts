@@ -116,6 +116,8 @@ export interface UserSettings {
   record_ip_log?: boolean
   /** Receive upstream model update notifications (admin only) */
   upstream_model_update_notify_enabled?: boolean
+  /** Opt out of promotional / marketing emails (true = do not send) */
+  marketing_email_disabled?: boolean
   /** Preferred interface/API response language */
   language?: string
 }
@@ -145,6 +147,7 @@ export interface UpdateUserSettingsRequest {
   accept_unset_model_ratio_model?: boolean
   record_ip_log?: boolean
   upstream_model_update_notify_enabled?: boolean
+  marketing_email_disabled?: boolean
 }
 
 /**

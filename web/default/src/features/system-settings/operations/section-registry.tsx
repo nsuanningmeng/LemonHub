@@ -25,6 +25,8 @@ import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { EmailPromotionSection } from './email-promotion-section'
+import { TicketSection } from './ticket-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -83,6 +85,41 @@ const OPERATIONS_SECTIONS = [
           SMTPStartTLSEnabled: settings.SMTPStartTLSEnabled,
           SMTPInsecureSkipVerify: settings.SMTPInsecureSkipVerify,
           SMTPForceAuthLogin: settings.SMTPForceAuthLogin,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'email-promotion',
+    titleKey: 'Email Promotion',
+    build: (settings: OperationsSettings) => (
+      <EmailPromotionSection
+        defaultValues={{
+          announcementEmailEnabled:
+            settings['email_promotion_setting.announcement_email_enabled'],
+          ratePerMinute: settings['email_promotion_setting.rate_per_minute'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'tickets',
+    titleKey: 'Ticket System',
+    build: (settings: OperationsSettings) => (
+      <TicketSection
+        defaultValues={{
+          enabled: settings['ticket_setting.enabled'],
+          adminNotifyEnabled: settings['ticket_setting.admin_notify_enabled'],
+          attachmentMaxSizeMb:
+            settings['ticket_setting.attachment_max_size_mb'],
+          maxAttachmentsPerMessage:
+            settings['ticket_setting.max_attachments_per_message'],
+          attachmentRetentionDays:
+            settings['ticket_setting.attachment_retention_days'],
+          closedTicketRetentionDays:
+            settings['ticket_setting.closed_ticket_retention_days'],
+          allowedMimeTypes: settings['ticket_setting.allowed_mime_types'],
+          types: settings['ticket_setting.types'],
         }}
       />
     ),

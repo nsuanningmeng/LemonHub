@@ -61,5 +61,18 @@
   "Public landing page promoting the agent program.": "Public landing page promoting the agent program.",
   "Contact page with ways to reach you.": "Contact page with ways to reach you.",
   "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.": "Contact page content. Supports HTML or a URL (embedded as iframe). Leave empty to show the default contact page.",
-  "The administrator can configure the contact content in System Settings → Site Information → Contact.": "The administrator can configure the contact content in System Settings → Site Information → Contact."
+  "The administrator can configure the contact content in System Settings → Site Information → Contact.": "The administrator can configure the contact content in System Settings → Site Information → Contact.",
+  "Get product announcements and promotional emails": "Get product announcements and promotional emails",
+  "Describe your issue and our team will get back to you.": "Describe your issue and our team will get back to you.",
+  "Failed to close ticket": "Failed to close ticket",
+  "Failed to create ticket": "Failed to create ticket",
+  "Failed to send reply": "Failed to send reply",
+  "Failed to update status": "Failed to update status",
+  "Failed to upload image": "Failed to upload image",
+  "No tickets match the current filters.": "No tickets match the current filters.",
+  "Please enter a reply": "Please enter a reply",
+  "Please enter a title": "Please enter a title",
+  "Please enter the ticket details": "Please enter the ticket details",
+  "Please select a ticket type": "Please select a ticket type",
+  "Search by title or content...": "Search by title or content..."
 }

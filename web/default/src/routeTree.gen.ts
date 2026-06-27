@@ -58,6 +58,8 @@ import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_aut
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
+import { Route as AuthenticatedConsoleTicketsAdminRouteImport } from './routes/_authenticated/console/tickets-admin'
+import { Route as AuthenticatedConsoleTicketsRouteImport } from './routes/_authenticated/console/tickets'
 import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authenticated/chat/$chatId'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
 import { Route as AuthenticatedSystemSettingsSiteIndexRouteImport } from './routes/_authenticated/system-settings/site/index'
@@ -337,6 +339,18 @@ const AuthenticatedDashboardSectionRoute =
     path: '/dashboard/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedConsoleTicketsAdminRoute =
+  AuthenticatedConsoleTicketsAdminRouteImport.update({
+    id: '/console/tickets-admin',
+    path: '/console/tickets-admin',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedConsoleTicketsRoute =
+  AuthenticatedConsoleTicketsRouteImport.update({
+    id: '/console/tickets',
+    path: '/console/tickets',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedChatChatIdRoute = AuthenticatedChatChatIdRouteImport.update({
   id: '/chat/$chatId',
   path: '/chat/$chatId',
@@ -461,6 +475,8 @@ export interface FileRoutesByFullPath {
   '/setup/': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
+  '/console/tickets': typeof AuthenticatedConsoleTicketsRoute
+  '/console/tickets-admin': typeof AuthenticatedConsoleTicketsAdminRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -525,6 +541,8 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
+  '/console/tickets': typeof AuthenticatedConsoleTicketsRoute
+  '/console/tickets-admin': typeof AuthenticatedConsoleTicketsAdminRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -593,6 +611,8 @@ export interface FileRoutesById {
   '/setup/': typeof SetupIndexRoute
   '/(auth)/user/reset': typeof authUserResetRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
+  '/_authenticated/console/tickets': typeof AuthenticatedConsoleTicketsRoute
+  '/_authenticated/console/tickets-admin': typeof AuthenticatedConsoleTicketsAdminRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
   '/_authenticated/errors/$error': typeof AuthenticatedErrorsErrorRoute
   '/_authenticated/models/$section': typeof AuthenticatedModelsSectionRoute
@@ -660,6 +680,8 @@ export interface FileRouteTypes {
     | '/setup/'
     | '/user/reset'
     | '/chat/$chatId'
+    | '/console/tickets'
+    | '/console/tickets-admin'
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
@@ -724,6 +746,8 @@ export interface FileRouteTypes {
     | '/setup'
     | '/user/reset'
     | '/chat/$chatId'
+    | '/console/tickets'
+    | '/console/tickets-admin'
     | '/dashboard/$section'
     | '/errors/$error'
     | '/models/$section'
@@ -791,6 +815,8 @@ export interface FileRouteTypes {
     | '/setup/'
     | '/(auth)/user/reset'
     | '/_authenticated/chat/$chatId'
+    | '/_authenticated/console/tickets'
+    | '/_authenticated/console/tickets-admin'
     | '/_authenticated/dashboard/$section'
     | '/_authenticated/errors/$error'
     | '/_authenticated/models/$section'
@@ -1196,6 +1222,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/console/tickets-admin': {
+      id: '/_authenticated/console/tickets-admin'
+      path: '/console/tickets-admin'
+      fullPath: '/console/tickets-admin'
+      preLoaderRoute: typeof AuthenticatedConsoleTicketsAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/console/tickets': {
+      id: '/_authenticated/console/tickets'
+      path: '/console/tickets'
+      fullPath: '/console/tickets'
+      preLoaderRoute: typeof AuthenticatedConsoleTicketsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/chat/$chatId': {
       id: '/_authenticated/chat/$chatId'
       path: '/chat/$chatId'
@@ -1398,6 +1438,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
+  AuthenticatedConsoleTicketsRoute: typeof AuthenticatedConsoleTicketsRoute
+  AuthenticatedConsoleTicketsAdminRoute: typeof AuthenticatedConsoleTicketsAdminRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
   AuthenticatedErrorsErrorRoute: typeof AuthenticatedErrorsErrorRoute
   AuthenticatedModelsSectionRoute: typeof AuthenticatedModelsSectionRoute
@@ -1424,6 +1466,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
+  AuthenticatedConsoleTicketsRoute: AuthenticatedConsoleTicketsRoute,
+  AuthenticatedConsoleTicketsAdminRoute: AuthenticatedConsoleTicketsAdminRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,
   AuthenticatedErrorsErrorRoute: AuthenticatedErrorsErrorRoute,
   AuthenticatedModelsSectionRoute: AuthenticatedModelsSectionRoute,

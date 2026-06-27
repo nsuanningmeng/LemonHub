@@ -79,6 +79,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
     accept_unset_model_ratio_model: false,
     record_ip_log: false,
     upstream_model_update_notify_enabled: false,
+    marketing_email_disabled: false,
   })
 
   // Update form field helper
@@ -108,6 +109,7 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
         record_ip_log: parsed.record_ip_log || false,
         upstream_model_update_notify_enabled:
           parsed.upstream_model_update_notify_enabled || false,
+        marketing_email_disabled: parsed.marketing_email_disabled || false,
       })
     }
   }, [profile])
@@ -387,6 +389,26 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
             className='shrink-0'
             checked={settings.record_ip_log}
             onCheckedChange={(checked) => updateField('record_ip_log', checked)}
+          />
+        </div>
+
+        {/* Receive Promotional Emails */}
+        <div className='flex items-start justify-between gap-3 rounded-lg border p-3 sm:items-center sm:p-4'>
+          <div className='space-y-0.5'>
+            <Label htmlFor='marketingEmails'>
+              {t('Receive promotional emails')}
+            </Label>
+            <p className='text-muted-foreground text-xs sm:text-sm'>
+              {t('Get product announcements and promotional emails')}
+            </p>
+          </div>
+          <Switch
+            id='marketingEmails'
+            className='shrink-0'
+            checked={!settings.marketing_email_disabled}
+            onCheckedChange={(checked) =>
+              updateField('marketing_email_disabled', !checked)
+            }
           />
         </div>
       </div>
