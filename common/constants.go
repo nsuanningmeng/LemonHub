@@ -179,6 +179,12 @@ var NodeNameSource = NodeNameSourceHostname
 
 var NodeNameManuallyConfigured bool
 
+// SystemInstanceRetentionSeconds controls how long a system instance row is kept
+// after its last heartbeat before the master node prunes it. This reclaims rows
+// left behind by replaced containers (e.g. an image update changes the auto
+// hostname used as node_name). 0 (or negative) disables pruning entirely.
+var SystemInstanceRetentionSeconds int64 = 3600
+
 var requestInterval int
 var RequestInterval time.Duration
 

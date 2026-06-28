@@ -75,6 +75,17 @@ func ListSystemInstances() ([]*SystemInstance, error) {
 	return instances, err
 }
 
+// PruneStaleSystemInstances deletes instances whose last_seen_at is older than
+// cutoff (unix seconds) and returns the number of rows removed. A non-positive
+// cutoff is treated as a no-op so callers can disable pruning by passing 0.
+func PruneStaleSystemInstances(cutoff int64) (int64, error) {
+	if cutoff <= 0 {
+		return 0, nil
+	}
+	result := DB.Where("last_seen_at < ?", cutoff).Delete(&SystemInstance{})
+	return result.RowsAffected, result.Error
+}
+
 func (instance *SystemInstance) ToResponse(now int64) SystemInstanceResponse {
 	status := SystemInstanceStatusOnline
 	if now-instance.LastSeenAt > SystemInstanceStaleAfterSeconds {

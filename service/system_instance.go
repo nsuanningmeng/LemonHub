@@ -65,12 +65,12 @@ type SystemInstanceStorageMetrics struct {
 func StartSystemInstanceReporter() {
 	systemInstanceReporterOnce.Do(func() {
 		gopool.Go(func() {
-			reportSystemInstanceWithLog()
+			reportAndPruneSystemInstances()
 
 			ticker := time.NewTicker(systemInstanceReportInterval)
 			defer ticker.Stop()
 			for range ticker.C {
-				reportSystemInstanceWithLog()
+				reportAndPruneSystemInstances()
 			}
 		})
 	})
@@ -123,8 +123,45 @@ func ReportCurrentSystemInstance() error {
 	return model.UpsertSystemInstance(identity.Name, info, common.StartTime, common.GetTimestamp())
 }
 
-func reportSystemInstanceWithLog() {
+// reportAndPruneSystemInstances refreshes this node's heartbeat and then, on the
+// master node, prunes peers that have been silent past the retention window.
+// Pruning is skipped whenever this cycle's own heartbeat did not land, which
+// guarantees the current node never deletes its own row: a successful report just
+// wrote last_seen_at = now, microseconds before the cutoff is computed, so the
+// row cannot satisfy last_seen_at < now-retention for any positive retention.
+func reportAndPruneSystemInstances() {
 	if err := ReportCurrentSystemInstance(); err != nil {
-		logger.LogWarn(context.Background(), fmt.Sprintf("system instance report failed: %v", err))
+		logger.LogWarn(context.Background(), fmt.Sprintf("system instance report failed; skipping prune this cycle: %v", err))
+		return
+	}
+	pruneStaleSystemInstancesWithLog()
+}
+
+// pruneStaleSystemInstancesWithLog removes instances whose last heartbeat is
+// older than the configured retention window. It runs only on the master node so
+// a single writer reclaims rows left behind by replaced containers (e.g. an
+// image update changes the auto hostname used as node_name). It must be called
+// only after a successful self-report in the same cycle (see
+// reportAndPruneSystemInstances), so the current node's own fresh row is never a
+// prune candidate. last_seen_at is written with each node's local clock, so keep
+// node clocks roughly in sync (NTP); a node that cannot persist a heartbeat for
+// longer than the retention window is pruned and simply re-registers on its next
+// successful report.
+func pruneStaleSystemInstancesWithLog() {
+	if !common.IsMasterNode {
+		return
+	}
+	retention := common.SystemInstanceRetentionSeconds
+	if retention <= 0 {
+		return
+	}
+	cutoff := common.GetTimestamp() - retention
+	removed, err := model.PruneStaleSystemInstances(cutoff)
+	if err != nil {
+		logger.LogWarn(context.Background(), fmt.Sprintf("system instance prune failed: %v", err))
+		return
+	}
+	if removed > 0 {
+		logger.LogInfo(context.Background(), fmt.Sprintf("system instance prune removed %d stale instance(s) (retention=%ds)", removed, retention))
 	}
 }

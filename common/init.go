@@ -83,6 +83,12 @@ func InitEnv() {
 	MemoryCacheEnabled = os.Getenv("MEMORY_CACHE_ENABLED") == "true"
 	IsMasterNode = os.Getenv("NODE_TYPE") != "slave"
 	initNodeNameIdentity()
+	SystemInstanceRetentionSeconds = int64(GetEnvOrDefault("SYSTEM_INSTANCE_RETENTION", 3600))
+	// Clamp positive values to a safe floor so a misconfiguration cannot prune
+	// instances that merely missed a couple of heartbeats. 0 keeps pruning off.
+	if SystemInstanceRetentionSeconds > 0 && SystemInstanceRetentionSeconds < 300 {
+		SystemInstanceRetentionSeconds = 300
+	}
 	TLSInsecureSkipVerify = GetEnvOrDefaultBool("TLS_INSECURE_SKIP_VERIFY", false)
 	if TLSInsecureSkipVerify {
 		if tr, ok := http.DefaultTransport.(*http.Transport); ok && tr != nil {
