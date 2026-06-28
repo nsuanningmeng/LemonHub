@@ -42,6 +42,8 @@ import type { AffLeaderboardItem } from '../types'
 interface ReferralLeaderboardTableProps {
   items?: AffLeaderboardItem[]
   loading: boolean
+  /** Cash-settled promoter: note that the contribution amounts are settled off-platform in cash. */
+  isCashSettled?: boolean
 }
 
 const RANK_BADGE_CLASS: Record<number, string> = {
@@ -62,7 +64,11 @@ export function ReferralLeaderboardTable(props: ReferralLeaderboardTableProps) {
           {t('Top Contributors')}
         </CardTitle>
         <CardDescription>
-          {t('Who contributed the most commission')}
+          {props.isCashSettled
+            ? t(
+                'Who contributed the most commission. Amounts are settled off-platform in cash.'
+              )
+            : t('Who contributed the most commission')}
         </CardDescription>
       </CardHeader>
       <CardContent>

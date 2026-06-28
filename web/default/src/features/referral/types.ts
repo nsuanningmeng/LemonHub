@@ -44,6 +44,18 @@ export interface AffStats {
    * override when set, otherwise the global default. Render as a percentage.
    */
   commission_percent: number
+  /**
+   * Whether this user is a cash-settled promoter (专业推广者). When true the dashboard renders the
+   * cash variant: pending_quota / total_earned_quota are structurally 0 and the cash_* fields below
+   * carry the real off-platform balance instead.
+   */
+  is_cash_settled?: boolean
+  /** Gross recharge commission recorded as off-platform cash (quota). 0 for normal inviters. */
+  cash_commission_total?: number
+  /** Off-platform cash already settled to this promoter (quota). 0 for normal inviters. */
+  cash_commission_paid?: number
+  /** Outstanding off-platform cash owed = total - paid, clamped >= 0 (quota). 0 for normal inviters. */
+  cash_commission_owed?: number
 }
 
 /**

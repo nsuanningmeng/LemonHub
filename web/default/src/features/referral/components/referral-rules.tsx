@@ -28,9 +28,14 @@ import {
 interface ReferralRulesProps {
   /** Effective recharge-commission rate (0-100). When > 0 the rule states the actual rate. */
   commissionPercent?: number
+  /** Cash-settled promoter: rules describe off-platform cash settlement instead of wallet rewards. */
+  isCashSettled?: boolean
 }
 
-export function ReferralRules({ commissionPercent }: ReferralRulesProps) {
+export function ReferralRules({
+  commissionPercent,
+  isCashSettled = false,
+}: ReferralRulesProps) {
   const { t } = useTranslation()
 
   const percent =
@@ -38,15 +43,31 @@ export function ReferralRules({ commissionPercent }: ReferralRulesProps) {
       ? parseFloat(commissionPercent.toFixed(2))
       : null
 
-  const rules = [
-    t("Rewards are credited only after your invitee's first successful top-up."),
-    percent === null
-      ? t('After that, you earn a commission on every top-up they make.')
-      : t(
-          'After that, you earn a {{percent}}% commission on every top-up they make.',
-          { percent }
+  // Cash-settled promoters get no platform first bonus and no wallet credit; their rules describe the
+  // off-platform cash arrangement so the page never implies a transferable balance.
+  const rules = isCashSettled
+    ? [
+        percent === null
+          ? t('You earn a cash commission on every top-up your invitees make.')
+          : t(
+              'You earn a {{percent}}% cash commission on every top-up your invitees make.',
+              { percent }
+            ),
+        t(
+          'Commission is settled off-platform in cash and is not credited to your balance.'
         ),
-  ]
+      ]
+    : [
+        t(
+          "Rewards are credited only after your invitee's first successful top-up."
+        ),
+        percent === null
+          ? t('After that, you earn a commission on every top-up they make.')
+          : t(
+              'After that, you earn a {{percent}}% commission on every top-up they make.',
+              { percent }
+            ),
+      ]
 
   return (
     <Card data-card-hover='false' size='sm'>

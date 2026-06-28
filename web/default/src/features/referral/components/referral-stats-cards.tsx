@@ -17,8 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import {
+  Banknote,
   CheckCircle2,
   Clock,
+  Coins,
   Percent,
   TrendingUp,
   Users,
@@ -27,6 +29,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatQuota } from '@/lib/format'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -74,44 +77,94 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
 
   const stats = props.stats
   const hasPending = (stats?.pending_quota ?? 0) > 0
+  const isCashSettled = stats?.is_cash_settled ?? false
 
-  const tiles: StatTile[] = [
-    {
-      label: t('Pending'),
-      value: formatQuota(stats?.pending_quota ?? 0),
-      icon: Clock,
-    },
-    {
-      label: t('Total Earned'),
-      value: formatQuota(stats?.total_earned_quota ?? 0),
-      icon: Wallet,
-    },
-    {
-      label: t("This Month's Commission"),
-      value: formatQuota(stats?.month_commission_quota ?? 0),
-      icon: TrendingUp,
-    },
-    {
-      label: t('Activated'),
-      value: (stats?.activated_count ?? 0).toLocaleString(),
-      icon: CheckCircle2,
-    },
-    {
-      label: t('Total Invited'),
-      value: (stats?.total_invited ?? 0).toLocaleString(),
-      icon: Users,
-    },
-    {
-      label: t('Commission Rate'),
-      // Per-user override or global default (0-100); trim trailing zeros, e.g. 5 → "5%".
-      value: `${parseFloat((stats?.commission_percent ?? 0).toFixed(2))}%`,
-      icon: Percent,
-    },
-  ]
+  // Commission Rate is shown to everyone; trim trailing zeros, e.g. 5 → "5%".
+  const rateTile: StatTile = {
+    label: t('Commission Rate'),
+    value: `${parseFloat((stats?.commission_percent ?? 0).toFixed(2))}%`,
+    icon: Percent,
+  }
+
+  // Cash-settled promoters never accrue wallet pending/earned (both are structurally 0), so those two
+  // tiles are replaced with the real off-platform cash balance (owed / paid) to avoid implying a
+  // transferable balance that does not exist.
+  const tiles: StatTile[] = isCashSettled
+    ? [
+        {
+          label: t('Cash Owed'),
+          value: formatQuota(stats?.cash_commission_owed ?? 0),
+          icon: Coins,
+        },
+        {
+          label: t('Cash Paid'),
+          value: formatQuota(stats?.cash_commission_paid ?? 0),
+          icon: Banknote,
+        },
+        {
+          label: t("This Month's Commission"),
+          value: formatQuota(stats?.month_commission_quota ?? 0),
+          icon: TrendingUp,
+        },
+        {
+          label: t('Activated'),
+          value: (stats?.activated_count ?? 0).toLocaleString(),
+          icon: CheckCircle2,
+        },
+        {
+          label: t('Total Invited'),
+          value: (stats?.total_invited ?? 0).toLocaleString(),
+          icon: Users,
+        },
+        rateTile,
+      ]
+    : [
+        {
+          label: t('Pending'),
+          value: formatQuota(stats?.pending_quota ?? 0),
+          icon: Clock,
+        },
+        {
+          label: t('Total Earned'),
+          value: formatQuota(stats?.total_earned_quota ?? 0),
+          icon: Wallet,
+        },
+        {
+          label: t("This Month's Commission"),
+          value: formatQuota(stats?.month_commission_quota ?? 0),
+          icon: TrendingUp,
+        },
+        {
+          label: t('Activated'),
+          value: (stats?.activated_count ?? 0).toLocaleString(),
+          icon: CheckCircle2,
+        },
+        {
+          label: t('Total Invited'),
+          value: (stats?.total_invited ?? 0).toLocaleString(),
+          icon: Users,
+        },
+        rateTile,
+      ]
 
   return (
     <Card data-card-hover='false' className='bg-muted/20 py-0'>
       <CardContent className='space-y-4 p-4 sm:p-5'>
+        {isCashSettled && (
+          <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
+            <Badge
+              variant='secondary'
+              className='bg-amber-500/15 text-amber-700 dark:text-amber-400'
+            >
+              {t('Cash settled')}
+            </Badge>
+            <span className='text-muted-foreground text-xs'>
+              {t(
+                'Commission is settled off-platform in cash and is not credited to your balance.'
+              )}
+            </span>
+          </div>
+        )}
         <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
           {tiles.map((tile) => (
             <div key={tile.label} className='min-w-0'>

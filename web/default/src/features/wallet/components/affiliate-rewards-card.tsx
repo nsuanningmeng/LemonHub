@@ -20,6 +20,7 @@ import { Link } from '@tanstack/react-router'
 import { Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatQuota } from '@/lib/format'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -59,6 +60,7 @@ export function AffiliateRewardsCard({
   }
 
   const hasRewards = (user?.aff_quota ?? 0) > 0
+  const isCashSettled = user?.aff_cash_settled ?? false
 
   return (
     <Card data-card-hover='false' className='bg-muted/20 py-0'>
@@ -72,6 +74,14 @@ export function AffiliateRewardsCard({
               <h3 className='truncate text-sm font-semibold'>
                 {t('Referral Program')}
               </h3>
+              {isCashSettled && (
+                <Badge
+                  variant='secondary'
+                  className='shrink-0 bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                >
+                  {t('Cash settled')}
+                </Badge>
+              )}
               <Button
                 variant='link'
                 size='sm'
@@ -81,20 +91,33 @@ export function AffiliateRewardsCard({
                 {t('View Details')}
               </Button>
             </div>
-            <p className='text-muted-foreground line-clamp-1 text-xs'>
-              {t(
-                'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'
-              )}
+            <p
+              className={`text-muted-foreground text-xs ${isCashSettled ? 'line-clamp-2' : 'line-clamp-1'}`}
+            >
+              {isCashSettled
+                ? t(
+                    'Commission is settled off-platform in cash and is not credited to your balance.'
+                  )
+                : t(
+                    'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'
+                  )}
             </p>
           </div>
         </div>
 
-        <div className='grid grid-cols-3 gap-1.5 text-center'>
-          {[
-            [t('Pending'), formatQuota(user?.aff_quota ?? 0)],
-            [t('Total Earned'), formatQuota(user?.aff_history_quota ?? 0)],
-            [t('Invites'), String(user?.aff_count ?? 0)],
-          ].map(([label, value]) => (
+        <div
+          className={`grid gap-1.5 text-center ${isCashSettled ? 'grid-cols-1' : 'grid-cols-3'}`}
+        >
+          {(isCashSettled
+            ? // Cash-settled: the owed/paid breakdown lives on /referral (loaded on demand) to keep
+              // money figures out of the long-lived /self → localStorage payload; show only invites here.
+              [[t('Invites'), String(user?.aff_count ?? 0)]]
+            : [
+                [t('Pending'), formatQuota(user?.aff_quota ?? 0)],
+                [t('Total Earned'), formatQuota(user?.aff_history_quota ?? 0)],
+                [t('Invites'), String(user?.aff_count ?? 0)],
+              ]
+          ).map(([label, value]) => (
             <div key={label}>
               <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>
                 {label}

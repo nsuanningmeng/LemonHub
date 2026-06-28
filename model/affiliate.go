@@ -339,17 +339,28 @@ func affiliateLedgerExists(query string, args ...interface{}) bool {
 
 // AffStats is the aggregate referral summary surfaced on the user referral dashboard.
 type AffStats struct {
-	AffCode              string  `json:"aff_code"`
-	PendingQuota         int64   `json:"pending_quota"`          // aff_quota (transferable)
-	TotalEarnedQuota     int64   `json:"total_earned_quota"`     // aff_history (lifetime)
-	ActivatedCount       int     `json:"activated_count"`        // invitees who made a first top-up
-	TotalInvited         int64   `json:"total_invited"`          // all users who registered with this code
-	MonthCommissionQuota int64   `json:"month_commission_quota"` // commission earned this calendar month
+	AffCode              string `json:"aff_code"`
+	PendingQuota         int64  `json:"pending_quota"`          // aff_quota (transferable)
+	TotalEarnedQuota     int64  `json:"total_earned_quota"`     // aff_history (lifetime)
+	ActivatedCount       int    `json:"activated_count"`        // invitees who made a first top-up
+	TotalInvited         int64  `json:"total_invited"`          // all users who registered with this code
+	MonthCommissionQuota int64  `json:"month_commission_quota"` // commission earned this calendar month
 	// CommissionPercent is the effective recharge-commission rate (0-100) applied to this
 	// user's invitees: the per-inviter aff_commission_percent override when set, otherwise the
 	// global common.AffRechargeCommissionPercent. Surfaced so the referral dashboard can show
 	// "you earn X% on every top-up" without the client guessing the rate.
 	CommissionPercent float64 `json:"commission_percent"`
+	// IsCashSettled marks this user as a cash-settled promoter (aff_cash_settled). When true the
+	// dashboard must render the cash-settlement variant: PendingQuota/TotalEarnedQuota are
+	// structurally 0 (commission is never credited to the wallet) and the cash fields below carry
+	// the real off-platform balance instead. Normal inviters get false and all-zero cash fields.
+	IsCashSettled bool `json:"is_cash_settled"`
+	// CashCommissionTotal/Paid/Owed are only meaningful for cash-settled promoters (0 otherwise):
+	// the gross recharge commission recorded as off-platform cash, the amount already settled, and
+	// the outstanding balance (total - paid, clamped >= 0). Mirrors the admin leaderboard's cash math.
+	CashCommissionTotal int64 `json:"cash_commission_total"`
+	CashCommissionPaid  int64 `json:"cash_commission_paid"`
+	CashCommissionOwed  int64 `json:"cash_commission_owed"`
 }
 
 // GetAffStats returns the referral summary for a user.
@@ -358,7 +369,7 @@ func GetAffStats(userId int) (*AffStats, error) {
 		return nil, errors.New("invalid userId")
 	}
 	var user User
-	if err := DB.Select("aff_code, aff_quota, aff_history, aff_count, aff_commission_percent").
+	if err := DB.Select("aff_code, aff_quota, aff_history, aff_count, aff_commission_percent, aff_cash_settled, aff_cash_paid").
 		Where("id = ?", userId).First(&user).Error; err != nil {
 		return nil, err
 	}
@@ -367,6 +378,22 @@ func GetAffStats(userId int) (*AffStats, error) {
 	commissionPercent := common.AffRechargeCommissionPercent
 	if user.AffCommissionPercent != nil {
 		commissionPercent = *user.AffCommissionPercent
+	}
+	// Cash-settled promoters: surface their off-platform cash balance so the dashboard can replace
+	// the always-zero pending/earned wallet tiles with the real owed/paid figures. Mirrors the admin
+	// leaderboard math (cash basis = cash_settled ledger rows; owed = total - paid, clamped >= 0).
+	var cashTotal, cashPaid, cashOwed int64
+	if user.AffCashSettled {
+		total, terr := affiliateCashCommissionTotal(DB, userId)
+		if terr != nil {
+			return nil, terr
+		}
+		cashTotal = total
+		cashPaid = user.AffCashPaid
+		cashOwed = cashTotal - cashPaid
+		if cashOwed < 0 {
+			cashOwed = 0
+		}
 	}
 	var totalInvited int64
 	if err := DB.Model(&User{}).Where("inviter_id = ?", userId).Count(&totalInvited).Error; err != nil {
@@ -389,6 +416,10 @@ func GetAffStats(userId int) (*AffStats, error) {
 		TotalInvited:         totalInvited,
 		MonthCommissionQuota: monthCommission,
 		CommissionPercent:    commissionPercent,
+		IsCashSettled:        user.AffCashSettled,
+		CashCommissionTotal:  cashTotal,
+		CashCommissionPaid:   cashPaid,
+		CashCommissionOwed:   cashOwed,
 	}, nil
 }
 
@@ -619,10 +650,10 @@ func GetAffAdminLeaderboard(q AffAdminLeaderboardQuery) (*AffAdminLeaderboardRes
 	var users []User
 	if err := base.
 		Select("id, username, display_name, aff_history, aff_quota, aff_count, aff_cash_settled, aff_cash_paid").
-		Order(sortCol+" "+order).
+		Order(sortCol + " " + order).
 		Order("id ASC"). // stable tiebreaker -> deterministic pagination
 		Limit(pageSize).
-		Offset((page-1)*pageSize).
+		Offset((page - 1) * pageSize).
 		Find(&users).Error; err != nil {
 		return nil, err
 	}

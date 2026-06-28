@@ -203,6 +203,55 @@ func TestAffStatsAndLeaderboard(t *testing.T) {
 	assert.Equal(t, "in***2", board[0].Username)            // masked
 }
 
+// TestGetAffStats_CashSettledSurfacesCashBalance pins the dashboard contract for a cash-settled
+// promoter: the wallet tiles (pending/earned) stay structurally 0 because commission is never
+// credited to the wallet, while GetAffStats instead surfaces the off-platform cash balance
+// (total/paid/owed) and the is_cash_settled flag so the UI can render the cash variant. The
+// effective commission rate and month/activated/invited counts remain accurate.
+func TestGetAffStats_CashSettledSurfacesCashBalance(t *testing.T) {
+	inviterId, inviteeId := affiliateTestSetup(t, 2000, 1000, 5) // global 5%, fixed 2000/1000
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", inviterId).
+		Update("aff_cash_settled", true).Error)
+
+	// Two top-ups: recharge commission 5% of 100000 (=5000) + 5% of 200000 (=10000) = 15000 cash
+	// basis. The fixed first bonus is suppressed (cash-settled), so aff_quota/aff_history stay 0.
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "affcash-1", 100000, "stripe"))
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "affcash-2", 200000, "stripe"))
+
+	// Settle 6000 off-platform in cash; outstanding should drop to 15000 - 6000 = 9000.
+	_, err := RecordAffiliateCashPayout(inviterId, 6000, "partial", 1)
+	require.NoError(t, err)
+
+	stats, err := GetAffStats(inviterId)
+	require.NoError(t, err)
+	assert.True(t, stats.IsCashSettled, "promoter flagged cash-settled")
+	assert.Equal(t, int64(0), stats.PendingQuota, "no wallet pending for cash-settled")
+	assert.Equal(t, int64(0), stats.TotalEarnedQuota, "no wallet earned for cash-settled")
+	assert.Equal(t, 5.0, stats.CommissionPercent)
+	assert.Equal(t, 1, stats.ActivatedCount)
+	assert.Equal(t, int64(1), stats.TotalInvited)
+	assert.Equal(t, int64(15000), stats.MonthCommissionQuota)
+	assert.Equal(t, int64(15000), stats.CashCommissionTotal)
+	assert.Equal(t, int64(6000), stats.CashCommissionPaid)
+	assert.Equal(t, int64(9000), stats.CashCommissionOwed)
+}
+
+// TestGetAffStats_NormalInviterHasZeroCashFields verifies the cash fields are inert for a normal
+// (wallet-credited) inviter: is_cash_settled is false and all cash_* totals are 0, so the dashboard
+// keeps the standard pending/earned tiles.
+func TestGetAffStats_NormalInviterHasZeroCashFields(t *testing.T) {
+	inviterId, inviteeId := affiliateTestSetup(t, 2000, 1000, 5)
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "affnorm-1", 100000, "stripe"))
+
+	stats, err := GetAffStats(inviterId)
+	require.NoError(t, err)
+	assert.False(t, stats.IsCashSettled)
+	assert.Equal(t, int64(7000), stats.PendingQuota) // fixed 2000 + 5% of 100000
+	assert.Equal(t, int64(0), stats.CashCommissionTotal)
+	assert.Equal(t, int64(0), stats.CashCommissionPaid)
+	assert.Equal(t, int64(0), stats.CashCommissionOwed)
+}
+
 // TestSettleReferralOnTopUp_PerUserCommissionOverride verifies an inviter-level commission rate
 // override takes precedence over the global default for the recharge commission.
 func TestSettleReferralOnTopUp_PerUserCommissionOverride(t *testing.T) {

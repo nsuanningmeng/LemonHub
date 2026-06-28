@@ -242,6 +242,8 @@ export interface UserWalletData {
   aff_count: number
   /** User group */
   group: string
+  /** Whether this user is a cash-settled promoter (referral commission settled off-platform in cash) */
+  aff_cash_settled?: boolean
 }
 
 /**

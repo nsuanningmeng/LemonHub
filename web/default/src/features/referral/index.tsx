@@ -67,11 +67,15 @@ export function Referral() {
             <ReferralLeaderboardTable
               items={leaderboard.data}
               loading={leaderboard.isLoading}
+              isCashSettled={stats.data?.is_cash_settled}
             />
 
             {isAdmin && <ReferralAdminSection />}
 
-            <ReferralRules commissionPercent={stats.data?.commission_percent} />
+            <ReferralRules
+              commissionPercent={stats.data?.commission_percent}
+              isCashSettled={stats.data?.is_cash_settled}
+            />
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
