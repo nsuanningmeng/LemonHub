@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relay"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -39,6 +40,12 @@ type testResult struct {
 	context     *gin.Context
 	localErr    error
 	newAPIError *types.NewAPIError
+	// perfModel/perfGroup expose the resolved client-facing model and group of
+	// the test relay (empty until the relay info is built). performChannelTests
+	// uses them to feed the scheduled test outcome into the model performance
+	// health success-rate buckets, under the same identity live traffic records.
+	perfModel string
+	perfGroup string
 }
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
@@ -72,11 +79,22 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 	return rootUser.Id, nil
 }
 
-func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) (tr testResult) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	tik := time.Now()
+	// perfInfo is set once the relay info is built; the deferred read happens
+	// after any model mapping so the reported model/group match what the consume
+	// log and live relay metrics record (the success/record decision itself is
+	// made by performChannelTests once the final outcome is known).
+	var perfInfo *relaycommon.RelayInfo
+	defer func() {
+		if perfInfo != nil {
+			tr.perfModel = perfInfo.OriginModelName
+			tr.perfGroup = perfInfo.UsingGroup
+		}
+	}()
 	var unsupportedTestChannelTypes = []int{
 		constant.ChannelTypeMidjourney,
 		constant.ChannelTypeMidjourneyPlus,
@@ -246,6 +264,10 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 
 	info.IsChannelTest = true
 	info.InitChannelMeta(c)
+
+	// Expose the relay info so the deferred read can report the resolved
+	// model/group for perf metrics (see perfInfo above).
+	perfInfo = info
 
 	err = attachTestBillingRequestInput(info, request)
 	if err != nil {
@@ -953,6 +975,23 @@ func performChannelTests(ctx context.Context, channels []*model.Channel, testUse
 			summary.Succeeded++
 		} else {
 			summary.Failed++
+		}
+
+		// Feed this scheduled test into the model performance health success
+		// rate, using the FINAL outcome (newAPIError already folds in the
+		// response-time threshold), so the metric matches the scheduler's own
+		// success/failure tally. Only enabled channels count: disabled-channel
+		// probes (passive recovery / re-enable checks) are excluded so their
+		// failures never drag the metric down. Latency is recorded (keeps the
+		// average meaningful) but output tokens are not (avoids skewing TPS with
+		// tiny test responses).
+		if isChannelEnabled && result.perfModel != "" {
+			perfmetrics.Record(perfmetrics.Sample{
+				Model:     result.perfModel,
+				Group:     result.perfGroup,
+				LatencyMs: milliseconds,
+				Success:   newAPIError == nil,
+			})
 		}
 
 		// disable channel
