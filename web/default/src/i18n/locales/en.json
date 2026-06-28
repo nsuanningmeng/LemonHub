@@ -5192,6 +5192,8 @@
     "Referral Rules": "Referral Rules",
     "Rewards are credited only after your invitee's first successful top-up.": "Rewards are credited only after your invitee's first successful top-up.",
     "After that, you earn a commission on every top-up they make.": "After that, you earn a commission on every top-up they make.",
+    "After that, you earn a {{percent}}% commission on every top-up they make.": "After that, you earn a {{percent}}% commission on every top-up they make.",
+    "Commission Rate": "Commission Rate",
     "Email Promotion": "Email Promotion",
     "Ticket System": "Ticket System",
     "Save email promotion settings": "Save email promotion settings",

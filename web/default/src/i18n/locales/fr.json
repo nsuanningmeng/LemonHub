@@ -5192,6 +5192,8 @@
     "Referral Rules": "Règles de parrainage",
     "Rewards are credited only after your invitee's first successful top-up.": "Les récompenses ne sont créditées qu'après la première recharge réussie de votre invité.",
     "After that, you earn a commission on every top-up they make.": "Ensuite, vous gagnez une commission sur chacune de ses recharges.",
+    "After that, you earn a {{percent}}% commission on every top-up they make.": "Ensuite, vous gagnez une commission de {{percent}} % sur chacune de ses recharges.",
+    "Commission Rate": "Taux de commission",
     "Email Promotion": "Promotion par e-mail",
     "Ticket System": "Système de tickets",
     "Save email promotion settings": "Save email promotion settings",

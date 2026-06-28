@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import {
   CheckCircle2,
   Clock,
+  Percent,
   TrendingUp,
   Users,
   Wallet,
@@ -54,8 +55,8 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
     return (
       <Card data-card-hover='false' className='bg-muted/20 py-0'>
         <CardContent className='space-y-4 p-4 sm:p-5'>
-          <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5'>
-            {Array.from({ length: 5 }).map((_, i) => (
+          <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
+            {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className='space-y-2'>
                 <Skeleton className='h-3.5 w-20' />
                 <Skeleton className='h-6 w-24' />
@@ -100,12 +101,18 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
       value: (stats?.total_invited ?? 0).toLocaleString(),
       icon: Users,
     },
+    {
+      label: t('Commission Rate'),
+      // Per-user override or global default (0-100); trim trailing zeros, e.g. 5 → "5%".
+      value: `${parseFloat((stats?.commission_percent ?? 0).toFixed(2))}%`,
+      icon: Percent,
+    },
   ]
 
   return (
     <Card data-card-hover='false' className='bg-muted/20 py-0'>
       <CardContent className='space-y-4 p-4 sm:p-5'>
-        <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5'>
+        <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
           {tiles.map((tile) => (
             <div key={tile.label} className='min-w-0'>
               <div className='text-muted-foreground flex items-center gap-1.5'>

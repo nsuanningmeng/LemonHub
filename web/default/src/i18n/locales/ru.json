@@ -5192,6 +5192,8 @@
     "Referral Rules": "Правила реферальной программы",
     "Rewards are credited only after your invitee's first successful top-up.": "Вознаграждение начисляется только после первого успешного пополнения приглашённого.",
     "After that, you earn a commission on every top-up they make.": "После этого вы получаете комиссию с каждого его пополнения.",
+    "After that, you earn a {{percent}}% commission on every top-up they make.": "После этого вы получаете комиссию {{percent}}% с каждого его пополнения.",
+    "Commission Rate": "Ставка комиссии",
     "Email Promotion": "E-mail-рассылка",
     "Ticket System": "Система тикетов",
     "Save email promotion settings": "Save email promotion settings",

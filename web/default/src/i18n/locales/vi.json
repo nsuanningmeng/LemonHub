@@ -5192,6 +5192,8 @@
     "Referral Rules": "Quy tắc giới thiệu",
     "Rewards are credited only after your invitee's first successful top-up.": "Phần thưởng chỉ được ghi có sau lần nạp tiền thành công đầu tiên của người được mời.",
     "After that, you earn a commission on every top-up they make.": "Sau đó, bạn nhận hoa hồng cho mỗi lần họ nạp tiền.",
+    "After that, you earn a {{percent}}% commission on every top-up they make.": "Sau đó, bạn nhận hoa hồng {{percent}}% cho mỗi lần họ nạp tiền.",
+    "Commission Rate": "Tỷ lệ hoa hồng",
     "Email Promotion": "Quảng bá qua email",
     "Ticket System": "Hệ thống ticket",
     "Save email promotion settings": "Save email promotion settings",

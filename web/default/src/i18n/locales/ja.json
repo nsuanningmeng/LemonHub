@@ -5192,6 +5192,8 @@
     "Referral Rules": "報酬ルール",
     "Rewards are credited only after your invitee's first successful top-up.": "報酬は、被招待者が初回チャージに成功した後にのみ付与されます。",
     "After that, you earn a commission on every top-up they make.": "その後は、被招待者がチャージするたびに報酬を獲得できます。",
+    "After that, you earn a {{percent}}% commission on every top-up they make.": "その後は、被招待者がチャージするたびに {{percent}}% の報酬を獲得できます。",
+    "Commission Rate": "報酬率",
     "Email Promotion": "メールプロモーション",
     "Ticket System": "チケットシステム",
     "Save email promotion settings": "Save email promotion settings",

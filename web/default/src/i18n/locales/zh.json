@@ -5192,6 +5192,8 @@
     "Referral Rules": "返佣规则",
     "Rewards are credited only after your invitee's first successful top-up.": "奖励将在被邀请人首次充值成功后发放。",
     "After that, you earn a commission on every top-up they make.": "此后，其每次充值你都将获得返佣。",
+    "After that, you earn a {{percent}}% commission on every top-up they make.": "此后，其每次充值你都将获得 {{percent}}% 返佣。",
+    "Commission Rate": "返佣比例",
     "Email Promotion": "邮件推广",
     "Ticket System": "工单系统",
     "Save email promotion settings": "保存邮件推广设置",

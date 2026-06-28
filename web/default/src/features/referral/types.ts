@@ -39,6 +39,11 @@ export interface AffStats {
   total_invited: number
   /** Commission quota earned in the current month */
   month_commission_quota: number
+  /**
+   * Effective recharge-commission rate (0-100) for this user's invitees: the per-inviter
+   * override when set, otherwise the global default. Render as a percentage.
+   */
+  commission_percent: number
 }
 
 /**

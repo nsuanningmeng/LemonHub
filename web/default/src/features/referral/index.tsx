@@ -71,7 +71,7 @@ export function Referral() {
 
             {isAdmin && <ReferralAdminSection />}
 
-            <ReferralRules />
+            <ReferralRules commissionPercent={stats.data?.commission_percent} />
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>

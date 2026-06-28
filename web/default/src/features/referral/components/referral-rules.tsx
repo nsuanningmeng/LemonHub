@@ -25,12 +25,27 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 
-export function ReferralRules() {
+interface ReferralRulesProps {
+  /** Effective recharge-commission rate (0-100). When > 0 the rule states the actual rate. */
+  commissionPercent?: number
+}
+
+export function ReferralRules({ commissionPercent }: ReferralRulesProps) {
   const { t } = useTranslation()
+
+  const percent =
+    commissionPercent && commissionPercent > 0
+      ? parseFloat(commissionPercent.toFixed(2))
+      : null
 
   const rules = [
     t("Rewards are credited only after your invitee's first successful top-up."),
-    t('After that, you earn a commission on every top-up they make.'),
+    percent === null
+      ? t('After that, you earn a commission on every top-up they make.')
+      : t(
+          'After that, you earn a {{percent}}% commission on every top-up they make.',
+          { percent }
+        ),
   ]
 
   return (
