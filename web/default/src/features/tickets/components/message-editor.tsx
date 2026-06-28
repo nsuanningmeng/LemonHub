@@ -158,7 +158,10 @@ export function MessageEditor(props: MessageEditorProps) {
           onChange={(event) => props.onContentChange(event.target.value)}
           placeholder={props.placeholder}
           disabled={props.disabled}
-          className={cn('min-h-24', props.textareaClassName)}
+          className={cn(
+            'min-h-24 focus-visible:ring-1 focus-visible:ring-ring/40',
+            props.textareaClassName
+          )}
         />
       )}
 

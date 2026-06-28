@@ -42,46 +42,50 @@ export function ConversationThread({
 
   return (
     <div className='space-y-3'>
-      {messages.map((message) => (
-        <div
-          key={message.id}
-          className={cn(
-            'rounded-lg border p-3',
-            message.is_admin ? 'border-primary/20 bg-primary/5' : 'bg-muted/40'
-          )}
-        >
-          <div className='mb-1.5 flex items-center gap-2'>
-            <span className='truncate text-sm font-medium'>
-              {message.username}
-            </span>
-            <Badge variant={message.is_admin ? 'default' : 'secondary'}>
-              {message.is_admin ? t('Staff') : t('User')}
-            </Badge>
-            <span className='text-muted-foreground ml-auto shrink-0 text-xs'>
-              {formatTimestamp(message.created_at)}
-            </span>
-          </div>
-          <Markdown>{message.content}</Markdown>
-          {message.attachments.length > 0 && (
-            <div className='mt-2 flex flex-wrap gap-2'>
-              {message.attachments.map((att) => (
-                <a
-                  key={att.id}
-                  href={`/api/ticket/attachment/${att.id}`}
-                  target='_blank'
-                  rel='noopener noreferrer'
-                >
-                  <img
-                    src={`/api/ticket/attachment/${att.id}`}
-                    alt={att.file_name}
-                    className='max-h-40 rounded-md border object-cover'
-                  />
-                </a>
-              ))}
+      {messages.map((message) => {
+        const attachments = message.attachments ?? []
+
+        return (
+          <div
+            key={message.id}
+            className={cn(
+              'rounded-lg border p-3',
+              message.is_admin ? 'border-primary/20 bg-primary/5' : 'bg-muted/40'
+            )}
+          >
+            <div className='mb-1.5 flex items-center gap-2'>
+              <span className='truncate text-sm font-medium'>
+                {message.username}
+              </span>
+              <Badge variant={message.is_admin ? 'default' : 'secondary'}>
+                {message.is_admin ? t('Staff') : t('User')}
+              </Badge>
+              <span className='text-muted-foreground ml-auto shrink-0 text-xs'>
+                {formatTimestamp(message.created_at)}
+              </span>
             </div>
-          )}
-        </div>
-      ))}
+            <Markdown>{message.content}</Markdown>
+            {attachments.length > 0 && (
+              <div className='mt-2 flex flex-wrap gap-2'>
+                {attachments.map((att) => (
+                  <a
+                    key={att.id}
+                    href={`/api/ticket/attachment/${att.id}`}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                  >
+                    <img
+                      src={`/api/ticket/attachment/${att.id}`}
+                      alt={att.file_name}
+                      className='max-h-40 rounded-md border object-cover'
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

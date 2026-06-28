@@ -79,7 +79,7 @@ export interface TicketMessage {
   content: string
   created_at: number
   username: string
-  attachments: TicketAttachment[]
+  attachments?: TicketAttachment[]
 }
 
 /** Ticket plus its full conversation thread. */

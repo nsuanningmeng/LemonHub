@@ -1,0 +1,7 @@
+{"_example": "Fill with {\"file\": \"path\", \"reason\": \"why\"}. Seed rows are skipped."}
+{"file": "model/affiliate.go", "reason": "核心结算 SettleReferralOnTopUp / settleAffiliateRechargeCommission：推广者跳过 first_bonus 入账 + 返佣只写台账不入 aff_quota"}
+{"file": "model/user.go", "reason": "User 模型新增 aff_cash_settled 字段 + Edit 更新逻辑（按 provided 标志透传）"}
+{"file": "controller/user.go", "reason": "EditUser 检测 aff_cash_settled 是否出现在请求体并透传给 Edit；校验"}
+{"file": "web/default/src/features/users/components/users-mutate-drawer.tsx", "reason": "管理员用户编辑新增「专业推广者(现金结算)」开关"}
+{"file": "web/default/src/features/referral/components/referral-admin-leaderboard.tsx", "reason": "返佣榜标记推广者 + 现金结算返佣累计列"}
+{"file": "model/affiliate_test.go", "reason": "推广者 vs 普通用户结算行为单测 + 幂等回归"}
