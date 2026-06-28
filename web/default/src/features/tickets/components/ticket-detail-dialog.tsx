@@ -61,7 +61,7 @@ export function TicketDetailDialog({
     queryFn: async () => {
       const res = await getTicket(ticketId as number)
       if (!res.success || !res.data) {
-        throw new Error(res.message || 'Failed to load ticket')
+        throw new Error(res.message || t('Failed to load ticket'))
       }
       return res.data
     },

@@ -5286,6 +5286,11 @@
     "Also delete the closed tickets": "同时删除已关闭的工单",
     "Permanently remove the closed tickets and their messages, not just attachments.": "永久删除已关闭工单及其消息，而不仅是附件。",
     "Deleted tickets": "已删除工单",
+    "Closed ticket age (days)": "已关闭工单时长（天）",
+    "Delete orphaned uploads and attachments from long-closed tickets.": "删除长期已关闭工单的孤立上传和附件。",
+    "Nothing to preview": "没有可预览的内容",
+    "Failed to load tickets": "加载工单列表失败",
+    "Failed to load ticket": "加载工单失败",
     "Deleted messages": "已删除消息",
     "Closed ticket retention (days)": "已关闭工单保留天数",
     "0 means closed tickets and their messages are kept forever.": "0 表示已关闭工单及其消息永久保留。"

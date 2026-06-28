@@ -5286,6 +5286,11 @@
     "Also delete the closed tickets": "Also delete the closed tickets",
     "Permanently remove the closed tickets and their messages, not just attachments.": "Permanently remove the closed tickets and their messages, not just attachments.",
     "Deleted tickets": "Deleted tickets",
+    "Closed ticket age (days)": "Closed ticket age (days)",
+    "Delete orphaned uploads and attachments from long-closed tickets.": "Delete orphaned uploads and attachments from long-closed tickets.",
+    "Nothing to preview": "Nothing to preview",
+    "Failed to load tickets": "Failed to load tickets",
+    "Failed to load ticket": "Failed to load ticket",
     "Deleted messages": "Deleted messages",
     "Closed ticket retention (days)": "Closed ticket retention (days)",
     "0 means closed tickets and their messages are kept forever.": "0 means closed tickets and their messages are kept forever."

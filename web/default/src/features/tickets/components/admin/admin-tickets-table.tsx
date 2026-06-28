@@ -110,7 +110,7 @@ export function AdminTicketsTable() {
         keyword: globalFilter ?? '',
       })
       if (!res.success || !res.data) {
-        toast.error(res.message || 'Failed to load tickets')
+        toast.error(res.message || t('Failed to load tickets'))
         return { items: [], total: 0 }
       }
       return { items: res.data.items, total: res.data.total }
