@@ -174,6 +174,10 @@ export function ModelsTable() {
     pagination,
     globalFilter,
     enableRowSelection: true,
+    // Key selection by stable id (not row index) so a stale selection can't
+    // re-target a different model on another page under manualPagination —
+    // critical for the destructive bulk delete.
+    getRowId: (row) => String(row.id),
     onColumnFiltersChange,
     onPaginationChange,
     onGlobalFilterChange,

@@ -135,7 +135,13 @@ export function UsersTable() {
   const { table } = useDataTable({
     data: users,
     columns,
-    enableRowSelection: true,
+    // Key row selection by stable user id (not row index) so that under manual
+    // pagination a stale selection can never re-target a different user on
+    // another page — critical for the destructive bulk delete action.
+    getRowId: (row) => String(row.id),
+    // Deleted users have no available actions; keep them out of selection so the
+    // bulk toolbar count always matches the number of actionable rows.
+    enableRowSelection: (row) => !isUserDeleted(row.original),
     columnFilters,
     globalFilter,
     pagination,

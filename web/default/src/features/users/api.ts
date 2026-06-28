@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import { api, type ApiRequestConfig } from '@/lib/api'
 import type {
   User,
   GetUsersParams,
@@ -99,8 +99,11 @@ export async function updateUser(
 /**
  * Delete a single user (hard delete)
  */
-export async function deleteUser(id: number): Promise<ApiResponse> {
-  const res = await api.delete(`/api/user/${id}/`)
+export async function deleteUser(
+  id: number,
+  config?: ApiRequestConfig
+): Promise<ApiResponse> {
+  const res = await api.delete(`/api/user/${id}/`, config)
   return res.data
 }
 
@@ -109,9 +112,10 @@ export async function deleteUser(id: number): Promise<ApiResponse> {
  */
 export async function manageUser(
   id: number,
-  action: ManageUserAction
+  action: ManageUserAction,
+  config?: ApiRequestConfig
 ): Promise<ApiResponse<Partial<User>>> {
-  const res = await api.post('/api/user/manage', { id, action })
+  const res = await api.post('/api/user/manage', { id, action }, config)
   return res.data
 }
 

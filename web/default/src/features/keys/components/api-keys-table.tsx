@@ -265,6 +265,10 @@ export function ApiKeysTable() {
     data: apiKeys,
     columns,
     enableRowSelection: true,
+    // Key selection by stable id (not row index) so a stale selection can't
+    // re-target a different key on another page under manualPagination —
+    // critical for the destructive bulk delete.
+    getRowId: (row) => String(row.id),
     columnFilters,
     columnVisibilityStorageKey: API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY,
     globalFilter,

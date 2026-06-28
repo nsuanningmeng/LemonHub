@@ -285,6 +285,12 @@ export function ChannelsTable() {
     pagination,
     globalFilter,
     enableRowSelection: (row: Row<Channel>) => !isTagAggregateRow(row.original),
+    // Key selection by stable id (tag aggregate rows use their tag string, real
+    // channels their numeric id) so a stale selection can never re-target a
+    // different channel on another page under manualPagination — critical for
+    // the destructive bulk delete.
+    getRowId: (row) =>
+      isTagAggregateRow(row) ? `tag:${row.id}` : String(row.id),
     onSortingChange: handleSortingChange,
     onColumnFiltersChange,
     onPaginationChange,

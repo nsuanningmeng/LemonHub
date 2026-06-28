@@ -101,6 +101,10 @@ export function RedemptionsTable() {
     data: redemptions,
     columns,
     enableRowSelection: true,
+    // Key selection by stable id (not row index) so a stale selection can't
+    // re-target a different code on another page (e.g. the "Copy selected
+    // codes" action would otherwise copy the wrong rows under manualPagination).
+    getRowId: (row) => String(row.id),
     columnFilters,
     globalFilter,
     pagination,
