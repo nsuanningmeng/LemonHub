@@ -47,6 +47,29 @@ func backfillModelNullSiteId(db *gorm.DB, model interface{}) error {
 	return nil
 }
 
+// ensureAffiliateCashSettledColumn guarantees the affiliate_commissions.cash_settled column
+// exists before any cash-settlement query runs.
+//
+// The column was introduced with the cash-settled promoter feature (v0.4.5) on an
+// affiliate_commissions table that predates it. On a database where AutoMigrate never added the
+// column — e.g. a node started with NODE_TYPE=slave (which skips migrations entirely) or an
+// interrupted historical upgrade — the user-facing referral dashboard returns a hard error for
+// cash-settled promoters as soon as GetAffStats aggregates it ("Unknown column 'cash_settled'").
+// This idempotent, cross-DB guard closes that gap; it is a no-op once the column exists.
+func ensureAffiliateCashSettledColumn(db *gorm.DB) error {
+	// Table absent → the AutoMigrate that follows creates it with the column.
+	if !db.Migrator().HasTable(&AffiliateCommission{}) {
+		return nil
+	}
+	if db.Migrator().HasColumn(&AffiliateCommission{}, "CashSettled") {
+		return nil
+	}
+	if err := db.Migrator().AddColumn(&AffiliateCommission{}, "CashSettled"); err != nil {
+		return fmt.Errorf("add affiliate_commissions.cash_settled failed: %w", err)
+	}
+	return nil
+}
+
 // priceAmountDecimalMax is the largest magnitude that fits losslessly in
 // decimal(10,6) (10 total digits, 6 fractional => max integer part 9999).
 const priceAmountDecimalMax = 9999.999999

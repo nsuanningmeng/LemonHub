@@ -384,15 +384,20 @@ func GetAffStats(userId int) (*AffStats, error) {
 	// leaderboard math (cash basis = cash_settled ledger rows; owed = total - paid, clamped >= 0).
 	var cashTotal, cashPaid, cashOwed int64
 	if user.AffCashSettled {
-		total, terr := affiliateCashCommissionTotal(DB, userId)
-		if terr != nil {
-			return nil, terr
-		}
-		cashTotal = total
-		cashPaid = user.AffCashPaid
-		cashOwed = cashTotal - cashPaid
-		if cashOwed < 0 {
-			cashOwed = 0
+		// The cash balance is a secondary stat. If its aggregation fails — e.g. a database whose
+		// affiliate_commissions.cash_settled column has not been migrated yet (a slave node skips
+		// migrations) — degrade to a zero balance and keep serving the dashboard rather than 500ing
+		// the whole referral page. ensureAffiliateCashSettledColumn restores the real figures on the
+		// next migrating startup.
+		if total, terr := affiliateCashCommissionTotal(DB, userId); terr != nil {
+			common.SysLog("GetAffStats: cash commission aggregation failed, serving zero cash balance: " + terr.Error())
+		} else {
+			cashTotal = total
+			cashPaid = user.AffCashPaid
+			cashOwed = cashTotal - cashPaid
+			if cashOwed < 0 {
+				cashOwed = 0
+			}
 		}
 	}
 	var totalInvited int64

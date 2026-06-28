@@ -252,6 +252,34 @@ func TestGetAffStats_NormalInviterHasZeroCashFields(t *testing.T) {
 	assert.Equal(t, int64(0), stats.CashCommissionOwed)
 }
 
+// TestGetAffStats_CashSettledMissingColumnDegrades pins the regression that broke the referral
+// dashboard for cash-settled promoters: when affiliate_commissions.cash_settled is absent (a
+// partially-migrated schema), the cash aggregation must degrade to a zero balance and STILL serve
+// the dashboard rather than surfacing the SQL error as a 500. ensureAffiliateCashSettledColumn then
+// restores the column (and the real figures) on the next migrating startup.
+func TestGetAffStats_CashSettledMissingColumnDegrades(t *testing.T) {
+	inviterId, inviteeId := affiliateTestSetup(t, 2000, 1000, 5)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", inviterId).
+		Update("aff_cash_settled", true).Error)
+	require.NoError(t, SettleReferralOnTopUp(inviteeId, "affdeg-1", 100000, "stripe"))
+
+	// Simulate the broken production schema: drop the late-added column.
+	require.NoError(t, DB.Migrator().DropColumn(&AffiliateCommission{}, "CashSettled"))
+	// Restore the column for any subsequent test (affiliateTestSetup also re-migrates it).
+	t.Cleanup(func() { _ = ensureAffiliateCashSettledColumn(DB) })
+
+	stats, err := GetAffStats(inviterId)
+	require.NoError(t, err) // degraded, NOT a 500
+	assert.True(t, stats.IsCashSettled)
+	assert.Equal(t, int64(0), stats.CashCommissionTotal)
+	assert.Equal(t, int64(0), stats.CashCommissionOwed)
+
+	// ensureAffiliateCashSettledColumn is idempotent and re-adds the missing column.
+	require.NoError(t, ensureAffiliateCashSettledColumn(DB))
+	assert.True(t, DB.Migrator().HasColumn(&AffiliateCommission{}, "CashSettled"))
+	require.NoError(t, ensureAffiliateCashSettledColumn(DB)) // no-op second run
+}
+
 // TestSettleReferralOnTopUp_PerUserCommissionOverride verifies an inviter-level commission rate
 // override takes precedence over the global default for the recharge commission.
 func TestSettleReferralOnTopUp_PerUserCommissionOverride(t *testing.T) {

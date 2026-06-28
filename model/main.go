@@ -277,6 +277,11 @@ func migrateDB() error {
 	if err := migrateRelaxLegacyUsernameUnique(); err != nil {
 		return err
 	}
+	// Guarantee the late-added affiliate_commissions.cash_settled column exists so the referral
+	// dashboard never 500s for cash-settled promoters on a partially-migrated schema.
+	if err := ensureAffiliateCashSettledColumn(DB); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -352,6 +357,9 @@ func migrateDBFast() error {
 		return err
 	}
 	if err := migrateRelaxLegacyUsernameUnique(); err != nil {
+		return err
+	}
+	if err := ensureAffiliateCashSettledColumn(DB); err != nil {
 		return err
 	}
 
