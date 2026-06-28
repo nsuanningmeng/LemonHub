@@ -32,6 +32,9 @@ import {
   Server,
   Coins,
   CheckCircle2,
+  Gift,
+  Banknote,
+  Info,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -165,6 +168,45 @@ const WHOLESALE_TIERS = [
     tier: 'Partner',
     rate: '60%',
     note: 'For resellers operating at scale',
+  },
+]
+
+// ---------------------------------------------------------------------------
+// 邀请返佣计划（与上方「品牌代理 / 进货折扣」彼此独立的另一条变现路径）。
+// 两张卡片：① 普通邀请返佣（进平台余额）② 专业推广者（线下现金结算）。
+// ---------------------------------------------------------------------------
+const REFERRAL_TIERS = [
+  {
+    icon: Gift,
+    title: 'Referral Rewards (Open to Everyone)',
+    desc: 'Once you sign up you get a personal invite link. After an invited user makes their first successful top-up, you earn a set percentage commission on every top-up they make from then on — credited to your platform balance and transferable anytime.',
+    points: [
+      'No barrier — every account gets a personal invite link',
+      'Recurring — earn on every top-up they make, not just the first',
+      'Credited to your balance — transfer and spend it anytime',
+    ],
+  },
+  {
+    icon: Banknote,
+    title: 'Professional Promoter (Cash Settlement)',
+    desc: 'For partners with steady traffic and real promotional reach. Once approved as a Professional Promoter, your commission is settled to you in cash off-platform on a regular cycle instead of being credited to your platform balance — with the cash owed and cash paid clearly shown on your referral page.',
+    points: [
+      'Paid in cash — settled off-platform, no need to spend on the platform',
+      'Transparent ledger — cash owed and cash paid visible in real time',
+      'By application — contact us to upgrade to Professional Promoter',
+    ],
+  },
+]
+
+// 区别说明：明确把「邀请返佣」和「品牌代理」划开，避免访客混淆两种模式。
+const REFERRAL_VS_AGENT = [
+  {
+    label: 'Brand Agent',
+    desc: 'open an independent AI site on your own domain, stock at a wholesale discount and set your own retail price for the margin — payments land in your own account.',
+  },
+  {
+    label: 'Referral Rewards',
+    desc: 'no site to build — you simply bring users to this platform and earn commission on their top-ups.',
   },
 ]
 
@@ -529,6 +571,99 @@ function RevenueSection() {
 }
 
 // ---------------------------------------------------------------------------
+// 5.5 邀请返佣计划（独立于「品牌代理」的另一条更轻的变现路径）
+// ---------------------------------------------------------------------------
+
+function ReferralProgramSection() {
+  const { t } = useTranslation()
+  return (
+    <section className='border-border/40 relative z-10 border-t px-6 py-24 md:py-32'>
+      <div className='mx-auto max-w-6xl'>
+        <SectionHeading
+          eyebrow='Another Way to Earn'
+          title='Referral Rewards Program'
+          subtitle='No site to build. Share your personal invite link, and earn commission whenever the users you bring in top up on this platform. This is a separate path from the Brand Agent program above — choose either, they do not affect each other.'
+        />
+
+        <div className='grid gap-6 md:grid-cols-2 md:gap-8'>
+          {REFERRAL_TIERS.map(({ icon: Icon, title, desc, points }, i) => (
+            <AnimateInView
+              key={title}
+              delay={i * 120}
+              animation='fade-up'
+              className='border-border/50 bg-card flex flex-col rounded-2xl border p-7'
+            >
+              <span className='border-border/50 bg-muted/30 text-foreground mb-5 flex size-12 items-center justify-center rounded-xl border'>
+                <Icon className='size-5' strokeWidth={1.75} />
+              </span>
+              <h3 className='mb-2 text-base font-semibold'>{t(title)}</h3>
+              <p className='text-muted-foreground text-sm leading-relaxed'>
+                {t(desc)}
+              </p>
+              <ul className='border-border/50 mt-5 space-y-2.5 border-t pt-5'>
+                {points.map((p) => (
+                  <li
+                    key={p}
+                    className='text-muted-foreground flex items-start gap-2 text-sm leading-relaxed'
+                  >
+                    <CheckCircle2 className='text-foreground/70 mt-0.5 size-4 shrink-0' />
+                    {t(p)}
+                  </li>
+                ))}
+              </ul>
+            </AnimateInView>
+          ))}
+        </div>
+
+        {/* 区别说明：把「邀请返佣」与「品牌代理」划清界限 */}
+        <AnimateInView
+          animation='fade-up'
+          className='border-border/60 bg-muted/30 mt-8 rounded-2xl border p-6 md:p-8'
+        >
+          <p className='mb-4 flex items-center gap-2 text-sm font-semibold'>
+            <Info className='text-muted-foreground size-4' aria-hidden='true' />
+            {t('How is this different from the Brand Agent program?')}
+          </p>
+          <ul className='space-y-3'>
+            {REFERRAL_VS_AGENT.map(({ label, desc }) => (
+              <li
+                key={label}
+                className='text-muted-foreground text-sm leading-relaxed'
+              >
+                <span className='text-foreground font-semibold'>{t(label)}</span>
+                <span className='mx-1.5'>·</span>
+                {t(desc)}
+              </li>
+            ))}
+          </ul>
+          <p className='text-muted-foreground/80 mt-4 text-sm'>
+            {t('The two paths are independent and can run in parallel.')}
+          </p>
+        </AnimateInView>
+
+        {/* 行动入口 */}
+        <div className='mt-10 flex flex-wrap justify-center gap-3'>
+          <Button
+            className='group h-11 rounded-lg px-5 text-sm font-medium'
+            render={<Link to='/referral' />}
+          >
+            {t('Get my referral link')}
+            <ArrowRight className='ml-1.5 size-4 transition-transform duration-200 group-hover:translate-x-0.5' />
+          </Button>
+          <Button
+            variant='outline'
+            className='border-border/50 hover:border-border hover:bg-muted/50 h-11 rounded-lg px-5 text-sm font-medium'
+            render={<Link to='/contact' />}
+          >
+            {t('Apply as a Professional Promoter')}
+          </Button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // 6. FAQ
 // ---------------------------------------------------------------------------
 
@@ -618,6 +753,7 @@ export function Affiliate() {
         <AdvantagesSection />
         <StepsSection />
         <RevenueSection />
+        <ReferralProgramSection />
         <FaqSection />
         <CtaSection />
         <Footer />
