@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -74,31 +74,23 @@ export function NewTicketDialog({
   )
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const lastTemplateRef = useRef('')
 
-  // Reset the form whenever the dialog opens, seeding the first type's
-  // prompt template into the content field as guidance.
+  // Reset the form whenever the dialog opens. The selected type's prompt
+  // template is surfaced only as placeholder guidance (see MessageEditor below),
+  // never seeded into the content, so it is not submitted verbatim when the user
+  // leaves the field empty.
   useEffect(() => {
     if (!open) return
-    const first = types[0]
-    const template = first?.prompt_template ?? ''
-    setTypeKey(first?.key ?? '')
+    setTypeKey(types[0]?.key ?? '')
     setTitle('')
-    setContent(template)
+    setContent('')
     setPriority(DEFAULT_TICKET_PRIORITY)
     setAttachments([])
-    lastTemplateRef.current = template
   }, [open, types])
 
   const handleTypeChange = (value: string | null) => {
     if (value == null) return
     setTypeKey(value)
-    const template = types.find((ty) => ty.key === value)?.prompt_template ?? ''
-    // Only overwrite content the user has not customised.
-    setContent((prev) =>
-      prev.trim() === '' || prev === lastTemplateRef.current ? template : prev
-    )
-    lastTemplateRef.current = template
   }
 
   const selectedType = types.find((ty) => ty.key === typeKey)
