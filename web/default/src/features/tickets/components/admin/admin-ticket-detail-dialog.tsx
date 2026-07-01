@@ -83,6 +83,10 @@ export function AdminTicketDetailDialog({
       return res.data
     },
     enabled: open && ticketId != null,
+    // Poll while the dialog is open so a customer's new reply appears without a
+    // manual page refresh. React Query pauses this interval when the tab is
+    // hidden (refetchIntervalInBackground defaults to false).
+    refetchInterval: 10_000,
   })
 
   useEffect(() => {

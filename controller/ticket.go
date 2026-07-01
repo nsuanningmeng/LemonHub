@@ -3,13 +3,11 @@ package controller
 import (
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -217,7 +215,7 @@ func CreateTicket(c *gin.Context) {
 	}
 
 	gopool.Go(func() {
-		service.NotifyAdminsOfTicket(ticket, "created")
+		service.NotifyAdminsOfTicket(ticket, "created", content)
 	})
 
 	common.ApiSuccess(c, gin.H{"id": ticket.Id})
@@ -303,7 +301,7 @@ func ReplyTicket(c *gin.Context) {
 	}
 
 	gopool.Go(func() {
-		service.NotifyAdminsOfTicket(ticket, "reply")
+		service.NotifyAdminsOfTicket(ticket, "reply", content)
 	})
 
 	common.ApiSuccess(c, gin.H{"id": msg.Id})
@@ -480,20 +478,9 @@ func AdminReplyTicket(c *gin.Context) {
 		return
 	}
 
-	ownerId := ticket.UserId
-	ticketId := ticket.Id
-	title := ticket.Title
+	replyContent := content
 	gopool.Go(func() {
-		owner, err := model.GetUserById(ownerId, false)
-		if err != nil || owner == nil {
-			return
-		}
-		// Escape the user-set title — the notification is delivered as an HTML email body.
-		body := fmt.Sprintf("Your ticket \"%s\" (#%d) has a new reply.", html.EscapeString(title), ticketId)
-		notify := dto.NewNotify("ticket_reply", "Your ticket has a new reply", body, nil)
-		if notifyErr := service.NotifyUser(owner.Id, owner.Email, owner.GetSetting(), notify); notifyErr != nil {
-			common.SysLog("failed to notify ticket owner: " + notifyErr.Error())
-		}
+		service.NotifyTicketOwnerReply(ticket, replyContent)
 	})
 
 	common.ApiSuccess(c, gin.H{"id": msg.Id})

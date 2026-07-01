@@ -5,6 +5,12 @@ type Notify struct {
 	Title   string        `json:"title"`
 	Content string        `json:"content"`
 	Values  []interface{} `json:"values"`
+	// EmailContent, when non-empty, is an email-only HTML rendering used by the
+	// email channel in place of Content. Plain-text channels (webhook/bark/gotify)
+	// always use Content, so callers that want rich HTML in email without leaking
+	// raw tags to other channels keep Content plain and set EmailContent to the
+	// HTML variant. Tagged json:"-" so it never appears in webhook payloads.
+	EmailContent string `json:"-"`
 }
 
 const ContentValueParam = "{{value}}"

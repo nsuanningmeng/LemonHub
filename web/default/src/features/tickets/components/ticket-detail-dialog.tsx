@@ -66,6 +66,9 @@ export function TicketDetailDialog({
       return res.data
     },
     enabled: open && ticketId != null,
+    // Poll while the dialog is open so a staff reply appears without a manual
+    // refresh. Paused automatically when the tab is hidden.
+    refetchInterval: 15_000,
   })
 
   useEffect(() => {

@@ -74,6 +74,9 @@ export function Tickets() {
       return res.data
     },
     placeholderData: (prev) => prev,
+    // Poll so staff replies bump the ticket's status/last-activity without a
+    // manual refresh. Paused automatically when the tab is hidden.
+    refetchInterval: 30_000,
   })
 
   const tickets = listQuery.data?.items ?? []

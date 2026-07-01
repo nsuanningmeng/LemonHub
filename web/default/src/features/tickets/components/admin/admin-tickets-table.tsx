@@ -88,7 +88,7 @@ export function AdminTicketsTable() {
     (columnFilters.find((filter) => filter.id === 'user')?.value as string) ??
     ''
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isPlaceholderData } = useQuery({
     queryKey: [
       'admin-tickets',
       pagination.pageIndex + 1,
@@ -116,6 +116,9 @@ export function AdminTicketsTable() {
       return { items: res.data.items, total: res.data.total }
     },
     placeholderData: (previousData) => previousData,
+    // Poll the list so newly submitted tickets and fresh customer replies surface
+    // without a manual refresh. Paused automatically when the tab is hidden.
+    refetchInterval: 30_000,
   })
 
   const columns = useAdminTicketColumns({ types, onView: setDetailId })
@@ -152,7 +155,12 @@ export function AdminTicketsTable() {
         table={table}
         columns={columns}
         isLoading={isLoading}
-        isFetching={isFetching}
+        // Only dim/disable the table on user-initiated keyed refetches
+        // (filter/pagination/search), which show stale placeholder data. Silent
+        // background polls (same query key) keep isPlaceholderData false, so they
+        // refresh the rows without the disruptive opacity-60/pointer-events-none
+        // overlay firing every 30s.
+        isFetching={isFetching && isPlaceholderData}
         emptyTitle={t('No Tickets Found')}
         emptyDescription={t('No tickets match the current filters.')}
         skeletonKeyPrefix='admin-tickets-skeleton'

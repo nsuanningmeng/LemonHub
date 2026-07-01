@@ -15,9 +15,17 @@ import (
 )
 
 func NotifyRootUser(t string, subject string, content string) {
+	NotifyRootUserWithEmailContent(t, subject, content, "")
+}
+
+// NotifyRootUserWithEmailContent is NotifyRootUser with an email-only HTML body.
+// content is the plain-text payload delivered to non-email channels; emailContent
+// (when non-empty) is the HTML rendering used only on the email channel.
+func NotifyRootUserWithEmailContent(t string, subject string, content string, emailContent string) {
 	user := model.GetRootUser().ToBaseUser()
-	err := NotifyUser(user.Id, user.Email, user.GetSetting(), dto.NewNotify(t, subject, content, nil))
-	if err != nil {
+	notify := dto.NewNotify(t, subject, content, nil)
+	notify.EmailContent = emailContent
+	if err := NotifyUser(user.Id, user.Email, user.GetSetting(), notify); err != nil {
 		common.SysLog(fmt.Sprintf("failed to notify root user: %s", err.Error()))
 	}
 }
@@ -106,8 +114,12 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 }
 
 func sendEmailNotify(userEmail string, data dto.Notify) error {
-	// make email content
+	// make email content — prefer the email-only HTML rendering when supplied,
+	// otherwise fall back to the shared (plain-text) content.
 	content := data.Content
+	if data.EmailContent != "" {
+		content = data.EmailContent
+	}
 	// 处理占位符
 	for _, value := range data.Values {
 		content = strings.Replace(content, dto.ContentValueParam, fmt.Sprintf("%v", value), 1)
