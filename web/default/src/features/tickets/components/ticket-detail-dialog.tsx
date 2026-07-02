@@ -132,8 +132,8 @@ export function TicketDetailDialog({
       <DialogContent className='sm:max-w-2xl'>
         <div className='flex max-h-[85vh] min-w-0 flex-col gap-4'>
           <DialogHeader>
-            <div className='flex min-w-0 items-center gap-2 pr-6'>
-              <DialogTitle className='min-w-0 truncate'>
+            <div className='flex min-w-0 items-start gap-2 pr-6'>
+              <DialogTitle className='min-w-0 leading-snug break-words'>
                 {ticket?.title ?? t('Ticket')}
               </DialogTitle>
               {ticket && (
