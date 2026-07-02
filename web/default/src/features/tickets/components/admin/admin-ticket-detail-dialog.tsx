@@ -163,16 +163,20 @@ export function AdminTicketDetailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-2xl'>
-        <div className='flex max-h-[85vh] flex-col gap-4'>
+        <div className='flex max-h-[85vh] min-w-0 flex-col gap-4'>
           <DialogHeader>
-            <div className='flex items-center gap-2 pr-6'>
-              <DialogTitle className='truncate'>
+            <div className='flex min-w-0 items-center gap-2 pr-6'>
+              <DialogTitle className='min-w-0 truncate'>
                 {ticket?.title ?? t('Ticket')}
               </DialogTitle>
-              {ticket && <TicketPriorityBadge priority={ticket.priority} />}
-              {ticket && <TicketStatusBadge status={ticket.status} />}
+              {ticket && (
+                <div className='flex shrink-0 items-center gap-2'>
+                  <TicketPriorityBadge priority={ticket.priority} />
+                  <TicketStatusBadge status={ticket.status} />
+                </div>
+              )}
             </div>
-            <DialogDescription>
+            <DialogDescription className='break-words [overflow-wrap:anywhere]'>
               {ticket
                 ? `#${ticket.id} · ${ticket.username ?? ''} ${
                     ticket.user_email ? `(${ticket.user_email})` : ''

@@ -146,12 +146,14 @@ export function Tickets() {
                   className='hover:bg-muted/40 flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors'
                 >
                   <div className='min-w-0 flex-1'>
-                    <div className='flex items-center gap-2'>
-                      <span className='truncate font-medium'>
+                    <div className='flex min-w-0 items-center gap-2'>
+                      <span className='min-w-0 truncate font-medium'>
                         {ticket.title}
                       </span>
-                      <TicketPriorityBadge priority={ticket.priority} />
-                      <TicketStatusBadge status={ticket.status} />
+                      <div className='flex shrink-0 items-center gap-2'>
+                        <TicketPriorityBadge priority={ticket.priority} />
+                        <TicketStatusBadge status={ticket.status} />
+                      </div>
                     </div>
                     <div className='text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
                       <span>{typeNameOf(ticket.type)}</span>
