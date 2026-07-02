@@ -35,13 +35,13 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Turnstile } from '@/components/turnstile'
+import { CaptchaWidget } from '@/components/captcha'
 import { sendPasswordResetEmail } from '@/features/auth/api'
 import {
   forgotPasswordFormSchema,
   PASSWORD_RESET_COUNTDOWN,
 } from '@/features/auth/constants'
-import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
+import { useCaptcha } from '@/features/auth/hooks/use-captcha'
 
 export function ForgotPasswordForm({
   className,
@@ -50,13 +50,8 @@ export function ForgotPasswordForm({
   const { t } = useTranslation()
   const [isLoading, setIsLoading] = useState(false)
 
-  const {
-    isTurnstileEnabled,
-    turnstileSiteKey,
-    turnstileToken,
-    setTurnstileToken,
-    validateTurnstile,
-  } = useTurnstile()
+  const { isCaptchaEnabled, captchaToken, setCaptchaToken, validateCaptcha } =
+    useCaptcha()
   const {
     secondsLeft,
     isActive,
@@ -67,14 +62,14 @@ export function ForgotPasswordForm({
     resolver: zodResolver(forgotPasswordFormSchema),
     defaultValues: { email: '' },
   })
-  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
+  const captchaReady = !isCaptchaEnabled || Boolean(captchaToken)
 
   async function onSubmit(data: z.infer<typeof forgotPasswordFormSchema>) {
-    if (!validateTurnstile()) return
+    if (!validateCaptcha()) return
 
     setIsLoading(true)
     try {
-      const res = await sendPasswordResetEmail(data.email, turnstileToken)
+      const res = await sendPasswordResetEmail(data.email, captchaToken)
       if (res?.success) {
         form.reset()
         startCountdown()
@@ -113,7 +108,7 @@ export function ForgotPasswordForm({
         <Button
           type='submit'
           className='mt-2'
-          disabled={isLoading || isActive || !turnstileReady}
+          disabled={isLoading || isActive || !captchaReady}
         >
           {isActive
             ? t('Resend ({{seconds}}s)', { seconds: secondsLeft })
@@ -121,11 +116,11 @@ export function ForgotPasswordForm({
           {isLoading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
         </Button>
 
-        {isTurnstileEnabled && (
+        {isCaptchaEnabled && (
           <div className='mt-2'>
-            <Turnstile
-              siteKey={turnstileSiteKey}
-              onVerify={setTurnstileToken}
+            <CaptchaWidget
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken('')}
             />
           </div>
         )}

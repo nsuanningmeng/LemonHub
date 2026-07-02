@@ -157,8 +157,15 @@ export type AuthSettings = {
   WeChatServerToken: string
   WeChatAccountQRCodeImageURL: string
   TurnstileCheckEnabled: boolean
+  CaptchaProvider: 'turnstile' | 'geetest' | 'altcha' | 'tencent'
   TurnstileSiteKey: string
   TurnstileSecretKey: string
+  GeetestCaptchaId: string
+  GeetestCaptchaKey: string
+  TencentCaptchaAppId: string
+  TencentCaptchaAppSecretKey: string
+  TencentCloudSecretId: string
+  TencentCloudSecretKey: string
   'passkey.enabled': boolean
   'passkey.rp_display_name': string
   'passkey.rp_id': string

@@ -41,20 +41,18 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip'
 import { Dialog } from '@/components/dialog'
-import { Turnstile } from '@/components/turnstile'
+import { CaptchaWidget } from '@/components/captcha'
 import { getCheckinStatus, performCheckin } from '../api'
 import type { CheckinRecord } from '../types'
 
 interface CheckinCalendarCardProps {
   checkinEnabled: boolean
-  turnstileEnabled: boolean
-  turnstileSiteKey: string
+  captchaEnabled: boolean
 }
 
 export function CheckinCalendarCard({
   checkinEnabled,
-  turnstileEnabled,
-  turnstileSiteKey,
+  captchaEnabled,
 }: CheckinCalendarCardProps) {
   const { t } = useTranslation()
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -62,8 +60,8 @@ export function CheckinCalendarCard({
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
   const [checkinLoading, setCheckinLoading] = useState(false)
-  const [turnstileModalVisible, setTurnstileModalVisible] = useState(false)
-  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
+  const [captchaModalVisible, setCaptchaModalVisible] = useState(false)
+  const [captchaWidgetKey, setCaptchaWidgetKey] = useState(0)
   const [initialLoaded, setInitialLoaded] = useState(false)
   const [collapsed, setCollapsed] = useState<boolean>(false)
 
@@ -126,13 +124,13 @@ export function CheckinCalendarCard({
     setInitialLoaded(true)
   }, [checkinData, checkedToday, initialLoaded, isLoading])
 
-  const shouldTriggerTurnstile = useCallback(
+  const shouldTriggerCaptcha = useCallback(
     (message?: string) => {
-      if (!turnstileEnabled) return false
+      if (!captchaEnabled) return false
       if (typeof message !== 'string') return true
-      return message.includes('Turnstile')
+      return message.includes('Turnstile') || message.includes('人机验证')
     },
-    [turnstileEnabled]
+    [captchaEnabled]
   )
 
   const doCheckin = useCallback(
@@ -145,18 +143,14 @@ export function CheckinCalendarCard({
             `${t('Check-in successful! Received')} ${formatQuotaWithCurrency(res.data.quota_awarded)}`
           )
           refetch()
-          setTurnstileModalVisible(false)
+          setCaptchaModalVisible(false)
         } else {
-          if (!token && shouldTriggerTurnstile(res.message)) {
-            if (!turnstileSiteKey) {
-              toast.error(t('Turnstile is enabled but site key is empty.'))
-              return
-            }
-            setTurnstileModalVisible(true)
+          if (!token && shouldTriggerCaptcha(res.message)) {
+            setCaptchaModalVisible(true)
             return
           }
-          if (token && shouldTriggerTurnstile(res.message)) {
-            setTurnstileWidgetKey((v) => v + 1)
+          if (token && shouldTriggerCaptcha(res.message)) {
+            setCaptchaWidgetKey((v) => v + 1)
           }
           toast.error(res.message || t('Check-in failed'))
         }
@@ -166,7 +160,7 @@ export function CheckinCalendarCard({
         setCheckinLoading(false)
       }
     },
-    [refetch, shouldTriggerTurnstile, t, turnstileSiteKey]
+    [refetch, shouldTriggerCaptcha, t]
   )
 
   const handlePrevMonth = () => {
@@ -242,11 +236,11 @@ export function CheckinCalendarCard({
   return (
     <TooltipProvider delay={100}>
       <Dialog
-        open={turnstileModalVisible}
+        open={captchaModalVisible}
         onOpenChange={(open) => {
-          setTurnstileModalVisible(open)
+          setCaptchaModalVisible(open)
           if (!open) {
-            setTurnstileWidgetKey((v) => v + 1)
+            setCaptchaWidgetKey((v) => v + 1)
           }
         }}
         title={t('Security Check')}
@@ -258,14 +252,13 @@ export function CheckinCalendarCard({
           {t('Please complete the security check to continue.')}
         </div>
         <div className='flex justify-center py-4'>
-          <Turnstile
-            key={turnstileWidgetKey}
-            siteKey={turnstileSiteKey}
+          <CaptchaWidget
+            key={captchaWidgetKey}
             onVerify={(token) => {
               doCheckin(token)
             }}
             onExpire={() => {
-              setTurnstileWidgetKey((v) => v + 1)
+              setCaptchaWidgetKey((v) => v + 1)
             }}
           />
         </div>

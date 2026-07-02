@@ -36,13 +36,16 @@ import type {
 
 // User login with username and password
 export async function login(payload: LoginPayload) {
-  const turnstile = payload.turnstile ?? ''
+  // The captcha token must go through axios params so it is percent-encoded:
+  // non-Turnstile channels (ALTCHA/GeeTest) emit standard-base64 payloads
+  // whose '+' would otherwise be decoded server-side as a space.
   const res = await api.post<LoginResponse>(
-    `/api/user/login?turnstile=${turnstile}`,
+    '/api/user/login',
     {
       username: payload.username,
       password: payload.password,
-    }
+    },
+    { params: { turnstile: payload.turnstile ?? '' } }
   )
   return res.data
 }

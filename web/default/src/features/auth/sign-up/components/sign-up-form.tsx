@@ -38,14 +38,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
-import { Turnstile } from '@/components/turnstile'
+import { CaptchaWidget } from '@/components/captcha'
 import { register, wechatLoginByCode } from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
-import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
+import { useCaptcha } from '@/features/auth/hooks/use-captcha'
 import {
   getAffiliateCode,
   saveAffiliateCode,
@@ -65,13 +65,8 @@ export function SignUpForm({
   const legalConsentErrorMessage = t('Please agree to the legal terms first')
 
   const { status } = useStatus()
-  const {
-    isTurnstileEnabled,
-    turnstileSiteKey,
-    turnstileToken,
-    setTurnstileToken,
-    validateTurnstile,
-  } = useTurnstile()
+  const { isCaptchaEnabled, captchaToken, setCaptchaToken, validateCaptcha } =
+    useCaptcha()
   const { redirectToLogin, handleLoginSuccess } = useAuthRedirect()
   const {
     isSending: isSendingCode,
@@ -79,8 +74,8 @@ export function SignUpForm({
     isActive,
     sendCode,
   } = useEmailVerification({
-    turnstileToken,
-    validateTurnstile,
+    turnstileToken: captchaToken,
+    validateTurnstile: validateCaptcha,
   })
 
   const form = useForm<z.infer<typeof registerFormSchema>>({
@@ -103,7 +98,7 @@ export function SignUpForm({
     status?.data?.oauth_register_enabled ??
     true
   const hasWeChatLogin = Boolean(status?.wechat_login)
-  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
+  const captchaReady = !isCaptchaEnabled || Boolean(captchaToken)
 
   const wechatQrCodeUrl = useMemo(() => {
     return (
@@ -152,7 +147,7 @@ export function SignUpForm({
       }
     }
 
-    if (!validateTurnstile()) return
+    if (!validateCaptcha()) return
 
     setIsLoading(true)
     try {
@@ -162,7 +157,7 @@ export function SignUpForm({
         email: data.email || undefined,
         verification_code: verificationCode || undefined,
         aff_code: getAffiliateCode(),
-        turnstile: turnstileToken,
+        turnstile: captchaToken,
       })
 
       if (res?.success) {
@@ -318,7 +313,7 @@ export function SignUpForm({
                   isSendingCode ||
                   isActive ||
                   !emailValue ||
-                  !turnstileReady
+                  !captchaReady
                 }
                 onClick={handleSendVerificationCode}
               >
@@ -334,12 +329,12 @@ export function SignUpForm({
           </>
         )}
 
-        {/* Turnstile */}
-        {isTurnstileEnabled && (
+        {/* Human verification */}
+        {isCaptchaEnabled && (
           <div className='mt-2'>
-            <Turnstile
-              siteKey={turnstileSiteKey}
-              onVerify={setTurnstileToken}
+            <CaptchaWidget
+              onVerify={setCaptchaToken}
+              onExpire={() => setCaptchaToken('')}
             />
           </div>
         )}
@@ -358,7 +353,7 @@ export function SignUpForm({
           disabled={
             isLoading ||
             (requiresLegalConsent && !agreedToLegal) ||
-            !turnstileReady
+            !captchaReady
           }
         >
           {isLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}

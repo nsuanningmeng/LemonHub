@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/captcha"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -80,6 +81,9 @@ func GetStatus(c *gin.Context) {
 		"server_address":                     system_setting.ServerAddress,
 		"turnstile_check":                    common.TurnstileCheckEnabled,
 		"turnstile_site_key":                 common.TurnstileSiteKey,
+		"captcha_provider":                   captcha.Provider(),
+		"geetest_captcha_id":                 common.GeetestCaptchaId,
+		"tencent_captcha_app_id":             common.TencentCaptchaAppId,
 		"docs_link":                          operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":                     common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type

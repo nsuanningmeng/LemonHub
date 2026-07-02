@@ -106,8 +106,15 @@ const AUTH_SECTIONS = [
       <BotProtectionSection
         defaultValues={{
           TurnstileCheckEnabled: settings.TurnstileCheckEnabled,
+          CaptchaProvider: settings.CaptchaProvider,
           TurnstileSiteKey: settings.TurnstileSiteKey,
           TurnstileSecretKey: settings.TurnstileSecretKey,
+          GeetestCaptchaId: settings.GeetestCaptchaId,
+          GeetestCaptchaKey: settings.GeetestCaptchaKey,
+          TencentCaptchaAppId: settings.TencentCaptchaAppId,
+          TencentCaptchaAppSecretKey: settings.TencentCaptchaAppSecretKey,
+          TencentCloudSecretId: settings.TencentCloudSecretId,
+          TencentCloudSecretKey: settings.TencentCloudSecretKey,
         }}
       />
     ),

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useRef } from 'react'
+import type { CaptchaChannelProps } from './types'
 
 declare global {
   interface Window {
@@ -26,11 +27,8 @@ declare global {
   }
 }
 
-interface TurnstileProps {
+interface TurnstileProps extends CaptchaChannelProps {
   siteKey: string
-  onVerify: (token: string) => void
-  onExpire?: () => void
-  className?: string
 }
 
 export function Turnstile({
@@ -40,6 +38,10 @@ export function Turnstile({
   className,
 }: TurnstileProps) {
   const ref = useRef<HTMLDivElement | null>(null)
+  const onVerifyRef = useRef(onVerify)
+  const onExpireRef = useRef(onExpire)
+  onVerifyRef.current = onVerify
+  onExpireRef.current = onExpire
 
   useEffect(() => {
     const render = () => {
@@ -47,9 +49,9 @@ export function Turnstile({
       try {
         window.turnstile.render(ref.current, {
           sitekey: siteKey,
-          callback: (token: string) => onVerify(token),
-          'error-callback': () => onExpire?.(),
-          'expired-callback': () => onExpire?.(),
+          callback: (token: string) => onVerifyRef.current(token),
+          'error-callback': () => onExpireRef.current?.(),
+          'expired-callback': () => onExpireRef.current?.(),
         })
       } catch {
         /* empty */
@@ -70,7 +72,7 @@ export function Turnstile({
     s.defer = true
     s.onload = () => render()
     document.head.appendChild(s)
-  }, [siteKey, onVerify, onExpire])
+  }, [siteKey])
 
   return <div ref={ref} className={className} />
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/captcha"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -85,7 +86,7 @@ func GetOptions(c *gin.Context) {
 	for k, v := range common.OptionMap {
 		value := common.Interface2String(v)
 		isSensitiveKey := strings.HasSuffix(k, "Token") ||
-			strings.HasSuffix(k, "Secret") ||
+			strings.Contains(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
 			strings.HasSuffix(k, "secret") ||
 			strings.HasSuffix(k, "api_key")
@@ -208,12 +209,23 @@ func UpdateOption(c *gin.Context) {
 			return
 		}
 	case "TurnstileCheckEnabled":
-		if option.Value == "true" && common.TurnstileSiteKey == "" {
+		if option.Value == "true" && !captcha.ProviderConfigured() {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
-				"message": "无法启用 Turnstile 校验，请先填入 Turnstile 校验相关配置信息！",
+				"message": "无法启用人机验证，请先完善当前所选验证渠道的配置信息！",
 			})
 
+			return
+		}
+	case "CaptchaProvider":
+		v, _ := option.Value.(string)
+		switch v {
+		case captcha.ProviderTurnstile, captcha.ProviderGeetest, captcha.ProviderAltcha, captcha.ProviderTencent:
+		default:
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "无效的人机验证渠道，可选值：turnstile、geetest、altcha、tencent",
+			})
 			return
 		}
 	case "TelegramOAuthEnabled":

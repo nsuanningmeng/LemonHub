@@ -133,6 +133,13 @@ func InitOptionMap() {
 	common.OptionMap["WeChatAccountQRCodeImageURL"] = ""
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
+	common.OptionMap["CaptchaProvider"] = common.CaptchaProvider
+	common.OptionMap["GeetestCaptchaId"] = ""
+	common.OptionMap["GeetestCaptchaKey"] = ""
+	common.OptionMap["TencentCaptchaAppId"] = ""
+	common.OptionMap["TencentCaptchaAppSecretKey"] = ""
+	common.OptionMap["TencentCloudSecretId"] = ""
+	common.OptionMap["TencentCloudSecretKey"] = ""
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
@@ -508,6 +515,20 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TurnstileSiteKey = value
 	case "TurnstileSecretKey":
 		common.TurnstileSecretKey = value
+	case "CaptchaProvider":
+		common.CaptchaProvider = value
+	case "GeetestCaptchaId":
+		common.GeetestCaptchaId = value
+	case "GeetestCaptchaKey":
+		common.GeetestCaptchaKey = value
+	case "TencentCaptchaAppId":
+		common.TencentCaptchaAppId = value
+	case "TencentCaptchaAppSecretKey":
+		common.TencentCaptchaAppSecretKey = value
+	case "TencentCloudSecretId":
+		common.TencentCloudSecretId = value
+	case "TencentCloudSecretKey":
+		common.TencentCloudSecretKey = value
 	case "QuotaForNewUser":
 		common.QuotaForNewUser, _ = strconv.Atoi(value)
 	case "QuotaForInviter":

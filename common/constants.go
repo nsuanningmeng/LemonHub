@@ -142,6 +142,19 @@ var WeChatAccountQRCodeImageURL = ""
 var TurnstileSiteKey = ""
 var TurnstileSecretKey = ""
 
+// CaptchaProvider selects which human-verification channel guards the
+// anonymous auth endpoints when TurnstileCheckEnabled is on.
+// Valid values: turnstile | geetest | altcha | tencent
+var CaptchaProvider = "turnstile"
+
+var GeetestCaptchaId = ""
+var GeetestCaptchaKey = ""
+
+var TencentCaptchaAppId = ""
+var TencentCaptchaAppSecretKey = ""
+var TencentCloudSecretId = ""
+var TencentCloudSecretKey = ""
+
 var TelegramBotToken = ""
 var TelegramBotName = ""
 

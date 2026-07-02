@@ -31,6 +31,7 @@ import { ProfileSecurityCard } from './components/profile-security-card'
 import { ProfileSettingsCard } from './components/profile-settings-card'
 import { SidebarModulesCard } from './components/sidebar-modules-card'
 import { TwoFACard } from './components/two-fa-card'
+import { useCaptcha } from '@/features/auth/hooks/use-captcha'
 import { useProfile } from './hooks'
 
 export function Profile() {
@@ -39,10 +40,7 @@ export function Profile() {
   const permissions = useAuthStore((s) => s.auth.user?.permissions)
 
   const checkinEnabled = status?.checkin_enabled === true
-  const turnstileEnabled = !!(
-    status?.turnstile_check && status?.turnstile_site_key
-  )
-  const turnstileSiteKey = status?.turnstile_site_key || ''
+  const { isCaptchaEnabled } = useCaptcha()
   const canConfigureSidebar = permissions?.sidebar_settings !== false
 
   return (
@@ -72,8 +70,7 @@ export function Profile() {
                 {checkinEnabled && (
                   <CheckinCalendarCard
                     checkinEnabled={checkinEnabled}
-                    turnstileEnabled={turnstileEnabled}
-                    turnstileSiteKey={turnstileSiteKey}
+                    captchaEnabled={isCaptchaEnabled}
                   />
                 )}
                 {canConfigureSidebar && <SidebarModulesCard />}
