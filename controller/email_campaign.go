@@ -19,19 +19,23 @@ const maxEmailCampaignContentBytes = 60000
 
 // Bulk-send abuse guards.
 const (
-	// campaignDedupWindowSeconds is the window in which an identical (admin, site,
-	// subject, content) campaign is treated as a duplicate submit.
+	// campaignDedupWindowSeconds is the window in which an identical (admin,
+	// subject, content, audience) campaign is treated as a duplicate submit.
 	campaignDedupWindowSeconds = 60
-	// maxActiveCampaignsPerSite caps concurrent pending/sending campaigns per site.
-	maxActiveCampaignsPerSite = 2
+	// maxActiveCampaigns caps concurrent pending/sending campaigns globally: every
+	// campaign drains the same SMTP account at the full configured rate.
+	maxActiveCampaigns = 2
 )
 
 // createEmailCampaignRequest is the admin-supplied body for launching a bulk email.
 type createEmailCampaignRequest struct {
-	Subject      string `json:"subject"`
-	Content      string `json:"content"`       // markdown source
-	TargetGroup  string `json:"target_group"`  // "" = all groups
-	TargetStatus int    `json:"target_status"` // 0 = all, 1 = enabled only
+	Subject     string `json:"subject"`
+	Content     string `json:"content"`      // markdown source
+	TargetGroup string `json:"target_group"` // "" = all groups
+	// TargetStatus: 0 = all users, 1 = enabled users only. Pointer so an omitted
+	// field defaults to enabled-only — a bare request must opt IN to mailing
+	// disabled accounts, never do it by accident.
+	TargetStatus *int `json:"target_status"`
 }
 
 // ListEmailCampaigns GET /api/email-campaign/ — paginated list, newest first,
@@ -78,24 +82,50 @@ func CreateEmailCampaign(c *gin.Context) {
 		common.ApiErrorMsg(c, "content too long")
 		return
 	}
-	if req.TargetStatus != 0 && req.TargetStatus != 1 {
-		common.ApiErrorMsg(c, "invalid target_status")
-		return
+	targetStatus := 1 // default: enabled users only
+	if req.TargetStatus != nil {
+		if *req.TargetStatus != 0 && *req.TargetStatus != 1 {
+			common.ApiErrorMsg(c, "invalid target_status")
+			return
+		}
+		targetStatus = *req.TargetStatus
 	}
 
 	siteId := middleware.GetRequestSiteId(c)
 	createdBy := c.GetInt("id")
+	targetGroup := strings.TrimSpace(req.TargetGroup)
+	siteScope := middleware.EffectiveSiteScope(c)
 
-	// Idempotency: an accidental double-submit or client retry (same admin + site +
-	// subject + content within a short window) returns the existing campaign instead
-	// of launching a duplicate full-audience blast.
-	if dup, found, err := model.FindRecentDuplicateCampaign(createdBy, siteId, subject, content, common.GetTimestamp()-campaignDedupWindowSeconds); err == nil && found {
+	// Reject audiences that match nobody — almost always a typo in target_group
+	// (free-text input). Without this, the campaign would run and report
+	// "completed" having mailed no one. The count doubles as the campaign's
+	// TotalCount so the send loop does not have to recount.
+	candidates, err := model.CountMarketingCandidates(targetGroup, targetStatus, siteScope)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if candidates == 0 {
+		common.ApiErrorMsg(c, "no matching recipients — check the target group")
+		return
+	}
+
+	// Idempotency: an accidental double-submit or client retry (same admin +
+	// subject + content + audience within a short window) returns the existing
+	// campaign instead of launching a duplicate full-audience blast.
+	if dup, found, err := model.FindRecentDuplicateCampaign(createdBy, subject, content, targetGroup, targetStatus, common.GetTimestamp()-campaignDedupWindowSeconds); err == nil && found {
 		common.ApiSuccess(c, dup)
 		return
 	}
-	// Concurrency cap: bound simultaneous bulk sends per site so a burst of campaigns
-	// cannot multiply the effective send rate and exhaust SMTP / harm sender reputation.
-	if active, err := model.CountActiveCampaigns(siteId); err == nil && active >= maxActiveCampaignsPerSite {
+	// Concurrency cap: bound simultaneous bulk sends so a burst of campaigns cannot
+	// multiply the effective send rate and exhaust SMTP / harm sender reputation.
+	// Fails closed: if the count is unavailable we refuse rather than over-send.
+	active, err := model.CountActiveCampaigns()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if active >= maxActiveCampaigns {
 		common.ApiErrorMsg(c, "another email campaign is already in progress, please wait for it to finish")
 		return
 	}
@@ -104,11 +134,12 @@ func CreateEmailCampaign(c *gin.Context) {
 		SiteId:       siteId,
 		Subject:      subject,
 		Content:      content,
-		TargetGroup:  strings.TrimSpace(req.TargetGroup),
-		TargetStatus: req.TargetStatus,
+		TargetGroup:  targetGroup,
+		TargetStatus: targetStatus,
 		Source:       model.EmailCampaignSourceManual,
 		Status:       model.EmailCampaignStatusPending,
 		CreatedBy:    createdBy,
+		TotalCount:   int(candidates),
 	}
 	if err := campaign.Insert(); err != nil {
 		common.ApiError(c, err)
@@ -124,8 +155,11 @@ func CreateEmailCampaign(c *gin.Context) {
 		"source":        campaign.Source,
 	})
 
-	// Launch send asynchronously; recipients are bounded by the operator's site scope.
-	service.StartEmailCampaign(campaign, middleware.EffectiveSiteScope(c))
+	// Launch send asynchronously; recipients are bounded by the operator's site
+	// scope. The goroutine gets its own copy: it mutates status/counters while
+	// ApiSuccess below JSON-serializes the original, which would otherwise race.
+	campaignForSend := *campaign
+	service.StartEmailCampaign(&campaignForSend, siteScope)
 
 	common.ApiSuccess(c, campaign)
 }

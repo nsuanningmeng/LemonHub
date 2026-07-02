@@ -5359,5 +5359,9 @@
   "Cloud API Secret ID": "云 API SecretId",
   "Cloud API Secret Key": "云 API SecretKey",
   "Tencent Cloud CAM SecretId used to sign verify calls": "用于签名校验请求的腾讯云 CAM SecretId",
-  "Tencent Cloud CAM SecretKey used to sign verify calls": "用于签名校验请求的腾讯云 CAM SecretKey"
+  "Tencent Cloud CAM SecretKey used to sign verify calls": "用于签名校验请求的腾讯云 CAM SecretKey",
+  "Audience": "发送对象",
+  "All groups": "全部分组",
+  "Subject is required": "请填写邮件主题",
+  "Email content is required": "请填写邮件内容"
 }

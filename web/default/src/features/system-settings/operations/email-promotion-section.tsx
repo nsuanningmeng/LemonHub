@@ -268,7 +268,9 @@ export function EmailPromotionSection({
       subject: '',
       content: '',
       targetGroup: '',
-      targetStatus: '0',
+      // Default to enabled users only — mailing disabled accounts must be an
+      // explicit admin choice, mirroring the backend default.
+      targetStatus: '1',
     },
   })
 
@@ -283,7 +285,7 @@ export function EmailPromotionSection({
         subject: '',
         content: '',
         targetGroup: '',
-        targetStatus: '0',
+        targetStatus: '1',
       })
       setPreviewMode(false)
       setConfirmOpen(false)
@@ -624,6 +626,18 @@ export function EmailPromotionSection({
               )}
             </DialogDescription>
           </DialogHeader>
+          {pendingPayload && (
+            <div className='text-muted-foreground text-sm'>
+              <span className='text-foreground font-medium'>
+                {t('Audience')}:
+              </span>{' '}
+              {pendingPayload.target_group || t('All groups')}
+              {' · '}
+              {pendingPayload.target_status === 1
+                ? t('Enabled users only')
+                : t('All users')}
+            </div>
+          )}
           <DialogFooter>
             <DialogClose
               render={<Button variant='outline' />}

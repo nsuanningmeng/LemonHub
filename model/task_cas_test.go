@@ -53,6 +53,7 @@ func TestMain(m *testing.M) {
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
+		&EmailCampaign{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}

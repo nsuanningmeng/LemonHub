@@ -120,6 +120,11 @@ func main() {
 	// Periodic ticket-attachment cleanup (orphaned uploads + closed-ticket retention)
 	service.StartTicketAttachmentCleanupTask()
 
+	// Resume (or close out) bulk-email campaigns orphaned by a crash/restart, so an
+	// interrupted send neither loses its remaining recipients nor blocks the per-site
+	// active-campaign cap forever.
+	service.StartEmailCampaignRecoveryTask()
+
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()

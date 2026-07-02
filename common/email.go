@@ -4,11 +4,21 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"net"
 	"net/smtp"
 	"slices"
 	"strings"
 	"time"
 )
+
+// smtpDialTimeout bounds the TCP/TLS connect to the SMTP server.
+const smtpDialTimeout = 30 * time.Second
+
+// smtpSessionTimeout bounds one full SMTP session (connect through QUIT) via a
+// connection deadline, so a stalled server can never hang a caller forever. The
+// bulk-email recovery sweep relies on every send finishing (or failing) within
+// this bound to tell live campaigns apart from orphaned ones.
+const smtpSessionTimeout = 2 * time.Minute
 
 func generateMessageID() (string, error) {
 	split := strings.Split(SMTPFrom, "@")
@@ -42,11 +52,13 @@ func smtpTLSConfig() *tls.Config {
 }
 
 func newSMTPClient(addr string) (*smtp.Client, error) {
+	dialer := &net.Dialer{Timeout: smtpDialTimeout}
 	if SMTPSSLEnabled || (SMTPPort == 465 && !SMTPStartTLSEnabled) {
-		conn, err := tls.Dial("tcp", addr, smtpTLSConfig())
+		conn, err := tls.DialWithDialer(dialer, "tcp", addr, smtpTLSConfig())
 		if err != nil {
 			return nil, err
 		}
+		_ = conn.SetDeadline(time.Now().Add(smtpSessionTimeout))
 		client, err := smtp.NewClient(conn, SMTPServer)
 		if err != nil {
 			_ = conn.Close()
@@ -55,8 +67,16 @@ func newSMTPClient(addr string) (*smtp.Client, error) {
 		return client, nil
 	}
 
-	client, err := smtp.Dial(addr)
+	conn, err := dialer.Dial("tcp", addr)
 	if err != nil {
+		return nil, err
+	}
+	// The deadline set on the raw conn keeps applying after a STARTTLS upgrade,
+	// bounding the whole session.
+	_ = conn.SetDeadline(time.Now().Add(smtpSessionTimeout))
+	client, err := smtp.NewClient(conn, SMTPServer)
+	if err != nil {
+		_ = conn.Close()
 		return nil, err
 	}
 
@@ -134,9 +154,12 @@ func SendEmail(subject string, receiver string, content string) error {
 	if err != nil {
 		return err
 	}
-	err = client.Quit()
-	if err != nil {
-		SysError(fmt.Sprintf("failed to send email to %s: %v", receiver, err))
+	// The message was accepted by the server once DATA closed successfully. A
+	// failure during QUIT (or the session deadline firing here) must not be
+	// reported as a send failure — callers would wrongly count a delivered email
+	// as failed (and a user might be told their verification mail never went out).
+	if err = client.Quit(); err != nil {
+		SysError(fmt.Sprintf("email to %s delivered but QUIT failed: %v", receiver, err))
 	}
-	return err
+	return nil
 }
