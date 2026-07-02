@@ -5358,10 +5358,10 @@
     "Cloud API Secret ID": "Secret ID của Cloud API",
     "Cloud API Secret Key": "Secret Key của Cloud API",
     "Tencent Cloud CAM SecretId used to sign verify calls": "SecretId CAM Tencent Cloud dùng để ký các lệnh gọi xác minh",
-    "Tencent Cloud CAM SecretKey used to sign verify calls": "SecretKey CAM Tencent Cloud dùng để ký các lệnh gọi xác minh"
-  },
-  "Audience": "Audience",
-  "All groups": "All groups",
-  "Subject is required": "Subject is required",
-  "Email content is required": "Email content is required"
+    "Tencent Cloud CAM SecretKey used to sign verify calls": "SecretKey CAM Tencent Cloud dùng để ký các lệnh gọi xác minh",
+    "Audience": "Đối tượng nhận",
+    "All groups": "Tất cả các nhóm",
+    "Subject is required": "Vui lòng nhập chủ đề email",
+    "Email content is required": "Vui lòng nhập nội dung email"
+  }
 }

@@ -5358,10 +5358,10 @@
     "Cloud API Secret ID": "クラウド API シークレット ID",
     "Cloud API Secret Key": "クラウド API シークレットキー",
     "Tencent Cloud CAM SecretId used to sign verify calls": "検証呼び出しの署名に使用する Tencent Cloud CAM SecretId",
-    "Tencent Cloud CAM SecretKey used to sign verify calls": "検証呼び出しの署名に使用する Tencent Cloud CAM SecretKey"
-  },
-  "Audience": "Audience",
-  "All groups": "All groups",
-  "Subject is required": "Subject is required",
-  "Email content is required": "Email content is required"
+    "Tencent Cloud CAM SecretKey used to sign verify calls": "検証呼び出しの署名に使用する Tencent Cloud CAM SecretKey",
+    "Audience": "送信対象",
+    "All groups": "すべてのグループ",
+    "Subject is required": "メールの件名を入力してください",
+    "Email content is required": "メールの本文を入力してください"
+  }
 }
