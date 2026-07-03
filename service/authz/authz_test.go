@@ -51,6 +51,11 @@ func TestInitSeedsBuiltInRolesAndPoliciesOnce(t *testing.T) {
 	assert.True(t, Can(2, common.RoleAdminUser, ChannelWrite))
 	assert.False(t, Can(2, common.RoleAdminUser, ChannelSensitiveWrite))
 	assert.False(t, Can(3, common.RoleCommonUser, ChannelRead))
+	// secret_view is not part of the admin baseline (no DefaultRoles); only root
+	// holds it implicitly. This gates the multi-key get_key_status key preview so
+	// channel:operate-only admins never receive raw key bytes.
+	assert.True(t, Can(1, common.RoleRootUser, ChannelSecretView))
+	assert.False(t, Can(2, common.RoleAdminUser, ChannelSecretView))
 }
 
 func TestInitOnSlaveOnlyLoadsPolicies(t *testing.T) {

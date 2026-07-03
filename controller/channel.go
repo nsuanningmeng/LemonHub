@@ -1429,7 +1429,11 @@ type KeyStatus struct {
 	Status       int    `json:"status"` // 1: enabled, 2: disabled
 	DisabledTime int64  `json:"disabled_time,omitempty"`
 	Reason       string `json:"reason,omitempty"`
-	KeyPreview   string `json:"key_preview"` // first 10 chars of key for identification
+	// KeyPreview holds the first 10 chars of the key for identification. It is raw
+	// key material, so it is only populated for callers permitted to view channel
+	// secrets (secret_view/root) and omitted otherwise — channel:operate holders get
+	// the status list without any key bytes.
+	KeyPreview string `json:"key_preview,omitempty"`
 }
 
 // ManageMultiKeys handles multi-key management operations
@@ -1481,6 +1485,11 @@ func ManageMultiKeys(c *gin.Context) {
 	case "get_key_status":
 		keys := channel.GetKeys()
 
+		// Whether this caller may see raw key material. Mirrors the secret-isolation
+		// model that gates GetChannelKey: root and secret_view holders may see key
+		// previews; channel:operate-only admins must not.
+		canViewSecret := authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSecretView)
+
 		// Default pagination parameters
 		page := request.Page
 		pageSize := request.PageSize
@@ -1526,10 +1535,15 @@ func ManageMultiKeys(c *gin.Context) {
 				}
 			}
 
-			// Create key preview (first 10 chars)
-			keyPreview := key
-			if len(key) > 10 {
-				keyPreview = key[:10] + "..."
+			// Create key preview (first 10 chars) — only for callers allowed to view
+			// secrets; others get an empty preview (omitted from JSON) and identify
+			// keys by Index instead. Never leak raw key bytes to channel:operate.
+			keyPreview := ""
+			if canViewSecret {
+				keyPreview = key
+				if len(key) > 10 {
+					keyPreview = key[:10] + "..."
+				}
 			}
 
 			allKeyStatusList = append(allKeyStatusList, KeyStatus{
