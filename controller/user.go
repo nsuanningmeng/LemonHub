@@ -1269,6 +1269,13 @@ func ManageUser(c *gin.Context) {
 				common.ApiError(c, err)
 				return
 			}
+			// Unlike add/subtract (which sync the cache via Increase/DecreaseUserQuota),
+			// this raw absolute UPDATE bypasses the quota cache. Invalidate it so relay
+			// pre-consume re-reads the new quota from the DB instead of over-spending
+			// against the stale cached value until the Redis TTL expires.
+			if err := model.InvalidateUserCache(user.Id); err != nil {
+				common.SysLog(fmt.Sprintf("failed to invalidate user cache for user %d: %s", user.Id, err.Error()))
+			}
 			recordManageAuditFor(c, user.Id, "user.quota_override", map[string]interface{}{
 				"from": logger.LogQuota(oldQuota),
 				"to":   logger.LogQuota(req.Value),

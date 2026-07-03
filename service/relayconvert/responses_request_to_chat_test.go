@@ -224,6 +224,44 @@ func TestResponsesRequestToChatCompletionsRequestCustomToolCallPreservesRawShape
 	assert.Equal(t, "patch body", gjson.GetBytes(toolCalls[0].Custom, "input").String())
 }
 
+// Consecutive tool-call items must collapse onto ONE trailing assistant message,
+// preserving order, and a non-tool item must break the run into a new assistant
+// message. This locks the O(N)-batching conversion (which replaced a per-item
+// re-parse+re-marshal that was O(N^2) and a request-triggered DoS).
+func TestResponsesRequestToChatCompletionsRequestBatchesConsecutiveToolCalls(t *testing.T) {
+	got, err := ResponsesRequestToChatCompletionsRequest(&dto.OpenAIResponsesRequest{
+		Model: "gpt-test",
+		Input: mustRawMessage(t, []map[string]any{
+			{"type": "function_call", "call_id": "c1", "name": "f1", "arguments": `{"a":1}`},
+			{"type": "function_call", "call_id": "c2", "name": "f2", "arguments": `{"a":2}`},
+			{"type": "custom_tool_call", "call_id": "c3", "name": "patch", "input": "body"},
+			// A tool output breaks the assistant run.
+			{"type": "function_call_output", "call_id": "c1", "output": map[string]any{"ok": true}},
+			// This tool call must start a fresh assistant message.
+			{"type": "function_call", "call_id": "c4", "name": "f4", "arguments": `{"a":4}`},
+		}),
+	})
+	require.NoError(t, err)
+
+	require.Len(t, got.Messages, 3)
+
+	assert.Equal(t, "assistant", got.Messages[0].Role)
+	firstRun := got.Messages[0].ParseToolCalls()
+	require.Len(t, firstRun, 3)
+	assert.Equal(t, []string{"c1", "c2", "c3"},
+		[]string{firstRun[0].ID, firstRun[1].ID, firstRun[2].ID})
+	assert.Equal(t, "function", firstRun[0].Type)
+	assert.Equal(t, dto.CustomType, firstRun[2].Type)
+
+	assert.Equal(t, "tool", got.Messages[1].Role)
+	assert.Equal(t, "c1", got.Messages[1].ToolCallId)
+
+	assert.Equal(t, "assistant", got.Messages[2].Role)
+	secondRun := got.Messages[2].ParseToolCalls()
+	require.Len(t, secondRun, 1)
+	assert.Equal(t, "c4", secondRun[0].ID)
+}
+
 func TestResponsesRequestToChatCompletionsRequestRejectsStatefulFields(t *testing.T) {
 	tests := []struct {
 		name string

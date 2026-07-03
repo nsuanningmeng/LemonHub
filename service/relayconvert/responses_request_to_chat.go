@@ -138,34 +138,63 @@ func responsesRequestMessagesToChat(req *dto.OpenAIResponsesRequest) ([]dto.Mess
 		if err := common.Unmarshal(req.Input, &items); err != nil {
 			return nil, fmt.Errorf("invalid input array: %w", err)
 		}
+		// Consecutive function/custom tool-call items collapse onto a single trailing
+		// assistant message. Accumulate them in a structured slice and marshal that
+		// message's tool_calls exactly once when the run ends, instead of re-parsing
+		// and re-marshaling the growing slice on every item: the latter is O(N^2) in
+		// the client-controlled, uncapped number of tool-call items and is a
+		// single-request CPU/allocation DoS.
+		var runCalls []dto.ToolCallRequest
+		runIdx := -1
+		flushToolCallRun := func() {
+			if runIdx >= 0 {
+				messages[runIdx].SetToolCalls(runCalls)
+			}
+			runCalls = nil
+			runIdx = -1
+		}
 		for _, item := range items {
+			itemType := strings.TrimSpace(common.Interface2String(item["type"]))
+			if itemType == responsesInputTypeFunctionCall || itemType == responsesInputTypeCustomToolCall {
+				var toolCall dto.ToolCallRequest
+				var err error
+				if itemType == responsesInputTypeFunctionCall {
+					toolCall, err = responsesFunctionCallItemToChatToolCall(item)
+				} else {
+					toolCall, err = responsesCustomToolCallItemToChatToolCall(item)
+				}
+				if err != nil {
+					return nil, err
+				}
+				if runIdx < 0 {
+					if len(messages) == 0 || messages[len(messages)-1].Role != "assistant" {
+						messages = append(messages, dto.Message{Role: "assistant"})
+					}
+					runIdx = len(messages) - 1
+				}
+				runCalls = append(runCalls, toolCall)
+				continue
+			}
+			flushToolCallRun()
 			nextMessages, err := responsesInputItemToChatMessages(item, messages)
 			if err != nil {
 				return nil, err
 			}
 			messages = nextMessages
 		}
+		flushToolCallRun()
 		return messages, nil
 	default:
 		return nil, fmt.Errorf("unsupported responses input type %q", common.GetJsonType(req.Input))
 	}
 }
 
+// responsesInputItemToChatMessages converts a single non-tool-call input item.
+// Function/custom tool-call items are handled by the caller's batching loop (see
+// responsesRequestMessagesToChat) so their tool_calls are marshaled once per run.
 func responsesInputItemToChatMessages(item map[string]any, messages []dto.Message) ([]dto.Message, error) {
 	itemType := strings.TrimSpace(common.Interface2String(item["type"]))
 	switch itemType {
-	case responsesInputTypeFunctionCall:
-		toolCall, err := responsesFunctionCallItemToChatToolCall(item)
-		if err != nil {
-			return nil, err
-		}
-		return appendToolCallToLastAssistant(messages, toolCall), nil
-	case responsesInputTypeCustomToolCall:
-		toolCall, err := responsesCustomToolCallItemToChatToolCall(item)
-		if err != nil {
-			return nil, err
-		}
-		return appendToolCallToLastAssistant(messages, toolCall), nil
 	case responsesInputTypeFunctionCallOutput:
 		callID := strings.TrimSpace(common.Interface2String(item["call_id"]))
 		content := responseToolOutputToChatContent(item["output"])
@@ -291,19 +320,6 @@ func responsesCustomToolCallItemToChatToolCall(item map[string]any) (dto.ToolCal
 			Arguments: responsesArgumentsString(item["input"]),
 		},
 	}, nil
-}
-
-func appendToolCallToLastAssistant(messages []dto.Message, toolCall dto.ToolCallRequest) []dto.Message {
-	if len(messages) == 0 || messages[len(messages)-1].Role != "assistant" {
-		messages = append(messages, dto.Message{Role: "assistant"})
-	}
-
-	idx := len(messages) - 1
-	toolCalls := messages[idx].ParseToolCalls()
-	toolCalls = append(toolCalls, toolCall)
-	toolCallsRaw, _ := common.Marshal(toolCalls)
-	messages[idx].ToolCalls = toolCallsRaw
-	return messages
 }
 
 func responsesRequestToolsToChat(raw json.RawMessage) ([]dto.ToolCallRequest, error) {
