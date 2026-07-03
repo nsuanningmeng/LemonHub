@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import type { AdminPermissionMatrix } from '@/lib/admin-permissions'
+
 // ============================================================================
 // User Schema & Types
 // ============================================================================
@@ -59,6 +61,9 @@ export const userSchema = z.object({
   last_login_at: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
+  admin_permissions: z
+    .record(z.string(), z.record(z.string(), z.boolean()))
+    .optional(),
 })
 export type User = z.infer<typeof userSchema>
 
@@ -110,6 +115,7 @@ export interface UserFormData {
   remark?: string // Only used when updating user
   aff_commission_percent?: number | null // Only used when updating user; null clears the override
   aff_cash_settled?: boolean // Only used when updating user; marks inviter as cash-settled promoter
+  admin_permissions?: AdminPermissionMatrix
 }
 
 export type ManageUserAction =
