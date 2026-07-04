@@ -127,6 +127,10 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			delete(otherMap, "audit_info")
 			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
+			// Hide model redirection from users: they only see the requested
+			// model name; the actual upstream model stays admin-only.
+			delete(otherMap, "is_model_mapped")
+			delete(otherMap, "upstream_model_name")
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}

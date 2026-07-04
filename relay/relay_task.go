@@ -20,6 +20,8 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type TaskSubmitResult struct {
@@ -539,6 +541,34 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 }
 
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+	// Hide model redirection from user-facing task responses: only the
+	// requested model is exposed. Admin task queries re-attach the full
+	// properties and raw data (see controller.tasksToDto).
+	props := task.Properties
+	props.UpstreamModelName = ""
+	data := task.Data
+	failReason := task.FailReason
+	mapped, origin := task.Properties.UpstreamModelName, task.Properties.OriginModelName
+	if mapped != "" && origin != "" && mapped != origin {
+		if len(data) > 0 {
+			// Data carries the raw upstream body (e.g. Gemini/Vertex operation
+			// "name" embeds models/<mapped>/...); rewrite it to the requested model.
+			data = bytes.ReplaceAll(data, []byte(mapped), []byte(origin))
+		}
+		// FailReason carries raw upstream failure text, which can also name
+		// the mapped model.
+		failReason = strings.ReplaceAll(failReason, mapped, origin)
+	}
+	if len(data) > 0 {
+		// Gemini/Vertex store the raw upstream operation JSON; its "name"
+		// embeds infrastructure details (projects/<gcp-project>/locations/
+		// <region>/.../operations/<id>). Replace it with the public task id.
+		if name := gjson.GetBytes(data, "name").String(); strings.Contains(name, "/operations/") {
+			if redacted, err := sjson.SetBytes(data, "name", task.TaskID); err == nil {
+				data = redacted
+			}
+		}
+	}
 	return &dto.TaskDto{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,
@@ -551,14 +581,14 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Quota:      task.Quota,
 		Action:     task.Action,
 		Status:     string(task.Status),
-		FailReason: task.FailReason,
+		FailReason: failReason,
 		ResultURL:  task.GetResultURL(),
 		SubmitTime: task.SubmitTime,
 		StartTime:  task.StartTime,
 		FinishTime: task.FinishTime,
 		Progress:   task.Progress,
-		Properties: task.Properties,
+		Properties: props,
 		Username:   task.Username,
-		Data:       task.Data,
+		Data:       data,
 	}
 }

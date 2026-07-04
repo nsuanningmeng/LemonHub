@@ -9,6 +9,10 @@ const (
 
 	ContextKeyOriginalModel    ContextKey = "original_model"
 	ContextKeyRequestStartTime ContextKey = "request_start_time"
+	// ContextKeyUpstreamModelName stores the mapped (redirected) upstream model
+	// name for the current channel attempt. Used to scrub the mapped name from
+	// user-visible error text so model redirection is not revealed.
+	ContextKeyUpstreamModelName ContextKey = "upstream_model_name"
 
 	/* token related keys */
 	ContextKeyTokenUnlimited         ContextKey = "token_unlimited_quota"

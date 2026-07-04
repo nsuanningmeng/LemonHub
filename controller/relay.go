@@ -90,7 +90,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			newAPIError.SetMessage(common.MessageWithRequestId(maskMappedModelName(c, newAPIError.Error()), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -384,6 +384,65 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	return operation_setting.ShouldRetryByStatusCode(code)
 }
 
+// maskMappedModelName hides model redirection from user-visible error text:
+// upstream error messages routinely embed the actual (mapped) model name, so
+// replace it with the model the user requested. Only whole model-name tokens
+// are replaced — a mapped "gpt-5" must not rewrite "gpt-5-nano" into
+// "gpt-5-mini-nano".
+func maskMappedModelName(c *gin.Context, message string) string {
+	upstreamModel := common.GetContextKeyString(c, constant.ContextKeyUpstreamModelName)
+	if upstreamModel == "" || message == "" {
+		return message
+	}
+	originModel := c.GetString("original_model")
+	if originModel == "" || originModel == upstreamModel {
+		return message
+	}
+
+	isAlnum := func(b byte) bool {
+		return ('0' <= b && b <= '9') || ('a' <= b && b <= 'z') || ('A' <= b && b <= 'Z')
+	}
+	// A match extends into a longer model token when the adjacent character is
+	// alphanumeric, or is a name separator (-._) glued to more alphanumerics.
+	continuesToken := func(pos int, forward bool) bool {
+		if pos < 0 || pos >= len(message) {
+			return false
+		}
+		b := message[pos]
+		if isAlnum(b) {
+			return true
+		}
+		if b == '-' || b == '.' || b == '_' {
+			next := pos + 1
+			if !forward {
+				next = pos - 1
+			}
+			return next >= 0 && next < len(message) && isAlnum(message[next])
+		}
+		return false
+	}
+
+	var sb strings.Builder
+	start := 0
+	for {
+		idx := strings.Index(message[start:], upstreamModel)
+		if idx < 0 {
+			sb.WriteString(message[start:])
+			break
+		}
+		matchStart := start + idx
+		matchEnd := matchStart + len(upstreamModel)
+		sb.WriteString(message[start:matchStart])
+		if continuesToken(matchStart-1, false) || continuesToken(matchEnd, true) {
+			sb.WriteString(upstreamModel)
+		} else {
+			sb.WriteString(originModel)
+		}
+		start = matchEnd
+	}
+	return sb.String()
+}
+
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
@@ -412,6 +471,13 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		other["channel_id"] = channelId
 		other["channel_name"] = c.GetString("channel_name")
 		other["channel_type"] = c.GetInt("channel_type")
+		if upstreamModel := common.GetContextKeyString(c, constant.ContextKeyUpstreamModelName); upstreamModel != "" {
+			// The log content below is scrubbed of the mapped model name;
+			// keep the actual upstream model visible to admins here
+			// (formatUserLogs strips these keys for non-admin viewers).
+			other["is_model_mapped"] = true
+			other["upstream_model_name"] = upstreamModel
+		}
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
 		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
@@ -426,7 +492,7 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, err.MaskSensitiveErrorWithStatusCode(), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, maskMappedModelName(c, err.MaskSensitiveErrorWithStatusCode()), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
 }
@@ -640,6 +706,8 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
+	// 任务错误多为上游原文透传，可能含映射后的真实模型名，需替换为请求模型名
+	taskErr.Message = maskMappedModelName(c, taskErr.Message)
 	c.JSON(taskErr.StatusCode, taskErr)
 }
 

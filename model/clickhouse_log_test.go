@@ -141,6 +141,28 @@ func TestEnsureLogRequestId(t *testing.T) {
 	assert.NotPanics(t, func() { ensureLogRequestId(nil) })
 }
 
+func TestFormatUserLogsStripsAdminOnlyFields(t *testing.T) {
+	other := map[string]interface{}{
+		"model_ratio":         2.5,
+		"admin_info":          map[string]interface{}{"use_channel": []string{"1"}},
+		"audit_info":          map[string]interface{}{"operator": "root"},
+		"stream_status":       map[string]interface{}{"status": "ok"},
+		"is_model_mapped":     true,
+		"upstream_model_name": "real-upstream-model",
+	}
+	logs := []*Log{{ChannelName: "secret-channel", Other: common.MapToJsonStr(other)}}
+
+	formatUserLogs(logs, 0)
+
+	assert.Empty(t, logs[0].ChannelName)
+	sanitized, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	assert.Contains(t, sanitized, "model_ratio")
+	for _, key := range []string{"admin_info", "audit_info", "stream_status", "is_model_mapped", "upstream_model_name"} {
+		assert.NotContains(t, sanitized, key)
+	}
+}
+
 func TestAssignDisplayLogIds(t *testing.T) {
 	logs := []*Log{{}, {}, {}}
 

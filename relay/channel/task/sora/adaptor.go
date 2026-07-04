@@ -252,6 +252,11 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	// 使用公开 task_xxxx ID 返回给客户端
 	dResp.ID = info.PublicTaskID
 	dResp.TaskID = info.PublicTaskID
+	// Hide model redirection: report the model the user requested, not the
+	// mapped upstream model echoed back by OpenAI.
+	if info.OriginModelName != "" {
+		dResp.Model = info.OriginModelName
+	}
 	c.JSON(http.StatusOK, dResp)
 	return upstreamID, responseBody, nil
 }
@@ -326,6 +331,13 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
 	var err error
 	if data, err = sjson.SetBytes(data, "id", task.TaskID); err != nil {
 		return nil, errors.Wrap(err, "set id failed")
+	}
+	// Hide model redirection: task.Data is the raw upstream body whose model
+	// field carries the mapped upstream model; report the requested model.
+	if origin := task.Properties.OriginModelName; origin != "" {
+		if data, err = sjson.SetBytes(data, "model", origin); err != nil {
+			return nil, errors.Wrap(err, "set model failed")
+		}
 	}
 	return data, nil
 }

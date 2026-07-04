@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -72,7 +73,22 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 			finalUpstreamModelName = info.UpstreamModelName
 		}
 		info.UpstreamModelName = finalUpstreamModelName
-		info.OriginModelName = ratio_setting.WithCompactModelSuffix(finalUpstreamModelName)
+		// Bill and log by the model the user requested; the mapped upstream
+		// model must not surface in user-visible fields (log model column,
+		// rankings, metrics).
+		info.OriginModelName = ratio_setting.WithCompactModelSuffix(mappingModelName)
+	}
+	if c != nil {
+		// Expose the mapped model for the error path, so user-visible error
+		// text can be scrubbed (see controller.maskMappedModelName). Always
+		// overwrite: retries may land on a channel without mapping, and a
+		// stale value from a previous attempt must not scrub that channel's
+		// error text.
+		mappedName := ""
+		if info.IsModelMapped && info.UpstreamModelName != "" {
+			mappedName = info.UpstreamModelName
+		}
+		c.Set(string(constant.ContextKeyUpstreamModelName), mappedName)
 	}
 	if request != nil {
 		request.SetModelName(info.UpstreamModelName)

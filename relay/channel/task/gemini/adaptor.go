@@ -244,12 +244,17 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
-	upstreamTaskID := task.GetUpstreamTaskID()
-	upstreamName, err := taskcommon.DecodeLocalTaskID(upstreamTaskID)
-	if err != nil {
-		upstreamName = ""
+	// Prefer the model the user requested; the operation name carries the
+	// mapped upstream model, kept only as a fallback for legacy tasks.
+	modelName := task.Properties.OriginModelName
+	if strings.TrimSpace(modelName) == "" {
+		upstreamTaskID := task.GetUpstreamTaskID()
+		upstreamName, err := taskcommon.DecodeLocalTaskID(upstreamTaskID)
+		if err != nil {
+			upstreamName = ""
+		}
+		modelName = extractModelFromOperationName(upstreamName)
 	}
-	modelName := extractModelFromOperationName(upstreamName)
 	if strings.TrimSpace(modelName) == "" {
 		modelName = "veo-3.0-generate-001"
 	}
