@@ -41,15 +41,27 @@ jobs:
         with:
           go-version: '>=1.25.1'
 
-      - name: Build frontend
+      - name: Build frontend (default)
         env:
           CI: ""
           NODE_OPTIONS: "--max-old-space-size=4096"
         run: |
           cd web
-          bun install
+          bun install --frozen-lockfile
+          cd default
           DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION=$(git describe --tags) bun run build
-          cd ..
+          cd ../..
+
+      - name: Build frontend (classic)
+        env:
+          CI: ""
+          NODE_OPTIONS: "--max-old-space-size=4096"
+        run: |
+          cd web
+          bun install --filter ./classic --frozen-lockfile
+          cd classic
+          VITE_REACT_APP_VERSION=$(git describe --tags) bun run build
+          cd ../..
 
       # - name: Build Go binary (macos/Linux)
       #   if: runner.os != 'Windows'
