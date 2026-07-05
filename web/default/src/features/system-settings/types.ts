@@ -362,6 +362,16 @@ export type OperationsSettings = {
   SMTPStartTLSEnabled: boolean
   SMTPInsecureSkipVerify: boolean
   SMTPForceAuthLogin: boolean
+  MarketingSMTPServer: string
+  MarketingSMTPPort: string
+  MarketingSMTPAccount: string
+  MarketingSMTPFrom: string
+  MarketingSMTPToken: string
+  MarketingSMTPSSLEnabled: boolean
+  MarketingSMTPStartTLSEnabled: boolean
+  MarketingSMTPInsecureSkipVerify: boolean
+  MarketingSMTPForceAuthLogin: boolean
+  EmailDeliveryEventToken: string
   WorkerUrl: string
   WorkerValidKey: string
   WorkerAllowHttpImageRequestEnabled: boolean

@@ -27,6 +27,7 @@ type fakeSMTPServer struct {
 	cert              tls.Certificate
 	advertiseSTARTTLS bool
 	authMechanisms    []string
+	rejectRcptWith    string // non-empty: reply this line to every RCPT TO
 	messages          chan string
 	authCommands      chan string
 	startTLSCommands  chan string
@@ -171,7 +172,11 @@ func (s *fakeSMTPServer) serve() {
 				return
 			}
 		case strings.HasPrefix(upperCommand, "RCPT TO:"):
-			if err := writeSMTPLine(rw, "250 2.1.5 Recipient OK"); err != nil {
+			reply := "250 2.1.5 Recipient OK"
+			if s.rejectRcptWith != "" {
+				reply = s.rejectRcptWith
+			}
+			if err := writeSMTPLine(rw, reply); err != nil {
 				return
 			}
 		case upperCommand == "DATA":
@@ -251,6 +256,15 @@ func withSMTPSettings(t *testing.T) {
 	originalSMTPAccount := SMTPAccount
 	originalSMTPFrom := SMTPFrom
 	originalSMTPToken := SMTPToken
+	originalMarketingSMTPServer := MarketingSMTPServer
+	originalMarketingSMTPPort := MarketingSMTPPort
+	originalMarketingSMTPSSLEnabled := MarketingSMTPSSLEnabled
+	originalMarketingSMTPStartTLSEnabled := MarketingSMTPStartTLSEnabled
+	originalMarketingSMTPInsecureSkipVerify := MarketingSMTPInsecureSkipVerify
+	originalMarketingSMTPForceAuthLogin := MarketingSMTPForceAuthLogin
+	originalMarketingSMTPAccount := MarketingSMTPAccount
+	originalMarketingSMTPFrom := MarketingSMTPFrom
+	originalMarketingSMTPToken := MarketingSMTPToken
 	originalSystemName := SystemName
 
 	t.Cleanup(func() {
@@ -263,8 +277,26 @@ func withSMTPSettings(t *testing.T) {
 		SMTPAccount = originalSMTPAccount
 		SMTPFrom = originalSMTPFrom
 		SMTPToken = originalSMTPToken
+		MarketingSMTPServer = originalMarketingSMTPServer
+		MarketingSMTPPort = originalMarketingSMTPPort
+		MarketingSMTPSSLEnabled = originalMarketingSMTPSSLEnabled
+		MarketingSMTPStartTLSEnabled = originalMarketingSMTPStartTLSEnabled
+		MarketingSMTPInsecureSkipVerify = originalMarketingSMTPInsecureSkipVerify
+		MarketingSMTPForceAuthLogin = originalMarketingSMTPForceAuthLogin
+		MarketingSMTPAccount = originalMarketingSMTPAccount
+		MarketingSMTPFrom = originalMarketingSMTPFrom
+		MarketingSMTPToken = originalMarketingSMTPToken
 		SystemName = originalSystemName
 	})
+	MarketingSMTPServer = ""
+	MarketingSMTPPort = 587
+	MarketingSMTPSSLEnabled = false
+	MarketingSMTPStartTLSEnabled = false
+	MarketingSMTPInsecureSkipVerify = false
+	MarketingSMTPForceAuthLogin = false
+	MarketingSMTPAccount = ""
+	MarketingSMTPFrom = ""
+	MarketingSMTPToken = ""
 }
 
 func TestSendEmailUsesExplicitStartTLSWithInsecureCertificate(t *testing.T) {
@@ -369,7 +401,7 @@ func TestSMTPPlainAuthRejectsRemotePlaintextConnection(t *testing.T) {
 	client, err := smtp.NewClient(conn, SMTPServer)
 	require.NoError(t, err)
 
-	err = client.Auth(getSMTPAuth())
+	err = client.Auth(AutoSMTPAuth(mainSMTPConfig()))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unencrypted connection")
 
@@ -391,7 +423,7 @@ func TestNewSMTPClientHonorsExplicitStartTLSWhenPortIs465(t *testing.T) {
 	SMTPStartTLSEnabled = true
 	SMTPInsecureSkipVerify = true
 
-	client, err := newSMTPClient(fmt.Sprintf("%s:%d", server.host, server.port))
+	client, err := newSMTPClient(mainSMTPConfig(), fmt.Sprintf("%s:%d", server.host, server.port))
 	require.NoError(t, err)
 	defer client.Close()
 
@@ -414,7 +446,7 @@ func TestNewSMTPClientKeepsImplicitTLSForLegacyPort465(t *testing.T) {
 	SMTPStartTLSEnabled = false
 	SMTPInsecureSkipVerify = true
 
-	client, err := newSMTPClient(fmt.Sprintf("%s:%d", server.host, server.port))
+	client, err := newSMTPClient(mainSMTPConfig(), fmt.Sprintf("%s:%d", server.host, server.port))
 	require.NoError(t, err)
 	defer client.Close()
 }
@@ -538,6 +570,150 @@ func TestSendEmailUsesNTLMForMicrosoftAccountWhenServerOnlySupportsNTLM(t *testi
 		require.True(t, strings.HasPrefix(command, "AUTH NTLM "), "unexpected auth command: %s", command)
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for SMTP AUTH")
+	}
+}
+
+// TestSendEmailRcptRejectionClassification guards the suppression-learning
+// contract: only 5xx RCPT rejections that identify the recipient mailbox as
+// invalid (enhanced status 5.1.x or a "no such user" phrase) may feed the
+// suppression list. Policy/relay refusals (5.7.x — the signature of a
+// misconfigured relay rejecting EVERY recipient), quota failures (552), and
+// transient 4xx must never be learned as hard bounces.
+func TestSendEmailRcptRejectionClassification(t *testing.T) {
+	cases := []struct {
+		name      string
+		reply     string
+		permanent bool
+	}{
+		{"invalid mailbox 5.1.1", "550 5.1.1 user unknown", true},
+		{"invalid mailbox phrase without enhanced code", "550 No such user here", true},
+		{"relay denied policy 5.7.1", "554 5.7.1 relay access denied", false},
+		{"mailbox full 552", "552 5.2.2 mailbox over quota", false},
+		{"generic policy reject", "550 rejected by policy", false},
+		{"transient 450", "450 4.2.1 mailbox busy", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newFakeSMTPServerWithSTARTTLSAdvertisement(t, false)
+			server.rejectRcptWith = tc.reply
+			defer server.close()
+			withSMTPSettings(t)
+
+			SMTPServer = server.host
+			SMTPPort = server.port
+			SMTPSSLEnabled = false
+			SMTPStartTLSEnabled = false
+			SMTPAccount = ""
+			SMTPFrom = "sender@example.com"
+			SMTPToken = ""
+			SystemName = "New API"
+
+			err := SendEmail("Verification", "receiver@example.com", "<p>123456</p>")
+			require.Error(t, err)
+			require.Equal(t, tc.permanent, IsPermanentRecipientRejection(err))
+		})
+	}
+}
+
+// TestSendMarketingEmailIncludesExtraHeaders guards the List-Unsubscribe
+// contract: extra headers must land in the message header block, and CR/LF in a
+// header must be rejected before anything reaches the wire.
+func TestSendMarketingEmailIncludesExtraHeaders(t *testing.T) {
+	server := newFakeSMTPServerWithSTARTTLSAdvertisement(t, false)
+	defer server.close()
+	withSMTPSettings(t)
+
+	SMTPServer = server.host
+	SMTPPort = server.port
+	SMTPSSLEnabled = false
+	SMTPStartTLSEnabled = false
+	SMTPAccount = ""
+	SMTPFrom = "sender@example.com"
+	SMTPToken = ""
+	SystemName = "New API"
+
+	err := SendMarketingEmail("Promo", "receiver@example.com", "<p>promo</p>",
+		"List-Unsubscribe: <https://example.com/api/unsubscribe?token=abc>",
+		"List-Unsubscribe-Post: List-Unsubscribe=One-Click")
+	require.NoError(t, err)
+
+	select {
+	case message := <-server.messages:
+		require.Contains(t, message, "List-Unsubscribe: <https://example.com/api/unsubscribe?token=abc>")
+		require.Contains(t, message, "List-Unsubscribe-Post: List-Unsubscribe=One-Click")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for SMTP DATA")
+	}
+
+	err = SendMarketingEmail("Promo", "receiver2@example.com", "<p>promo</p>", "Evil: a\r\nBcc: victim@example.com")
+	require.Error(t, err)
+}
+
+func TestSendMarketingEmailUsesDedicatedSMTPWhenConfigured(t *testing.T) {
+	mainServer := newFakeSMTPServerWithSTARTTLSAdvertisement(t, false)
+	defer mainServer.close()
+	marketingServer := newFakeSMTPServerWithSTARTTLSAdvertisement(t, false)
+	defer marketingServer.close()
+	withSMTPSettings(t)
+
+	SMTPServer = mainServer.host
+	SMTPPort = mainServer.port
+	SMTPSSLEnabled = false
+	SMTPStartTLSEnabled = false
+	SMTPInsecureSkipVerify = false
+	SMTPForceAuthLogin = false
+	SMTPAccount = ""
+	SMTPFrom = "verify@example.com"
+	SMTPToken = ""
+	MarketingSMTPServer = marketingServer.host
+	MarketingSMTPPort = marketingServer.port
+	MarketingSMTPFrom = "news@example.com"
+	SystemName = "New API"
+
+	err := SendMarketingEmail("Promo", "receiver@example.com", "<p>promo</p>")
+	require.NoError(t, err)
+
+	select {
+	case message := <-marketingServer.messages:
+		require.Contains(t, message, "<p>promo</p>")
+		require.Contains(t, message, "news@example.com")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for marketing SMTP DATA")
+	}
+
+	select {
+	case message := <-mainServer.messages:
+		t.Fatalf("marketing email unexpectedly delivered through main SMTP: %s", message)
+	default:
+	}
+}
+
+func TestSendMarketingEmailFallsBackToMainSMTPWhenUnconfigured(t *testing.T) {
+	mainServer := newFakeSMTPServerWithSTARTTLSAdvertisement(t, false)
+	defer mainServer.close()
+	withSMTPSettings(t)
+
+	SMTPServer = mainServer.host
+	SMTPPort = mainServer.port
+	SMTPSSLEnabled = false
+	SMTPStartTLSEnabled = false
+	SMTPInsecureSkipVerify = false
+	SMTPForceAuthLogin = false
+	SMTPAccount = ""
+	SMTPFrom = "verify@example.com"
+	SMTPToken = ""
+	MarketingSMTPServer = ""
+	SystemName = "New API"
+
+	err := SendMarketingEmail("Promo", "receiver@example.com", "<p>promo</p>")
+	require.NoError(t, err)
+
+	select {
+	case message := <-mainServer.messages:
+		require.Contains(t, message, "<p>promo</p>")
+		require.Contains(t, message, "verify@example.com")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for SMTP DATA")
 	}
 }
 

@@ -129,6 +129,28 @@ var SMTPAccount = ""
 var SMTPFrom = ""
 var SMTPToken = ""
 
+// Dedicated SMTP for marketing/bulk email (campaigns, announcement blasts).
+// Providers like Aliyun DirectMail require separating the transactional
+// (verification-code) sender from the bulk sender. When MarketingSMTPServer is
+// empty the bulk path falls back to the main SMTP settings above.
+var MarketingSMTPServer = ""
+var MarketingSMTPPort = 587
+var MarketingSMTPSSLEnabled = false
+var MarketingSMTPStartTLSEnabled = false
+var MarketingSMTPInsecureSkipVerify = false
+var MarketingSMTPForceAuthLogin = false
+var MarketingSMTPAccount = ""
+var MarketingSMTPFrom = ""
+var MarketingSMTPToken = ""
+
+// EmailDeliveryEventToken authenticates the provider delivery-event callback
+// endpoint (/api/email/delivery-events). Empty = endpoint disabled.
+var EmailDeliveryEventToken = ""
+
+// UnsubscribeSecret signs one-click unsubscribe tokens. Bootstrapped once into
+// the options table so tokens survive restarts and are valid on every node.
+var UnsubscribeSecret = ""
+
 var GitHubClientId = ""
 var GitHubClientSecret = ""
 var LinuxDOClientId = ""

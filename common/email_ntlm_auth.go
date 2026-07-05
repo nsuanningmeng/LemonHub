@@ -9,18 +9,17 @@ import (
 )
 
 type smtpAutoAuth struct {
-	username string
-	password string
-	mech     string
+	cfg  SMTPConfig
+	mech string
 }
 
-func AutoSMTPAuth(username, password string) smtp.Auth {
-	return &smtpAutoAuth{username: username, password: password}
+func AutoSMTPAuth(cfg SMTPConfig) smtp.Auth {
+	return &smtpAutoAuth{cfg: cfg}
 }
 
 func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
-	useLoginAuth := SMTPForceAuthLogin
-	if !useLoginAuth && shouldUseSMTPLoginAuth() {
+	useLoginAuth := a.cfg.ForceAuthLogin
+	if !useLoginAuth && a.cfg.shouldUseLoginAuth() {
 		useLoginAuth = !(server != nil && len(server.Auth) == 1 && smtpServerSupportsAuth(server, "NTLM"))
 	}
 	if useLoginAuth {
@@ -31,7 +30,7 @@ func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 	switch {
 	case smtpServerSupportsAuth(server, "PLAIN"):
 		a.mech = "PLAIN"
-		return smtp.PlainAuth("", a.username, a.password, SMTPServer).Start(server)
+		return smtp.PlainAuth("", a.cfg.Account, a.cfg.Token, a.cfg.Server).Start(server)
 	case smtpServerSupportsAuth(server, "LOGIN"):
 		a.mech = "LOGIN"
 		return "LOGIN", []byte{}, nil
@@ -44,7 +43,7 @@ func (a *smtpAutoAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
 		return "NTLM", negotiateMessage, nil
 	default:
 		a.mech = "PLAIN"
-		return smtp.PlainAuth("", a.username, a.password, SMTPServer).Start(server)
+		return smtp.PlainAuth("", a.cfg.Account, a.cfg.Token, a.cfg.Server).Start(server)
 	}
 }
 
@@ -57,14 +56,14 @@ func (a *smtpAutoAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 	case "LOGIN":
 		switch string(fromServer) {
 		case "Username:":
-			return []byte(a.username), nil
+			return []byte(a.cfg.Account), nil
 		case "Password:":
-			return []byte(a.password), nil
+			return []byte(a.cfg.Token), nil
 		default:
 			return nil, errors.New("unknown SMTP AUTH LOGIN challenge")
 		}
 	case "NTLM":
-		return ntlmssp.NewAuthenticateMessage(fromServer, a.username, a.password, nil)
+		return ntlmssp.NewAuthenticateMessage(fromServer, a.cfg.Account, a.cfg.Token, nil)
 	default:
 		return nil, errors.New("unexpected SMTP auth challenge")
 	}

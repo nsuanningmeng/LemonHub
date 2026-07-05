@@ -334,6 +334,16 @@ func SendEmailVerification(c *gin.Context) {
 		})
 		return
 	}
+	// Addresses that previously hard-bounced (invalid mailbox) are refused up
+	// front: the send would fail anyway, and every attempt against a known-bad
+	// address hurts the SMTP provider's invalid-address metrics.
+	if model.IsEmailHardBounced(email) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "该邮箱地址此前投递失败（无效地址），请更换邮箱地址",
+		})
+		return
+	}
 	code := common.GenerateVerificationCode(6)
 	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
 	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
@@ -342,6 +352,7 @@ func SendEmailVerification(c *gin.Context) {
 		"<p>验证码 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, code, common.VerificationValidMinutes)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
+		service.RecordEmailSendFailure(email, err)
 		common.ApiError(c, err)
 		return
 	}
@@ -361,7 +372,10 @@ func SendPasswordResetEmail(c *gin.Context) {
 		})
 		return
 	}
-	if model.IsEmailAlreadyTaken(email, middleware.GetRequestSiteId(c)) {
+	// Skip hard-bounced (known-invalid) addresses silently: the response must not
+	// reveal whether the account exists, and mailing a dead address only damages
+	// SMTP sender reputation.
+	if model.IsEmailAlreadyTaken(email, middleware.GetRequestSiteId(c)) && !model.IsEmailHardBounced(email) {
 		code := common.GenerateVerificationCode(0)
 		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
@@ -372,6 +386,7 @@ func SendPasswordResetEmail(c *gin.Context) {
 			"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, link, link, common.VerificationValidMinutes)
 		err := common.SendEmail(subject, email, content)
 		if err != nil {
+			service.RecordEmailSendFailure(email, err)
 			logger.LogError(c.Request.Context(), fmt.Sprintf("failed to send password reset email to %s: %s", email, err.Error()))
 		}
 	}

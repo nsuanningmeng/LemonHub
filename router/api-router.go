@@ -37,6 +37,21 @@ func SetApiRouter(router *gin.Engine) {
 		paymentWebhookRouter.GET("/user/epay/notify", controller.EpayNotify)
 		paymentWebhookRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, controller.SubscriptionEpayNotify)
 		paymentWebhookRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
+		// Email provider delivery-event callback (Aliyun DirectMail via
+		// EventBridge/MNS HTTP push). Same reasoning as the payment callbacks:
+		// server-to-server bursts from a shared provider exit IP must not hit the
+		// per-IP global limit; the handler has its own shared-token auth.
+		paymentWebhookRouter.POST("/email/delivery-events", anonymousRequestBodyLimit, controller.EmailDeliveryEvents)
+		// One-click marketing unsubscribe (RFC 8058). Lives on this group for the
+		// same shared-exit-IP reason: mailbox providers fire one-click POSTs
+		// server-to-server from a few egress IPs during a campaign, and corporate
+		// NATs multiplex many human clicks — the strict per-IP critical/global
+		// limits would 429 exactly the users trying to opt out, pushing them to
+		// "report spam" instead. The HMAC-signed token is the credential; an
+		// invalid token costs one HMAC check, a valid one an idempotent
+		// single-row update, so the generous webhook backstop is sufficient.
+		paymentWebhookRouter.GET("/unsubscribe", controller.UnsubscribePage)
+		paymentWebhookRouter.POST("/unsubscribe", anonymousRequestBodyLimit, controller.UnsubscribeSubmit)
 	}
 	{
 		apiRouter.GET("/setup", controller.GetSetup)
@@ -249,6 +264,15 @@ func SetApiRouter(router *gin.Engine) {
 			// cannot trigger repeated full-audience email blasts.
 			emailCampaignRoute.POST("/", middleware.CriticalRateLimit(), controller.CreateEmailCampaign)
 			emailCampaignRoute.GET("/:id", controller.GetEmailCampaignDetail)
+		}
+		// Email suppression list (do-not-mail addresses) — admin
+		emailSuppressionRoute := apiRouter.Group("/email-suppression")
+		emailSuppressionRoute.Use(middleware.AdminAuth())
+		{
+			emailSuppressionRoute.GET("/", controller.ListEmailSuppressions)
+			emailSuppressionRoute.POST("/", controller.AddEmailSuppression)
+			emailSuppressionRoute.DELETE("/:id", controller.DeleteEmailSuppression)
+			emailSuppressionRoute.POST("/import", controller.ImportEmailSuppressions)
 		}
 
 		optionRoute := apiRouter.Group("/option")

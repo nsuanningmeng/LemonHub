@@ -26,6 +26,8 @@ import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 import { EmailPromotionSection } from './email-promotion-section'
+import { EmailSuppressionSection } from './email-suppression-section'
+import { MarketingSmtpSection } from './marketing-smtp-section'
 import { TicketSection } from './ticket-section'
 
 const OPERATIONS_SECTIONS = [
@@ -98,6 +100,37 @@ const OPERATIONS_SECTIONS = [
           announcementEmailEnabled:
             settings['email_promotion_setting.announcement_email_enabled'],
           ratePerMinute: settings['email_promotion_setting.rate_per_minute'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'marketing-smtp',
+    titleKey: 'Marketing SMTP',
+    build: (settings: OperationsSettings) => (
+      <MarketingSmtpSection
+        defaultValues={{
+          MarketingSMTPServer: settings.MarketingSMTPServer,
+          MarketingSMTPPort: settings.MarketingSMTPPort,
+          MarketingSMTPAccount: settings.MarketingSMTPAccount,
+          MarketingSMTPFrom: settings.MarketingSMTPFrom,
+          MarketingSMTPToken: settings.MarketingSMTPToken,
+          MarketingSMTPSSLEnabled: settings.MarketingSMTPSSLEnabled,
+          MarketingSMTPStartTLSEnabled: settings.MarketingSMTPStartTLSEnabled,
+          MarketingSMTPInsecureSkipVerify:
+            settings.MarketingSMTPInsecureSkipVerify,
+          MarketingSMTPForceAuthLogin: settings.MarketingSMTPForceAuthLogin,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'email-suppression',
+    titleKey: 'Email Suppression',
+    build: (settings: OperationsSettings) => (
+      <EmailSuppressionSection
+        defaultValues={{
+          EmailDeliveryEventToken: settings.EmailDeliveryEventToken,
         }}
       />
     ),

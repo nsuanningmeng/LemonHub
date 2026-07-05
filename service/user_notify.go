@@ -114,6 +114,12 @@ func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data 
 }
 
 func sendEmailNotify(userEmail string, data dto.Notify) error {
+	// Never notify a hard-bounced address: the mailbox is known-invalid, and each
+	// retry counts against the SMTP provider's invalid-address metrics.
+	if model.IsEmailHardBounced(userEmail) {
+		common.SysLog(fmt.Sprintf("skip email notify to %s: address is on the hard-bounce suppression list", userEmail))
+		return nil
+	}
 	// make email content — prefer the email-only HTML rendering when supplied,
 	// otherwise fall back to the shared (plain-text) content.
 	content := data.Content
@@ -124,7 +130,11 @@ func sendEmailNotify(userEmail string, data dto.Notify) error {
 	for _, value := range data.Values {
 		content = strings.Replace(content, dto.ContentValueParam, fmt.Sprintf("%v", value), 1)
 	}
-	return common.SendEmail(data.Title, userEmail, content)
+	err := common.SendEmail(data.Title, userEmail, content)
+	if err != nil {
+		RecordEmailSendFailure(userEmail, err)
+	}
+	return err
 }
 
 func sendBarkNotify(barkURL string, data dto.Notify) error {

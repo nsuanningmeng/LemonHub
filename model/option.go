@@ -1,6 +1,8 @@
 package model
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"strconv"
 	"strings"
 	"time"
@@ -67,6 +69,17 @@ func InitOptionMap() {
 	common.OptionMap["SMTPStartTLSEnabled"] = strconv.FormatBool(common.SMTPStartTLSEnabled)
 	common.OptionMap["SMTPInsecureSkipVerify"] = strconv.FormatBool(common.SMTPInsecureSkipVerify)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
+	common.OptionMap["MarketingSMTPServer"] = ""
+	common.OptionMap["MarketingSMTPFrom"] = ""
+	common.OptionMap["MarketingSMTPPort"] = strconv.Itoa(common.MarketingSMTPPort)
+	common.OptionMap["MarketingSMTPAccount"] = ""
+	common.OptionMap["MarketingSMTPToken"] = ""
+	common.OptionMap["MarketingSMTPSSLEnabled"] = strconv.FormatBool(common.MarketingSMTPSSLEnabled)
+	common.OptionMap["MarketingSMTPStartTLSEnabled"] = strconv.FormatBool(common.MarketingSMTPStartTLSEnabled)
+	common.OptionMap["MarketingSMTPInsecureSkipVerify"] = strconv.FormatBool(common.MarketingSMTPInsecureSkipVerify)
+	common.OptionMap["MarketingSMTPForceAuthLogin"] = strconv.FormatBool(common.MarketingSMTPForceAuthLogin)
+	common.OptionMap["EmailDeliveryEventToken"] = ""
+	common.OptionMap["UnsubscribeSecret"] = ""
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["Contact"] = ""
@@ -197,6 +210,25 @@ func InitOptionMap() {
 
 	common.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
+	ensureUnsubscribeSecret()
+}
+
+// ensureUnsubscribeSecret bootstraps the persisted secret that signs one-click
+// unsubscribe tokens. It must live in the options table (not a per-boot random
+// like SessionSecret): unsubscribe links are embedded in already-delivered mail
+// and must keep verifying across restarts and on every node.
+func ensureUnsubscribeSecret() {
+	if common.UnsubscribeSecret != "" {
+		return
+	}
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		common.SysError("failed to generate unsubscribe secret: " + err.Error())
+		return
+	}
+	if err := UpdateOption("UnsubscribeSecret", hex.EncodeToString(buf)); err != nil {
+		common.SysError("failed to persist unsubscribe secret: " + err.Error())
+	}
 }
 
 func loadOptionsFromDatabase() {
@@ -290,7 +322,7 @@ func updateOptionMap(key string, value string) (err error) {
 			common.ImageDownloadPermission = intValue
 		}
 	}
-	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || key == "SMTPForceAuthLogin" || key == "SMTPInsecureSkipVerify" {
+	if strings.HasSuffix(key, "Enabled") || key == "DefaultCollapseSidebar" || key == "DefaultUseAutoGroup" || strings.HasSuffix(key, "SMTPForceAuthLogin") || strings.HasSuffix(key, "SMTPInsecureSkipVerify") {
 		boolValue := value == "true"
 		switch key {
 		case "PasswordRegisterEnabled":
@@ -371,6 +403,14 @@ func updateOptionMap(key string, value string) (err error) {
 			common.SMTPInsecureSkipVerify = boolValue
 		case "SMTPForceAuthLogin":
 			common.SMTPForceAuthLogin = boolValue
+		case "MarketingSMTPSSLEnabled":
+			common.MarketingSMTPSSLEnabled = boolValue
+		case "MarketingSMTPStartTLSEnabled":
+			common.MarketingSMTPStartTLSEnabled = boolValue
+		case "MarketingSMTPInsecureSkipVerify":
+			common.MarketingSMTPInsecureSkipVerify = boolValue
+		case "MarketingSMTPForceAuthLogin":
+			common.MarketingSMTPForceAuthLogin = boolValue
 		case "WorkerAllowHttpImageRequestEnabled":
 			system_setting.WorkerAllowHttpImageRequestEnabled = boolValue
 		case "DefaultUseAutoGroup":
@@ -393,6 +433,21 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SMTPFrom = value
 	case "SMTPToken":
 		common.SMTPToken = value
+	case "MarketingSMTPServer":
+		common.MarketingSMTPServer = value
+	case "MarketingSMTPPort":
+		intValue, _ := strconv.Atoi(value)
+		common.MarketingSMTPPort = intValue
+	case "MarketingSMTPAccount":
+		common.MarketingSMTPAccount = value
+	case "MarketingSMTPFrom":
+		common.MarketingSMTPFrom = value
+	case "MarketingSMTPToken":
+		common.MarketingSMTPToken = value
+	case "EmailDeliveryEventToken":
+		common.EmailDeliveryEventToken = value
+	case "UnsubscribeSecret":
+		common.UnsubscribeSecret = value
 	case "ServerAddress":
 		system_setting.ServerAddress = value
 	case "TrustedRedirectDomains":

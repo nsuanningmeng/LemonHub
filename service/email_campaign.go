@@ -30,7 +30,7 @@ const (
 	// a progress write before it is considered orphaned. It must comfortably exceed
 	// the worst-case gap between progress writes on a healthy sender: one send delay
 	// (<=60s at the minimum rate of 1/min) plus one full SMTP session (bounded by
-	// common.SendEmail's connection deadline).
+	// common.SendMarketingEmail's connection deadline).
 	emailCampaignStaleAfter = 15 * time.Minute
 	// emailCampaignResumeMaxAge caps how long a campaign may have been interrupted
 	// (measured from its last progress write, i.e. the last moment it was provably
@@ -51,9 +51,9 @@ const (
 )
 
 // isSafeRecipient defends the bulk-send path against header injection and
-// unintended multi-recipient delivery. common.SendEmail writes the address into a
-// raw "To:" header and splits on ';', so a single malformed/legacy DB value could
-// otherwise inject headers or fan out to multiple addresses. We require a single,
+// unintended multi-recipient delivery. common.SendMarketingEmail writes the address
+// into a raw "To:" header and splits on ';', so a single malformed/legacy DB value
+// could otherwise inject headers or fan out to multiple addresses. We require a single,
 // RFC-5322-parseable address with no CR/LF or ';'.
 func isSafeRecipient(email string) bool {
 	if email == "" {
@@ -116,18 +116,15 @@ func runEmailCampaign(campaign *model.EmailCampaign, siteScope int) {
 		}
 	}
 
-	// 3. Render the HTML body once (markdown is escaped + wrapped safely), with a
-	//    fixed opt-out footer: bulk email must always tell recipients why they got
-	//    it and where to turn it off (per-user toggle on the profile page).
-	profileURL := html.EscapeString(strings.TrimRight(system_setting.ServerAddress, "/") + "/profile")
+	// 3. Render the markdown body once (escaped + wrapped safely). The opt-out
+	//    footer is assembled per recipient below, because each recipient gets a
+	//    personal one-click unsubscribe link: making opting out easier than the
+	//    mailbox's "report spam" button is the main lever against the spam-rate
+	//    metric that email providers score sender reputation on.
+	serverBase := strings.TrimRight(system_setting.ServerAddress, "/")
+	profileURL := html.EscapeString(serverBase + "/profile")
 	safeSystemName := html.EscapeString(common.SystemName)
-	footerHTML := fmt.Sprintf(
-		`<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#8a919f;">`+
-			`<p>您收到此邮件是因为您在 %s 注册了账户。如不想再收到此类邮件,可前往<a href="%s" target="_blank" rel="noopener noreferrer">个人设置</a>关闭营销邮件。</p>`+
-			`<p>You are receiving this email because you have an account on %s. You can turn off marketing emails in your <a href="%s" target="_blank" rel="noopener noreferrer">profile settings</a>.</p>`+
-			`</div>`,
-		safeSystemName, profileURL, safeSystemName, profileURL)
-	bodyHTML := common.WrapEmailHTML(campaign.Subject, common.MarkdownToEmailHTML(campaign.Content)+footerHTML)
+	contentHTML := common.MarkdownToEmailHTML(campaign.Content)
 
 	// 4. Throttle: spread sends across the configured 封/分钟 rate.
 	ratePerMin := operation_setting.GetEmailPromotionSetting().GetRatePerMinute()
@@ -174,6 +171,21 @@ func runEmailCampaign(campaign *model.EmailCampaign, siteScope int) {
 		if len(batch) == 0 {
 			break
 		}
+		// One suppression lookup per batch: addresses that hard-bounced or drew a
+		// spam complaint before must never be re-mailed — repeat sends to known-bad
+		// addresses are what drags the provider's invalid-address/spam-rate metrics
+		// (and with them the account's sending reputation) down. A failed lookup
+		// parks the campaign like a failed batch SELECT: sending unfiltered would
+		// defeat the list's purpose.
+		batchEmails := make([]string, 0, len(batch))
+		for i := range batch {
+			batchEmails = append(batchEmails, batch[i].Email)
+		}
+		suppressed, err := model.GetSuppressedEmailSet(batchEmails)
+		if err != nil {
+			common.SysError(fmt.Sprintf("email campaign %d: failed to load suppression set, parking for recovery sweep: %s", campaign.Id, err.Error()))
+			return
+		}
 		for i := range batch {
 			user := batch[i]
 			afterId = user.Id
@@ -181,10 +193,45 @@ func runEmailCampaign(campaign *model.EmailCampaign, siteScope int) {
 			if !isSafeRecipient(user.Email) || user.GetSetting().MarketingEmailDisabled {
 				continue
 			}
-			if err := common.SendEmail(campaign.Subject, user.Email, bodyHTML); err != nil {
+			if _, isSuppressed := suppressed[strings.ToLower(strings.TrimSpace(user.Email))]; isSuppressed {
+				continue
+			}
+			// Per-recipient one-click unsubscribe (RFC 8058): signed token link in
+			// both the footer and the List-Unsubscribe headers, so mail clients can
+			// offer a native unsubscribe button. Skipped when no public server
+			// address is configured (the link would not resolve).
+			unsubURL := ""
+			if serverBase != "" {
+				if token, tokenErr := common.GenerateUnsubscribeToken(user.Id); tokenErr == nil {
+					unsubURL = serverBase + "/api/unsubscribe?token=" + token
+				}
+			}
+			unsubLineZH := ""
+			unsubLineEN := ""
+			var extraHeaders []string
+			if unsubURL != "" {
+				safeUnsubURL := html.EscapeString(unsubURL)
+				unsubLineZH = fmt.Sprintf(`也可以<a href="%s" target="_blank" rel="noopener noreferrer">点此一键退订</a>。`, safeUnsubURL)
+				unsubLineEN = fmt.Sprintf(` You can also <a href="%s" target="_blank" rel="noopener noreferrer">unsubscribe with one click</a>.`, safeUnsubURL)
+				extraHeaders = []string{
+					"List-Unsubscribe: <" + unsubURL + ">",
+					"List-Unsubscribe-Post: List-Unsubscribe=One-Click",
+				}
+			}
+			footerHTML := fmt.Sprintf(
+				`<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:12px;color:#8a919f;">`+
+					`<p>您收到此邮件是因为您在 %s 注册了账户。如不想再收到此类邮件,可前往<a href="%s" target="_blank" rel="noopener noreferrer">个人设置</a>关闭营销邮件。%s</p>`+
+					`<p>You are receiving this email because you have an account on %s. You can turn off marketing emails in your <a href="%s" target="_blank" rel="noopener noreferrer">profile settings</a>.%s</p>`+
+					`</div>`,
+				safeSystemName, profileURL, unsubLineZH, safeSystemName, profileURL, unsubLineEN)
+			bodyHTML := common.WrapEmailHTML(campaign.Subject, contentHTML+footerHTML)
+			if err := common.SendMarketingEmail(campaign.Subject, user.Email, bodyHTML, extraHeaders...); err != nil {
 				campaign.FailCount++
 				consecutiveSendFailures++
 				common.SysError(fmt.Sprintf("email campaign %d: failed to send to user %d: %s", campaign.Id, user.Id, err.Error()))
+				// Learn from permanent RCPT rejections so the next campaign never
+				// re-attempts this address.
+				RecordEmailSendFailure(user.Email, err)
 			} else {
 				campaign.SentCount++
 				consecutiveSendFailures = 0
