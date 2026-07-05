@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -20,9 +21,17 @@ type TopUp struct {
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	// PaymentIntent is the Stripe payment_intent captured at fulfillment. Refund
+	// and dispute webhook events are charge-level and carry payment_intent (not
+	// the checkout client_reference_id / trade_no), so this is the join key used
+	// to claw back quota. Empty for non-Stripe providers and pre-feature orders.
+	PaymentIntent string `json:"payment_intent" gorm:"type:varchar(255);index;default:''"`
+	// ClawedBackQuota is the cumulative quota already reversed by refunds/disputes.
+	// It makes clawback idempotent across partial and duplicate webhook deliveries.
+	ClawedBackQuota int64  `json:"clawed_back_quota" gorm:"default:0"`
+	CreateTime      int64  `json:"create_time"`
+	CompleteTime    int64  `json:"complete_time"`
+	Status          string `json:"status"`
 }
 
 const (
@@ -46,6 +55,7 @@ var (
 	ErrPaymentMethodMismatch = errors.New("payment method mismatch")
 	ErrTopUpNotFound         = errors.New("topup not found")
 	ErrTopUpStatusInvalid    = errors.New("topup status invalid")
+	ErrTopUpAmountInvalid    = errors.New("topup clawback amount invalid")
 )
 
 func (topUp *TopUp) Insert() error {
@@ -107,7 +117,7 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	})
 }
 
-func Recharge(referenceId string, customerId string, callerIp string) (err error) {
+func Recharge(referenceId string, customerId string, paymentIntent string, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -136,6 +146,11 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
+		// Record the Stripe payment_intent so a later refund/dispute (which is
+		// keyed by payment_intent, not trade_no) can be linked back to this order.
+		if paymentIntent != "" {
+			topUp.PaymentIntent = paymentIntent
+		}
 		err = tx.Save(topUp).Error
 		if err != nil {
 			return err
@@ -162,6 +177,152 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	}
 
 	return nil
+}
+
+// ReverseStripeTopUp claws back quota for a Stripe top-up that was refunded or
+// disputed, keyed by the Stripe payment_intent captured at fulfillment.
+//
+// refundedMinor/chargeMinor are Stripe minor units (e.g. cents). For a refund the
+// clawback is proportional to the cumulative refunded fraction; for a dispute the
+// full remaining credited quota is reversed and the order is flagged
+// TopUpStatusDisputed for admin review. Reversal is idempotent across partial and
+// duplicate webhook deliveries because it tracks cumulative ClawedBackQuota and
+// only ever debits the delta. The user balance is allowed to go negative, matching
+// the project's soft-quota model. The referral bonus paid to an inviter is NOT
+// reversed here (out of scope).
+//
+// Returns ErrTopUpNotFound when no credited Stripe order matches the payment_intent
+// (an unrelated charge, or a pre-feature order without a stored payment_intent), so
+// the caller can safely ignore the event.
+func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor int64, isDispute bool, callerIp string) error {
+	paymentIntent = strings.TrimSpace(paymentIntent)
+	if paymentIntent == "" {
+		return ErrTopUpNotFound
+	}
+
+	var clawedDelta int64
+	var newStatus string
+	var userId int
+	var paymentMethod, tradeNo string
+
+	// Idempotency / cross-node safety is enforced by an atomic compare-and-set on
+	// clawed_back_quota (UPDATE ... WHERE clawed_back_quota = <observed> + RowsAffected),
+	// NOT by SELECT ... FOR UPDATE — gorm:query_option "FOR UPDATE" is a no-op in
+	// GORM v2 and SQLite rejects it (see model/site_topup.go). A concurrent or
+	// duplicate webhook that reads the same base loses the CAS and is retried, so no
+	// refund/dispute is ever applied twice. Retries converge because every winner
+	// advances clawed_back_quota monotonically toward creditedQuota.
+	const maxAttempts = 5
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		clawedDelta = 0
+		raceLost := false
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			var topUp TopUp
+			if err := tx.Where("payment_intent = ?", paymentIntent).First(&topUp).Error; err != nil {
+				return ErrTopUpNotFound
+			}
+			if topUp.PaymentProvider != PaymentProviderStripe {
+				return ErrPaymentMethodMismatch
+			}
+			// Only orders that were actually credited can be clawed back.
+			switch topUp.Status {
+			case common.TopUpStatusSuccess, common.TopUpStatusRefunded, common.TopUpStatusDisputed:
+			default:
+				return ErrTopUpStatusInvalid
+			}
+
+			creditedQuota := decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+			if creditedQuota <= 0 {
+				// Bad/legacy row (Money <= 0): nothing was validly credited, so refuse
+				// to mutate quota or status rather than produce nonsensical state.
+				return ErrTopUpStatusInvalid
+			}
+
+			// Desired cumulative clawback given everything reversed so far.
+			var desired int64
+			switch {
+			case isDispute:
+				desired = creditedQuota // a chargeback reverses the whole charge
+			case chargeMinor <= 0 || refundedMinor < 0:
+				// Without a positive charge total we cannot compute a refund fraction.
+				// Do NOT escalate to a full clawback (that would over-debit a paying
+				// user on a partial refund); treat the event as non-actionable.
+				return ErrTopUpAmountInvalid
+			case refundedMinor >= chargeMinor:
+				desired = creditedQuota // fully refunded
+			default:
+				desired = decimal.NewFromInt(creditedQuota).
+					Mul(decimal.NewFromInt(refundedMinor)).
+					Div(decimal.NewFromInt(chargeMinor)).
+					Round(0).IntPart()
+			}
+			if desired > creditedQuota {
+				desired = creditedQuota
+			}
+
+			prevClawed := topUp.ClawedBackQuota
+			delta := desired - prevClawed
+			if delta < 0 {
+				delta = 0 // clawback is monotonic; never restore quota
+			}
+
+			target := topUp.Status
+			if isDispute {
+				target = common.TopUpStatusDisputed
+			} else if topUp.Status != common.TopUpStatusDisputed && desired >= creditedQuota {
+				// A refund marks the order refunded once fully clawed, but must never
+				// downgrade an order already flagged disputed (losing its review flag).
+				target = common.TopUpStatusRefunded
+			}
+
+			if delta == 0 && target == topUp.Status {
+				return nil // duplicate/idempotent: nothing to change
+			}
+
+			// Atomic claim: only the transaction that still observes the same
+			// clawed_back_quota wins; a concurrent winner makes RowsAffected == 0.
+			claim := tx.Model(&TopUp{}).
+				Where("payment_intent = ? AND clawed_back_quota = ?", paymentIntent, prevClawed).
+				Updates(map[string]interface{}{"clawed_back_quota": desired, "status": target})
+			if claim.Error != nil {
+				return claim.Error
+			}
+			if claim.RowsAffected == 0 {
+				raceLost = true
+				return errTopUpRaceLost
+			}
+			if delta > 0 {
+				if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).
+					Update("quota", gorm.Expr("quota - ?", delta)).Error; err != nil {
+					return err
+				}
+			}
+			clawedDelta = delta
+			userId, paymentMethod, tradeNo, newStatus = topUp.UserId, topUp.PaymentMethod, topUp.TradeNo, target
+			return nil
+		})
+		if raceLost {
+			continue // another delivery advanced the row; re-read and recompute
+		}
+		if err != nil {
+			return err
+		}
+
+		if clawedDelta > 0 {
+			// Force the spendable quota to reflect the debit immediately (the credit
+			// path and this debit both write the DB directly; drop any cached value).
+			_ = invalidateUserCache(userId)
+			reason := "退款"
+			if isDispute {
+				reason = "拒付(chargeback)"
+			}
+			RecordTopupLog(userId, fmt.Sprintf("Stripe %s 回扣额度 -%s（订单 %s，状态 %s）",
+				reason, logger.FormatQuota(int(clawedDelta)), tradeNo, newStatus),
+				callerIp, paymentMethod, PaymentMethodStripe)
+		}
+		return nil
+	}
+	return errTopUpRaceLost // exhausted retries under sustained contention (extremely unlikely)
 }
 
 // topUpQueryWindowSeconds 限制充值记录查询的时间窗口（秒）。

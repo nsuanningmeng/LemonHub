@@ -1,10 +1,13 @@
 package controller
 
 import (
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,6 +45,58 @@ func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 
 	setting.StripePriceId = ""
 	require.False(t, isStripeWebhookEnabled())
+}
+
+// The Stripe top-up REQUEST path must refuse before creating a Checkout session
+// under exactly the condition the inbound webhook enforces (isStripeTopUpEnabled).
+// Otherwise a user could pay while payment compliance is unconfirmed and the
+// completion webhook (which gates on the same predicate) would reject the event,
+// leaving the order stuck Pending — money captured, no quota credited.
+func TestStripeRequestPayGatedOnTopUpEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	originalAPISecret := setting.StripeApiSecret
+	originalWebhookSecret := setting.StripeWebhookSecret
+	originalPriceID := setting.StripePriceId
+	t.Cleanup(func() {
+		setting.StripeApiSecret = originalAPISecret
+		setting.StripeWebhookSecret = originalWebhookSecret
+		setting.StripePriceId = originalPriceID
+	})
+	setting.StripeApiSecret = "sk_test_123"
+	setting.StripeWebhookSecret = "whsec_test"
+	setting.StripePriceId = "price_123"
+
+	// Use an invalid PaymentMethod: the enablement gate is the very first check,
+	// so when the gateway is disabled it fires regardless; when enabled, control
+	// falls through to the payment-method check (returning a different message)
+	// without reaching the DB-backed user lookup further down.
+	callRequestPay := func() string {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest("POST", "/api/user/stripe/pay", nil)
+		stripeAdaptor.RequestPay(c, &StripePayRequest{
+			Amount:        getStripeMinTopup(),
+			PaymentMethod: "not-stripe",
+		})
+		return rec.Body.String()
+	}
+
+	// Compliance NOT confirmed → keys present but gateway not enabled → refused
+	// at the gate (this is the regression: previously the request proceeded).
+	paymentSetting := operation_setting.GetPaymentSetting()
+	origConfirmed := paymentSetting.ComplianceConfirmed
+	t.Cleanup(func() { paymentSetting.ComplianceConfirmed = origConfirmed })
+	paymentSetting.ComplianceConfirmed = false
+	require.False(t, isStripeTopUpEnabled())
+	assert.Contains(t, callRequestPay(), "Stripe 支付未启用",
+		"RequestPay must refuse when Stripe top-up is not enabled")
+
+	// Compliance confirmed + keys present → gateway enabled → request passes the
+	// enablement gate (it proceeds to later validation, not the gate refusal).
+	confirmPaymentComplianceForTest(t)
+	require.True(t, isStripeTopUpEnabled())
+	assert.NotContains(t, callRequestPay(), "Stripe 支付未启用",
+		"RequestPay must pass the gate once Stripe top-up is enabled")
 }
 
 func TestCreemWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {

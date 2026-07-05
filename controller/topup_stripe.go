@@ -63,6 +63,15 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 }
 
 func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
+	// Gate the request path on the same condition the inbound webhook enforces
+	// (isStripeWebhookEnabled == isStripeTopUpEnabled). Without this, a user
+	// could be sent to a real Stripe Checkout and pay while payment compliance
+	// is unconfirmed; the completion webhook would then be rejected and the
+	// order would never be credited.
+	if !isStripeTopUpEnabled() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Stripe 支付未启用"})
+		return
+	}
 	if req.PaymentMethod != model.PaymentMethodStripe {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "不支持的支付渠道"})
 		return
@@ -162,7 +171,11 @@ func StripeWebhook(c *gin.Context) {
 	}
 
 	signature := c.GetHeader("Stripe-Signature")
-	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 收到请求 path=%q client_ip=%s signature=%q body=%q", c.Request.RequestURI, c.ClientIP(), signature, string(payload)))
+	// Log a minimal receipt only. The raw body carries customer PII (email, name,
+	// billing address) and the signature is verbose auth material; neither belongs
+	// in INFO logs that fire on every legitimate transaction. Correlation fields
+	// (event_type, trade_no) are logged after verification below.
+	logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 收到请求 path=%q client_ip=%s body_bytes=%d", c.Request.RequestURI, c.ClientIP(), len(payload)))
 	event, err := webhook.ConstructEventWithOptions(payload, signature, setting.StripeWebhookSecret, webhook.ConstructEventOptions{
 		IgnoreAPIVersionMismatch: true,
 	})
@@ -184,6 +197,10 @@ func StripeWebhook(c *gin.Context) {
 		sessionAsyncPaymentSucceeded(ctx, event, callerIp)
 	case stripe.EventTypeCheckoutSessionAsyncPaymentFailed:
 		sessionAsyncPaymentFailed(ctx, event, callerIp)
+	case stripe.EventTypeChargeRefunded:
+		chargeRefunded(ctx, event, callerIp)
+	case stripe.EventTypeChargeDisputeCreated:
+		chargeDisputeCreated(ctx, event, callerIp)
 	default:
 		logger.LogInfo(ctx, fmt.Sprintf("Stripe webhook 忽略事件 event_type=%s client_ip=%s", string(event.Type), callerIp))
 	}
@@ -280,7 +297,10 @@ func fulfillOrder(ctx context.Context, event stripe.Event, referenceId string, c
 		return
 	}
 
-	err := model.Recharge(referenceId, customerId, callerIp)
+	// Capture the payment_intent so a later refund/dispute (keyed by payment_intent,
+	// not trade_no) can be linked back to this order for quota clawback.
+	paymentIntent := event.GetObjectValue("payment_intent")
+	err := model.Recharge(referenceId, customerId, paymentIntent, callerIp)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("Stripe 充值处理失败 trade_no=%s event_type=%s client_ip=%s error=%q", referenceId, string(event.Type), callerIp, err.Error()))
 		return
@@ -326,6 +346,78 @@ func sessionExpired(ctx context.Context, event stripe.Event) {
 	}
 
 	logger.LogInfo(ctx, fmt.Sprintf("Stripe 充值订单已过期 trade_no=%s", referenceId))
+}
+
+// stripeMinorAmount reads a Stripe minor-unit amount field (e.g. amount,
+// amount_refunded) from a webhook event. event.GetObjectValue renders the decoded
+// JSON number with fmt %v on a float64, so values >= 1e6 come back in scientific
+// notation (e.g. 1000000 -> "1e+06"); strconv.ParseInt fails on that and would
+// silently yield 0. Parse as float (Stripe minor amounts are integral, so the
+// int64 cast is exact) — mirrors how fulfillOrder reads amount_total.
+func stripeMinorAmount(event stripe.Event, key string) int64 {
+	f, _ := strconv.ParseFloat(event.GetObjectValue(key), 64)
+	return int64(f)
+}
+
+// chargeRefunded reverses (part of) a credited Stripe top-up when Stripe reports a
+// refund. The charge object carries the cumulative amount_refunded, so clawback is
+// proportional to the refunded fraction and idempotent across partial/duplicate
+// refunds (model.ReverseStripeTopUp tracks how much was already reversed). Refunds
+// initiated by the operator in the Stripe dashboard fire this event too, and are
+// intentionally clawed back as well.
+func chargeRefunded(ctx context.Context, event stripe.Event, callerIp string) {
+	paymentIntent := event.GetObjectValue("payment_intent")
+	if paymentIntent == "" {
+		logger.LogWarn(ctx, fmt.Sprintf("Stripe 退款事件缺少 payment_intent client_ip=%s", callerIp))
+		return
+	}
+	amountRefunded := stripeMinorAmount(event, "amount_refunded")
+	amount := stripeMinorAmount(event, "amount")
+	if amount <= 0 {
+		// Without a positive charge total the refunded fraction is undefined; skip
+		// rather than risk over-clawing. (Refund events always carry a charge amount.)
+		logger.LogWarn(ctx, fmt.Sprintf("Stripe 退款事件金额缺失或非法，忽略 payment_intent=%s amount=%d amount_refunded=%d client_ip=%s", paymentIntent, amount, amountRefunded, callerIp))
+		return
+	}
+
+	err := model.ReverseStripeTopUp(paymentIntent, amountRefunded, amount, false, callerIp)
+	if errors.Is(err, model.ErrTopUpNotFound) {
+		logger.LogInfo(ctx, fmt.Sprintf("Stripe 退款事件无匹配充值订单，忽略 payment_intent=%s client_ip=%s", paymentIntent, callerIp))
+		return
+	}
+	if errors.Is(err, model.ErrTopUpAmountInvalid) {
+		logger.LogWarn(ctx, fmt.Sprintf("Stripe 退款金额非法，未回扣 payment_intent=%s amount_refunded=%d amount=%d client_ip=%s", paymentIntent, amountRefunded, amount, callerIp))
+		return
+	}
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("Stripe 退款回扣失败 payment_intent=%s amount_refunded=%d amount=%d client_ip=%s error=%q", paymentIntent, amountRefunded, amount, callerIp, err.Error()))
+		return
+	}
+	logger.LogInfo(ctx, fmt.Sprintf("Stripe 退款回扣完成 payment_intent=%s amount_refunded=%d amount=%d client_ip=%s", paymentIntent, amountRefunded, amount, callerIp))
+}
+
+// chargeDisputeCreated reverses the full remaining credited quota of a Stripe
+// top-up when a chargeback/dispute is opened, and flags the order (status=disputed)
+// for admin review. Per the configured policy the account is NOT auto-disabled.
+func chargeDisputeCreated(ctx context.Context, event stripe.Event, callerIp string) {
+	paymentIntent := event.GetObjectValue("payment_intent")
+	if paymentIntent == "" {
+		logger.LogWarn(ctx, fmt.Sprintf("Stripe 拒付事件缺少 payment_intent client_ip=%s", callerIp))
+		return
+	}
+	amount := stripeMinorAmount(event, "amount")
+	reason := event.GetObjectValue("reason")
+
+	err := model.ReverseStripeTopUp(paymentIntent, amount, amount, true, callerIp)
+	if errors.Is(err, model.ErrTopUpNotFound) {
+		logger.LogWarn(ctx, fmt.Sprintf("Stripe 拒付事件无匹配充值订单 payment_intent=%s reason=%s client_ip=%s", paymentIntent, reason, callerIp))
+		return
+	}
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("Stripe 拒付回扣失败 payment_intent=%s reason=%s client_ip=%s error=%q", paymentIntent, reason, callerIp, err.Error()))
+		return
+	}
+	logger.LogWarn(ctx, fmt.Sprintf("Stripe 拒付已回扣额度并标记订单待管理员复核 payment_intent=%s reason=%s client_ip=%s", paymentIntent, reason, callerIp))
 }
 
 // genStripeLink generates a Stripe Checkout session URL for payment.

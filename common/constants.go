@@ -308,8 +308,10 @@ const (
 )
 
 const (
-	TopUpStatusPending = "pending"
-	TopUpStatusSuccess = "success"
-	TopUpStatusFailed  = "failed"
-	TopUpStatusExpired = "expired"
+	TopUpStatusPending  = "pending"
+	TopUpStatusSuccess  = "success"
+	TopUpStatusFailed   = "failed"
+	TopUpStatusExpired  = "expired"
+	TopUpStatusRefunded = "refunded" // credited order later refunded (full clawback)
+	TopUpStatusDisputed = "disputed" // chargeback/dispute opened; quota reversed, flagged for admin review
 )
