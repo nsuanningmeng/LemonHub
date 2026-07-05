@@ -204,6 +204,7 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 	var newStatus string
 	var userId int
 	var paymentMethod, tradeNo string
+	var clawedBackTotal, creditedTotal int64
 
 	// Idempotency / cross-node safety is enforced by an atomic compare-and-set on
 	// clawed_back_quota (UPDATE ... WHERE clawed_back_quota = <observed> + RowsAffected),
@@ -299,6 +300,7 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 			}
 			clawedDelta = delta
 			userId, paymentMethod, tradeNo, newStatus = topUp.UserId, topUp.PaymentMethod, topUp.TradeNo, target
+			clawedBackTotal, creditedTotal = desired, creditedQuota
 			return nil
 		})
 		if raceLost {
@@ -319,6 +321,13 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 			RecordTopupLog(userId, fmt.Sprintf("Stripe %s 回扣额度 -%s（订单 %s，状态 %s）",
 				reason, logger.FormatQuota(int(clawedDelta)), tradeNo, newStatus),
 				callerIp, paymentMethod, PaymentMethodStripe)
+
+			// Reverse the referral rewards this top-up generated (commission proportionally,
+			// first bonus when the invitee is fully deactivated). Best-effort: a failure must
+			// not roll back or block the clawback itself — mirrors SettleReferralOnTopUp.
+			if rerr := ReverseReferralOnTopUpClawback(userId, tradeNo, clawedBackTotal, creditedTotal, callerIp); rerr != nil {
+				common.SysError("referral reversal failed (stripe clawback): " + rerr.Error())
+			}
 		}
 		return nil
 	}

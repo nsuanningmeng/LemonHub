@@ -24,6 +24,11 @@ const (
 	// inviter on EVERY successful (real-payment) top-up the invitee makes. At most one
 	// per trade_no.
 	AffiliateKindRechargeCommission = "recharge_commission"
+	// AffiliateKindFirstBonusReversal marks that an invitee's first_bonus was reversed
+	// because their activating top-up was fully refunded/disputed and they retain no
+	// other net-credited top-up. Keyed by the same synthetic first-bonus trade_no, so the
+	// composite unique index enforces "reversed at most once per invitee".
+	AffiliateKindFirstBonusReversal = "first_bonus_reversal"
 )
 
 // AffiliateCommission is a per-event referral ledger. It powers idempotent settlement
@@ -34,10 +39,21 @@ type AffiliateCommission struct {
 	InviteeId int    `json:"invitee_id" gorm:"index"`
 	TradeNo   string `json:"trade_no" gorm:"type:varchar(191);uniqueIndex:idx_aff_comm_trade_kind,priority:1"`
 	Kind      string `json:"kind" gorm:"type:varchar(32);uniqueIndex:idx_aff_comm_trade_kind,priority:2"`
-	// RechargeQuota is the quota credited to the invitee by this top-up (0 for first_bonus).
+	// RechargeQuota is the quota credited to the invitee by this top-up. For a first_bonus row
+	// it instead records the invitee's one-time sign-up reward, so that reward can be reversed
+	// exactly if the activating top-up is later refunded (legacy first_bonus rows hold 0 and fall
+	// back to the current config value).
 	RechargeQuota int64 `json:"recharge_quota" gorm:"type:bigint;not null;default:0"`
-	// CommissionQuota is the quota credited to the inviter for this ledger row.
+	// CommissionQuota is the quota currently credited to the inviter for this ledger row.
+	// It is REDUCED when the originating top-up is later refunded/disputed, so every SUM over
+	// commission_quota (wallet stats, month, leaderboard, cash-owed) nets the reversal with no
+	// query changes. The original grant is commission_quota + reversed_quota.
 	CommissionQuota int64 `json:"commission_quota" gorm:"type:bigint;not null;default:0"`
+	// ReversedQuota is the cumulative amount of this row's commission that has been clawed back
+	// because the originating top-up was refunded/disputed. Kept separately (rather than only
+	// shrinking CommissionQuota) so reversal is idempotent — the target reversal is recomputed
+	// from the original grant (commission_quota + reversed_quota) on every webhook delivery.
+	ReversedQuota int64 `json:"reversed_quota" gorm:"type:bigint;not null;default:0"`
 	// CashSettled marks a recharge_commission row whose amount was NOT credited to the inviter's
 	// platform wallet because the inviter was a cash-settled promoter when it settled — i.e. it is
 	// owed as off-platform cash. false (the default, and the value of every pre-existing row) means
@@ -181,6 +197,260 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 	return nil
 }
 
+var errAffiliateReversalRaceLost = errors.New("affiliate reversal lost the compare-and-set")
+
+const maxAffiliateReversalAttempts = 5
+
+// ReverseReferralOnTopUpClawback reverses the referral rewards a top-up generated, when that
+// top-up is later refunded or disputed. It mirrors SettleReferralOnTopUp:
+//
+//   - Recharge commission: reduced proportionally to how much of the top-up was clawed back
+//     (target = floor(originalCommission * clawedBackTotal / rechargeQuota)). A wallet-credited
+//     commission debits the inviter's aff_quota/aff_history by the delta (allowed to go negative,
+//     matching the soft-quota model); a cash-settled promoter's commission only shrinks in the
+//     ledger, which reduces the off-platform cash owed. Idempotent across partial/duplicate
+//     deliveries via the row's reversed_quota (compare-and-set).
+//   - First bonus: reversed only when the invitee is fully DEACTIVATED — this top-up is fully
+//     clawed back AND the invitee retains no other net-credited top-up. The inviter's one-time
+//     bonus + aff_count and the invitee's sign-up reward are reversed exactly once (guarded by a
+//     first_bonus_reversal ledger row).
+//
+// clawedBackTotal is the cumulative quota clawed back from THIS top-up so far; creditedQuota is
+// the quota it originally credited. Like SettleReferralOnTopUp, errors are returned for the caller
+// to log — they must NOT roll back or block the clawback itself.
+func ReverseReferralOnTopUpClawback(inviteeId int, tradeNo string, clawedBackTotal, creditedQuota int64, callerIp string) error {
+	tradeNo = strings.TrimSpace(tradeNo)
+	if inviteeId <= 0 || tradeNo == "" || clawedBackTotal <= 0 {
+		return nil
+	}
+
+	if err := reverseAffiliateRechargeCommission(tradeNo, clawedBackTotal, creditedQuota); err != nil {
+		return err
+	}
+
+	// The one-time first bonus only reverses when the invitee's activation is fully void.
+	if clawedBackTotal < creditedQuota {
+		return nil
+	}
+	stillCredited, err := inviteeHasNetCreditedTopUp(inviteeId)
+	if err != nil {
+		return err
+	}
+	if stillCredited {
+		return nil
+	}
+	return reverseAffiliateFirstBonus(inviteeId)
+}
+
+// reverseAffiliateRechargeCommission shrinks the recharge_commission row for tradeNo so it reflects
+// the invitee's clawed-back top-up, debiting the inviter wallet by the reversed delta (unless the
+// commission was cash-settled, where only the ledger amount shrinks). The reversal target is
+// recomputed from the ORIGINAL grant (commission_quota + reversed_quota) each call, so partial and
+// duplicate refund deliveries converge without double-reversing.
+func reverseAffiliateRechargeCommission(tradeNo string, clawedBackTotal, creditedFallback int64) error {
+	for attempt := 0; attempt < maxAffiliateReversalAttempts; attempt++ {
+		raceLost := false
+		var inviterId int
+		var delta int64
+		var cashSettled bool
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			var row AffiliateCommission
+			if e := tx.Where("trade_no = ? AND kind = ?", tradeNo, AffiliateKindRechargeCommission).First(&row).Error; e != nil {
+				if errors.Is(e, gorm.ErrRecordNotFound) {
+					return nil // no commission was paid for this trade (no inviter / 0%)
+				}
+				return e
+			}
+			// RechargeQuota is the commission's proportion base. A corrupt/legacy row may hold 0;
+			// fall back to the order's credited quota so a positive commission is still reversed.
+			base := row.RechargeQuota
+			if base <= 0 {
+				base = creditedFallback
+			}
+			if base <= 0 {
+				return nil
+			}
+			clawed := clawedBackTotal
+			if clawed > base {
+				clawed = base
+			}
+			original := row.CommissionQuota + row.ReversedQuota
+			target := decimal.NewFromInt(original).Mul(decimal.NewFromInt(clawed)).Div(decimal.NewFromInt(base)).Floor().IntPart()
+			d := target - row.ReversedQuota
+			if d <= 0 {
+				return nil
+			}
+			claim := tx.Model(&AffiliateCommission{}).
+				Where("id = ? AND reversed_quota = ?", row.Id, row.ReversedQuota).
+				Updates(map[string]interface{}{
+					"commission_quota": gorm.Expr("commission_quota - ?", d),
+					"reversed_quota":   gorm.Expr("reversed_quota + ?", d),
+				})
+			if claim.Error != nil {
+				return claim.Error
+			}
+			if claim.RowsAffected == 0 {
+				raceLost = true
+				return errAffiliateReversalRaceLost
+			}
+			if !row.CashSettled {
+				if e := tx.Model(&User{}).Where("id = ?", row.InviterId).Updates(map[string]interface{}{
+					"aff_quota":   gorm.Expr("aff_quota - ?", d),
+					"aff_history": gorm.Expr("aff_history - ?", d),
+				}).Error; e != nil {
+					return e
+				}
+			}
+			inviterId, delta, cashSettled = row.InviterId, d, row.CashSettled
+			return nil
+		})
+		if raceLost {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if delta > 0 {
+			if !cashSettled {
+				_ = invalidateUserCache(inviterId)
+			}
+			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请返佣回扣 -%s（订单 %s 退款/拒付）", logger.LogQuota(int(delta)), tradeNo))
+		}
+		return nil
+	}
+	return errAffiliateReversalRaceLost
+}
+
+// reverseAffiliateFirstBonus reverses an invitee's one-time first bonus exactly once, when their
+// activation is fully void. It debits the inviter's aff_quota/aff_history/aff_count and the
+// invitee's sign-up reward, guarded by an inserted first_bonus_reversal ledger row (the composite
+// unique index blocks a second reversal).
+func reverseAffiliateFirstBonus(inviteeId int) error {
+	var inviterId int
+	var inviterReward, inviteeReward int64
+	granted, err := func() (bool, error) {
+		txErr := DB.Transaction(func(tx *gorm.DB) error {
+			var fb AffiliateCommission
+			if e := tx.Where("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonus).First(&fb).Error; e != nil {
+				if errors.Is(e, gorm.ErrRecordNotFound) {
+					return errAffiliateAlreadySettled // no first bonus was ever granted: nothing to reverse
+				}
+				return e
+			}
+			var existing int64
+			if e := tx.Model(&AffiliateCommission{}).
+				Where("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonusReversal).
+				Count(&existing).Error; e != nil {
+				return e
+			}
+			if existing > 0 {
+				return errAffiliateAlreadySettled // already reversed
+			}
+
+			inviterReward = fb.CommissionQuota
+			// Only reverse the invitee sign-up reward that was actually recorded at grant time.
+			// Legacy first_bonus rows (and intentionally-0 grants) carry RechargeQuota<=0, so we
+			// reverse nothing rather than guess with the current common.QuotaForInvitee (which may
+			// have changed since and would over/under-debit the invitee).
+			inviteeReward = fb.RechargeQuota
+			if inviteeReward < 0 {
+				inviteeReward = 0
+			}
+
+			// The reversal marker's unique index (trade_no, kind) is the hard idempotency boundary
+			// that blocks a concurrent second reversal the non-atomic COUNT above cannot. It is dated
+			// at the ORIGINAL grant time so the kind-agnostic month-commission SUMs (user + admin
+			// dashboards) attribute the negative to the month the bonus was earned, not "now".
+			marker := &AffiliateCommission{
+				InviterId:       fb.InviterId,
+				InviteeId:       inviteeId,
+				TradeNo:         affiliateFirstBonusKey(inviteeId),
+				Kind:            AffiliateKindFirstBonusReversal,
+				RechargeQuota:   -inviteeReward,
+				CommissionQuota: -inviterReward, // negative so kind-agnostic SUMs net the bonus out
+				CreatedAt:       fb.CreatedAt,
+			}
+			if e := tx.Create(marker).Error; e != nil {
+				return e
+			}
+
+			inviterUpdates := map[string]interface{}{
+				"aff_count": gorm.Expr("aff_count - ?", 1),
+			}
+			if inviterReward > 0 {
+				inviterUpdates["aff_quota"] = gorm.Expr("aff_quota - ?", inviterReward)
+				inviterUpdates["aff_history"] = gorm.Expr("aff_history - ?", inviterReward)
+			}
+			if e := tx.Model(&User{}).Where("id = ?", fb.InviterId).Updates(inviterUpdates).Error; e != nil {
+				return e
+			}
+			if inviteeReward > 0 {
+				if e := tx.Model(&User{}).Where("id = ?", inviteeId).
+					Update("quota", gorm.Expr("quota - ?", inviteeReward)).Error; e != nil {
+					return e
+				}
+			}
+			inviterId = fb.InviterId
+			return nil
+		})
+		return resolveAffiliateSettleResult(txErr, func() bool {
+			return affiliateLedgerExists("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonusReversal)
+		})
+	}()
+	if err != nil {
+		return err
+	}
+	if granted {
+		_ = invalidateUserCache(inviterId)
+		_ = invalidateUserCache(inviteeId)
+		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请首充奖励回扣 -%s（被邀请用户激活充值已全额退款/拒付）", logger.LogQuota(int(inviterReward))))
+		if inviteeReward > 0 {
+			RecordLog(inviteeId, LogTypeSystem, fmt.Sprintf("首充邀请赠送回扣 -%s（激活充值已全额退款/拒付）", logger.LogQuota(int(inviteeReward))))
+		}
+	}
+	return nil
+}
+
+// inviteeHasNetCreditedTopUp reports whether the invitee still has at least one settled top-up
+// (any provider) that retains net-credited quota (credited minus clawed-back > 0). Used to decide
+// whether a fully-refunded activating top-up fully DEACTIVATES the invitee.
+func inviteeHasNetCreditedTopUp(inviteeId int) (bool, error) {
+	var rows []TopUp
+	if err := DB.Select("payment_provider, amount, money, clawed_back_quota").
+		Where("user_id = ? AND status IN ?", inviteeId,
+			[]string{common.TopUpStatusSuccess, common.TopUpStatusRefunded, common.TopUpStatusDisputed}).
+		Find(&rows).Error; err != nil {
+		return false, err
+	}
+	for _, r := range rows {
+		if topUpCreditedQuota(r)-r.ClawedBackQuota > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// topUpCreditedQuota returns the user quota a settled top-up actually credited, using the SAME
+// per-provider formula as the Recharge* settlement functions (Stripe: Money*QuotaPerUnit; Creem:
+// Amount; Waffo/WaffoPancake/epay: Amount*QuotaPerUnit). Recomputing from Money alone is
+// Stripe-only and would misjudge Creem promo (Money=0, Amount>0) or subscription-generated rows
+// (Amount=0, Money>0, empty provider, credit no balance) — both of which flip the deactivation gate.
+func topUpCreditedQuota(t TopUp) int64 {
+	switch t.PaymentProvider {
+	case PaymentProviderStripe:
+		return decimal.NewFromFloat(t.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+	case PaymentProviderCreem:
+		return t.Amount
+	case PaymentProviderWaffo, PaymentProviderWaffoPancake, PaymentProviderEpay:
+		return decimal.NewFromInt(t.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+	default:
+		if t.Amount <= 0 {
+			return 0 // subscription/balance rows credit no top-up quota
+		}
+		return decimal.NewFromInt(t.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+	}
+}
+
 // affiliateCommissionQuota computes floor(creditedQuota * percent / 100) using decimal to
 // avoid float drift. percent is the effective rate already resolved by the caller (a per-inviter
 // override or the global default). Returns 0 when percent is non-positive; a percent above 100 is
@@ -205,6 +475,24 @@ func affiliateCommissionQuota(creditedQuota int64, percent float64) int64 {
 // the grant (so the caller credits the cache / writes logs once).
 func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeReward int64) (bool, error) {
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		// If a prior activation was fully refunded, its first_bonus was reversed and a
+		// first_bonus_reversal marker written. A genuine re-activation (a fresh paid top-up)
+		// should re-earn the bonus, so clear the stale reversed cycle (both rows) first — the
+		// unique index would otherwise block re-inserting the first_bonus row.
+		var reversedMarkers int64
+		if err := tx.Model(&AffiliateCommission{}).
+			Where("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonusReversal).
+			Count(&reversedMarkers).Error; err != nil {
+			return err
+		}
+		if reversedMarkers > 0 {
+			if err := tx.Where("invitee_id = ? AND kind IN ?", inviteeId,
+				[]string{AffiliateKindFirstBonus, AffiliateKindFirstBonusReversal}).
+				Delete(&AffiliateCommission{}).Error; err != nil {
+				return err
+			}
+		}
+
 		var existing int64
 		if err := tx.Model(&AffiliateCommission{}).
 			Where("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonus).
@@ -222,7 +510,7 @@ func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeR
 			InviteeId:       inviteeId,
 			TradeNo:         affiliateFirstBonusKey(inviteeId),
 			Kind:            AffiliateKindFirstBonus,
-			RechargeQuota:   0,
+			RechargeQuota:   inviteeReward, // stored so it can be reversed exactly on refund
 			CommissionQuota: inviterReward,
 			CreatedAt:       common.GetTimestamp(),
 		}
