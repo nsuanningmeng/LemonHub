@@ -36,6 +36,7 @@ const defaultSiteSettings: SiteSettings = {
   Contact: '',
   HomePageContent: '',
   ServerAddress: '',
+  TrustedRedirectDomains: '',
   'legal.user_agreement': '',
   'legal.privacy_policy': '',
   HeaderNavModules: '',

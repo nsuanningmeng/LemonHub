@@ -13,6 +13,7 @@
   "Only these HTTP status codes count as failures. Leave empty to count all errors.": "Only these HTTP status codes count as failures. Leave empty to count all errors.",
   "No requests in the last 24 hours": "No requests in the last 24 hours",
   "Only models served by enabled channels with no base price configured. They leave this list once priced.": "Only models served by enabled channels with no base price configured. They leave this list once priced.",
+  "Extra domains of this site, one per line or comma-separated (subdomains match automatically). Payment return pages follow the domain the user visits when it is listed here; otherwise they fall back to the server address.": "Extra domains of this site, one per line or comma-separated (subdomains match automatically). Payment return pages follow the domain the user visits when it is listed here; otherwise they fall back to the server address.",
   "No sub-sites available. Create your first sub-site to get started.": "No sub-sites available. Create your first sub-site to get started.",
   "The username of the account that will own this sub-site.": "The username of the account that will own this sub-site.",
   "Footer text or HTML": "Footer text or HTML",

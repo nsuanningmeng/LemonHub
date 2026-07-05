@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
@@ -76,6 +77,7 @@ func InitOptionMap() {
 	common.OptionMap["SeoDescription"] = common.SeoDescription
 	common.OptionMap["SeoKeywords"] = common.SeoKeywords
 	common.OptionMap["ServerAddress"] = ""
+	common.OptionMap["TrustedRedirectDomains"] = ""
 	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
 	common.OptionMap["WorkerValidKey"] = system_setting.WorkerValidKey
 	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(system_setting.WorkerAllowHttpImageRequestEnabled)
@@ -393,6 +395,8 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SMTPToken = value
 	case "ServerAddress":
 		system_setting.ServerAddress = value
+	case "TrustedRedirectDomains":
+		constant.SetTrustedRedirectDomainsFromOption(common.ParseDomainList(value))
 	case "WorkerUrl":
 		system_setting.WorkerUrl = value
 	case "WorkerValidKey":

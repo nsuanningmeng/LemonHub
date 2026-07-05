@@ -5,14 +5,27 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/stretchr/testify/assert"
 )
 
+// ParseDomainList must drop entries that would dangerously widen the trust
+// allowlist (bare TLDs, leading dots, wildcards, scheme/path) while keeping
+// well-formed registrable domains. A bare-TLD entry like "com" would otherwise
+// make MatchesTrustedRedirectDomain trust every "*.com" host.
+func TestParseDomainList_DropsDangerousEntries(t *testing.T) {
+	got := ParseDomainList("Alias.com, com, .com, *.evil.com, https://x.com/p, sub.keep.co.uk,  , local host")
+	assert.Equal(t, []string{"alias.com", "sub.keep.co.uk"}, got)
+
+	// The dropped bare-TLD entry must not end up trusting an arbitrary host.
+	defer constant.SetTrustedRedirectDomains(nil)
+	constant.SetTrustedRedirectDomains(ParseDomainList("com"))
+	assert.False(t, MatchesTrustedRedirectDomain("attacker.com"),
+		"a bare-TLD option value must not trust every .com host")
+}
+
 func TestValidateRedirectURL(t *testing.T) {
-	// Save original trusted domains and restore after test
-	originalDomains := constant.TrustedRedirectDomains
-	defer func() {
-		constant.TrustedRedirectDomains = originalDomains
-	}()
+	// Reset trusted domains after test (unit tests start with no env list set).
+	defer constant.SetTrustedRedirectDomains(nil)
 
 	tests := []struct {
 		name           string
@@ -99,7 +112,7 @@ func TestValidateRedirectURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set up trusted domains for this test case
-			constant.TrustedRedirectDomains = tt.trustedDomains
+			constant.SetTrustedRedirectDomains(tt.trustedDomains)
 
 			err := ValidateRedirectURL(tt.url)
 

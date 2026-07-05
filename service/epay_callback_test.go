@@ -5,9 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 )
 
 func newCallbackCtx(host string) *gin.Context {
@@ -110,6 +112,28 @@ func TestGetRequestBaseURL_HonorsValidForwardedProto(t *testing.T) {
 	if got := GetRequestBaseURL(c); got != "https://tenant.example" {
 		t.Fatalf("valid forwarded proto not honored, got %q", got)
 	}
+}
+
+// Hosts listed in TRUSTED_REDIRECT_DOMAINS (env) or the TrustedRedirectDomains
+// option (admin-configured) are trusted → payment return URLs follow the domain
+// the user is visiting (multi-domain deployments). Subdomains of a trusted
+// domain match; unrelated lookalike hosts still fall back.
+func TestGetRequestBaseURL_TrustedRedirectDomainsFollowRequestHost(t *testing.T) {
+	oldSA := system_setting.ServerAddress
+	system_setting.ServerAddress = "https://main.example.com"
+	constant.SetTrustedRedirectDomains([]string{"alias.example.org"})
+	constant.SetTrustedRedirectDomainsFromOption([]string{"panel.example.net"})
+	defer func() {
+		system_setting.ServerAddress = oldSA
+		constant.SetTrustedRedirectDomains(nil)
+		constant.SetTrustedRedirectDomainsFromOption(nil)
+	}()
+
+	assert.Equal(t, "http://alias.example.org", GetRequestBaseURL(newCallbackCtx("alias.example.org")))
+	assert.Equal(t, "http://pay.alias.example.org", GetRequestBaseURL(newCallbackCtx("pay.alias.example.org")))
+	assert.Equal(t, "http://panel.example.net", GetRequestBaseURL(newCallbackCtx("panel.example.net")))
+	// Suffix must match on a label boundary: "evilalias.example.org" is not a subdomain.
+	assert.Equal(t, "https://main.example.com", GetRequestBaseURL(newCallbackCtx("evilalias.example.org")))
 }
 
 // Nil context (non-request code paths) must not panic and must fall back.

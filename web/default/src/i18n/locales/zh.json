@@ -4000,6 +4000,8 @@
     "Separate image/audio prices are enabled.": "已启用图像/音频单独定价。",
     "Serve multiple users or teams with billing and quota control.": "为多个用户或团队提供计费和配额管理服务。",
     "Server Address": "服务器地址",
+    "Trusted Redirect Domains": "可信回跳域名",
+    "Extra domains of this site, one per line or comma-separated (subdomains match automatically). Payment return pages follow the domain the user visits when it is listed here; otherwise they fall back to the server address.": "本站的其他域名，每行一个或用逗号分隔（自动匹配子域名）。用户从列表中的域名访问时，支付完成页会跳回该域名；否则回退到服务器地址。",
     "Server IP": "服务器 IP",
     "Server Log Management": "服务器日志管理",
     "Server logging is not enabled (log directory not configured)": "服务器日志功能未启用（未配置日志目录）",

@@ -4000,6 +4000,8 @@
     "Separate image/audio prices are enabled.": "Отдельные цены для изображений и аудио включены.",
     "Serve multiple users or teams with billing and quota control.": "Обслуживание нескольких пользователей или команд с управлением биллингом и квотами.",
     "Server Address": "Адрес сервера",
+    "Trusted Redirect Domains": "Trusted Redirect Domains",
+    "Extra domains of this site, one per line or comma-separated (subdomains match automatically). Payment return pages follow the domain the user visits when it is listed here; otherwise they fall back to the server address.": "Extra domains of this site, one per line or comma-separated (subdomains match automatically). Payment return pages follow the domain the user visits when it is listed here; otherwise they fall back to the server address.",
     "Server IP": "IP сервера",
     "Server Log Management": "Управление журналами сервера",
     "Server logging is not enabled (log directory not configured)": "Журналирование сервера не включено (каталог журналов не настроен)",

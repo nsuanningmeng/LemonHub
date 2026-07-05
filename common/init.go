@@ -180,15 +180,5 @@ func initConstantEnv() {
 	}
 
 	// Initialize trusted redirect domains for URL validation
-	trustedDomainsStr := GetEnvOrDefaultString("TRUSTED_REDIRECT_DOMAINS", "")
-	var trustedDomains []string
-	domains := strings.Split(trustedDomainsStr, ",")
-	for _, domain := range domains {
-		trimmedDomain := strings.TrimSpace(domain)
-		if trimmedDomain != "" {
-			// Normalize domain to lowercase
-			trustedDomains = append(trustedDomains, strings.ToLower(trimmedDomain))
-		}
-	}
-	constant.TrustedRedirectDomains = trustedDomains
+	constant.SetTrustedRedirectDomains(ParseDomainList(GetEnvOrDefaultString("TRUSTED_REDIRECT_DOMAINS", "")))
 }

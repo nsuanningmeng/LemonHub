@@ -59,6 +59,7 @@ const _systemInfoSchema = z.object({
   }),
   SystemName: z.string().min(1),
   ServerAddress: z.string().optional(),
+  TrustedRedirectDomains: z.string().optional(),
   Logo: z.string().url().optional().or(z.literal('')),
   Footer: z.string().optional(),
   SeoDescription: z.string().optional(),
@@ -94,6 +95,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     },
     SystemName: normalizeValue(defaultValues.SystemName),
     ServerAddress: normalizeValue(defaultValues.ServerAddress),
+    TrustedRedirectDomains: normalizeValue(defaultValues.TrustedRedirectDomains),
     Logo: normalizeValue(defaultValues.Logo),
     Footer: normalizeValue(defaultValues.Footer),
     SeoDescription: normalizeValue(defaultValues.SeoDescription),
@@ -115,6 +117,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
       error: () => t('System name is required'),
     }),
     ServerAddress: z.string().optional(),
+    TrustedRedirectDomains: z.string().optional(),
     Logo: z.string().url().optional().or(z.literal('')),
     Footer: z.string().optional(),
     SeoDescription: z.string().optional(),
@@ -273,6 +276,29 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     <FormDescription>
                       {t(
                         'The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='TrustedRedirectDomains'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Trusted Redirect Domains')}</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder={'example.com\nbackup-domain.com'}
+                        rows={3}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Extra domains of this site, one per line or comma-separated (subdomains match automatically). Payment return pages follow the domain the user visits when it is listed here; otherwise they fall back to the server address.'
                       )}
                     </FormDescription>
                     <FormMessage />

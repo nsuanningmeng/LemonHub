@@ -48,6 +48,7 @@ const SITE_SECTIONS = [
           Contact: settings.Contact,
           HomePageContent: settings.HomePageContent,
           ServerAddress: settings.ServerAddress,
+          TrustedRedirectDomains: settings.TrustedRedirectDomains,
           legal: {
             user_agreement: settings['legal.user_agreement'],
             privacy_policy: settings['legal.privacy_policy'],

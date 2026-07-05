@@ -43,6 +43,8 @@
   "No requests in the last 24 hours": "No requests in the last 24 hours",
   "No unpriced models": "No unpriced models",
   "Only models served by enabled channels with no base price configured. They leave this list once priced.": "Only models served by enabled channels with no base price configured. They leave this list once priced.",
+  "Trusted Redirect Domains": "Trusted Redirect Domains",
+  "Extra domains of this site, one per line or comma-separated (subdomains match automatically). Payment return pages follow the domain the user visits when it is listed here; otherwise they fall back to the server address.": "Extra domains of this site, one per line or comma-separated (subdomains match automatically). Payment return pages follow the domain the user visits when it is listed here; otherwise they fall back to the server address.",
   "Unset price only": "Unset price only",
   "Create Sub-site": "Create Sub-site",
   "Update Sub-site": "Update Sub-site",
@@ -254,5 +256,7 @@
   "Receive promotional emails": "Receive promotional emails",
   "Get product announcements and promotional emails": "Get product announcements and promotional emails",
   "Awaiting Reply": "Awaiting Reply",
-  "Closed": "Closed"
+  "Closed": "Closed",
+  "GeeTest v4": "GeeTest v4",
+  "Captcha ID": "Captcha ID"
 }

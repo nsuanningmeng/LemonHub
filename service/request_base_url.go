@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
@@ -147,6 +148,9 @@ func isTrustedRequestHost(host string) bool {
 		return false
 	}
 	if model.GetSiteByDomainCached(host) != nil {
+		return true
+	}
+	if common.MatchesTrustedRedirectDomain(host) {
 		return true
 	}
 	serverHost := normalizeHostForTrust(systemServerAddressHost())
