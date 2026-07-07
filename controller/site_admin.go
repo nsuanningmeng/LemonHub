@@ -174,8 +174,9 @@ func SiteAdminSearchRedemptions(c *gin.Context) {
 		return
 	}
 	keyword := c.Query("keyword")
+	status := c.Query("status")
 	pageInfo := common.GetPageQuery(c)
-	redemptions, total, err := model.SearchRedemptions(keyword, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), siteId)
+	redemptions, total, err := model.SearchRedemptions(keyword, status, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), siteId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

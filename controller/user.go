@@ -29,6 +29,11 @@ import (
 	"gorm.io/gorm"
 )
 
+var (
+	errUserPasswordUnset    = errors.New("user password is not set")
+	errOriginalPasswordFail = errors.New("original password is incorrect")
+)
+
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
@@ -998,6 +1003,14 @@ func UpdateSelf(c *gin.Context) {
 	}
 	updatePassword, err := checkUpdatePassword(user.OriginalPassword, user.Password, cleanUser.Id)
 	if err != nil {
+		if errors.Is(err, errUserPasswordUnset) {
+			common.ApiErrorI18n(c, i18n.MsgUserPasswordUnset)
+			return
+		}
+		if errors.Is(err, errOriginalPasswordFail) {
+			common.ApiErrorI18n(c, i18n.MsgUserOriginalPasswordError)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}
@@ -1014,6 +1027,9 @@ func UpdateSelf(c *gin.Context) {
 }
 
 func checkUpdatePassword(originalPassword string, newPassword string, userId int) (updatePassword bool, err error) {
+	if newPassword == "" {
+		return
+	}
 	var currentUser *model.User
 	currentUser, err = model.GetUserById(userId, true)
 	if err != nil {
@@ -1021,12 +1037,13 @@ func checkUpdatePassword(originalPassword string, newPassword string, userId int
 	}
 
 	// 密码不为空,需要验证原密码
-	// 支持第一次账号绑定时原密码为空的情况
-	if !common.ValidatePasswordAndHash(originalPassword, currentUser.Password) && currentUser.Password != "" {
-		err = fmt.Errorf("原密码错误")
+	// 支持第一次账号绑定时原密码为空的情况（此时 currentUser.Password 为空）
+	if currentUser.Password == "" {
+		err = errUserPasswordUnset
 		return
 	}
-	if newPassword == "" {
+	if !common.ValidatePasswordAndHash(originalPassword, currentUser.Password) {
+		err = errOriginalPasswordFail
 		return
 	}
 	updatePassword = true

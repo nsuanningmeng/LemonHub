@@ -27,7 +27,7 @@ func TestSearchRedemptionsNumericKeywordSiteScoped(t *testing.T) {
 	idKw := strconv.Itoa(codeA.Id)
 
 	// From site B's scope, searching site A's numeric id must return nothing.
-	res, total, err := SearchRedemptions(idKw, 0, 10, siteB)
+	res, total, err := SearchRedemptions(idKw, "", 0, 10, siteB)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -35,11 +35,11 @@ func TestSearchRedemptionsNumericKeywordSiteScoped(t *testing.T) {
 		t.Fatalf("越权: numeric id search under siteB leaked a site-A code (total=%d)", total)
 	}
 	// From its own site, it is found.
-	if _, total, _ = SearchRedemptions(idKw, 0, 10, siteA); total != 1 {
+	if _, total, _ = SearchRedemptions(idKw, "", 0, 10, siteA); total != 1 {
 		t.Fatalf("own-site numeric search should find the code, total=%d", total)
 	}
 	// SiteScopeAll (main admin) finds it.
-	if _, total, _ = SearchRedemptions(idKw, 0, 10, SiteScopeAll); total != 1 {
+	if _, total, _ = SearchRedemptions(idKw, "", 0, 10, SiteScopeAll); total != 1 {
 		t.Fatalf("SiteScopeAll numeric search should find the code, total=%d", total)
 	}
 }
