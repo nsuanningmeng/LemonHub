@@ -313,19 +313,21 @@ func TestCheckUpdatePasswordRequiresCurrentPassword(t *testing.T) {
 	assert.True(t, updatePassword)
 }
 
-func TestCheckUpdatePasswordRejectsHistoricalEmptyPassword(t *testing.T) {
+func TestCheckUpdatePasswordAllowsFirstPasswordForPasswordlessAccount(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	user := &model.User{
-		Username: "legacy-passwordless-user",
+		Username: "oauth-passwordless-user",
 		Password: "",
 		Status:   common.UserStatusEnabled,
 	}
 	require.NoError(t, db.Create(user).Error)
 
+	// OAuth/Telegram-created accounts have no password and may have no bound
+	// email for the reset flow; a logged-in session may set the first password
+	// without providing an original password.
 	updatePassword, err := checkUpdatePassword("", "NewPassword123", user.Id)
-	require.Error(t, err)
-	assert.False(t, updatePassword)
-	assert.ErrorIs(t, err, errUserPasswordUnset)
+	require.NoError(t, err)
+	assert.True(t, updatePassword)
 }
 
 func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {

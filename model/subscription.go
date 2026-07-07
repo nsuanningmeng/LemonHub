@@ -767,11 +767,12 @@ func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
 	if common.QuotaPerUnit <= 0 {
 		return 0, errors.New("额度单位配置错误")
 	}
-	quota := decimal.NewFromFloat(priceAmount).
+	// Ceil first (charge at least the exact price), then saturate to the int32
+	// quota bound like every other billing conversion.
+	quota := common.QuotaFromDecimal(decimal.NewFromFloat(priceAmount).
 		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
-		Ceil().
-		IntPart()
-	return int(quota), nil
+		Ceil())
+	return quota, nil
 }
 
 // PurchaseSubscriptionWithBalance creates a subscription by deducting the user's wallet quota.
@@ -1032,6 +1033,12 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 	if tx == nil || sub == nil || plan == nil {
 		return errors.New("invalid reset args")
 	}
+	// Update only the reset columns: a full-row Save would write back the stale
+	// snapshot and could clobber a concurrent PostConsumeUserSubscriptionDelta.
+	updates := map[string]interface{}{
+		"amount_used": 0,
+		"updated_at":  now,
+	}
 	sub.AmountUsed = 0
 	if advanceResetTime {
 		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
@@ -1041,8 +1048,10 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 		} else {
 			sub.LastResetTime = 0
 		}
+		updates["next_reset_time"] = sub.NextResetTime
+		updates["last_reset_time"] = sub.LastResetTime
 	}
-	return tx.Save(sub).Error
+	return tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(updates).Error
 }
 
 func buildSubscriptionResetResult(plan *SubscriptionPlan, subs []UserSubscription, advanceResetTime bool) *SubscriptionResetResult {
@@ -1071,7 +1080,7 @@ func adminResetUserSubscriptionsByPlanTx(tx *gorm.DB, userId int, plan *Subscrip
 		return nil, errors.New("invalid reset args")
 	}
 	var subs []UserSubscription
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+	if err := lockForUpdate(tx).
 		Where("user_id = ? AND plan_id = ? AND status = ? AND end_time > ?", userId, plan.Id, "active", now).
 		Order("end_time asc, id asc").
 		Find(&subs).Error; err != nil {
@@ -1093,7 +1102,7 @@ func adminResetPlanSubscriptionsTx(tx *gorm.DB, plan *SubscriptionPlan, now int6
 		return nil, errors.New("invalid reset args")
 	}
 	var subs []UserSubscription
-	if err := tx.Set("gorm:query_option", "FOR UPDATE").
+	if err := lockForUpdate(tx).
 		Where("plan_id = ? AND status = ? AND end_time > ?", plan.Id, "active", now).
 		Order("user_id asc, end_time asc, id asc").
 		Find(&subs).Error; err != nil {
@@ -1569,7 +1578,9 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
 			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
 		}
-		sub.AmountUsed = newUsed
-		return tx.Save(&sub).Error
+		// Update only amount_used: a full-row Save would write back the whole
+		// locked-read snapshot and clobber concurrent writers of other columns.
+		return tx.Model(&UserSubscription{}).Where("id = ?", sub.Id).
+			Update("amount_used", newUsed).Error
 	})
 }

@@ -400,35 +400,24 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
 	}
 
-	// 开始数据库事务
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return tx.Error
+	// Single conditional UPDATE: the aff_quota >= ? guard makes concurrent
+	// transfers safe, and touching only the two balance columns can never
+	// clobber a concurrent consumption update to quota/used_quota/request_count
+	// (a stale full-row Save here previously could restore pre-consumption
+	// values and erase usage).
+	result := DB.Model(&User{}).
+		Where("id = ? AND aff_quota >= ?", user.Id, quota).
+		Updates(map[string]interface{}{
+			"aff_quota": gorm.Expr("aff_quota - ?", quota),
+			"quota":     gorm.Expr("quota + ?", quota),
+		})
+	if result.Error != nil {
+		return result.Error
 	}
-	defer tx.Rollback() // 确保在函数退出时事务能回滚
-
-	// 加锁查询用户以确保数据一致性
-	err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, user.Id).Error
-	if err != nil {
-		return err
-	}
-
-	// 再次检查用户的AffQuota是否足够
-	if user.AffQuota < quota {
+	if result.RowsAffected == 0 {
 		return errors.New("邀请额度不足！")
 	}
-
-	// 更新用户额度
-	user.AffQuota -= quota
-	user.Quota += quota
-
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
-		return err
-	}
-
-	// 提交事务
-	return tx.Commit().Error
+	return nil
 }
 
 func (user *User) Insert(inviterId int) error {
@@ -779,34 +768,76 @@ func (user *User) FillUserByTelegramId(siteId int) error {
 	return nil
 }
 
+// The Is*AlreadyTaken checks compare RowsAffected > 0 (not == 1): if duplicates
+// ever exist (no unique index on these columns), the identifier must still
+// report taken instead of silently allowing more duplicates.
 func IsEmailAlreadyTaken(email string, siteId int) bool {
-	return DB.Unscoped().Where("email = ? AND site_id = ?", email, siteId).Find(&User{}).RowsAffected == 1
+	return DB.Unscoped().Where("email = ? AND site_id = ?", email, siteId).Find(&User{}).RowsAffected > 0
+}
+
+// BindUserEmail sets the user's email after re-verifying same-site uniqueness
+// INSIDE a transaction, so the check and the write cannot be separated by a
+// concurrent bind of the same address. The duplicate probe is a locking read:
+// on MySQL/InnoDB the next-key lock on the email index blocks a concurrent
+// same-email bind until commit, and SQLite's single-writer model serializes the
+// two transactions. (site_id, email) has no unique index, so this is the
+// strongest cross-DB guard available without one; on PostgreSQL a residual
+// phantom window remains. Deleted accounts still hold their address (Unscoped),
+// matching IsEmailAlreadyTaken.
+func BindUserEmail(userId int, email string) error {
+	if email == "" {
+		return errors.New("邮箱地址为空！")
+	}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var self User
+		if err := tx.First(&self, "id = ?", userId).Error; err != nil {
+			return err
+		}
+		var holders []User
+		if err := lockForUpdate(tx).Unscoped().
+			Where("email = ? AND site_id = ? AND id <> ?", email, self.SiteId, userId).
+			Find(&holders).Error; err != nil {
+			return err
+		}
+		if len(holders) > 0 {
+			return errors.New("邮箱地址已被占用")
+		}
+		return tx.Model(&User{}).Where("id = ?", userId).Update("email", email).Error
+	})
+	if err != nil {
+		return err
+	}
+	return InvalidateUserCache(userId)
 }
 
 func IsWeChatIdAlreadyTaken(wechatId string, siteId int) bool {
-	return DB.Unscoped().Where("wechat_id = ? AND site_id = ?", wechatId, siteId).Find(&User{}).RowsAffected == 1
+	return DB.Unscoped().Where("wechat_id = ? AND site_id = ?", wechatId, siteId).Find(&User{}).RowsAffected > 0
 }
 
 func IsGitHubIdAlreadyTaken(githubId string, siteId int) bool {
-	return DB.Unscoped().Where("github_id = ? AND site_id = ?", githubId, siteId).Find(&User{}).RowsAffected == 1
+	return DB.Unscoped().Where("github_id = ? AND site_id = ?", githubId, siteId).Find(&User{}).RowsAffected > 0
 }
 
 func IsDiscordIdAlreadyTaken(discordId string, siteId int) bool {
-	return DB.Unscoped().Where("discord_id = ? AND site_id = ?", discordId, siteId).Find(&User{}).RowsAffected == 1
+	return DB.Unscoped().Where("discord_id = ? AND site_id = ?", discordId, siteId).Find(&User{}).RowsAffected > 0
 }
 
 func IsOidcIdAlreadyTaken(oidcId string, siteId int) bool {
-	return DB.Where("oidc_id = ? AND site_id = ?", oidcId, siteId).Find(&User{}).RowsAffected == 1
+	return DB.Where("oidc_id = ? AND site_id = ?", oidcId, siteId).Find(&User{}).RowsAffected > 0
 }
 
 func IsTelegramIdAlreadyTaken(telegramId string, siteId int) bool {
-	return DB.Unscoped().Where("telegram_id = ? AND site_id = ?", telegramId, siteId).Find(&User{}).RowsAffected == 1
+	return DB.Unscoped().Where("telegram_id = ? AND site_id = ?", telegramId, siteId).Find(&User{}).RowsAffected > 0
 }
 
 // ResetUserPasswordByEmail resets the password for the account with the given email on
 // the given sub-site. site_id MUST be matched explicitly: without it the update would
 // rewrite (and the caller would return) the password of every same-email account across
 // all sites — a cross-site account-takeover vector.
+//
+// The email must match EXACTLY ONE account on the site. (site_id, email) has no unique
+// index, so races or legacy data can produce same-site duplicates; blind-updating them
+// all would let whoever holds the reset token take over every duplicate at once.
 func ResetUserPasswordByEmail(email string, password string, siteId int) error {
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
@@ -815,8 +846,20 @@ func ResetUserPasswordByEmail(email string, password string, siteId int) error {
 	if err != nil {
 		return err
 	}
-	err = DB.Model(&User{}).Where("email = ? AND site_id = ?", email, siteId).Update("password", hashedPassword).Error
-	return err
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var ids []int
+		if err := tx.Model(&User{}).Where("email = ? AND site_id = ?", email, siteId).
+			Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return errors.New("该邮箱未绑定任何账户")
+		}
+		if len(ids) > 1 {
+			return errors.New("该邮箱匹配到多个账户，请联系管理员处理")
+		}
+		return tx.Model(&User{}).Where("id = ?", ids[0]).Update("password", hashedPassword).Error
+	})
 }
 
 func IsAdmin(userId int) bool {

@@ -253,6 +253,20 @@ func getMinTopup() int64 {
 	return int64(minTopup)
 }
 
+// getMaxTopup is the per-order ceiling on the requested top-up amount, in the
+// same display unit the user enters (mirrors getMinTopup). The credited quota
+// is amount(USD) * QuotaPerUnit and must fit the int32 quota column, so orders
+// above this could never be credited in full and are rejected up front.
+func getMaxTopup() int64 {
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		return int64(common.MaxQuota)
+	}
+	if common.QuotaPerUnit <= 1 {
+		return int64(common.MaxQuota)
+	}
+	return int64(float64(common.MaxQuota) / common.QuotaPerUnit)
+}
+
 func RequestEpay(c *gin.Context) {
 	var req EpayRequest
 	err := c.ShouldBindJSON(&req)
@@ -262,6 +276,10 @@ func RequestEpay(c *gin.Context) {
 	}
 	if req.Amount < getMinTopup() {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		return
+	}
+	if req.Amount > getMaxTopup() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("单笔充值数量不能大于 %d", getMaxTopup())})
 		return
 	}
 
@@ -642,6 +660,10 @@ func RequestAmount(c *gin.Context) {
 
 	if req.Amount < getMinTopup() {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
+		return
+	}
+	if req.Amount > getMaxTopup() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("单笔充值数量不能大于 %d", getMaxTopup())})
 		return
 	}
 	id := c.GetInt("id")

@@ -52,7 +52,7 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 			return nil
 		}
 
-		quota := int(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
+		quota := common.QuotaFromDecimal(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
 
 		target := common.TopUpStatusSuccess
 		if topUp.SiteId > 0 {

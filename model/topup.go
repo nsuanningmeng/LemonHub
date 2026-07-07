@@ -207,7 +207,7 @@ func Recharge(referenceId string, customerId string, paymentIntent string, calle
 			return err
 		}
 
-		quota = decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+		quota = int64(common.QuotaFromDecimal(decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit))))
 		err = tx.Model(&User{}).Where("id = ?", topUp.UserId).Updates(map[string]interface{}{"stripe_customer": customerId, "quota": gorm.Expr("quota + ?", quota)}).Error
 		if err != nil {
 			return err
@@ -283,7 +283,7 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 				return ErrTopUpStatusInvalid
 			}
 
-			creditedQuota := decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+			creditedQuota := int64(common.QuotaFromDecimal(decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit))))
 			if creditedQuota <= 0 {
 				// Bad/legacy row (Money <= 0): nothing was validly credited, so refuse
 				// to mutate quota or status rather than produce nonsensical state.
@@ -587,11 +587,11 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
 		if topUp.PaymentProvider == PaymentProviderStripe {
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit).IntPart())
+			quotaToAdd = common.QuotaFromDecimal(decimal.NewFromFloat(topUp.Money).Mul(dQuotaPerUnit))
 		} else {
 			dAmount := decimal.NewFromInt(topUp.Amount)
 			dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-			quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+			quotaToAdd = common.QuotaFromDecimal(dAmount.Mul(dQuotaPerUnit))
 		}
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
@@ -657,8 +657,8 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 			return err
 		}
 
-		// Creem 直接使用 Amount 作为充值额度（整数）
-		quota = topUp.Amount
+		// Creem 直接使用 Amount 作为充值额度（整数），饱和到 int32 quota 列的上限
+		quota = int64(common.QuotaFromFloat(float64(topUp.Amount)))
 
 		// 构建更新字段，优先使用邮箱，如果邮箱为空则使用用户名
 		updateFields := map[string]interface{}{
@@ -735,7 +735,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 
 		dAmount := decimal.NewFromInt(topUp.Amount)
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		quotaToAdd = int(dAmount.Mul(dQuotaPerUnit).IntPart())
+		quotaToAdd = common.QuotaFromDecimal(dAmount.Mul(dQuotaPerUnit))
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
 		}
@@ -799,7 +799,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd = int(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart())
+		quotaToAdd = common.QuotaFromDecimal(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
 		if quotaToAdd <= 0 {
 			return errors.New("无效的充值额度")
 		}

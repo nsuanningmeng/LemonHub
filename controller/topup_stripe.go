@@ -98,6 +98,12 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
 	chargedMoney := GetChargedAmount(float64(req.Amount), *user)
+	// Settlement credits Money * QuotaPerUnit into the int32 quota column, so an
+	// order whose credit cannot fit must be rejected before the user pays for it.
+	if chargedMoney*common.QuotaPerUnit > float64(common.MaxQuota) {
+		c.JSON(http.StatusOK, gin.H{"message": "单笔充值数量超过上限", "data": 10})
+		return
+	}
 
 	reference := fmt.Sprintf("new-api-ref-%d-%d-%s", user.Id, time.Now().UnixMilli(), randstr.String(4))
 	referenceId := "ref_" + common.Sha1([]byte(reference))

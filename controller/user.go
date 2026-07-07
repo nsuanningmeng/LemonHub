@@ -29,10 +29,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	errUserPasswordUnset    = errors.New("user password is not set")
-	errOriginalPasswordFail = errors.New("original password is incorrect")
-)
+var errOriginalPasswordFail = errors.New("original password is incorrect")
 
 type LoginRequest struct {
 	Username string `json:"username"`
@@ -1003,10 +1000,6 @@ func UpdateSelf(c *gin.Context) {
 	}
 	updatePassword, err := checkUpdatePassword(user.OriginalPassword, user.Password, cleanUser.Id)
 	if err != nil {
-		if errors.Is(err, errUserPasswordUnset) {
-			common.ApiErrorI18n(c, i18n.MsgUserPasswordUnset)
-			return
-		}
 		if errors.Is(err, errOriginalPasswordFail) {
 			common.ApiErrorI18n(c, i18n.MsgUserOriginalPasswordError)
 			return
@@ -1037,9 +1030,10 @@ func checkUpdatePassword(originalPassword string, newPassword string, userId int
 	}
 
 	// 密码不为空,需要验证原密码
-	// 支持第一次账号绑定时原密码为空的情况（此时 currentUser.Password 为空）
+	// 支持第一次设置密码：OAuth/Telegram 注册的账户没有密码（currentUser.Password 为空），
+	// 且可能没有绑定邮箱可走重置流程，因此允许已登录会话直接设置首个密码，无需原密码。
 	if currentUser.Password == "" {
-		err = errUserPasswordUnset
+		updatePassword = true
 		return
 	}
 	if !common.ValidatePasswordAndHash(originalPassword, currentUser.Password) {
@@ -1388,10 +1382,10 @@ func EmailBind(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	user.Email = email
-	// no need to check if this email already taken, because we have used verification code to check it
-	err = user.Update(false)
-	if err != nil {
+	// The taken-check at code-send time is racy (two users can both pass it and
+	// then bind the same email); BindUserEmail re-verifies uniqueness inside a
+	// transaction right before the write.
+	if err = model.BindUserEmail(user.Id, email); err != nil {
 		common.ApiError(c, err)
 		return
 	}

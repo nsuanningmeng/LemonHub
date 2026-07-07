@@ -97,6 +97,14 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品不存在"})
 		return
 	}
+	// Settlement credits Amount directly into the int32 quota column; a
+	// misconfigured product outside that range would clamp at settlement and
+	// credit less than the user paid for, so refuse it before checkout.
+	if selectedProduct.Quota <= 0 || selectedProduct.Quota > int64(common.MaxQuota) {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 产品额度配置非法 product_id=%s quota=%d", selectedProduct.ProductId, selectedProduct.Quota))
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品配置错误"})
+		return
+	}
 
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)

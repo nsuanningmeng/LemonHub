@@ -158,6 +158,10 @@ func RequestWaffoPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", waffoMinTopup)})
 		return
 	}
+	if req.Amount > getMaxTopup() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("单笔充值数量不能大于 %d", getMaxTopup())})
+		return
+	}
 
 	id := c.GetInt("id")
 	user, err := model.GetUserById(id, false)
