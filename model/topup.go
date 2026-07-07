@@ -20,7 +20,10 @@ type TopUp struct {
 	Money           float64 `json:"money"`
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	// Composite index idx_topup_provider_status_time backs the epay reconciliation
+	// sweep's existence/list queries (payment_provider = ? AND status = ? AND
+	// create_time BETWEEN ? AND ?): equality columns first, the create_time range last.
+	PaymentProvider string `json:"payment_provider" gorm:"type:varchar(50);default:'';index:idx_topup_provider_status_time,priority:1"`
 	// PaymentIntent is the Stripe payment_intent captured at fulfillment. Refund
 	// and dispute webhook events are charge-level and carry payment_intent (not
 	// the checkout client_reference_id / trade_no), so this is the join key used
@@ -29,9 +32,12 @@ type TopUp struct {
 	// ClawedBackQuota is the cumulative quota already reversed by refunds/disputes.
 	// It makes clawback idempotent across partial and duplicate webhook deliveries.
 	ClawedBackQuota int64  `json:"clawed_back_quota" gorm:"default:0"`
-	CreateTime      int64  `json:"create_time"`
+	CreateTime      int64  `json:"create_time" gorm:"index:idx_topup_provider_status_time,priority:3"`
 	CompleteTime    int64  `json:"complete_time"`
-	Status          string `json:"status"`
+	// Explicit varchar type (not GORM's default longtext for an untyped string): the
+	// composite index below indexes this column, and MySQL cannot index a TEXT/LONGTEXT
+	// column without a prefix length. varchar(32) fits every status value.
+	Status string `json:"status" gorm:"type:varchar(32);index:idx_topup_provider_status_time,priority:2"`
 }
 
 const (
@@ -88,6 +94,51 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 		return nil
 	}
 	return topUp
+}
+
+// FindTopUpByTradeNo distinguishes a missing order from a transient DB failure, unlike
+// GetTopUpByTradeNo which folds both into nil. Payment callbacks need the distinction:
+// a DB hiccup must read as "retry later" (the gateway re-delivers), not "订单不存在".
+// Returns (nil, nil) when no such order exists.
+func FindTopUpByTradeNo(tradeNo string) (*TopUp, error) {
+	var topUp TopUp
+	err := DB.Where("trade_no = ?", tradeNo).First(&topUp).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &topUp, nil
+}
+
+// GetPendingEpayTopUps lists pending epay top-up orders created inside
+// [createdAfter, createdBefore], NEWEST first — the reconciliation sweep's work list.
+// Newest-first matters because epay orders never expire on their own: abandoned
+// (never-paid) orders accumulate indefinitely inside the window, and an oldest-first
+// batch would re-query that dead head every sweep and starve a genuinely-paid order
+// whose notify+return were both lost. A lost-callback order is settled seconds after
+// payment, i.e. close to its creation time, so newest-first reaches it on the next
+// sweep regardless of how many stale orders pile up behind it.
+func GetPendingEpayTopUps(createdAfter, createdBefore int64, limit int) ([]*TopUp, error) {
+	var topups []*TopUp
+	err := DB.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+		PaymentProviderEpay, common.TopUpStatusPending, createdAfter, createdBefore).
+		Order("id desc").Limit(limit).Find(&topups).Error
+	if err != nil {
+		return nil, err
+	}
+	return topups, nil
+}
+
+// HasPendingEpayTopUps reports whether at least one pending epay top-up exists in the
+// window, so the reconcile task schedules no runs on an idle system.
+func HasPendingEpayTopUps(createdAfter, createdBefore int64) bool {
+	var ids []int
+	err := DB.Model(&TopUp{}).Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+		PaymentProviderEpay, common.TopUpStatusPending, createdAfter, createdBefore).
+		Limit(1).Pluck("id", &ids).Error
+	return err == nil && len(ids) > 0
 }
 
 func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {

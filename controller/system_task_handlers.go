@@ -22,6 +22,7 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
+	service.RegisterSystemTaskHandler(epayTopupReconcileHandler{})
 }
 
 // channelTestHandler runs the scheduled "test all channels" job. Enablement and
@@ -149,6 +150,42 @@ func (asyncTaskPollHandler) NewPayload() any { return nil }
 
 func (asyncTaskPollHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
 	summary := service.RunTaskPollingOnce(ctx, service.NewSystemTaskProgressReporter(task, runnerID))
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
+}
+
+// epayTopupReconcileHandler periodically settles paid-but-stuck epay top-up orders by
+// querying the gateway's order API (the safety net for lost notify + missed return).
+// Enabled() folds in the pending-order existence check so an idle system schedules no
+// rows (mirrors midjourneyPollHandler); the window/grace bounds live next to the sweep
+// in topup_epay_reconcile.go.
+type epayTopupReconcileHandler struct{}
+
+func (epayTopupReconcileHandler) Type() string { return model.SystemTaskTypeEpayTopupReconcile }
+
+func (epayTopupReconcileHandler) Enabled() bool {
+	if !common.GetEnvOrDefaultBool("EPAY_TOPUP_RECONCILE_ENABLED", true) {
+		return false
+	}
+	now := common.GetTimestamp()
+	return model.HasPendingEpayTopUps(now-epayReconcileWindowSeconds, now-epayReconcileGraceSeconds)
+}
+
+func (epayTopupReconcileHandler) Interval() time.Duration {
+	minutes := common.GetEnvOrDefault("EPAY_TOPUP_RECONCILE_INTERVAL_MINUTES", 5)
+	if minutes < 1 {
+		minutes = 5
+	}
+	return time.Duration(minutes) * time.Minute
+}
+
+func (epayTopupReconcileHandler) NewPayload() any { return nil }
+
+func (epayTopupReconcileHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	summary, err := reconcileEpayPendingTopUpsOnce(ctx)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
 }
 

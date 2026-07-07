@@ -114,6 +114,10 @@ func SetApiRouter(router *gin.Engine) {
 			userRoute.GET("/logout", controller.Logout)
 			// /user/epay/notify (GET+POST) is registered on paymentWebhookRouter above
 			// (no gzip / no global rate limit) so EasyPay always receives a clean "success" ack.
+			// Browser return after an epay top-up: carries the same signed params as the
+			// notify and settles idempotently — the fallback for lost notifies.
+			userRoute.GET("/epay/return", controller.EpayReturn)
+			userRoute.POST("/epay/return", anonymousRequestBodyLimit, controller.EpayReturn)
 			userRoute.GET("/groups", controller.GetUserGroups)
 
 			selfRoute := userRoute.Group("/")

@@ -18,35 +18,47 @@ var defNext = func(c *gin.Context) {
 	c.Next()
 }
 
-func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string) {
+// redisRateLimiter enforces a per-IP sliding window backed by Redis. failOpen decides
+// what an INTERNAL error (Redis unreachable, corrupt bucket entry) does: fail-closed
+// aborts with 500 (safe default for abuse-sensitive routes), fail-open lets the request
+// through — required for payment gateway callbacks, where dropping a signed notify on a
+// Redis hiccup strands a PAID order (the gateway only retries a few times), which is
+// strictly worse than letting one request bypass a generous backstop limit.
+func redisRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark string, failOpen bool) {
 	ctx := context.Background()
 	rdb := common.RDB
 	key := "rateLimit:" + mark + c.ClientIP()
-	listLength, err := rdb.LLen(ctx, key).Result()
-	if err != nil {
+	failInternal := func(err error) {
 		fmt.Println(err.Error())
+		if failOpen {
+			return
+		}
 		c.Status(http.StatusInternalServerError)
 		c.Abort()
+	}
+	listLength, err := rdb.LLen(ctx, key).Result()
+	if err != nil {
+		failInternal(err)
 		return
 	}
 	if listLength < int64(maxRequestNum) {
 		rdb.LPush(ctx, key, time.Now().Format(timeFormat))
 		rdb.Expire(ctx, key, common.RateLimitKeyExpirationDuration)
 	} else {
-		oldTimeStr, _ := rdb.LIndex(ctx, key, -1).Result()
+		oldTimeStr, err := rdb.LIndex(ctx, key, -1).Result()
+		if err != nil {
+			failInternal(err)
+			return
+		}
 		oldTime, err := time.Parse(timeFormat, oldTimeStr)
 		if err != nil {
-			fmt.Println(err)
-			c.Status(http.StatusInternalServerError)
-			c.Abort()
+			failInternal(err)
 			return
 		}
 		nowTimeStr := time.Now().Format(timeFormat)
 		nowTime, err := time.Parse(timeFormat, nowTimeStr)
 		if err != nil {
-			fmt.Println(err)
-			c.Status(http.StatusInternalServerError)
-			c.Abort()
+			failInternal(err)
 			return
 		}
 		// time.Since will return negative number!
@@ -74,9 +86,15 @@ func memoryRateLimiter(c *gin.Context, maxRequestNum int, duration int64, mark s
 }
 
 func rateLimitFactory(maxRequestNum int, duration int64, mark string) func(c *gin.Context) {
+	return rateLimitFactoryWithMode(maxRequestNum, duration, mark, false)
+}
+
+// rateLimitFactoryWithMode is rateLimitFactory with an explicit internal-error policy;
+// failOpen only affects the Redis-backed limiter (the in-memory one cannot fail).
+func rateLimitFactoryWithMode(maxRequestNum int, duration int64, mark string, failOpen bool) func(c *gin.Context) {
 	if common.RedisEnabled {
 		return func(c *gin.Context) {
-			redisRateLimiter(c, maxRequestNum, duration, mark)
+			redisRateLimiter(c, maxRequestNum, duration, mark, failOpen)
 		}
 	} else {
 		// It's safe to call multi times.
@@ -107,8 +125,9 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 // of bogus callbacks would otherwise drive an unauthenticated DB lookup per request (the order is
 // resolved before signature verification) and could exhaust the DB connection pool. The default
 // threshold sits far above any real epay callback volume, so legitimate retries never trip it.
+// Fail-open: a Redis hiccup must not 500 a signed gateway callback (see redisRateLimiter).
 func PaymentWebhookRateLimit() func(c *gin.Context) {
-	return rateLimitFactory(common.PaymentWebhookRateLimitNum, common.PaymentWebhookRateLimitDuration, "PWH")
+	return rateLimitFactoryWithMode(common.PaymentWebhookRateLimitNum, common.PaymentWebhookRateLimitDuration, "PWH", true)
 }
 
 func CriticalRateLimit() func(c *gin.Context) {

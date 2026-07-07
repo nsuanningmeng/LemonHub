@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -299,12 +300,17 @@ func RequestEpay(c *gin.Context) {
 	// whatever trusted domain the user happened to visit (a multi-domain change) can target a
 	// frontend-only / unregistered / unreachable domain and strand a paid order as unpaid. A
 	// SUB-site collects into its OWN epay merchant, registered against its OWN domain, so it must
-	// keep the per-request host. The return URL (browser redirect) stays per-domain in both cases.
+	// keep the per-request host. The return URL (browser redirect) stays per-domain in both cases;
+	// it targets the EpayReturn settlement fallback, which lands the user on the wallet page.
 	notifyBase := strings.TrimRight(service.GetCallbackAddress(), "/")
 	if site != nil {
 		notifyBase = service.GetCallbackAddressForRequest(c)
 	}
-	returnUrl, _ := url.Parse(paymentReturnPath(c, "/console/log"))
+	// The return URL is a browser redirect, so it must land on the domain the user is
+	// actually browsing — GetRequestBaseURL (the trusted request host, else ServerAddress).
+	// NOT GetCallbackAddressForRequest, which can resolve to a gateway-only CustomCallbackAddress
+	// the browser cannot reach / has no session on. The endpoint exists on every served domain.
+	returnUrl, _ := url.Parse(strings.TrimRight(service.GetRequestBaseURL(c), "/") + "/api/user/epay/return")
 	notifyUrl, _ := url.Parse(notifyBase + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
@@ -400,58 +406,62 @@ func UnlockOrder(tradeNo string) {
 	createLock.Unlock()
 }
 
-func EpayNotify(c *gin.Context) {
-	// NOTE: the global epay enablement is NOT checked here — that would wrongly reject a
-	// sub-site's callback when only sub-sites (not the main site) have epay configured. The
-	// per-order client resolution below (getEpayClientForSite) gates each callback by the
-	// owning site's own config instead.
-
-	var params map[string]string
-
-	if c.Request.Method == "POST" {
-		// POST 请求：从 POST body 解析参数
+// parseEpayCallbackParams extracts the epay callback parameters from a GET query or an
+// application/x-www-form-urlencoded POST body (gateways deliver both forms). A POST
+// whose body cannot be parsed yields an empty map — callers treat that as a bad callback.
+func parseEpayCallbackParams(c *gin.Context) map[string]string {
+	if c.Request.Method == http.MethodPost {
 		if err := c.Request.ParseForm(); err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 webhook POST 表单解析失败 path=%q client_ip=%s error=%q", c.Request.RequestURI, c.ClientIP(), err.Error()))
-			_, _ = c.Writer.Write([]byte("fail"))
-			return
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调 POST 表单解析失败 path=%q client_ip=%s error=%q", c.Request.RequestURI, c.ClientIP(), err.Error()))
+			return map[string]string{}
 		}
-		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
+		return lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
 			r[t] = c.Request.PostForm.Get(t)
 			return r
 		}, map[string]string{})
-	} else {
-		// GET 请求：从 URL Query 解析参数
-		params = lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.URL.Query().Get(t)
-			return r
-		}, map[string]string{})
 	}
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 收到请求 path=%q client_ip=%s method=%s params=%q", c.Request.RequestURI, c.ClientIP(), c.Request.Method, common.GetJsonString(params)))
+	return lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
+		r[t] = c.Request.URL.Query().Get(t)
+		return r
+	}, map[string]string{})
+}
 
-	if len(params) == 0 {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 参数为空 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
-	}
+// epayCallbackVerification is a located and signature-verified epay top-up callback:
+// the order it names, the owning sub-site (nil for a main-site order) and the
+// gateway-verified payload.
+type epayCallbackVerification struct {
+	topUp *model.TopUp
+	site  *model.Site
+	info  *epay.VerifyRes
+}
+
+// verifyEpayTopUpCallback locates the top-up order named by an epay callback (async
+// notify or browser return) and verifies the MD5 signature with the owning site's OWN
+// merchant key, then cross-checks the callback amount against the order so a payload
+// signed for a different amount can never settle. Returns nil (after logging) when the
+// callback must be rejected. source tags log lines: "notify" or "return".
+func verifyEpayTopUpCallback(c *gin.Context, params map[string]string, source string) *epayCallbackVerification {
 	// Locate the order BEFORE verifying, so a sub-site order is verified with its OWN
 	// pay_config key (the signature was produced with the sub-site's key, not the global
 	// one). The order — not the request Host — is authoritative for which site owns it.
 	tradeNo := params["out_trade_no"]
 	if tradeNo == "" {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 缺少订单号 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调缺少订单号 source=%s path=%q client_ip=%s", source, c.Request.RequestURI, c.ClientIP()))
+		return nil
 	}
-	topUp := model.GetTopUpByTradeNo(tradeNo)
+	topUp, err := model.FindTopUpByTradeNo(tradeNo)
+	if err != nil {
+		// Transient DB error — NOT "order missing". Rejecting lets the gateway retry.
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调订单查询失败 source=%s trade_no=%s client_ip=%s error=%q", source, tradeNo, c.ClientIP(), err.Error()))
+		return nil
+	}
 	if topUp == nil {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调订单不存在 trade_no=%s client_ip=%s", tradeNo, c.ClientIP()))
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调订单不存在 source=%s trade_no=%s client_ip=%s", source, tradeNo, c.ClientIP()))
+		return nil
 	}
 	if topUp.PaymentProvider != model.PaymentProviderEpay {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 订单支付网关不匹配 trade_no=%s order_provider=%s client_ip=%s", tradeNo, topUp.PaymentProvider, c.ClientIP()))
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 订单支付网关不匹配 source=%s trade_no=%s order_provider=%s client_ip=%s", source, tradeNo, topUp.PaymentProvider, c.ClientIP()))
+		return nil
 	}
 
 	// Load the owning sub-site from the DB (not the cache) so settlement always has the
@@ -462,37 +472,68 @@ func EpayNotify(c *gin.Context) {
 		if site == nil {
 			// Sub-site order but its site can't be loaded: fail (retry) rather than fall back
 			// to the global client / a zero cost, which would credit the user for free.
-			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 子站订单无法加载子站 trade_no=%s site_id=%d client_ip=%s", tradeNo, topUp.SiteId, c.ClientIP()))
-			_, _ = c.Writer.Write([]byte("fail"))
-			return
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 子站订单无法加载子站 source=%s trade_no=%s site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
+			return nil
 		}
 	}
 	client := getEpayClientForSite(site)
 	if client == nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 trade_no=%s site_id=%d client_ip=%s", tradeNo, topUp.SiteId, c.ClientIP()))
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 source=%s trade_no=%s site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
+		return nil
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
 		if err != nil {
-			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 验签失败 trade_no=%s client_ip=%s verify_error=%q", tradeNo, c.ClientIP(), err.Error()))
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调验签失败 source=%s trade_no=%s client_ip=%s verify_error=%q", source, tradeNo, c.ClientIP(), err.Error()))
 		} else {
-			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 验签失败 trade_no=%s client_ip=%s verify_status=false", tradeNo, c.ClientIP()))
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调验签失败 source=%s trade_no=%s client_ip=%s verify_status=false", source, tradeNo, c.ClientIP()))
 		}
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
+		return nil
 	}
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 验签成功 trade_no=%s callback_type=%s trade_status=%s client_ip=%s", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP()))
-
-	if verifyInfo.TradeStatus != epay.StatusTradeSuccess {
-		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 忽略事件 trade_no=%s trade_status=%s client_ip=%s", tradeNo, verifyInfo.TradeStatus, c.ClientIP()))
-		_, _ = c.Writer.Write([]byte("success"))
-		return
+	if !epayCallbackMoneyMatchesOrder(verifyInfo.Money, topUp.Money) {
+		// Defense in depth against a compromised/malicious gateway reporting success
+		// for a different amount than the order was created for.
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调金额与订单不符 source=%s trade_no=%s callback_money=%q order_money=%.2f client_ip=%s", source, tradeNo, verifyInfo.Money, topUp.Money, c.ClientIP()))
+		return nil
 	}
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 回调验签成功 source=%s trade_no=%s callback_type=%s trade_status=%s client_ip=%s", source, verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP()))
+	return &epayCallbackVerification{topUp: topUp, site: site, info: verifyInfo}
+}
 
-	LockOrder(tradeNo)
-	defer UnlockOrder(tradeNo)
+// epayCallbackMoneyMatchesOrder compares a gateway-reported amount with the order's
+// amount at 2 decimal places (the precision sent at purchase). An absent amount is
+// tolerated — the MD5 signature already covers whatever the gateway did send, and some
+// forks omit money on some channels; failing those would strand genuinely paid orders.
+//
+// The order-side comparand is derived with strconv.FormatFloat(...'f',2,64), the EXACT
+// formatting RequestEpay used to send Money to the gateway. This must not be replaced
+// with decimal.NewFromFloat(orderMoney).Round(2): FormatFloat rounds the binary float64
+// half-to-even while decimal.Round rounds half-away-from-zero, so for x.xx5 amounts (e.g.
+// 1.005 from amount×price×ratio) the two disagree and a gateway that honestly echoes the
+// submitted amount would be rejected — permanently stranding a paid order.
+func epayCallbackMoneyMatchesOrder(callbackMoney string, orderMoney float64) bool {
+	callbackMoney = strings.TrimSpace(callbackMoney)
+	if callbackMoney == "" {
+		return true
+	}
+	cb, err := decimal.NewFromString(callbackMoney)
+	if err != nil {
+		return false
+	}
+	orderSide, err := decimal.NewFromString(strconv.FormatFloat(orderMoney, 'f', 2, 64))
+	if err != nil {
+		return false
+	}
+	return cb.Round(2).Equal(orderSide)
+}
+
+// settleEpayTopUp finishes a gateway-confirmed PAID top-up order exactly once and runs
+// the post-settlement bookkeeping shared by the async notify, the browser return and
+// the reconciliation sweep. Racing deliveries are safe: the order-level lock plus the
+// DB-level CAS inside CompleteEpayTopUp make duplicate settlement an idempotent no-op.
+func settleEpayTopUp(ctx context.Context, topUp *model.TopUp, site *model.Site, callerIP string, source string) (string, error) {
+	LockOrder(topUp.TradeNo)
+	defer UnlockOrder(topUp.TradeNo)
 
 	// Settle: for a sub-site, debit the agent wallet (面值 × discount_rate) atomically with
 	// crediting the user; idempotent across duplicate callbacks; insufficient wallet parks
@@ -501,27 +542,94 @@ func EpayNotify(c *gin.Context) {
 	if site != nil {
 		cost = siteTopupCostMilli(topUp.Money, site.DiscountRate)
 	}
-	finalStatus, quotaAdded, settleErr := model.CompleteEpayTopUp(tradeNo, cost, 0)
+	finalStatus, quotaAdded, settleErr := model.CompleteEpayTopUp(topUp.TradeNo, cost, 0)
 	if settleErr != nil {
-		// Transient settlement error: do NOT ack, so epay retries (settlement is idempotent).
-		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 结算失败 trade_no=%s user_id=%d client_ip=%s error=%q", tradeNo, topUp.UserId, c.ClientIP(), settleErr.Error()))
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
+		// Transient settlement error: reject so the gateway retries / the reconciler
+		// picks the order up again (settlement is idempotent).
+		logger.LogError(ctx, fmt.Sprintf("易支付 结算失败 source=%s trade_no=%s user_id=%d caller_ip=%s error=%q", source, topUp.TradeNo, topUp.UserId, callerIP, settleErr.Error()))
+		return "", settleErr
 	}
 	switch finalStatus {
 	case model.TopUpStatusManualReview:
-		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 子站钱包不足，订单转人工处理 trade_no=%s site_id=%d user_id=%d cost=%d client_ip=%s", tradeNo, topUp.SiteId, topUp.UserId, cost, c.ClientIP()))
-		model.RecordLog(topUp.UserId, model.LogTypeSystem, fmt.Sprintf("在线充值已支付但子站钱包不足，订单 %s 转人工处理", tradeNo))
+		logger.LogError(ctx, fmt.Sprintf("易支付 子站钱包不足，订单转人工处理 source=%s trade_no=%s site_id=%d user_id=%d cost=%d caller_ip=%s", source, topUp.TradeNo, topUp.SiteId, topUp.UserId, cost, callerIP))
+		model.RecordLog(topUp.UserId, model.LogTypeSystem, fmt.Sprintf("在线充值已支付但子站钱包不足，订单 %s 转人工处理", topUp.TradeNo))
 	case common.TopUpStatusSuccess:
 		if quotaAdded > 0 {
-			logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值成功 trade_no=%s user_id=%d client_ip=%s quota_to_add=%d money=%.2f", tradeNo, topUp.UserId, c.ClientIP(), quotaAdded, topUp.Money))
-			model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaAdded), topUp.Money), c.ClientIP(), topUp.PaymentMethod, "epay")
-			if serr := model.SettleReferralOnTopUp(topUp.UserId, tradeNo, int64(quotaAdded), "epay"); serr != nil {
-				logger.LogError(c.Request.Context(), fmt.Sprintf("邀请返佣结算失败 trade_no=%s user_id=%d error=%q", tradeNo, topUp.UserId, serr.Error()))
+			logger.LogInfo(ctx, fmt.Sprintf("易支付 充值成功 source=%s trade_no=%s user_id=%d caller_ip=%s quota_to_add=%d money=%.2f", source, topUp.TradeNo, topUp.UserId, callerIP, quotaAdded, topUp.Money))
+			model.RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaAdded), topUp.Money), callerIP, topUp.PaymentMethod, "epay")
+			if serr := model.SettleReferralOnTopUp(topUp.UserId, topUp.TradeNo, int64(quotaAdded), "epay"); serr != nil {
+				logger.LogError(ctx, fmt.Sprintf("邀请返佣结算失败 trade_no=%s user_id=%d error=%q", topUp.TradeNo, topUp.UserId, serr.Error()))
 			}
 		}
 	}
+	return finalStatus, nil
+}
+
+func EpayNotify(c *gin.Context) {
+	// NOTE: the global epay enablement is NOT checked here — that would wrongly reject a
+	// sub-site's callback when only sub-sites (not the main site) have epay configured. The
+	// per-order client resolution (getEpayClientForSite) gates each callback by the owning
+	// site's own config instead.
+	params := parseEpayCallbackParams(c)
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 收到请求 path=%q client_ip=%s method=%s params=%q", c.Request.RequestURI, c.ClientIP(), c.Request.Method, common.GetJsonString(params)))
+	if len(params) == 0 {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 参数为空 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
+	v := verifyEpayTopUpCallback(c, params, "notify")
+	if v == nil {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
+	if v.info.TradeStatus != epay.StatusTradeSuccess {
+		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 忽略事件 trade_no=%s trade_status=%s client_ip=%s", v.topUp.TradeNo, v.info.TradeStatus, c.ClientIP()))
+		_, _ = c.Writer.Write([]byte("success"))
+		return
+	}
+	if _, err := settleEpayTopUp(c.Request.Context(), v.topUp, v.site, c.ClientIP(), "notify"); err != nil {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 	_, _ = c.Writer.Write([]byte("success"))
+}
+
+// EpayReturn handles the browser return after an epay top-up payment. The gateway
+// appends the SAME MD5-signed parameter set it sends to the async notify, so this
+// endpoint doubles as a settlement fallback for lost notifies (several popular epay
+// implementations deliver the notify only once, or give up after a few retries).
+// Verification and amount checks are identical to the notify path, so this grants
+// nothing a forged notify couldn't already attempt; settlement is idempotent, so
+// racing the async notify is safe. The user always ends up on the wallet page.
+func EpayReturn(c *gin.Context) {
+	params := parseEpayCallbackParams(c)
+	if len(params) == 0 {
+		// Bare visit without a signed payload: just land the user on the wallet page.
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup"))
+		return
+	}
+	v := verifyEpayTopUpCallback(c, params, "return")
+	if v == nil {
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=fail"))
+		return
+	}
+	if v.info.TradeStatus != epay.StatusTradeSuccess {
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=pending"))
+		return
+	}
+	finalStatus, err := settleEpayTopUp(c.Request.Context(), v.topUp, v.site, c.ClientIP(), "return")
+	if err != nil {
+		// Paid, but settlement hit a transient error — the notify retry or the
+		// reconciliation sweep will finish it; show the user "processing".
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=pending"))
+		return
+	}
+	if finalStatus == common.TopUpStatusSuccess {
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=success"))
+		return
+	}
+	// manual_review (paid, awaiting admin) or any other parked state.
+	c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=pending"))
 }
 
 func RequestAmount(c *gin.Context) {
