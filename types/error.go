@@ -96,6 +96,12 @@ type NewAPIError struct {
 	errorCode      ErrorCode
 	StatusCode     int
 	Metadata       json.RawMessage
+	// userMessageOverride carries the channel-configured fixed text that must
+	// replace the user-visible message. It is only a tag: Error(), logs, and
+	// internal consumers (auto-ban, violation fee, retry) keep reading the real
+	// error until ApplyUserMessageOverride is called at response-render time.
+	userMessageOverride string
+	messageOverridden   bool
 }
 
 // Unwrap enables errors.Is / errors.As to work with NewAPIError by exposing the underlying error.
@@ -177,6 +183,45 @@ func (e *NewAPIError) SetMessage(message string) {
 	e.Err = errors.New(message)
 }
 
+// SetUserMessageOverride tags this error so that the user-facing response shows
+// the given fixed text instead of the real error message. The real message
+// stays readable everywhere else until ApplyUserMessageOverride runs.
+func (e *NewAPIError) SetUserMessageOverride(message string) {
+	if e == nil || message == "" {
+		return
+	}
+	e.userMessageOverride = message
+}
+
+func (e *NewAPIError) UserMessageOverride() (string, bool) {
+	if e == nil || e.userMessageOverride == "" {
+		return "", false
+	}
+	return e.userMessageOverride, true
+}
+
+// ApplyUserMessageOverride rewrites every user-visible message carrier (Err,
+// RelayError, Metadata) with the final override text. Call it only right
+// before rendering the response, after all internal consumers (error logging,
+// auto-ban, violation fee, retry decisions) have read the original error.
+func (e *NewAPIError) ApplyUserMessageOverride(message string) {
+	if e == nil || message == "" {
+		return
+	}
+	e.Err = errors.New(message)
+	e.Metadata = nil
+	e.messageOverridden = true
+	switch relayErr := e.RelayError.(type) {
+	case OpenAIError:
+		relayErr.Message = message
+		relayErr.Metadata = nil
+		e.RelayError = relayErr
+	case ClaudeError:
+		relayErr.Message = message
+		e.RelayError = relayErr
+	}
+}
+
 func (e *NewAPIError) ToOpenAIError() OpenAIError {
 	var result OpenAIError
 	switch e.errorType {
@@ -201,7 +246,7 @@ func (e *NewAPIError) ToOpenAIError() OpenAIError {
 			Code:    e.errorCode,
 		}
 	}
-	if e.errorCode != ErrorCodeCountTokenFailed {
+	if e.errorCode != ErrorCodeCountTokenFailed && !e.messageOverridden {
 		result.Message = common.MaskSensitiveInfo(result.Message)
 	}
 	if result.Message == "" {
@@ -230,7 +275,7 @@ func (e *NewAPIError) ToClaudeError() ClaudeError {
 			Type:    string(e.errorType),
 		}
 	}
-	if e.errorCode != ErrorCodeCountTokenFailed {
+	if e.errorCode != ErrorCodeCountTokenFailed && !e.messageOverridden {
 		result.Message = common.MaskSensitiveInfo(result.Message)
 	}
 	if result.Message == "" {

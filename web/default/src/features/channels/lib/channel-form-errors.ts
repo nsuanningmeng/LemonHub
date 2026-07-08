@@ -41,6 +41,8 @@ const ADVANCED_SETTINGS_FIELDS = new Set<FieldPath<ChannelFormValues>>([
   'proxy',
   'system_prompt',
   'system_prompt_override',
+  'error_override_enabled',
+  'error_override_message',
   'allow_service_tier',
   'disable_store',
   'allow_safety_identifier',

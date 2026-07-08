@@ -13,6 +13,23 @@ type ChannelSettings struct {
 	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
 	SystemPrompt           string `json:"system_prompt,omitempty"`
 	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
+	ErrorOverrideEnabled   bool   `json:"error_override_enabled,omitempty"`
+	ErrorOverrideMessage   string `json:"error_override_message,omitempty"`
+}
+
+const defaultErrorOverrideMessage = "上游服务暂时不可用，请稍后重试"
+
+// ErrorOverrideText returns the fixed text shown to users in place of this
+// channel's real error messages, and whether the override is enabled.
+func (s ChannelSettings) ErrorOverrideText() (string, bool) {
+	if !s.ErrorOverrideEnabled {
+		return "", false
+	}
+	msg := strings.TrimSpace(s.ErrorOverrideMessage)
+	if msg == "" {
+		msg = defaultErrorOverrideMessage
+	}
+	return msg, true
 }
 
 type VertexKeyType string

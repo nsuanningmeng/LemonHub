@@ -1739,15 +1739,26 @@ const EditChannelModal = (props) => {
       localInputs.other = 'v2.1';
     }
 
-    // 生成渠道额外设置JSON
-    const channelExtraSettings = {
+    // 生成渠道额外设置JSON（保留本界面未管理的设置键，例如 error_override_*，避免保存时被清空）
+    let channelExtraSettings = {};
+    if (localInputs.setting) {
+      try {
+        const parsedSetting = JSON.parse(localInputs.setting);
+        if (parsedSetting && typeof parsedSetting === 'object') {
+          channelExtraSettings = parsedSetting;
+        }
+      } catch (error) {
+        console.error('解析渠道设置失败:', error);
+      }
+    }
+    Object.assign(channelExtraSettings, {
       force_format: localInputs.force_format || false,
       thinking_to_content: localInputs.thinking_to_content || false,
       proxy: localInputs.proxy || '',
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
       system_prompt: localInputs.system_prompt || '',
       system_prompt_override: localInputs.system_prompt_override || false,
-    };
+    });
     localInputs.setting = JSON.stringify(channelExtraSettings);
 
     // 处理 settings 字段（包括企业账户设置和字段透传控制）

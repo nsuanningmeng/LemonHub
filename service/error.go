@@ -12,10 +12,24 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
+
+	"github.com/gin-gonic/gin"
 )
+
+// ChannelErrorOverrideText returns the fixed user-facing error text configured
+// on the channel currently bound to this request context, if that channel has
+// error message override enabled.
+func ChannelErrorOverrideText(c *gin.Context) (string, bool) {
+	setting, ok := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	if !ok {
+		return "", false
+	}
+	return setting.ErrorOverrideText()
+}
 
 func MidjourneyErrorWrapper(code int, desc string) *dto.MidjourneyResponse {
 	return &dto.MidjourneyResponse{

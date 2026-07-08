@@ -90,7 +90,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
-			newAPIError.SetMessage(common.MessageWithRequestId(maskMappedModelName(c, newAPIError.Error()), requestId))
+			if overrideText, ok := newAPIError.UserMessageOverride(); ok {
+				newAPIError.ApplyUserMessageOverride(common.MessageWithRequestId(overrideText, requestId))
+			} else {
+				newAPIError.SetMessage(common.MessageWithRequestId(maskMappedModelName(c, newAPIError.Error()), requestId))
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -239,6 +243,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+
+		if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
+			newAPIError.SetUserMessageOverride(overrideText)
+		}
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -480,6 +488,11 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		}
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
+		if _, overrideEnabled := service.ChannelErrorOverrideText(c); overrideEnabled {
+			// The user-facing response was replaced with the channel's fixed
+			// error text; this log entry keeps the original message.
+			adminInfo["error_override_enabled"] = true
+		}
 		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
 		if isMultiKey {
 			adminInfo["is_multi_key"] = true
@@ -530,6 +543,8 @@ func RelayMidjourney(c *gin.Context) {
 			mjErr.Result = "当前分组负载已饱和，请稍后再试，或升级账户以提升服务质量。"
 			statusCode = http.StatusTooManyRequests
 		}
+		// MJ 的 mjErr 大多是本站校验/流程错误（额度不足、参数缺失等），必须保留原文；
+		// 上游业务失败的原文替换在 RelayMidjourneySubmit 写响应体处按渠道配置处理。
 		c.JSON(statusCode, gin.H{
 			"description": fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result),
 			"type":        "upstream_error",
@@ -654,6 +669,9 @@ func RelayTask(c *gin.Context) {
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
 				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+			if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
+				taskErr.UserMessageOverride = overrideText
+			}
 		}
 
 		if !shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry()) {
@@ -708,6 +726,10 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	}
 	// 任务错误多为上游原文透传，可能含映射后的真实模型名，需替换为请求模型名
 	taskErr.Message = maskMappedModelName(c, taskErr.Message)
+	// 渠道配置了统一错误信息时，最终展示给用户的文本以渠道配置为准
+	if taskErr.UserMessageOverride != "" {
+		taskErr.Message = taskErr.UserMessageOverride
+	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }
 

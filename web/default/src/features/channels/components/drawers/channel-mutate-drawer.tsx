@@ -280,6 +280,8 @@ const SENSITIVE_FORM_FIELDS = [
   'pass_through_body_enabled',
   'system_prompt',
   'system_prompt_override',
+  'error_override_enabled',
+  'error_override_message',
   'allow_service_tier',
   'disable_store',
   'allow_safety_identifier',
@@ -332,6 +334,8 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.thinking_to_content ||
     values.pass_through_body_enabled ||
     values.system_prompt_override ||
+    values.error_override_enabled ||
+    values.error_override_message?.trim() ||
     values.claude_beta_query ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
@@ -726,6 +730,7 @@ export function ChannelMutateDrawer({
   const currentProxy = form.watch('proxy')
   const currentSystemPrompt = form.watch('system_prompt')
   const currentSystemPromptOverride = form.watch('system_prompt_override')
+  const currentErrorOverrideEnabled = form.watch('error_override_enabled')
   const currentAllowServiceTier = form.watch('allow_service_tier')
   const currentDisableStore = form.watch('disable_store')
   const currentAllowSafetyIdentifier = form.watch('allow_safety_identifier')
@@ -929,7 +934,8 @@ export function ChannelMutateDrawer({
     currentDisableTaskPollingSleep ||
     currentProxy?.trim() ||
     currentSystemPrompt?.trim() ||
-    currentSystemPromptOverride
+    currentSystemPromptOverride ||
+    currentErrorOverrideEnabled
   )
   let fieldPassthroughConfigured = false
   if (currentType === 1 || currentType === 57) {
@@ -4103,6 +4109,60 @@ export function ChannelMutateDrawer({
                                 </FormItem>
                               )}
                             />
+
+                            <FormField
+                              control={form.control}
+                              name='error_override_enabled'
+                              render={({ field }) => (
+                                <FormItem className='flex items-center justify-between'>
+                                  <div className='space-y-0.5'>
+                                    <FormLabel>
+                                      {t('Unified Error Message')}
+                                    </FormLabel>
+                                    <FormDescription>
+                                      {t(
+                                        'Replace all error messages from this channel with a fixed text; admins still see the original error in error logs'
+                                      )}
+                                    </FormDescription>
+                                  </div>
+                                  <FormControl>
+                                    <Switch
+                                      checked={field.value}
+                                      onCheckedChange={field.onChange}
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+
+                            {currentErrorOverrideEnabled && (
+                              <FormField
+                                control={form.control}
+                                name='error_override_message'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      {t('Unified Error Message Content')}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Textarea
+                                        placeholder={t(
+                                          'Leave empty to use the default message'
+                                        )}
+                                        rows={2}
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormDescription>
+                                      {t(
+                                        'Users will see this text instead of the real channel error'
+                                      )}
+                                    </FormDescription>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
                           </fieldset>
                         </div>
 

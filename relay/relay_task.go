@@ -91,6 +91,13 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 		return service.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "task_channel_disable", http.StatusBadRequest)
 	}
 	info.LockedChannel = ch
+	// 锁定渠道路径不经过 distributor，渠道设置（如统一错误信息）需在此写入上下文，
+	// 否则首次尝试（重试前）读不到原始渠道的配置
+	lockedChannelSetting := ch.GetSetting()
+	common.SetContextKey(c, constant.ContextKeyChannelSetting, lockedChannelSetting)
+	if info.ChannelMeta != nil {
+		info.ChannelSetting = lockedChannelSetting
+	}
 
 	if originTask.ChannelId != info.ChannelId {
 		key, _, newAPIError := ch.GetNextEnabledKey()

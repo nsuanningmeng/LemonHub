@@ -482,6 +482,9 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			}
 			c.Set("base_url", channel.GetBaseURL())
 			c.Set("channel_id", originTask.ChannelId)
+			// 请求已改走原任务渠道，渠道设置（统一错误信息等）必须同步切换，
+			// 否则后续读取到的是分发时选中渠道的配置
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, channel.GetSetting())
 			c.Request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", channel.Key))
 			logger.LogDebug(c, "Midjourney action uses origin channel: id=%s, base_url=%s", strconv.Itoa(originTask.ChannelId), channel.GetBaseURL())
 		}
@@ -603,6 +606,17 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		//非1-提交成功,21-任务已存在和22-排队中，则记录错误原因
 		midjourneyTask.FailReason = midjResponse.Description
 		consumeQuota = false
+		// 渠道配置了统一错误信息时，上游业务失败的原文不透传给用户；
+		// 任务 FailReason（上一行）保留原文供管理员排查
+		if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
+			maskedBody, marshalErr := common.Marshal(&dto.MidjourneyResponse{
+				Code:        midjResponse.Code,
+				Description: overrideText,
+			})
+			if marshalErr == nil {
+				responseBody = maskedBody
+			}
+		}
 	}
 
 	if midjResponse.Code == 21 { //21-任务已存在（处理中或者有结果了）

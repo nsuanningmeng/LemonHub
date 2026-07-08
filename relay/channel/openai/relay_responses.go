@@ -88,6 +88,14 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
+		switch streamResponse.Type {
+		case "response.failed", "response.error", "error":
+			// 渠道配置了统一错误信息时，终止性错误事件中的上游原文不透传给用户
+			if overrideText, ok := info.ChannelSetting.ErrorOverrideText(); ok {
+				logger.LogError(c, "responses stream error event (masked for user): "+common.LocalLogPreview(data))
+				data = maskResponsesErrorEvent(data, overrideText)
+			}
+		}
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed":
@@ -147,4 +155,27 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 
 	return usage, nil
+}
+
+// maskResponsesErrorEvent replaces the upstream error text inside a Responses
+// stream error event (`error` / `response.failed` / `response.error`) with the
+// channel-configured fixed message while preserving the event shape.
+func maskResponsesErrorEvent(data string, overrideText string) string {
+	var event map[string]any
+	if err := common.UnmarshalJsonStr(data, &event); err != nil {
+		return data
+	}
+	if _, ok := event["message"]; ok {
+		event["message"] = overrideText
+	}
+	if resp, ok := event["response"].(map[string]any); ok {
+		if errObj, ok := resp["error"].(map[string]any); ok {
+			errObj["message"] = overrideText
+		}
+	}
+	masked, err := common.Marshal(event)
+	if err != nil {
+		return data
+	}
+	return string(masked)
 }

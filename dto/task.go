@@ -11,6 +11,10 @@ type TaskError struct {
 	StatusCode int    `json:"-"`
 	LocalError bool   `json:"-"`
 	Error      error  `json:"-"`
+	// UserMessageOverride, when non-empty, replaces Message in the user-facing
+	// response (channel-configured fixed error text). Applied in respondTaskError
+	// after error logging has recorded the original message.
+	UserMessageOverride string `json:"-"`
 }
 
 type TaskData interface {
