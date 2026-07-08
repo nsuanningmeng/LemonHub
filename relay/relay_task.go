@@ -19,6 +19,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -185,7 +186,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 	}
-	info.PriceData = priceData
+	rebasePriceData(info, priceData)
 
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
@@ -259,6 +260,19 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		Platform:       platform,
 		Quota:          finalQuota,
 	}, nil
+}
+
+// rebasePriceData 用重新计算的基础价格整体替换 info.PriceData，同时保留旧
+// PriceData 上已预设的 OtherRatios（ResolveOriginTask 为 remix 从原始任务提取
+// 的时长/分辨率倍率）。Sora 的 EstimateBilling 对 remix 刻意返回 nil，依赖该
+// 预设存活到步骤 6 的额度计算；若整体替换后不重放，remix 会丢失倍率、按 1 秒
+// 基价预扣并结算（少计费）。同 key 时步骤 5 的适配器估算仍会覆盖预设值。
+func rebasePriceData(info *relaycommon.RelayInfo, priceData types.PriceData) {
+	presetRatios := info.PriceData.OtherRatios()
+	info.PriceData = priceData
+	for key, ratio := range presetRatios {
+		info.PriceData.AddOtherRatio(key, ratio)
+	}
 }
 
 // recalcQuotaFromRatios 根据 adjustedRatios 重新计算 quota。
