@@ -55,11 +55,17 @@ export function normalizeInterfaceLanguage(value?: string | null): string {
  * this mapping a Chinese browser would never match and fall back to English.
  * Non-Chinese codes are returned unchanged so i18next's own `supportedLngs`
  * matching still applies (e.g. `fr-FR` -> `fr`, `ja` -> `ja`).
+ *
+ * The detector also runs the localStorage-cached value (already `zhCN`/`zhTW`)
+ * through this function on every load, so the interface codes themselves must
+ * round-trip unchanged — otherwise a saved `zhTW` preference is silently
+ * rewritten to `zhCN`.
  */
 export function convertDetectedLanguage(value: string): string {
   const lower = value.trim().replaceAll('_', '-').toLowerCase()
   if (!lower.startsWith('zh')) return value
   if (
+    lower === 'zhtw' ||
     lower === 'zh-tw' ||
     lower === 'zh-hk' ||
     lower === 'zh-mo' ||
