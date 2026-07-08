@@ -86,6 +86,16 @@ func PruneStaleSystemInstances(cutoff int64) (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
+func DeleteStaleSystemInstances(now int64) (int64, error) {
+	result := DB.Where("last_seen_at < ?", now-SystemInstanceStaleAfterSeconds).Delete(&SystemInstance{})
+	return result.RowsAffected, result.Error
+}
+
+func DeleteStaleSystemInstance(nodeName string, now int64) (bool, error) {
+	result := DB.Where("node_name = ? AND last_seen_at < ?", nodeName, now-SystemInstanceStaleAfterSeconds).Delete(&SystemInstance{})
+	return result.RowsAffected > 0, result.Error
+}
+
 func (instance *SystemInstance) ToResponse(now int64) SystemInstanceResponse {
 	status := SystemInstanceStatusOnline
 	if now-instance.LastSeenAt > SystemInstanceStaleAfterSeconds {
