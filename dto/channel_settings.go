@@ -15,6 +15,7 @@ type ChannelSettings struct {
 	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
 	ErrorOverrideEnabled   bool   `json:"error_override_enabled,omitempty"`
 	ErrorOverrideMessage   string `json:"error_override_message,omitempty"`
+	AutoTestDisabled       bool   `json:"auto_test_disabled,omitempty"`
 }
 
 const defaultErrorOverrideMessage = "上游服务暂时不可用，请稍后重试"

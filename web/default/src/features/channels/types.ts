@@ -88,6 +88,7 @@ export interface ChannelSettings {
   system_prompt_override?: boolean
   error_override_enabled?: boolean
   error_override_message?: string
+  auto_test_disabled?: boolean
 }
 
 export interface ChannelOtherSettings {

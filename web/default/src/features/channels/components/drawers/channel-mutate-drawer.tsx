@@ -282,6 +282,7 @@ const SENSITIVE_FORM_FIELDS = [
   'system_prompt_override',
   'error_override_enabled',
   'error_override_message',
+  'auto_test_disabled',
   'allow_service_tier',
   'disable_store',
   'allow_safety_identifier',
@@ -336,6 +337,7 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.system_prompt_override ||
     values.error_override_enabled ||
     values.error_override_message?.trim() ||
+    values.auto_test_disabled ||
     values.claude_beta_query ||
     values.upstream_model_update_check_enabled ||
     values.upstream_model_update_auto_sync_enabled ||
@@ -731,6 +733,7 @@ export function ChannelMutateDrawer({
   const currentSystemPrompt = form.watch('system_prompt')
   const currentSystemPromptOverride = form.watch('system_prompt_override')
   const currentErrorOverrideEnabled = form.watch('error_override_enabled')
+  const currentAutoTestDisabled = form.watch('auto_test_disabled')
   const currentAllowServiceTier = form.watch('allow_service_tier')
   const currentDisableStore = form.watch('disable_store')
   const currentAllowSafetyIdentifier = form.watch('allow_safety_identifier')
@@ -917,7 +920,8 @@ export function ChannelMutateDrawer({
     currentPriority ||
     currentWeight ||
     currentTestModel?.trim() ||
-    (currentAutoBan ?? 1) !== 1
+    (currentAutoBan ?? 1) !== 1 ||
+    currentAutoTestDisabled
   )
   const internalNotesConfigured = Boolean(
     currentTag?.trim() || currentRemark?.trim()
@@ -3580,6 +3584,32 @@ export function ChannelMutateDrawer({
                                       onCheckedChange={(checked) =>
                                         field.onChange(checked ? 1 : 0)
                                       }
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name='auto_test_disabled'
+                              render={({ field }) => (
+                                <FormItem className='flex items-center justify-between'>
+                                  <div className='space-y-0.5'>
+                                    <FormLabel>
+                                      {t('Disable Automatic Testing')}
+                                    </FormLabel>
+                                    <FormDescription>
+                                      {t(
+                                        'Scheduled automatic tests and "Test All Channels" will skip this channel; manual single-channel testing still works'
+                                      )}
+                                    </FormDescription>
+                                  </div>
+                                  <FormControl>
+                                    <Switch
+                                      checked={field.value}
+                                      onCheckedChange={field.onChange}
+                                      disabled={sensitiveLocked}
                                     />
                                   </FormControl>
                                 </FormItem>

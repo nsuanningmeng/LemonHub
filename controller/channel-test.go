@@ -1060,6 +1060,9 @@ func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*m
 		if channel.Status == common.ChannelStatusManuallyDisabled {
 			continue
 		}
+		if channel.GetSetting().AutoTestDisabled {
+			continue
+		}
 		if mode == operation_setting.ChannelTestModePassiveRecovery && channel.Status != common.ChannelStatusAutoDisabled {
 			continue
 		}

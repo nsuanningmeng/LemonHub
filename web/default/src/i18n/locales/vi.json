@@ -4389,6 +4389,8 @@
     "Replace all error messages from this channel with a fixed text; admins still see the original error in error logs": "Replace all error messages from this channel with a fixed text; admins still see the original error in error logs",
     "Leave empty to use the default message": "Leave empty to use the default message",
     "Users will see this text instead of the real channel error": "Users will see this text instead of the real channel error",
+    "Disable Automatic Testing": "Disable Automatic Testing",
+    "Scheduled automatic tests and \"Test All Channels\" will skip this channel; manual single-channel testing still works": "Scheduled automatic tests and \"Test All Channels\" will skip this channel; manual single-channel testing still works",
     "System Prompt Override": "Ghi đè prompt hệ thống",
     "System settings": "Cài đặt hệ thống",
     "System Settings": "Cài đặt hệ thống",

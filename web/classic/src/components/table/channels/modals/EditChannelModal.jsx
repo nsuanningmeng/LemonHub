@@ -532,8 +532,19 @@ const EditChannelModal = (props) => {
     // 同步更新inputs状态
     setInputs((prev) => ({ ...prev, [key]: value }));
 
-    // 生成setting JSON并更新
-    const newSettings = { ...channelSettings, [key]: value };
+    // 生成setting JSON并更新（合并已有 setting，保留本界面未管理的键，例如 error_override_*、auto_test_disabled）
+    let baseSetting = {};
+    if (inputs.setting) {
+      try {
+        const parsed = JSON.parse(inputs.setting);
+        if (parsed && typeof parsed === 'object') {
+          baseSetting = parsed;
+        }
+      } catch (error) {
+        console.error('解析渠道设置失败:', error);
+      }
+    }
+    const newSettings = { ...baseSetting, ...channelSettings, [key]: value };
     const settingsJson = JSON.stringify(newSettings);
     handleInputChange('setting', settingsJson);
   };
@@ -1739,11 +1750,13 @@ const EditChannelModal = (props) => {
       localInputs.other = 'v2.1';
     }
 
-    // 生成渠道额外设置JSON（保留本界面未管理的设置键，例如 error_override_*，避免保存时被清空）
+    // 生成渠道额外设置JSON（保留本界面未管理的设置键，例如 error_override_*、auto_test_disabled，避免保存时被清空）
+    // 表单 store 不保存未注册的 setting 字段，未修改额外设置控件时需回退到加载渠道时存入 inputs 的原始值
+    const rawExtraSetting = localInputs.setting || inputs.setting;
     let channelExtraSettings = {};
-    if (localInputs.setting) {
+    if (rawExtraSetting) {
       try {
-        const parsedSetting = JSON.parse(localInputs.setting);
+        const parsedSetting = JSON.parse(rawExtraSetting);
         if (parsedSetting && typeof parsedSetting === 'object') {
           channelExtraSettings = parsedSetting;
         }

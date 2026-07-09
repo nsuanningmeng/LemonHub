@@ -4389,6 +4389,8 @@
     "Replace all error messages from this channel with a fixed text; admins still see the original error in error logs": "将该渠道返回给用户的所有报错替换为固定文案；管理员仍可在错误日志中查看原始报错",
     "Leave empty to use the default message": "留空则使用默认文案：上游服务暂时不可用，请稍后重试",
     "Users will see this text instead of the real channel error": "用户将看到此文案，而不是渠道真实报错",
+    "Disable Automatic Testing": "禁用自动检测",
+    "Scheduled automatic tests and \"Test All Channels\" will skip this channel; manual single-channel testing still works": "定时自动检测与「测试所有渠道」将跳过该渠道；手动单渠道测试仍然可用",
     "System Prompt Override": "系统提示覆盖",
     "System settings": "系统设置",
     "System Settings": "系统设置",
