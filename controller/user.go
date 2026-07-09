@@ -597,6 +597,18 @@ func GetSelf(c *gin.Context) {
 	// 获取用户设置并提取sidebar_modules
 	userSetting := user.GetSetting()
 
+	// Hide the admin-only request-body recording flag from the user's own settings
+	// blob, mirroring the Remark blanking above and the admin_info stripping in the
+	// log views: the monitored user must not learn recording is active on them.
+	settingForSelf := user.Setting
+	if userSetting.RecordRequestBody {
+		scrubbed := userSetting
+		scrubbed.RecordRequestBody = false
+		if b, err := common.Marshal(scrubbed); err == nil {
+			settingForSelf = string(b)
+		}
+	}
+
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
 		"id":                user.Id,
@@ -621,7 +633,7 @@ func GetSelf(c *gin.Context) {
 		"aff_cash_settled":  user.AffCashSettled,
 		"inviter_id":        user.InviterId,
 		"linux_do_id":       user.LinuxDOId,
-		"setting":           user.Setting,
+		"setting":           settingForSelf,
 		"stripe_customer":   user.StripeCustomer,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,                // 新增权限字段
@@ -1600,6 +1612,9 @@ func UpdateUserSetting(c *gin.Context) {
 		SidebarModules:         existingSettings.SidebarModules,
 		Language:               existingSettings.Language,
 		MarketingEmailDisabled: existingSettings.MarketingEmailDisabled,
+		// Admin-controlled (source from existingSettings, NOT the request DTO): the user
+		// must not be able to disable request-body recording an admin enabled on them.
+		RecordRequestBody: existingSettings.RecordRequestBody,
 	}
 	// Marketing/announcement email opt-out toggle (defaults to receiving).
 	if req.MarketingEmailDisabled != nil {

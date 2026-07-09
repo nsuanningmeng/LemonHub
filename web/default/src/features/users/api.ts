@@ -132,6 +132,19 @@ export async function adjustUserQuota(
 }
 
 /**
+ * Toggle full request-body recording for a specific user (admin).
+ * When enabled, that user's complete request bodies are stored so admins can
+ * inspect them from the log details. Default off.
+ */
+export async function setUserRequestBodyRecord(
+  id: number,
+  enabled: boolean
+): Promise<ApiResponse> {
+  const res = await api.post('/api/user/request_body_record', { id, enabled })
+  return res.data
+}
+
+/**
  * Reset user's Passkey registration
  */
 export async function resetUserPasskey(id: number): Promise<ApiResponse> {

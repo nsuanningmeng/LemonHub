@@ -82,6 +82,7 @@ import {
   getUser,
   getGroups,
   getPermissionCatalog,
+  setUserRequestBodyRecord,
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -101,6 +102,17 @@ type UsersMutateDrawerProps = {
   currentRow?: User
 }
 
+// Reads record_request_body out of the raw per-user setting JSON string.
+function parseRecordRequestBody(setting?: string): boolean {
+  if (!setting) return false
+  try {
+    const parsed = JSON.parse(setting) as { record_request_body?: boolean }
+    return !!parsed.record_request_body
+  } catch {
+    return false
+  }
+}
+
 export function UsersMutateDrawer({
   open,
   onOpenChange,
@@ -118,6 +130,10 @@ export function UsersMutateDrawer({
   const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
+  // Per-user full-request-body recording (admin-only, default off). Persisted
+  // via its own audited endpoint independent of the main form save.
+  const [recordRequestBody, setRecordRequestBody] = useState(false)
+  const [recordRequestBodyBusy, setRecordRequestBodyBusy] = useState(false)
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -147,13 +163,40 @@ export function UsersMutateDrawer({
       getUser(currentRow.id).then((result) => {
         if (result.success && result.data) {
           form.reset(transformUserToFormDefaults(result.data))
+          setRecordRequestBody(parseRecordRequestBody(result.data.setting))
         }
       })
     } else if (open && !isUpdate) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
+      setRecordRequestBody(false)
     }
   }, [open, isUpdate, currentRow, form])
+
+  const handleRecordRequestBodyChange = async (next: boolean) => {
+    if (!currentRow) return
+    setRecordRequestBodyBusy(true)
+    // Optimistic; revert on failure.
+    setRecordRequestBody(next)
+    try {
+      const result = await setUserRequestBodyRecord(currentRow.id, next)
+      if (result.success) {
+        toast.success(
+          next
+            ? t('Request body recording enabled')
+            : t('Request body recording disabled')
+        )
+      } else {
+        setRecordRequestBody(!next)
+        toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
+      }
+    } catch (_error) {
+      setRecordRequestBody(!next)
+      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } finally {
+      setRecordRequestBodyBusy(false)
+    }
+  }
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
@@ -525,6 +568,32 @@ export function UsersMutateDrawer({
                       />
                     </>
                   )}
+                </SideDrawerSection>
+              )}
+
+              {/* Diagnostics (Update only) */}
+              {isUpdate && (
+                <SideDrawerSection>
+                  <h3 className='text-sm font-medium'>{t('Diagnostics')}</h3>
+                  <FormItem className={sideDrawerSwitchItemClassName()}>
+                    <div className='flex flex-col gap-0.5'>
+                      <FormLabel className='text-sm'>
+                        {t('Record request body')}
+                      </FormLabel>
+                      <FormDescription className='line-clamp-2 text-xs sm:line-clamp-none'>
+                        {t(
+                          'Store this user’s complete request bodies so admins can inspect them from the log details. Off by default; used for troubleshooting. Total storage is capped in System Settings → Operations → Performance.'
+                        )}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={recordRequestBody}
+                        disabled={recordRequestBodyBusy}
+                        onCheckedChange={handleRecordRequestBodyChange}
+                      />
+                    </FormControl>
+                  </FormItem>
                 </SideDrawerSection>
               )}
 

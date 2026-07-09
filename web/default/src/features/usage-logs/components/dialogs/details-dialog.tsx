@@ -30,7 +30,9 @@ import {
   UserCog,
   Info,
   LogIn,
+  FileText,
 } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -62,6 +64,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
+import { RequestBodyDialog } from './request-body-dialog'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
 // to its i18n label key for display in the audit details.
@@ -418,8 +421,14 @@ interface DetailsDialogProps {
 export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
+  const [requestBodyOpen, setRequestBodyOpen] = useState(false)
   const details = props.log.content ?? ''
   const other = parseLogOther(props.log.other)
+  // Admin-only: the user's full request body was recorded for this request.
+  const canViewRequestBody =
+    props.isAdmin &&
+    !!props.log.request_id &&
+    other?.admin_info?.has_request_body === true
   const typeConfig = getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)
@@ -580,6 +589,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
               value={props.log.request_id}
               mono
             />
+          )}
+
+          {canViewRequestBody && (
+            <div className='flex justify-end'>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => setRequestBodyOpen(true)}
+              >
+                <FileText className='mr-1 size-4' />
+                {t('View Request Body')}
+              </Button>
+            </div>
           )}
           {props.log.upstream_request_id && (
             <DetailRow
@@ -1188,6 +1210,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
               </p>
             </div>
           </div>
+        )}
+
+        {canViewRequestBody && props.log.request_id && (
+          <RequestBodyDialog
+            requestId={props.log.request_id}
+            open={requestBodyOpen}
+            onOpenChange={setRequestBodyOpen}
+          />
         )}
       </div>
     </Dialog>

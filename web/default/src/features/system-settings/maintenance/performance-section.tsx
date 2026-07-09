@@ -80,6 +80,7 @@ const perfSchema = z.object({
     monitor_cpu_threshold: z.coerce.number().min(0),
     monitor_memory_threshold: z.coerce.number().min(0).max(100),
     monitor_disk_threshold: z.coerce.number().min(0).max(100),
+    request_body_record_max_size_mb: z.coerce.number().min(1),
   }),
 })
 
@@ -95,6 +96,7 @@ type FlatPerfDefaults = {
   'performance_setting.monitor_cpu_threshold': number
   'performance_setting.monitor_memory_threshold': number
   'performance_setting.monitor_disk_threshold': number
+  'performance_setting.request_body_record_max_size_mb': number
 }
 
 const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
@@ -112,6 +114,8 @@ const buildFormDefaults = (defaults: FlatPerfDefaults): PerfFormInput => ({
       defaults['performance_setting.monitor_memory_threshold'],
     monitor_disk_threshold:
       defaults['performance_setting.monitor_disk_threshold'],
+    request_body_record_max_size_mb:
+      defaults['performance_setting.request_body_record_max_size_mb'],
   },
 })
 
@@ -132,6 +136,8 @@ const normalizeFormValues = (values: PerfFormValues): FlatPerfDefaults => ({
     values.performance_setting.monitor_memory_threshold,
   'performance_setting.monitor_disk_threshold':
     values.performance_setting.monitor_disk_threshold,
+  'performance_setting.request_body_record_max_size_mb':
+    values.performance_setting.request_body_record_max_size_mb,
 })
 
 function formatBytes(bytes: number, decimals = 2): string {
@@ -178,6 +184,11 @@ type PerformanceStats = {
     path: string
     file_count: number
     total_size: number
+  }
+  request_body_record?: {
+    current_size_bytes: number
+    max_size_bytes: number
+    record_count: number
   }
   config?: {
     is_running_in_container: boolean
@@ -284,6 +295,28 @@ export function PerformanceSection(props: Props) {
       toast.error(t('GC execution failed'))
     }
   }
+
+  const clearRequestBodyRecords = async () => {
+    try {
+      const res = await api.delete('/api/performance/request_body_records')
+      if (res.data.success) {
+        toast.success(t('Recorded request bodies cleared'))
+        fetchStats()
+      }
+    } catch {
+      toast.error(t('Cleanup failed'))
+    }
+  }
+
+  const requestBodyRecordPercent =
+    stats?.request_body_record?.max_size_bytes &&
+    stats.request_body_record.max_size_bytes > 0
+      ? Math.round(
+          (stats.request_body_record.current_size_bytes /
+            stats.request_body_record.max_size_bytes) *
+            100
+        )
+      : 0
 
   const diskEnabled = form.watch('performance_setting.disk_cache_enabled')
   const monitorEnabled = form.watch('performance_setting.monitor_enabled')
@@ -526,6 +559,46 @@ export function PerformanceSection(props: Props) {
               )}
             />
           </div>
+
+          <Separator />
+
+          {/* User Request Body Recording */}
+          <div>
+            <h4 className='font-medium'>{t('User Request Body Recording')}</h4>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {t(
+                'When enabled per user (in that user’s settings), the full request body of each of their requests is stored so admins can inspect it from the log details. Total storage is capped below; the oldest records are deleted automatically once the cap is exceeded.'
+              )}
+            </p>
+          </div>
+
+          <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
+            <FormField
+              control={form.control}
+              name='performance_setting.request_body_record_max_size_mb'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t('Request Body Storage Limit (MB)')}
+                  </FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={1}
+                      step={1}
+                      {...safeNumberFieldProps(field)}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Maximum total space for recorded request bodies. Oldest records are deleted when exceeded.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
         </SettingsForm>
       </Form>
 
@@ -619,6 +692,57 @@ export function PerformanceSection(props: Props) {
                 </StatusBadge>
               </div>
             </div>
+
+            {stats.request_body_record && (
+              <div className='space-y-2 rounded-lg border p-4'>
+                <div className='flex items-center justify-between'>
+                  <p className='text-sm font-medium'>
+                    {t('User Request Body Recording')}
+                  </p>
+                  <AlertDialog>
+                    <AlertDialogTrigger
+                      render={<Button variant='outline' size='sm' />}
+                    >
+                      {t('Clear all')}
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          {t('Clear all recorded request bodies?')}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          {t(
+                            'This permanently deletes every stored request body. This action cannot be undone.'
+                          )}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>{t('Cancel')}</AlertDialogCancel>
+                        <AlertDialogAction
+                          variant='destructive'
+                          onClick={clearRequestBodyRecords}
+                        >
+                          {t('Confirm')}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+                <Progress value={requestBodyRecordPercent} />
+                <div className='text-muted-foreground flex justify-between text-xs'>
+                  <span>
+                    {formatBytes(
+                      stats.request_body_record.current_size_bytes ?? 0
+                    )}{' '}
+                    /{' '}
+                    {formatBytes(stats.request_body_record.max_size_bytes ?? 0)}
+                  </span>
+                  <span>
+                    {t('Records')}: {stats.request_body_record.record_count ?? 0}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {stats.disk_space_info && stats.disk_space_info.total > 0 && (
               <div className='rounded-lg border p-4'>

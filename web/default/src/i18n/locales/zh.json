@@ -5573,6 +5573,24 @@
     "Audience": "发送对象",
     "All groups": "全部分组",
     "Subject is required": "请填写邮件主题",
-    "Email content is required": "请填写邮件内容"
+    "Email content is required": "请填写邮件内容",
+    "User Request Body Recording": "用户请求体记录",
+    "When enabled per user (in that user’s settings), the full request body of each of their requests is stored so admins can inspect it from the log details. Total storage is capped below; the oldest records are deleted automatically once the cap is exceeded.": "为某个用户开启后（在该用户的设置中），其每次请求的完整请求体都会被保存，供管理员在日志详情中查看。总占用空间受下方上限约束，超出后自动删除最旧的记录。",
+    "Request Body Storage Limit (MB)": "请求体存储上限（MB）",
+    "Maximum total space for recorded request bodies. Oldest records are deleted when exceeded.": "已记录请求体的总空间上限，超出后自动删除最旧的记录。",
+    "Recorded request bodies cleared": "已清空记录的请求体",
+    "Clear all recorded request bodies?": "确认清空所有已记录的请求体？",
+    "This permanently deletes every stored request body. This action cannot be undone.": "这将永久删除所有已存储的请求体，且无法撤销。",
+    "Records": "记录数",
+    "Request body recording enabled": "已开启请求体记录",
+    "Request body recording disabled": "已关闭请求体记录",
+    "Diagnostics": "诊断",
+    "Record request body": "记录请求体",
+    "Store this user’s complete request bodies so admins can inspect them from the log details. Off by default; used for troubleshooting. Total storage is capped in System Settings → Operations → Performance.": "保存该用户的完整请求体，供管理员在日志详情中查看。默认关闭，用于问题排查。总占用空间可在 系统设置 → 运维 → 性能 中设置上限。",
+    "Request body not recorded": "该请求未记录请求体",
+    "Failed to load request body": "加载请求体失败",
+    "Request Body": "请求体",
+    "The full request body recorded for this request": "本次请求记录的完整请求体",
+    "View Request Body": "查看请求体"
   }
 }

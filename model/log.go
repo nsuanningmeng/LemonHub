@@ -312,14 +312,26 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
-	otherStr := common.MapToJsonStr(other)
-	// 判断是否需要记录 IP
+	// 用户设置：是否记录 IP、是否记录完整请求体（后者仅管理员为该用户显式开启时生效）。
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
 		if settingMap.RecordIpLog {
 			needRecordIp = true
 		}
+		if settingMap.RecordRequestBody {
+			if CaptureUserRequestBody(c, userId, RequestBodyCaptureMeta{
+				ChannelId: channelId,
+				ModelName: modelName,
+				TokenName: tokenName,
+			}) {
+				if other == nil {
+					other = map[string]interface{}{}
+				}
+				MarkHasRequestBody(other)
+			}
+		}
 	}
+	otherStr := common.MapToJsonStr(other)
 	log := &Log{
 		SiteId:           common.GetContextKeyInt(c, constant.ContextKeySiteId),
 		UserId:           userId,
@@ -377,14 +389,26 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
-	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
+	// 用户设置：是否记录 IP、是否记录完整请求体（后者仅管理员为该用户显式开启时生效）。
 	needRecordIp := false
 	if settingMap, err := GetUserSetting(userId, false); err == nil {
 		if settingMap.RecordIpLog {
 			needRecordIp = true
 		}
+		if settingMap.RecordRequestBody {
+			if CaptureUserRequestBody(c, userId, RequestBodyCaptureMeta{
+				ChannelId: params.ChannelId,
+				ModelName: params.ModelName,
+				TokenName: params.TokenName,
+			}) {
+				if params.Other == nil {
+					params.Other = map[string]interface{}{}
+				}
+				MarkHasRequestBody(params.Other)
+			}
+		}
 	}
+	otherStr := common.MapToJsonStr(params.Other)
 	log := &Log{
 		SiteId:           common.GetContextKeyInt(c, constant.ContextKeySiteId),
 		UserId:           userId,

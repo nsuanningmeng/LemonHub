@@ -120,6 +120,10 @@ export interface LogOtherData {
       original: number
       clamped: number
     }
+    // Set when the user's full request body was recorded for this request
+    // (per-user opt-in, admin-only). Signals the log detail view to show a
+    // "view request body" action that fetches the stored body by request_id.
+    has_request_body?: boolean
   }
   // Language-independent operation descriptor (audit/login logs).
   // Frontend renders localized content from action + params via i18n templates.

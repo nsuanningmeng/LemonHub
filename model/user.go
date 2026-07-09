@@ -59,19 +59,19 @@ type User struct {
 	// inviter's aff_quota/aff_history. The invitee's own bonus (QuotaForInvitee) is unaffected, as
 	// is aff_count. No gorm default tag (see SubscriptionPlan.Enabled) — false is the business
 	// default and a bool default tag triggers repeated AutoMigrate ALTER churn across MySQL/PG.
-	AffCashSettled       bool           `json:"aff_cash_settled" gorm:"column:aff_cash_settled"`
+	AffCashSettled bool `json:"aff_cash_settled" gorm:"column:aff_cash_settled"`
 	// AffCashPaid is the authoritative running total (quota units) of off-platform cash already
 	// settled to this inviter. It is only ever advanced by RecordAffiliateCashPayout via a capped
 	// conditional UPDATE (so concurrent settlements cannot over-pay without SELECT ... FOR UPDATE,
 	// which SQLite rejects); the AffiliateCashPayout rows are the human-readable settlement history.
-	AffCashPaid          int64          `json:"aff_cash_paid" gorm:"type:bigint;not null;default:0;column:aff_cash_paid"`
-	DeletedAt            gorm.DeletedAt `gorm:"index"`
-	LinuxDOId            string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting              string         `json:"setting" gorm:"type:text;column:setting"`
-	Remark               string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	StripeCustomer       string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt            int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt          int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	AffCashPaid    int64          `json:"aff_cash_paid" gorm:"type:bigint;not null;default:0;column:aff_cash_paid"`
+	DeletedAt      gorm.DeletedAt `gorm:"index"`
+	LinuxDOId      string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting        string         `json:"setting" gorm:"type:text;column:setting"`
+	Remark         string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	StripeCustomer string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt      int64          `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt    int64          `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	// AdminPermissions is a transient view of the fine-grained admin authz matrix
 	// (module -> action -> allowed), populated from the casbin policy on read and
 	// consumed by updateAdminPermissionsForUserInTx on write. Never persisted here.
@@ -390,6 +390,11 @@ func HardDeleteUserById(id int) error {
 		if err := deleteUserOAuthBindingsByUserId(tx, id); err != nil {
 			return err
 		}
+		// Purge any recorded raw request bodies so a hard-deleted user's payloads
+		// (secrets/PII) don't linger; RequestBodyLog is on the main DB, same tx.
+		if err := tx.Where("user_id = ?", id).Delete(&RequestBodyLog{}).Error; err != nil {
+			return err
+		}
 		return tx.Unscoped().Delete(&User{}, "id = ?", id).Error
 	})
 }
@@ -668,6 +673,10 @@ func (user *User) HardDelete() error {
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
 		if err := deleteUserOAuthBindingsByUserId(tx, user.Id); err != nil {
+			return err
+		}
+		// Purge recorded raw request bodies alongside the user (see HardDeleteUserById).
+		if err := tx.Where("user_id = ?", user.Id).Delete(&RequestBodyLog{}).Error; err != nil {
 			return err
 		}
 		return tx.Unscoped().Delete(user).Error

@@ -5573,6 +5573,24 @@
     "Audience": "Audience",
     "All groups": "All groups",
     "Subject is required": "Subject is required",
-    "Email content is required": "Email content is required"
+    "Email content is required": "Email content is required",
+    "User Request Body Recording": "User Request Body Recording",
+    "When enabled per user (in that user’s settings), the full request body of each of their requests is stored so admins can inspect it from the log details. Total storage is capped below; the oldest records are deleted automatically once the cap is exceeded.": "When enabled per user (in that user’s settings), the full request body of each of their requests is stored so admins can inspect it from the log details. Total storage is capped below; the oldest records are deleted automatically once the cap is exceeded.",
+    "Request Body Storage Limit (MB)": "Request Body Storage Limit (MB)",
+    "Maximum total space for recorded request bodies. Oldest records are deleted when exceeded.": "Maximum total space for recorded request bodies. Oldest records are deleted when exceeded.",
+    "Recorded request bodies cleared": "Recorded request bodies cleared",
+    "Clear all recorded request bodies?": "Clear all recorded request bodies?",
+    "This permanently deletes every stored request body. This action cannot be undone.": "This permanently deletes every stored request body. This action cannot be undone.",
+    "Records": "Records",
+    "Request body recording enabled": "Request body recording enabled",
+    "Request body recording disabled": "Request body recording disabled",
+    "Diagnostics": "Diagnostics",
+    "Record request body": "Record request body",
+    "Store this user’s complete request bodies so admins can inspect them from the log details. Off by default; used for troubleshooting. Total storage is capped in System Settings → Operations → Performance.": "Store this user’s complete request bodies so admins can inspect them from the log details. Off by default; used for troubleshooting. Total storage is capped in System Settings → Operations → Performance.",
+    "Request body not recorded": "Request body not recorded",
+    "Failed to load request body": "Failed to load request body",
+    "Request Body": "Request Body",
+    "The full request body recorded for this request": "The full request body recorded for this request",
+    "View Request Body": "View Request Body"
   }
 }

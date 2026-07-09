@@ -91,6 +91,30 @@ export async function getUserInfo(
   return res.data
 }
 
+export interface RequestBodyRecord {
+  request_id: string
+  user_id: number
+  username: string
+  channel_id: number
+  model_name: string
+  token_name: string
+  request_path: string
+  content_type: string
+  body: string
+  size: number
+  created_at: number
+}
+
+// Fetch a user's recorded full request body by request_id (admin-only).
+export async function getRequestBodyLog(
+  requestId: string
+): Promise<{ success: boolean; message?: string; data?: RequestBodyRecord }> {
+  const res = await api.get(
+    `/api/log/request_body/${encodeURIComponent(requestId)}`
+  )
+  return res.data
+}
+
 // ============================================================================
 // MjProxy (Drawing) Logs API
 // ============================================================================

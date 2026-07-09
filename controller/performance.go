@@ -13,6 +13,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,8 +27,20 @@ type PerformanceStats struct {
 	DiskCacheInfo DiskCacheInfo `json:"disk_cache_info"`
 	// 磁盘空间信息
 	DiskSpaceInfo common.DiskSpaceInfo `json:"disk_space_info"`
+	// 用户请求体记录占用信息
+	RequestBodyRecord RequestBodyRecordStats `json:"request_body_record"`
 	// 配置信息
 	Config PerformanceConfig `json:"config"`
+}
+
+// RequestBodyRecordStats 用户请求体记录占用统计
+type RequestBodyRecordStats struct {
+	// 当前已记录请求体的总大小（字节）
+	CurrentSizeBytes int64 `json:"current_size_bytes"`
+	// 总空间上限（字节）
+	MaxSizeBytes int64 `json:"max_size_bytes"`
+	// 当前记录条数
+	RecordCount int64 `json:"record_count"`
 }
 
 // MemoryStats 内存统计
@@ -69,6 +82,9 @@ type PerformanceConfig struct {
 	// 是否在容器中运行
 	IsRunningInContainer bool `json:"is_running_in_container"`
 
+	// RequestBodyRecordMaxSizeMB 用户请求体记录总空间上限（MB）
+	RequestBodyRecordMaxSizeMB int `json:"request_body_record_max_size_mb"`
+
 	// MonitorEnabled 是否启用性能监控
 	MonitorEnabled bool `json:"monitor_enabled"`
 	// MonitorCPUThreshold CPU 使用率阈值（%）
@@ -96,15 +112,27 @@ func GetPerformanceStats(c *gin.Context) {
 	diskConfig := common.GetDiskCacheConfig()
 	monitorConfig := common.GetPerformanceMonitorConfig()
 	config := PerformanceConfig{
-		DiskCacheEnabled:       diskConfig.Enabled,
-		DiskCacheThresholdMB:   diskConfig.ThresholdMB,
-		DiskCacheMaxSizeMB:     diskConfig.MaxSizeMB,
-		DiskCachePath:          diskConfig.Path,
-		IsRunningInContainer:   common.IsRunningInContainer(),
-		MonitorEnabled:         monitorConfig.Enabled,
-		MonitorCPUThreshold:    monitorConfig.CPUThreshold,
-		MonitorMemoryThreshold: monitorConfig.MemoryThreshold,
-		MonitorDiskThreshold:   monitorConfig.DiskThreshold,
+		DiskCacheEnabled:           diskConfig.Enabled,
+		DiskCacheThresholdMB:       diskConfig.ThresholdMB,
+		DiskCacheMaxSizeMB:         diskConfig.MaxSizeMB,
+		DiskCachePath:              diskConfig.Path,
+		IsRunningInContainer:       common.IsRunningInContainer(),
+		MonitorEnabled:             monitorConfig.Enabled,
+		MonitorCPUThreshold:        monitorConfig.CPUThreshold,
+		MonitorMemoryThreshold:     monitorConfig.MemoryThreshold,
+		MonitorDiskThreshold:       monitorConfig.DiskThreshold,
+		RequestBodyRecordMaxSizeMB: common.GetRequestBodyRecordConfig().MaxSizeMB,
+	}
+
+	// 用户请求体记录占用统计
+	requestBodyRecord := RequestBodyRecordStats{
+		MaxSizeBytes: common.GetRequestBodyRecordMaxSizeBytes(),
+	}
+	if total, count, err := model.GetRequestBodyRecordStats(); err == nil {
+		requestBodyRecord.CurrentSizeBytes = total
+		requestBodyRecord.RecordCount = count
+	} else {
+		logger.LogError(c, "failed to read request body record stats: "+err.Error())
 	}
 
 	// 获取磁盘空间信息
@@ -128,9 +156,10 @@ func GetPerformanceStats(c *gin.Context) {
 			NumGC:        memStats.NumGC,
 			NumGoroutine: runtime.NumGoroutine(),
 		},
-		DiskCacheInfo: diskCacheInfo,
-		DiskSpaceInfo: diskSpaceInfo,
-		Config:        config,
+		DiskCacheInfo:     diskCacheInfo,
+		DiskSpaceInfo:     diskSpaceInfo,
+		RequestBodyRecord: requestBodyRecord,
+		Config:            config,
 	}
 
 	c.JSON(http.StatusOK, gin.H{

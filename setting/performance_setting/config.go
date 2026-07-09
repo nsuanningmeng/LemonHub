@@ -24,6 +24,9 @@ type PerformanceSetting struct {
 	MonitorMemoryThreshold int `json:"monitor_memory_threshold"`
 	// MonitorDiskThreshold 磁盘使用率阈值（%）
 	MonitorDiskThreshold int `json:"monitor_disk_threshold"`
+
+	// RequestBodyRecordMaxSizeMB 用户请求体记录的总空间上限（MB）；超出后自动删除最旧记录。
+	RequestBodyRecordMaxSizeMB int `json:"request_body_record_max_size_mb"`
 }
 
 // 默认配置
@@ -37,6 +40,8 @@ var performanceSetting = PerformanceSetting{
 	MonitorCPUThreshold:    90,
 	MonitorMemoryThreshold: 90,
 	MonitorDiskThreshold:   95,
+
+	RequestBodyRecordMaxSizeMB: 256, // 请求体记录默认总空间上限 256MB
 }
 
 func init() {
@@ -60,6 +65,10 @@ func syncToCommon() {
 		CPUThreshold:    performanceSetting.MonitorCPUThreshold,
 		MemoryThreshold: performanceSetting.MonitorMemoryThreshold,
 		DiskThreshold:   performanceSetting.MonitorDiskThreshold,
+	})
+
+	common.SetRequestBodyRecordConfig(common.RequestBodyRecordConfig{
+		MaxSizeMB: performanceSetting.RequestBodyRecordMaxSizeMB,
 	})
 }
 

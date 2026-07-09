@@ -17,6 +17,7 @@ type UserSetting struct {
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
 	MarketingEmailDisabled           bool    `json:"marketing_email_disabled,omitempty"`             // MarketingEmailDisabled 是否退订营销/公告类群发邮件（默认接收）
+	RecordRequestBody                bool    `json:"record_request_body,omitempty"`                  // RecordRequestBody 管理员为该用户开启完整请求体记录（默认关闭，仅管理员可查看）
 }
 
 var (
