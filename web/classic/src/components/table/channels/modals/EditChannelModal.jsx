@@ -550,10 +550,9 @@ const EditChannelModal = (props) => {
   };
 
   const handleChannelOtherSettingsChange = (key, value) => {
-    // 更新内部状态
-    setChannelSettings((prev) => ({ ...prev, [key]: value }));
-
     // 同步更新到表单字段
+    // 注意：不要写入 channelSettings（那是单数 setting JSON 的状态），
+    // 否则 settings 域的键会在 handleChannelSettingsChange 中漏入 setting 列
     if (formApiRef.current) {
       formApiRef.current.setValue(key, value);
     }
