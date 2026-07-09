@@ -465,8 +465,12 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
+		// 必须在派发协程前同步取值：响应 defer 会改写 err.Err（SetMessage/
+		// ApplyUserMessageOverride），闭包内惰性求值既是数据竞争，也会把
+		// 改写后的文案而非原始上游错误记为禁用原因
+		reason := err.ErrorWithStatusCode()
 		gopool.Go(func() {
-			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+			service.DisableChannel(channelError, reason)
 		})
 	}
 
