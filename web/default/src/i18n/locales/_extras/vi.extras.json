@@ -1,0 +1,4 @@
+{
+  "translation.Replace channel errors and channel-routing errors (e.g. no available channel) shown to users with a fixed text; per-channel settings take precedence": "Replace channel errors and channel-routing errors (e.g. no available channel) shown to users with a fixed text; per-channel settings take precedence",
+  "translation.Replace all error messages from this channel with a fixed text; admins still see the original error in error logs": "Replace all error messages from this channel with a fixed text; admins still see the original error in error logs"
+}

@@ -78,6 +78,30 @@ func TestApplyUserMessageOverrideRewritesAllFormats(t *testing.T) {
 	}
 }
 
+// Upstream error codes are as identifying as the message text (e.g. a pool
+// upstream returning code "no_available_accounts"); override must neutralize
+// type/code/param on upstream-sourced errors.
+func TestApplyUserMessageOverrideNeutralizesUpstreamCodes(t *testing.T) {
+	t.Parallel()
+
+	err := WithOpenAIError(OpenAIError{
+		Message: "No available OAuth accounts in pool",
+		Type:    "server_error",
+		Param:   "oauth_pool",
+		Code:    "no_available_accounts",
+	}, http.StatusServiceUnavailable)
+
+	err.ApplyUserMessageOverride("服务繁忙，请稍后重试")
+
+	oai := err.ToOpenAIError()
+	assert.Equal(t, "服务繁忙，请稍后重试", oai.Message)
+	assert.Equal(t, string(ErrorTypeUpstreamError), oai.Type)
+	assert.Equal(t, string(ErrorTypeUpstreamError), oai.Code)
+	assert.Empty(t, oai.Param)
+	claude := err.ToClaudeError()
+	assert.Equal(t, string(ErrorTypeUpstreamError), claude.Type)
+}
+
 // Fixed override text is admin-authored and may intentionally contain a URL
 // (e.g. a status page); it must not be mangled by sensitive-info masking.
 func TestApplyUserMessageOverrideSkipsSensitiveMasking(t *testing.T) {

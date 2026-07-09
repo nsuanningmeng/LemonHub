@@ -4151,7 +4151,7 @@ export function ChannelMutateDrawer({
                                     </FormLabel>
                                     <FormDescription>
                                       {t(
-                                        'Replace all error messages from this channel with a fixed text; admins still see the original error in error logs'
+                                        'Replace this channel\'s errors matching leak keywords and routing errors with a fixed text; other upstream errors pass through; admins still see originals in error logs'
                                       )}
                                     </FormDescription>
                                   </div>

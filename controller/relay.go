@@ -203,9 +203,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			// REAL upstream failure is more useful to the client than the internal "channel not
 			// found", so surface LastError instead of masking it, then stop (nothing left to try).
 			if relayInfo.LastError != nil && retryParam.GetRetry() > 0 {
+				// 透传真实上游失败：沿用循环内的打标决策（泄密门控已做过），
+				// 不能在此按路由类补标，否则内容审核等有用报错会被误遮
 				newAPIError = relayInfo.LastError
 			} else {
 				newAPIError = channelErr
+				// 无可用渠道/获取渠道失败会暴露分组与渠道架构，属路由类，
+				// 无需关键词命中即纳入屏蔽（渠道配置文案优先，全局兜底）
+				if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
+					newAPIError.SetUserMessageOverride(overrideText)
+				}
 			}
 			break
 		}
@@ -242,11 +249,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
 
-		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
-
-		if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
+		// 渠道来源错误仅在命中泄密关键词时替换（内容审核等有用报错透传）；
+		// 需在 processChannelError 前打标，错误日志据此记录用户实际看到的文案
+		if overrideText, ok := service.ChannelErrorOverrideForError(c, newAPIError.Error()+" "+string(newAPIError.GetErrorCode())); ok {
 			newAPIError.SetUserMessageOverride(overrideText)
 		}
+
+		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 
 		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
 			break
@@ -488,10 +497,12 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		}
 		adminInfo := make(map[string]interface{})
 		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
-		if _, overrideEnabled := service.ChannelErrorOverrideText(c); overrideEnabled {
-			// The user-facing response was replaced with the channel's fixed
-			// error text; this log entry keeps the original message.
+		if overrideText, tagged := err.UserMessageOverride(); tagged {
+			// The user-facing response was replaced with the fixed error text;
+			// this log entry keeps the original message for admins, and the
+			// user-visible text is stored so user log views can mask consistently.
 			adminInfo["error_override_enabled"] = true
+			adminInfo["error_override_text"] = overrideText
 		}
 		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
 		if isMultiKey {
@@ -633,7 +644,11 @@ func RelayTask(c *gin.Context) {
 			channel = lockedCh
 			if retryParam.GetRetry() > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
+					logger.LogError(c, "setup locked channel failed: "+setupErr.Error())
 					taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "setup_locked_channel_failed", http.StatusInternalServerError)
+					if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
+						taskErr.UserMessageOverride = overrideText
+					}
 					break
 				}
 			}
@@ -643,6 +658,10 @@ func RelayTask(c *gin.Context) {
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
 				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
+				// 无可用渠道类路由错误纳入统一错误信息屏蔽范围
+				if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
+					taskErr.UserMessageOverride = overrideText
+				}
 				break
 			}
 		}
@@ -665,13 +684,16 @@ func RelayTask(c *gin.Context) {
 		}
 
 		if !taskErr.LocalError {
+			wrappedErr := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
+			// 渠道来源的任务错误仅在命中泄密关键词时替换
+			if overrideText, ok := service.ChannelErrorOverrideForError(c, taskErr.Message+" "+taskErr.Code); ok {
+				taskErr.UserMessageOverride = overrideText
+				wrappedErr.SetUserMessageOverride(overrideText)
+			}
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
-				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
-			if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
-				taskErr.UserMessageOverride = overrideText
-			}
+				wrappedErr)
 		}
 
 		if !shouldRetryTaskRelay(c, channel.Id, taskErr, common.RetryTimes-retryParam.GetRetry()) {
@@ -726,9 +748,11 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 	}
 	// 任务错误多为上游原文透传，可能含映射后的真实模型名，需替换为请求模型名
 	taskErr.Message = maskMappedModelName(c, taskErr.Message)
-	// 渠道配置了统一错误信息时，最终展示给用户的文本以渠道配置为准
+	// 配置了统一错误信息时，最终展示给用户的文本以配置为准；
+	// code 字段同样可能暴露渠道架构（channel_not_found 等），一并中和
 	if taskErr.UserMessageOverride != "" {
 		taskErr.Message = taskErr.UserMessageOverride
+		taskErr.Code = string(types.ErrorTypeUpstreamError)
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }

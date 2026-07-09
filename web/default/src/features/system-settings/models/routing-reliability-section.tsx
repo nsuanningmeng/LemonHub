@@ -75,6 +75,9 @@ const routingReliabilitySchema = z
     AutomaticDisableKeywords: z.string(),
     AutomaticDisableStatusCodes: z.string(),
     AutomaticRetryStatusCodes: z.string(),
+    ErrorOverrideGlobalEnabled: z.boolean(),
+    ErrorOverrideGlobalMessage: z.string(),
+    ErrorOverrideKeywords: z.string(),
     monitor_setting: z.object({
       auto_test_channel_enabled: z.boolean(),
       auto_test_channel_minutes: z.coerce
@@ -124,6 +127,9 @@ type RoutingReliabilitySectionProps = {
     AutomaticDisableKeywords: string
     AutomaticDisableStatusCodes: string
     AutomaticRetryStatusCodes: string
+    ErrorOverrideGlobalEnabled: boolean
+    ErrorOverrideGlobalMessage: string
+    ErrorOverrideKeywords: string
     'monitor_setting.auto_test_channel_enabled': boolean
     'monitor_setting.auto_test_channel_minutes': number
     'monitor_setting.channel_test_mode': ChannelTestMode
@@ -142,6 +148,9 @@ type NormalizedRoutingReliabilityValues = {
   AutomaticDisableKeywords: string
   AutomaticDisableStatusCodes: string
   AutomaticRetryStatusCodes: string
+  ErrorOverrideGlobalEnabled: boolean
+  ErrorOverrideGlobalMessage: string
+  ErrorOverrideKeywords: string
   'monitor_setting.auto_test_channel_enabled': boolean
   'monitor_setting.auto_test_channel_minutes': number
   'monitor_setting.channel_test_mode': ChannelTestMode
@@ -163,6 +172,11 @@ const buildFormDefaults = (
   ),
   AutomaticDisableStatusCodes: defaults.AutomaticDisableStatusCodes ?? '',
   AutomaticRetryStatusCodes: defaults.AutomaticRetryStatusCodes ?? '',
+  ErrorOverrideGlobalEnabled: defaults.ErrorOverrideGlobalEnabled,
+  ErrorOverrideGlobalMessage: defaults.ErrorOverrideGlobalMessage ?? '',
+  ErrorOverrideKeywords: normalizeLineEndings(
+    defaults.ErrorOverrideKeywords ?? ''
+  ),
   monitor_setting: {
     auto_test_channel_enabled:
       defaults['monitor_setting.auto_test_channel_enabled'],
@@ -190,6 +204,11 @@ const normalizeDefaults = (
   AutomaticRetryStatusCodes: parseHttpStatusCodeRules(
     defaults.AutomaticRetryStatusCodes ?? ''
   ).normalized,
+  ErrorOverrideGlobalEnabled: defaults.ErrorOverrideGlobalEnabled,
+  ErrorOverrideGlobalMessage: (defaults.ErrorOverrideGlobalMessage ?? '').trim(),
+  ErrorOverrideKeywords: normalizeLineEndings(
+    defaults.ErrorOverrideKeywords ?? ''
+  ),
   'monitor_setting.auto_test_channel_enabled':
     defaults['monitor_setting.auto_test_channel_enabled'],
   'monitor_setting.auto_test_channel_minutes':
@@ -215,6 +234,9 @@ const normalizeFormValues = (
   AutomaticRetryStatusCodes: parseHttpStatusCodeRules(
     values.AutomaticRetryStatusCodes
   ).normalized,
+  ErrorOverrideGlobalEnabled: values.ErrorOverrideGlobalEnabled,
+  ErrorOverrideGlobalMessage: values.ErrorOverrideGlobalMessage.trim(),
+  ErrorOverrideKeywords: normalizeLineEndings(values.ErrorOverrideKeywords),
   'monitor_setting.auto_test_channel_enabled':
     values.monitor_setting.auto_test_channel_enabled,
   'monitor_setting.auto_test_channel_minutes':
@@ -250,6 +272,7 @@ export function RoutingReliabilitySection({
   const autoDisableStatusCodes = form.watch('AutomaticDisableStatusCodes')
   const autoRetryStatusCodes = form.watch('AutomaticRetryStatusCodes')
   const channelTestMode = form.watch('monitor_setting.channel_test_mode')
+  const errorOverrideGlobalEnabled = form.watch('ErrorOverrideGlobalEnabled')
   const autoDisableParsed = useMemo(
     () => parseHttpStatusCodeRules(autoDisableStatusCodes),
     [autoDisableStatusCodes]
@@ -584,6 +607,102 @@ export function RoutingReliabilitySection({
                   </FormItem>
                 )}
               />
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className='flex min-w-0 flex-col gap-4'>
+            <div className='flex flex-col gap-1'>
+              <h4 className='text-sm font-medium'>
+                {t('Unified Error Message (Global)')}
+              </h4>
+            </div>
+            <div className='grid min-w-0 gap-6 lg:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='ErrorOverrideGlobalEnabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>
+                        {t('Unified Error Message (Global)')}
+                      </FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Replace channel errors matching leak keywords and routing errors (no available channel) with a fixed text; other upstream errors pass through; per-channel text takes precedence'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              {errorOverrideGlobalEnabled && (
+                <FormField
+                  control={form.control}
+                  name='ErrorOverrideGlobalMessage'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {t('Unified Error Message Content')}
+                      </FormLabel>
+                      <FormControl>
+                        <Textarea
+                          rows={2}
+                          placeholder={t(
+                            'Leave empty to use the default message'
+                          )}
+                          {...field}
+                          onChange={(event) =>
+                            field.onChange(event.target.value)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Users will see this text instead of the real channel error'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {errorOverrideGlobalEnabled && (
+                <FormField
+                  control={form.control}
+                  name='ErrorOverrideKeywords'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Leak error keywords')}</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          rows={6}
+                          placeholder={t('one keyword per line')}
+                          {...field}
+                          onChange={(event) =>
+                            field.onChange(event.target.value)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Channel errors containing any of these keywords (case insensitive) are considered to leak channel internals and get replaced; routing errors are always replaced'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
           </div>
         </SettingsForm>

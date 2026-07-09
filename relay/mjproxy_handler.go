@@ -475,9 +475,18 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			}
 			channel, err := model.GetChannelById(originTask.ChannelId, true)
 			if err != nil {
+				// 原渠道查不到时只能走全局兜底：上下文里是分发时选中的另一渠道的配置
+				if overrideText, ok := service.ErrorOverrideTextForChannel(dto.ChannelSettings{}); ok {
+					logger.LogError(c, fmt.Sprintf("mj origin channel %d not found (masked for user): %s", originTask.ChannelId, err.Error()))
+					return service.MidjourneyErrorWrapper(constant.MjRequestError, overrideText)
+				}
 				return service.MidjourneyErrorWrapper(constant.MjRequestError, "get_channel_info_failed")
 			}
 			if channel.Status != common.ChannelStatusEnabled {
+				if overrideText, ok := service.ErrorOverrideTextForChannel(channel.GetSetting()); ok {
+					logger.LogError(c, fmt.Sprintf("mj origin channel %d is disabled (masked for user)", originTask.ChannelId))
+					return service.MidjourneyErrorWrapper(constant.MjRequestError, overrideText)
+				}
 				return service.MidjourneyErrorWrapper(constant.MjRequestError, "该任务所属渠道已被禁用")
 			}
 			c.Set("base_url", channel.GetBaseURL())
@@ -606,9 +615,9 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		//非1-提交成功,21-任务已存在和22-排队中，则记录错误原因
 		midjourneyTask.FailReason = midjResponse.Description
 		consumeQuota = false
-		// 渠道配置了统一错误信息时，上游业务失败的原文不透传给用户；
-		// 任务 FailReason（上一行）保留原文供管理员排查
-		if overrideText, ok := service.ChannelErrorOverrideText(c); ok {
+		// 上游业务失败仅在命中泄密关键词时替换（Banned prompt 等对用户有用的
+		// 原样透传）；任务 FailReason（上一行）保留原文供管理员排查
+		if overrideText, ok := service.ChannelErrorOverrideForError(c, midjResponse.Description); ok {
 			maskedBody, marshalErr := common.Marshal(&dto.MidjourneyResponse{
 				Code:        midjResponse.Code,
 				Description: overrideText,

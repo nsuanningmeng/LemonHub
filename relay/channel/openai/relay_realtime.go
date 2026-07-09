@@ -189,8 +189,8 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 
 				outMessage := message
 				if realtimeEvent.Type == dto.RealtimeEventTypeError {
-					// 渠道配置了统一错误信息时，上游会话内错误事件的原文不透传给用户
-					if overrideText, ok := info.ChannelSetting.ErrorOverrideText(); ok {
+					// 会话内错误事件仅在命中泄密关键词时替换，其余原样透传
+					if overrideText, ok := service.ErrorOverrideForChannelError(info.ChannelSetting, string(message)); ok {
 						logger.LogError(c, "realtime upstream error event (masked for user): "+common.LocalLogPreview(string(message)))
 						if masked, marshalErr := common.Marshal(map[string]any{
 							"type": dto.RealtimeEventTypeError,

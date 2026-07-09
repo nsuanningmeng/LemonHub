@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
@@ -121,6 +122,26 @@ func formatUserLogs(logs []*Log, startIdx int) {
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)
 		if otherMap != nil {
+			// 统一错误信息生效的错误日志：用户视图的内容替换为用户实际看到的
+			// 固定文案，原始报错仅保留给管理员视图（不经过本函数）。
+			if adminInfo, ok := otherMap["admin_info"].(map[string]interface{}); ok {
+				if enabled, _ := adminInfo["error_override_enabled"].(bool); enabled {
+					maskedText, _ := adminInfo["error_override_text"].(string)
+					if maskedText == "" {
+						maskedText = dto.DefaultErrorOverrideMessage
+					}
+					logs[i].Content = maskedText
+					if _, exists := otherMap["error_type"]; exists {
+						otherMap["error_type"] = "upstream_error"
+					}
+					if _, exists := otherMap["error_code"]; exists {
+						otherMap["error_code"] = "upstream_error"
+					}
+					delete(otherMap, "channel_id")
+					delete(otherMap, "channel_name")
+					delete(otherMap, "channel_type")
+				}
+			}
 			// Remove admin-only debug fields.
 			delete(otherMap, "admin_info")
 			// Remove operation-audit details (operator/route info), admin-only.

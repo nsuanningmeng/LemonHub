@@ -200,6 +200,9 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableKeywords"] = operation_setting.AutomaticDisableKeywordsToString()
 	common.OptionMap["AutomaticDisableStatusCodes"] = operation_setting.AutomaticDisableStatusCodesToString()
 	common.OptionMap["AutomaticRetryStatusCodes"] = operation_setting.AutomaticRetryStatusCodesToString()
+	common.OptionMap["ErrorOverrideGlobalEnabled"] = strconv.FormatBool(operation_setting.ErrorOverrideGlobalEnabled)
+	common.OptionMap["ErrorOverrideGlobalMessage"] = operation_setting.ErrorOverrideGlobalMessage
+	common.OptionMap["ErrorOverrideKeywords"] = operation_setting.ErrorOverrideKeywordsToString()
 	common.OptionMap["ExposeRatioEnabled"] = strconv.FormatBool(ratio_setting.IsExposeRatioEnabled())
 
 	// 自动添加所有注册的模型配置
@@ -351,6 +354,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.AutomaticDisableChannelEnabled = boolValue
 		case "AutomaticEnableChannelEnabled":
 			common.AutomaticEnableChannelEnabled = boolValue
+		case "ErrorOverrideGlobalEnabled":
+			operation_setting.ErrorOverrideGlobalEnabled = boolValue
 		case "LogConsumeEnabled":
 			common.LogConsumeEnabled = boolValue
 		case "DisplayInCurrencyEnabled":
@@ -661,6 +666,10 @@ func updateOptionMap(key string, value string) (err error) {
 		err = operation_setting.AutomaticDisableStatusCodesFromString(value)
 	case "AutomaticRetryStatusCodes":
 		err = operation_setting.AutomaticRetryStatusCodesFromString(value)
+	case "ErrorOverrideGlobalMessage":
+		operation_setting.ErrorOverrideGlobalMessage = value
+	case "ErrorOverrideKeywords":
+		operation_setting.ErrorOverrideKeywordsFromString(value)
 	case "StreamCacheQueueLength":
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
 	case "PayMethods":

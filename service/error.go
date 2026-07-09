@@ -15,20 +15,64 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
 
-// ChannelErrorOverrideText returns the fixed user-facing error text configured
-// on the channel currently bound to this request context, if that channel has
-// error message override enabled.
+// ErrorOverrideTextForChannel resolves the fixed user-facing error text for
+// the current scope: the channel's own configuration wins, otherwise the
+// site-wide global override applies. Callers use this DIRECTLY only for
+// channel-ROUTING errors (无可用渠道/获取渠道失败等), which always reveal the
+// channel architecture; channel-origin errors must go through
+// ErrorOverrideForChannelError so only leak-class messages get masked.
+func ErrorOverrideTextForChannel(setting dto.ChannelSettings) (string, bool) {
+	if text, ok := setting.ErrorOverrideText(); ok {
+		return text, true
+	}
+	return operation_setting.GlobalErrorOverrideText()
+}
+
+// ChannelErrorOverrideText resolves the routing-error override text from the
+// channel currently bound to this request context, falling back to the global
+// override. It therefore also yields the global text on channel-routing
+// failures where no channel could be bound at all (e.g. 无可用渠道).
 func ChannelErrorOverrideText(c *gin.Context) (string, bool) {
-	setting, ok := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	setting, _ := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	return ErrorOverrideTextForChannel(setting)
+}
+
+// ErrorOverrideMatchesLeakKeyword reports whether an error text reveals
+// channel/pool internals per the configured leak keywords (case-insensitive).
+func ErrorOverrideMatchesLeakKeyword(text string) bool {
+	if text == "" {
+		return false
+	}
+	matched, _ := AcSearch(strings.ToLower(text), operation_setting.ErrorOverrideKeywords, true)
+	return matched
+}
+
+// ErrorOverrideForChannelError gates channel-origin errors: only messages
+// that reveal channel/pool internals (leak keywords) are masked. Other
+// upstream errors (content policy, context length, ...) stay visible because
+// they are actionable for the user.
+func ErrorOverrideForChannelError(setting dto.ChannelSettings, originalText string) (string, bool) {
+	text, ok := ErrorOverrideTextForChannel(setting)
 	if !ok {
 		return "", false
 	}
-	return setting.ErrorOverrideText()
+	if !ErrorOverrideMatchesLeakKeyword(originalText) {
+		return "", false
+	}
+	return text, true
+}
+
+// ChannelErrorOverrideForError is the request-context variant of
+// ErrorOverrideForChannelError.
+func ChannelErrorOverrideForError(c *gin.Context, originalText string) (string, bool) {
+	setting, _ := common.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	return ErrorOverrideForChannelError(setting, originalText)
 }
 
 func MidjourneyErrorWrapper(code int, desc string) *dto.MidjourneyResponse {
@@ -224,6 +268,8 @@ func TaskErrorWrapper(err error, code string, statusCode int) *dto.TaskError {
 }
 
 // TaskErrorFromAPIError 将 PreConsumeBilling 返回的 NewAPIError 转换为 TaskError。
+// 计费预扣费失败是本站错误：必须标记 LocalError，否则会被当作渠道错误处理
+// （误入渠道错误日志/自动禁用评估、被统一错误信息掩盖、以及无意义的重试）。
 func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
 	if apiErr == nil {
 		return nil
@@ -233,5 +279,6 @@ func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
 		Message:    apiErr.Err.Error(),
 		StatusCode: apiErr.StatusCode,
 		Error:      apiErr.Err,
+		LocalError: true,
 	}
 }

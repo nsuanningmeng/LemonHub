@@ -1535,7 +1535,8 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 
 		service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
 
-		if overrideText, ok := info.ChannelSetting.ErrorOverrideText(); ok {
+		// 仅命中泄密关键词才替换（安全拦截原因等对用户有用，原样透传）
+		if overrideText, ok := service.ErrorOverrideForChannelError(info.ChannelSetting, newAPIError.Error()); ok {
 			newAPIError.ApplyUserMessageOverride(common.MessageWithRequestId(overrideText, c.GetString(common.RequestIdKey)))
 		}
 

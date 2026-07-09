@@ -18,7 +18,9 @@ type ChannelSettings struct {
 	AutoTestDisabled       bool   `json:"auto_test_disabled,omitempty"`
 }
 
-const defaultErrorOverrideMessage = "上游服务暂时不可用，请稍后重试"
+// DefaultErrorOverrideMessage is the fallback fixed text used when error
+// message override is enabled (per-channel or globally) without custom text.
+const DefaultErrorOverrideMessage = "上游服务暂时不可用，请稍后重试"
 
 // ErrorOverrideText returns the fixed text shown to users in place of this
 // channel's real error messages, and whether the override is enabled.
@@ -28,7 +30,7 @@ func (s ChannelSettings) ErrorOverrideText() (string, bool) {
 	}
 	msg := strings.TrimSpace(s.ErrorOverrideMessage)
 	if msg == "" {
-		msg = defaultErrorOverrideMessage
+		msg = DefaultErrorOverrideMessage
 	}
 	return msg, true
 }

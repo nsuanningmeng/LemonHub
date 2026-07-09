@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
@@ -85,10 +86,22 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	// 锁定到原始任务的渠道（重试时复用同一渠道，轮换 key）
 	ch, err := model.GetChannelById(originTask.ChannelId, true)
 	if err != nil {
-		return service.TaskErrorWrapperLocal(err, "channel_not_found", http.StatusBadRequest)
+		taskErr := service.TaskErrorWrapperLocal(err, "channel_not_found", http.StatusBadRequest)
+		// 渠道路由类错误纳入统一错误信息屏蔽范围；原渠道已查不到，只能走全局兜底，
+		// 不能读上下文（那是分发时选中的另一渠道的配置）
+		if overrideText, ok := service.ErrorOverrideTextForChannel(dto.ChannelSettings{}); ok {
+			logger.LogError(c, fmt.Sprintf("origin task channel %d not found (masked for user): %s", originTask.ChannelId, err.Error()))
+			taskErr.UserMessageOverride = overrideText
+		}
+		return taskErr
 	}
 	if ch.Status != common.ChannelStatusEnabled {
-		return service.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "task_channel_disable", http.StatusBadRequest)
+		taskErr := service.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "task_channel_disable", http.StatusBadRequest)
+		if overrideText, ok := service.ErrorOverrideTextForChannel(ch.GetSetting()); ok {
+			logger.LogError(c, fmt.Sprintf("origin task channel %d is disabled (masked for user)", originTask.ChannelId))
+			taskErr.UserMessageOverride = overrideText
+		}
+		return taskErr
 	}
 	info.LockedChannel = ch
 	// 锁定渠道路径不经过 distributor，渠道设置（如统一错误信息）需在此写入上下文，

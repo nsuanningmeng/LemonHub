@@ -31,7 +31,7 @@ func TestChannelSettingsErrorOverrideText(t *testing.T) {
 			name:        "enabled with empty text falls back to default",
 			settings:    ChannelSettings{ErrorOverrideEnabled: true, ErrorOverrideMessage: "   "},
 			wantEnabled: true,
-			wantText:    defaultErrorOverrideMessage,
+			wantText:    DefaultErrorOverrideMessage,
 		},
 	}
 

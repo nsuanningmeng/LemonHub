@@ -201,9 +201,12 @@ func (e *NewAPIError) UserMessageOverride() (string, bool) {
 }
 
 // ApplyUserMessageOverride rewrites every user-visible message carrier (Err,
-// RelayError, Metadata) with the final override text. Call it only right
-// before rendering the response, after all internal consumers (error logging,
-// auto-ban, violation fee, retry decisions) have read the original error.
+// RelayError, Metadata) with the final override text. Upstream-sourced
+// type/code/param are neutralized as well: they routinely carry recognizable
+// upstream identifiers (e.g. pool-specific error codes) that the override is
+// meant to hide. Call it only right before rendering the response, after all
+// internal consumers (error logging, auto-ban, violation fee, retry
+// decisions) have read the original error.
 func (e *NewAPIError) ApplyUserMessageOverride(message string) {
 	if e == nil || message == "" {
 		return
@@ -214,12 +217,19 @@ func (e *NewAPIError) ApplyUserMessageOverride(message string) {
 	switch relayErr := e.RelayError.(type) {
 	case OpenAIError:
 		relayErr.Message = message
+		relayErr.Type = string(ErrorTypeUpstreamError)
+		relayErr.Param = ""
+		relayErr.Code = string(ErrorTypeUpstreamError)
 		relayErr.Metadata = nil
 		e.RelayError = relayErr
 	case ClaudeError:
 		relayErr.Message = message
+		relayErr.Type = string(ErrorTypeUpstreamError)
 		e.RelayError = relayErr
 	}
+	// 内部错误码同样可能暴露架构（get_channel_failed、channel:no_available_key），
+	// 掩码生效时一并中和；此时所有内部消费方（重试/禁用/日志）都已读取过原始错误
+	e.errorCode = ErrorCode(ErrorTypeUpstreamError)
 }
 
 func (e *NewAPIError) ToOpenAIError() OpenAIError {
