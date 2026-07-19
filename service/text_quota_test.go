@@ -278,6 +278,76 @@ func TestCalculateTextQuotaSummaryUsesOpenAIBillingUsageBeforeTopLevelUsage(t *t
 	require.Equal(t, 98, summary.Quota)
 }
 
+// Responses-sourced billing usage carries cache/media splits only in
+// input_tokens_details; the remap into PromptTokensDetails must survive
+// effectiveBillingUsage or cached tokens are billed at the full model ratio.
+func TestCalculateTextQuotaSummaryKeepsCacheSplitsForResponsesBillingUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(w)
+
+	newRelayInfo := func() *relaycommon.RelayInfo {
+		return &relaycommon.RelayInfo{
+			RelayFormat:     types.RelayFormatOpenAI,
+			OriginModelName: "gpt-5.1-codex",
+			PriceData: types.PriceData{
+				ModelRatio:         1,
+				CompletionRatio:    2,
+				CacheRatio:         0.25,
+				CacheCreationRatio: 1.25,
+				GroupRatioInfo:     types.GroupRatioInfo{GroupRatio: 1},
+			},
+			StartTime: time.Now(),
+		}
+	}
+
+	// Raw Responses usage: only input/output tokens and input_tokens_details.
+	responsesUsage := &dto.Usage{
+		InputTokens:  1000,
+		OutputTokens: 50,
+		TotalTokens:  1050,
+		InputTokensDetails: &dto.InputTokenDetails{
+			CachedTokens:     800,
+			CacheWriteTokens: 100,
+		},
+	}
+	usage := &dto.Usage{
+		BillingUsage: dto.NewOpenAIResponsesBillingUsage(responsesUsage),
+	}
+	summary := calculateTextQuotaSummary(ctx, newRelayInfo(), effectiveBillingUsage(usage))
+
+	require.Equal(t, 1000, summary.PromptTokens)
+	require.Equal(t, 50, summary.CompletionTokens)
+	require.Equal(t, 800, summary.CacheTokens)
+
+	// Must bill identically to the same numbers arriving pre-normalized in
+	// prompt_tokens_details from a chat-style upstream.
+	chatUsage := &dto.Usage{
+		PromptTokens:     1000,
+		CompletionTokens: 50,
+		TotalTokens:      1050,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:     800,
+			CacheWriteTokens: 100,
+		},
+	}
+	control := calculateTextQuotaSummary(ctx, newRelayInfo(), effectiveBillingUsage(&dto.Usage{
+		BillingUsage: dto.NewOpenAIChatBillingUsage(chatUsage),
+	}))
+	require.Equal(t, control.CacheTokens, summary.CacheTokens)
+	require.Equal(t, control.Quota, summary.Quota)
+
+	// And strictly cheaper than the same volume with no cache split at all.
+	uncached := calculateTextQuotaSummary(ctx, newRelayInfo(), effectiveBillingUsage(&dto.Usage{
+		BillingUsage: dto.NewOpenAIResponsesBillingUsage(&dto.Usage{
+			InputTokens:  1000,
+			OutputTokens: 50,
+			TotalTokens:  1050,
+		}),
+	}))
+	require.Less(t, summary.Quota, uncached.Quota)
+}
+
 func TestUsageBillingPathForLog(t *testing.T) {
 	require.Equal(t, usageBillingPathLocal, usageBillingPathForLog(true, &dto.Usage{
 		BillingUsage: dto.NewClaudeMessagesBillingUsage(&dto.ClaudeUsage{InputTokens: 1}),

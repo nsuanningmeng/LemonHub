@@ -117,6 +117,17 @@ func usageFromOpenAIBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
+	// Responses-semantic usage carries cache/media splits only in input_tokens_details;
+	// settlement reads them from PromptTokensDetails, so mirror them the same way
+	// normalizeOpenAIUsage does or cached tokens get billed at the full model ratio.
+	if usage.InputTokensDetails != nil {
+		usage.PromptTokensDetails.CachedTokens = usage.InputTokensDetails.CachedTokens
+		usage.PromptTokensDetails.CachedCreationTokens = usage.InputTokensDetails.CachedCreationTokens
+		usage.PromptTokensDetails.CacheWriteTokens = usage.InputTokensDetails.CacheWriteTokens
+		usage.PromptTokensDetails.ImageTokens = usage.InputTokensDetails.ImageTokens
+		usage.PromptTokensDetails.TextTokens = usage.InputTokensDetails.TextTokens
+		usage.PromptTokensDetails.AudioTokens = usage.InputTokensDetails.AudioTokens
+	}
 	usage.UsageSemantic = dto.BillingUsageSemanticOpenAI
 	usage.UsageSource = billingUsage.Source
 	usage.BillingUsage = dto.CloneBillingUsage(billingUsage)

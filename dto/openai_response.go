@@ -227,7 +227,9 @@ type Usage struct {
 	PromptCacheHitTokens int           `json:"prompt_cache_hit_tokens,omitempty"`
 	UsageSemantic        string        `json:"usage_semantic,omitempty"`
 	UsageSource          string        `json:"usage_source,omitempty"`
-	BillingUsage         *BillingUsage `json:"billing_usage,omitempty"`
+	// BillingUsage is an in-process settlement snapshot; it must never reach
+	// clients (it names the converter/channel kind, which the fork hides).
+	BillingUsage *BillingUsage `json:"-"`
 
 	PromptTokensDetails    InputTokenDetails  `json:"prompt_tokens_details"`
 	CompletionTokenDetails OutputTokenDetails `json:"completion_tokens_details"`

@@ -507,7 +507,8 @@ type GeminiUsageMetadata struct {
 	PromptTokensDetails        []GeminiPromptTokensDetails `json:"promptTokensDetails"`
 	ToolUsePromptTokensDetails []GeminiPromptTokensDetails `json:"toolUsePromptTokensDetails"`
 	CandidatesTokensDetails    []GeminiPromptTokensDetails `json:"candidatesTokensDetails"`
-	BillingUsage               *BillingUsage               `json:"billing_usage,omitempty"`
+	// In-process settlement snapshot; never serialized to clients (channel concealment).
+	BillingUsage *BillingUsage `json:"-"`
 }
 
 type GeminiPromptTokensDetails struct {

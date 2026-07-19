@@ -34,12 +34,10 @@ import {
   type VisibilityState,
   type SortingState,
 } from '@tanstack/react-table'
-import { useQuery } from '@tanstack/react-query'
 import { useMediaQuery } from '@/hooks'
 import { Copy, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DataTableBulkActions,
