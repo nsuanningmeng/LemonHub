@@ -43,6 +43,7 @@ const filterBySelectedValues = (
 type BuildModelRatioColumnsOptions = {
   onDelete: (name: string) => void
   onEdit: (model: ModelRow) => void
+  deleteDisabled?: boolean
   t: (key: string) => string
   /**
    * Unset-price view: drop the bulk-select column and the delete action so the
@@ -55,6 +56,7 @@ type BuildModelRatioColumnsOptions = {
 export function buildModelRatioColumns({
   onDelete,
   onEdit,
+  deleteDisabled,
   t,
   unsetMode = false,
 }: BuildModelRatioColumnsOptions): ColumnDef<ModelRow>[] {
@@ -174,6 +176,7 @@ export function buildModelRatioColumns({
             menuLabel={t('Open menu')}
             onEdit={() => onEdit(row.original)}
             onDelete={() => onDelete(row.original.name)}
+            deleteDisabled={deleteDisabled}
           />
         ),
       enableHiding: false,

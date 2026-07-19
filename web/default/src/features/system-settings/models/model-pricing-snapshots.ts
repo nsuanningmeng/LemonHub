@@ -67,31 +67,11 @@ export const hasPricingValue = (value?: string) =>
  * (cache/image/audio) do not count as base pricing. Mirrors the classic
  * frontend's `isBasePricingUnset` used by the "unset price models" view.
  */
-export const isBasePricingUnset = (snapshot: ModelPricingSnapshot) =>
-  snapshot.billingMode !== 'tiered_expr' &&
-  !hasPricingValue(snapshot.price) &&
-  !hasPricingValue(snapshot.ratio)
-
-/**
- * Build a placeholder row for a model that is served by an enabled channel but
- * has no entry in any pricing map yet, so it can be surfaced and configured.
- */
-export const createUnsetModelRow = (name: string): ModelRow => ({
-  name,
-  price: '',
-  ratio: '',
-  cacheRatio: '',
-  createCacheRatio: '',
-  completionRatio: '',
-  imageRatio: '',
-  audioRatio: '',
-  audioCompletionRatio: '',
-  billingMode: 'per-token',
-  hasConflict: false,
-  isDraftChanged: false,
-  isDraftDeleted: false,
-  isDraftNew: false,
-})
+export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) =>
+  !snapshot ||
+  (snapshot.billingMode !== 'tiered_expr' &&
+    !hasPricingValue(snapshot.price) &&
+    !hasPricingValue(snapshot.ratio))
 
 const toNumberOrNull = (value?: string) => {
   if (!hasPricingValue(value)) return null

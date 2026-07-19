@@ -51,6 +51,7 @@ import {
 } from '@/components/data-table'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import { safeJsonParse } from '../utils/json-parser'
+import type { PricingMode } from './model-pricing-core'
 import {
   ModelPricingEditorPanel,
   type ModelPricingEditorPanelHandle,
@@ -59,13 +60,11 @@ import {
 } from './model-pricing-sheet'
 import {
   buildModelSnapshots,
-  createUnsetModelRow,
   getSnapshotSignature,
   isBasePricingUnset,
   type ModelRow,
 } from './model-pricing-snapshots'
 import { buildModelRatioColumns } from './model-ratio-table-columns'
-import { getEnabledModels } from '../api'
 
 type ModelRatioVisualEditorProps = {
   savedModelPrice: string
@@ -88,6 +87,9 @@ type ModelRatioVisualEditorProps = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  candidateModelNames?: string[]
+  candidateModelsLoading?: boolean
+  filterMode?: 'all' | 'unset'
   onChange: (field: string, value: string) => void
   onSave: () => void | Promise<void>
   isSaving: boolean
@@ -124,6 +126,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
     audioCompletionRatio,
     billingMode,
     billingExpr,
+    candidateModelNames,
+    candidateModelsLoading,
+    filterMode = 'all',
     onChange,
     onSave,
     isSaving,
@@ -139,7 +144,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [globalFilter, setGlobalFilter] = useState('')
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
-  const [unsetOnly, setUnsetOnly] = useState(false)
   const editorPanelRef = useRef<ModelPricingEditorPanelHandle>(null)
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -212,18 +216,23 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
     const savedByName = new Map(savedRows.map((row) => [row.name, row]))
     const draftByName = new Map(draftRows.map((row) => [row.name, row]))
-    const modelNames = new Set([...savedByName.keys(), ...draftByName.keys()])
+    const modelNames = new Set([
+      ...(candidateModelNames ?? []),
+      ...savedByName.keys(),
+      ...draftByName.keys(),
+    ])
 
-    return Array.from(modelNames)
+    return [...modelNames]
       .map((name) => {
         const saved = savedByName.get(name)
         const draft = draftByName.get(name)
-        const displayed = saved ?? draft
+        const displayed = saved ??
+          draft ?? { name, billingMode: 'per-token', hasConflict: false }
         const savedSignature = getSnapshotSignature(saved)
         const draftSignature = getSnapshotSignature(draft)
 
         return {
-          ...displayed!,
+          ...displayed,
           saved,
           draft,
           isDraftChanged: savedSignature !== draftSignature,
@@ -232,8 +241,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
         }
       })
       .filter((row) => !row.isDraftDeleted)
+      .filter((row) => filterMode !== 'unset' || isBasePricingUnset(row.draft ?? row.saved))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [
+    candidateModelNames,
+    filterMode,
     savedModelPrice,
     savedModelRatio,
     savedCacheRatio,
@@ -255,37 +267,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
     billingMode,
     billingExpr,
   ])
-
-  // Models served by at least one enabled channel. Used to surface models that
-  // are reachable but have never had a price configured (they have no entry in
-  // any pricing map, so `baseModels` alone would miss them).
-  const enabledModelsQuery = useQuery({
-    queryKey: ['channel-enabled-models'],
-    queryFn: getEnabledModels,
-    staleTime: 5 * 60 * 1000,
-  })
-
-  const candidateModelNames = useMemo(
-    () => enabledModelsQuery.data?.data ?? [],
-    [enabledModelsQuery.data]
-  )
-
-  const unsetModels = useMemo(() => {
-    const existing = new Set(baseModels.map((row) => row.name))
-    // Evaluate the draft (to-be-saved) snapshot, not the saved-preferred
-    // displayed one, so a row leaves the list live once its price is set —
-    // matching the helper copy "They leave this list once priced."
-    const rows = baseModels.filter((row) =>
-      isBasePricingUnset(row.draft ?? row.saved ?? row)
-    )
-    for (const name of new Set(candidateModelNames)) {
-      if (!existing.has(name)) rows.push(createUnsetModelRow(name))
-    }
-    return rows.sort((a, b) => a.name.localeCompare(b.name))
-  }, [baseModels, candidateModelNames])
-
-  const unsetCount = unsetModels.length
-  const models = unsetOnly ? unsetModels : baseModels
 
   const modeCounts = useMemo(
     () =>
@@ -311,6 +292,12 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const handleEdit = useCallback(
     (model: ModelRow) => {
       const editableModel = model.draft ?? model.saved ?? model
+      let editBillingMode: PricingMode = 'per-token'
+      if (editableModel.billingMode === 'tiered_expr') {
+        editBillingMode = 'tiered_expr'
+      } else if (editableModel.price && editableModel.price !== '') {
+        editBillingMode = 'per-request'
+      }
       setEditData({
         name: editableModel.name,
         price: editableModel.price,
@@ -321,12 +308,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         imageRatio: editableModel.imageRatio,
         audioRatio: editableModel.audioRatio,
         audioCompletionRatio: editableModel.audioCompletionRatio,
-        billingMode:
-          editableModel.billingMode === 'tiered_expr'
-            ? 'tiered_expr'
-            : editableModel.price && editableModel.price !== ''
-              ? 'per-request'
-              : 'per-token',
+        billingMode: editBillingMode,
         billingExpr: editableModel.billingExpr,
         requestRuleExpr: editableModel.requestRuleExpr,
       })
@@ -341,18 +323,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
     setEditorOpen(true)
     if (isMobile) setSheetOpen(true)
   }, [isMobile])
-
-  const toggleUnsetOnly = useCallback(() => {
-    setUnsetOnly((prev) => !prev)
-    setEditData(null)
-    setEditorOpen(false)
-    setSheetOpen(false)
-    setRowSelection({})
-    // The billing-mode facet is hidden in unset-only mode; clear any active
-    // selection so a stale filter doesn't hide the (per-token) unset rows.
-    setColumnFilters([])
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }))
-  }, [])
 
   const handleGlobalFilterChange = useCallback<OnChangeFn<string>>(
     (updater) => {
@@ -470,16 +440,26 @@ const ModelRatioVisualEditorComponent = forwardRef<
       buildModelRatioColumns({
         onDelete: handleDelete,
         onEdit: handleEdit,
+        deleteDisabled: filterMode === 'unset',
         t,
-        unsetMode: unsetOnly,
+        unsetMode: filterMode === 'unset',
       }),
-    [handleEdit, handleDelete, t, unsetOnly]
+    [handleEdit, handleDelete, filterMode, t]
   )
 
+  const ensurePageInRange = useCallback((pageCount: number) => {
+    setPagination((prev) =>
+      pageCount > 0 && prev.pageIndex >= pageCount
+        ? { ...prev, pageIndex: pageCount - 1 }
+        : prev
+    )
+  }, [])
+
   const { table } = useDataTable({
-    data: models,
+    data: baseModels,
     columns,
     getRowId: (row) => row.name,
+    ensurePageInRange,
     sorting,
     columnFilters,
     globalFilter,
@@ -634,10 +614,18 @@ const ModelRatioVisualEditorComponent = forwardRef<
     ]
   )
 
-  const handleBatchCopy = useCallback(() => {
+  const handleBatchCopy = useCallback(async () => {
     if (!editData) {
       toast.error(t('Open a source model first'))
       return
+    }
+
+    let sourceData = editData
+    if (editorOpen && editorPanelRef.current) {
+      const committed = await editorPanelRef.current.commitDraft()
+      if (!committed) return
+      sourceData = committed
+      setEditData(committed)
     }
 
     const targetNames = table
@@ -649,15 +637,19 @@ const ModelRatioVisualEditorComponent = forwardRef<
       return
     }
 
-    persistPricingData(editData, targetNames)
+    // Persist to the source model too, so targets never carry pricing the
+    // source itself would lose if the editor draft were abandoned.
+    persistPricingData(sourceData, [
+      ...new Set([sourceData.name, ...targetNames]),
+    ])
     table.resetRowSelection()
     toast.success(
       t('Applied {{name}} pricing to {{count}} models', {
-        name: editData.name,
+        name: sourceData.name,
         count: targetNames.length,
       })
     )
-  }, [editData, persistPricingData, t, table])
+  }, [editData, editorOpen, persistPricingData, t, table])
 
   useImperativeHandle(
     ref,
@@ -676,11 +668,13 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   const hasRows = table.getRowModel().rows.length > 0
 
-  let emptyStateMessage = t('No models configured. Use Add model to get started.')
+  let emptyStateText = t('No models configured. Use Add model to get started.')
   if (table.getState().globalFilter) {
-    emptyStateMessage = t('No models match your search')
-  } else if (unsetOnly) {
-    emptyStateMessage = t('No unpriced models')
+    emptyStateText = t('No models match your search')
+  } else if (filterMode === 'unset') {
+    emptyStateText = candidateModelsLoading
+      ? t('Loading...')
+      : t('No models with unset prices')
   }
 
   return (
@@ -690,23 +684,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
           <DataTableToolbar
             table={table}
             searchPlaceholder={t('Search models...')}
-            additionalSearch={
-              <Button
-                type='button'
-                variant={unsetOnly ? 'default' : 'outline'}
-                onClick={toggleUnsetOnly}
-                aria-pressed={unsetOnly}
-              >
-                {t('Unset price only')}
-                {unsetCount > 0 && (
-                  <Badge variant='secondary' className='ms-1.5'>
-                    {unsetCount}
-                  </Badge>
-                )}
-              </Button>
-            }
             filters={
-              unsetOnly
+              filterMode === 'unset'
                 ? undefined
                 : [
                     {
@@ -733,7 +712,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   ]
             }
             preActions={
-              unsetOnly ? undefined : (
+              filterMode === 'unset' ? undefined : (
                 <Button onClick={handleAdd}>
                   <Plus data-icon='inline-start' />
                   {t('Add model')}
@@ -742,7 +721,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
             }
           />
 
-          {unsetOnly && (
+          {filterMode === 'unset' && (
             <p className='text-muted-foreground text-xs leading-5'>
               {t(
                 'Only models served by enabled channels with no base price configured. They leave this list once priced.'
@@ -752,7 +731,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
           {!hasRows ? (
             <div className='text-muted-foreground rounded-lg border border-dashed p-8 text-center'>
-              {emptyStateMessage}
+              {emptyStateText}
             </div>
           ) : (
             <DataTableView
@@ -773,7 +752,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
               colgroup={
                 <colgroup>
                   {/* No select column in unset-only mode (see buildModelRatioColumns) */}
-                  {!unsetOnly && <col className='w-9' />}
+                  {filterMode !== 'unset' && <col className='w-9' />}
                   <col className='w-[300px]' />
                   <col className='w-[120px]' />
                   <col className='w-[300px]' />
@@ -827,10 +806,12 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   'Use the full-width table to scan prices, then select a row to edit it here.'
                 )}
               </p>
-              <Button variant='outline' onClick={handleAdd}>
-                <Plus data-icon='inline-start' />
-                {t('Add model')}
-              </Button>
+              {filterMode !== 'unset' && (
+                <Button variant='outline' onClick={handleAdd}>
+                  <Plus data-icon='inline-start' />
+                  {t('Add model')}
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -838,7 +819,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
       {/* Bulk-copy needs a priced source row; in unset-only mode every row is
           unpriced, so the affordance is hidden (matches classic's reduced UI). */}
-      {!unsetOnly && (
+      {filterMode !== 'unset' && (
         <DataTableBulkActions table={table} entityName={t('model')}>
           <Button size='sm' disabled={!editData} onClick={handleBatchCopy}>
             <Copy data-icon='inline-start' />
@@ -868,6 +849,17 @@ export const ModelRatioVisualEditor = memo(
   // Custom equality check - only re-render if JSON props actually changed
   (prevProps, nextProps) => {
     return (
+      prevProps.savedModelPrice === nextProps.savedModelPrice &&
+      prevProps.savedModelRatio === nextProps.savedModelRatio &&
+      prevProps.savedCacheRatio === nextProps.savedCacheRatio &&
+      prevProps.savedCreateCacheRatio === nextProps.savedCreateCacheRatio &&
+      prevProps.savedCompletionRatio === nextProps.savedCompletionRatio &&
+      prevProps.savedImageRatio === nextProps.savedImageRatio &&
+      prevProps.savedAudioRatio === nextProps.savedAudioRatio &&
+      prevProps.savedAudioCompletionRatio ===
+        nextProps.savedAudioCompletionRatio &&
+      prevProps.savedBillingMode === nextProps.savedBillingMode &&
+      prevProps.savedBillingExpr === nextProps.savedBillingExpr &&
       prevProps.modelPrice === nextProps.modelPrice &&
       prevProps.modelRatio === nextProps.modelRatio &&
       prevProps.cacheRatio === nextProps.cacheRatio &&
@@ -878,6 +870,9 @@ export const ModelRatioVisualEditor = memo(
       prevProps.audioCompletionRatio === nextProps.audioCompletionRatio &&
       prevProps.billingMode === nextProps.billingMode &&
       prevProps.billingExpr === nextProps.billingExpr &&
+      prevProps.candidateModelNames === nextProps.candidateModelNames &&
+      prevProps.candidateModelsLoading === nextProps.candidateModelsLoading &&
+      prevProps.filterMode === nextProps.filterMode &&
       prevProps.onChange === nextProps.onChange &&
       prevProps.onSave === nextProps.onSave &&
       prevProps.isSaving === nextProps.isSaving
