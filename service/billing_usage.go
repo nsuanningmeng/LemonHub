@@ -1,8 +1,10 @@
 package service
 
 import (
+	"fmt"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 )
 
@@ -196,7 +198,15 @@ func usageFromGeminiBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	} else if usage.CompletionTokens <= 0 {
-		usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+		// Upstream metadata can claim total < prompt; a negative derived count
+		// would collapse the whole charge to the minimum-quota floor, so clamp
+		// and keep billing the prompt side normally.
+		if derived := usage.TotalTokens - usage.PromptTokens; derived > 0 {
+			usage.CompletionTokens = derived
+		} else {
+			common.SysError(fmt.Sprintf("gemini usage metadata claims total %d < prompt %d, clamping completion to 0", usage.TotalTokens, usage.PromptTokens))
+			usage.CompletionTokens = 0
+		}
 	}
 	if usage.PromptTokens > 0 && usage.PromptTokensDetails.TextTokens == 0 && usage.PromptTokensDetails.AudioTokens == 0 {
 		usage.PromptTokensDetails.TextTokens = usage.PromptTokens

@@ -271,9 +271,13 @@ func appendGeminiContentPart(req *dto.GeminiChatRequest, role string, part dto.G
 	if len(req.Contents) > 0 && req.Contents[len(req.Contents)-1].Role == role {
 		if role == "model" && part.FunctionCall != nil {
 			parts := req.Contents[len(req.Contents)-1].Parts
-			insertAt := 0
-			for insertAt < len(parts) && parts[insertAt].FunctionCall != nil {
-				insertAt++
+			// Function-call parts form a prefix of the block; a new one is
+			// inserted at the end of that prefix. Scan back over the (small)
+			// trailing non-function-call suffix instead of forward over the
+			// growing function-call prefix, so N adjacent calls stay O(N).
+			insertAt := len(parts)
+			for insertAt > 0 && parts[insertAt-1].FunctionCall == nil {
+				insertAt--
 			}
 			parts = append(parts, dto.GeminiPart{})
 			copy(parts[insertAt+1:], parts[insertAt:])

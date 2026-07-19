@@ -1,6 +1,9 @@
 package service
 
 import (
+	"fmt"
+
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -19,21 +22,24 @@ type TieredResultWrapper = billingexpr.TieredResult
 // report them as text-only. This function normalizes to text-only when
 // sub-categories are separately priced.
 func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVars map[string]bool) billingexpr.TokenParams {
-	p := float64(usage.PromptTokens)
-	c := float64(usage.CompletionTokens)
-	cr := float64(usage.PromptTokensDetails.CachedTokens)
-	cc5m := float64(usage.PromptTokensDetails.CacheCreationTokensTotal())
+	// Every count below is upstream-controlled (parsed from provider JSON as a
+	// signed int). A negative count in the expression env could drive the cost
+	// negative and turn settlement into a credit, so floor them all at zero.
+	p := nonNegativeTokenCount(usage.PromptTokens)
+	c := nonNegativeTokenCount(usage.CompletionTokens)
+	cr := nonNegativeTokenCount(usage.PromptTokensDetails.CachedTokens)
+	cc5m := nonNegativeTokenCount(usage.PromptTokensDetails.CacheCreationTokensTotal())
 	cc1h := float64(0)
 
 	if usage.UsageSemantic == "anthropic" {
-		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
-		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
+		cc1h = nonNegativeTokenCount(usage.ClaudeCacheCreation1hTokens)
+		cc5m = nonNegativeTokenCount(usage.ClaudeCacheCreation5mTokens)
 	}
 
-	img := float64(usage.PromptTokensDetails.ImageTokens)
-	ai := float64(usage.PromptTokensDetails.AudioTokens)
-	imgO := float64(usage.CompletionTokenDetails.ImageTokens)
-	ao := float64(usage.CompletionTokenDetails.AudioTokens)
+	img := nonNegativeTokenCount(usage.PromptTokensDetails.ImageTokens)
+	ai := nonNegativeTokenCount(usage.PromptTokensDetails.AudioTokens)
+	imgO := nonNegativeTokenCount(usage.CompletionTokenDetails.ImageTokens)
+	ao := nonNegativeTokenCount(usage.CompletionTokenDetails.AudioTokens)
 
 	// len = total input context length for tier condition evaluation.
 	// Non-Claude: prompt_tokens already includes everything.
@@ -119,5 +125,23 @@ func TryTieredSettle(relayInfo *relaycommon.RelayInfo, params billingexpr.TokenP
 	// (text, audio, WSS) consumes the returned quota. First non-nil wins.
 	noteQuotaClamp(relayInfo, tr.Clamp)
 
+	// A settlement charge is never a credit: refunds happen only through the
+	// actual-vs-preconsumed delta, so a negative expression result must not
+	// leave here (it would credit the account in SettleBilling).
+	if tr.ActualQuotaAfterGroup < 0 {
+		common.SysError(fmt.Sprintf("tiered settle produced negative quota %d for model %s, flooring to 0", tr.ActualQuotaAfterGroup, relayInfo.OriginModelName))
+		tr.ActualQuotaAfterGroup = 0
+	}
+
 	return true, tr.ActualQuotaAfterGroup, &tr
+}
+
+// nonNegativeTokenCount floors an upstream-reported token count at zero before
+// it can reach a billing expression; counts are parsed from provider JSON as
+// signed ints and a negative value could turn the computed cost into a credit.
+func nonNegativeTokenCount(n int) float64 {
+	if n < 0 {
+		return 0
+	}
+	return float64(n)
 }

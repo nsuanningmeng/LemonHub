@@ -66,7 +66,11 @@ func UsageFromGeminiMetadata(metadata *dto.GeminiUsageMetadata, fallbackPromptTo
 	}
 
 	if usage.TotalTokens > 0 && usage.CompletionTokens <= 0 {
-		usage.CompletionTokens = usage.TotalTokens - usage.PromptTokens
+		// Clamp: metadata claiming total < prompt must not yield a negative
+		// completion count (it would poison downstream billing).
+		if derived := usage.TotalTokens - usage.PromptTokens; derived > 0 {
+			usage.CompletionTokens = derived
+		}
 	}
 
 	if usage.PromptTokens > 0 && usage.PromptTokensDetails.TextTokens == 0 && usage.PromptTokensDetails.AudioTokens == 0 {
