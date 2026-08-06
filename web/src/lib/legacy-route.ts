@@ -34,6 +34,10 @@ const legacyConsoleRoutes: Record<string, string> = {
   '/console/task': '/usage-logs/task',
 }
 
+// Fork routes that still live under /console/ and must never be treated as
+// legacy paths by the catch-all redirect below.
+const liveConsoleRoutes = new Set(['/console/tickets', '/console/tickets-admin'])
+
 const legacySettingsTabs: Record<string, string> = {
   operation: '/system-settings/operations/behavior',
   dashboard: '/system-settings/content/dashboard',
@@ -72,6 +76,9 @@ export function resolveLegacyRoute(rawHref: string): string | null {
   }
 
   const pathname = normalizeLegacyPath(source.pathname)
+  if (liveConsoleRoutes.has(pathname)) {
+    return null
+  }
   if (pathname === '/login') {
     return buildTargetHref('/sign-in', source)
   }

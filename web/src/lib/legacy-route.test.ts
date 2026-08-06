@@ -94,4 +94,10 @@ describe('legacy frontend route migration', () => {
     assert.equal(resolveLegacyRoute('/dashboard'), null)
     assert.equal(resolveLegacyRoute('/api/status'), null)
   })
+
+  test('keeps live fork console routes out of the legacy catch-all', () => {
+    assert.equal(resolveLegacyRoute('/console/tickets'), null)
+    assert.equal(resolveLegacyRoute('/console/tickets/'), null)
+    assert.equal(resolveLegacyRoute('/console/tickets-admin?p=2'), null)
+  })
 })

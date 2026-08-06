@@ -71,19 +71,22 @@ export function ForgotPasswordForm({
     setIsLoading(true)
     try {
       const res = await sendPasswordResetEmail(data.email, captchaToken)
+      // Captcha tokens are single-use: the backend consumes one per request
+      // whether or not it succeeds, so always force a fresh challenge.
+      setCaptchaToken('')
+      setCaptchaWidgetKey((current) => current + 1)
       if (res?.success) {
         form.reset()
         startCountdown()
-        // Captcha tokens are single-use: the backend verifies one per request,
-        // so force a fresh challenge before the next send.
-        setCaptchaToken('')
-        setCaptchaWidgetKey((current) => current + 1)
         toast.success(t('Reset email sent, please check your inbox'))
       } else {
         toast.error(res?.message || t('Failed to send reset email'))
       }
     } catch (_error) {
-      // Errors are handled by global interceptor
+      // Errors are handled by global interceptor; the request may still have
+      // consumed the captcha token, so refresh it here as well.
+      setCaptchaToken('')
+      setCaptchaWidgetKey((current) => current + 1)
     } finally {
       setIsLoading(false)
     }

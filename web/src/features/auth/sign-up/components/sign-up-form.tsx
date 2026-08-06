@@ -71,6 +71,13 @@ export function SignUpForm({
   const { isCaptchaEnabled, captchaToken, setCaptchaToken, validateCaptcha } =
     useCaptcha()
   const { redirectToLogin, handleLoginSuccess } = useAuthRedirect()
+  // Captcha tokens are single-use: the backend verifies one per guarded
+  // request, so any consumed token must force a fresh challenge.
+  const resetCaptcha = () => {
+    setCaptchaToken('')
+    setTurnstileWidgetKey((current) => current + 1)
+  }
+
   const {
     isSending: isSendingCode,
     secondsLeft,
@@ -79,6 +86,7 @@ export function SignUpForm({
   } = useEmailVerification({
     turnstileToken: captchaToken,
     validateTurnstile: validateCaptcha,
+    onTokenConsumed: resetCaptcha,
   })
 
   const form = useForm<z.infer<typeof registerFormSchema>>({
@@ -178,17 +186,10 @@ export function SignUpForm({
     }
   }
 
-  // Captcha tokens are single-use: the backend verifies one per guarded
-  // request, so any consumed token must force a fresh challenge.
-  const resetCaptcha = () => {
-    setCaptchaToken('')
-    setTurnstileWidgetKey((current) => current + 1)
-  }
-
   async function handleSendVerificationCode() {
-    if (await sendCode(emailValue || '')) {
-      resetCaptcha()
-    }
+    // Token refresh on an actually-issued request is handled by the hook's
+    // onTokenConsumed callback, covering failure paths too.
+    await sendCode(emailValue || '')
   }
 
   const handleOpenWeChatDialog = () => {

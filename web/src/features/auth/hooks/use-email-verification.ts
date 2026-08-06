@@ -28,6 +28,13 @@ import { EMAIL_VERIFICATION_COUNTDOWN } from '../constants'
 interface UseEmailVerificationOptions {
   turnstileToken?: string
   validateTurnstile?: () => boolean
+  /**
+   * Called whenever a send request was actually issued (success or failure).
+   * Captcha tokens are single-use server-side, so callers should refresh
+   * their challenge here; the local pre-checks above do not consume tokens
+   * and intentionally do not trigger this.
+   */
+  onTokenConsumed?: () => void
 }
 
 /**
@@ -72,6 +79,7 @@ export function useEmailVerification(options?: UseEmailVerificationOptions) {
       return false
     } finally {
       setIsSending(false)
+      options?.onTokenConsumed?.()
     }
   }
 
