@@ -14,17 +14,18 @@ const retiredThemeOptionKey = "theme.frontend"
 
 type legacyOptionTransform func(string) (string, error)
 
-// MigrateRetiredFrontendOptions normalizes options that belonged to the
-// removed dashboard frontend. Each legacy console setting is migrated in its
-// own transaction so one malformed value cannot block the other settings.
+// MigrateRetiredFrontendOptions copies options that belonged to the removed
+// dashboard frontend into their current keys. Legacy rows are retained for
+// rollback and audit, and each setting is handled in its own transaction so one
+// malformed value cannot block the other settings.
 func MigrateRetiredFrontendOptions() error {
 	if DB == nil {
 		return errors.New("database is not initialized")
 	}
 
 	var migrationErrors []error
-	if err := normalizeRetiredThemeOption(); err != nil {
-		migrationErrors = append(migrationErrors, fmt.Errorf("normalize %s: %w", retiredThemeOptionKey, err))
+	if err := ensureRetiredThemeOption(); err != nil {
+		migrationErrors = append(migrationErrors, fmt.Errorf("ensure %s: %w", retiredThemeOptionKey, err))
 	}
 
 	migrations := []struct {
@@ -47,7 +48,7 @@ func MigrateRetiredFrontendOptions() error {
 	return errors.Join(migrationErrors...)
 }
 
-func normalizeRetiredThemeOption() error {
+func ensureRetiredThemeOption() error {
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var option Option
 		err := tx.Where(&Option{Key: retiredThemeOptionKey}).First(&option).Error
@@ -57,10 +58,7 @@ func normalizeRetiredThemeOption() error {
 		if err != nil {
 			return err
 		}
-		if option.Value == "default" {
-			return nil
-		}
-		return tx.Model(&option).Update("value", "default").Error
+		return nil
 	})
 }
 
@@ -80,7 +78,7 @@ func migrateLegacyOption(sourceKey, targetKey string, transform legacyOptionTran
 			return fmt.Errorf("read target option %s: %w", targetKey, err)
 		}
 		if err == nil {
-			return tx.Delete(&source).Error
+			return nil
 		}
 
 		value, transformErr := transform(source.Value)
@@ -95,9 +93,6 @@ func migrateLegacyOption(sourceKey, targetKey string, transform legacyOptionTran
 		if err := tx.Save(&target).Error; err != nil {
 			return fmt.Errorf("write target option %s: %w", targetKey, err)
 		}
-		if err := tx.Delete(&source).Error; err != nil {
-			return fmt.Errorf("delete legacy option %s: %w", sourceKey, err)
-		}
 		return nil
 	})
 }
@@ -111,7 +106,7 @@ func transformLegacyAPIInfo(value string) (string, error) {
 		return "", err
 	}
 	if len(items) > 50 {
-		items = items[:50]
+		return "", fmt.Errorf("API info contains %d entries; maximum is 50", len(items))
 	}
 	encoded, err := common.Marshal(items)
 	if err != nil {
@@ -157,9 +152,6 @@ func transformLegacyFAQ(value string) (string, error) {
 		}
 		items = append(items, map[string]any{"question": question, "answer": answer})
 	}
-	if len(items) > 50 {
-		items = items[:50]
-	}
 	encoded, err := common.Marshal(items)
 	if err != nil {
 		return "", err
@@ -193,14 +185,6 @@ func migrateLegacyUptimeOptions() error {
 			return fmt.Errorf("read target option console_setting.uptime_kuma_groups: %w", targetErr)
 		}
 		if targetErr == nil {
-			if urlErr == nil {
-				if err := tx.Delete(&urlOption).Error; err != nil {
-					return err
-				}
-			}
-			if slugErr == nil {
-				return tx.Delete(&slugOption).Error
-			}
 			return nil
 		}
 
@@ -231,9 +215,6 @@ func migrateLegacyUptimeOptions() error {
 		if err := tx.Save(&target).Error; err != nil {
 			return fmt.Errorf("write target option console_setting.uptime_kuma_groups: %w", err)
 		}
-		if err := tx.Delete(&urlOption).Error; err != nil {
-			return err
-		}
-		return tx.Delete(&slugOption).Error
+		return nil
 	})
 }

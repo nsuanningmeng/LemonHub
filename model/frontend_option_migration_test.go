@@ -53,15 +53,15 @@ func TestMigrateRetiredFrontendOptionsMigratesValidValuesIdempotently(t *testing
 	require.NoError(t, db.Create(&legacy).Error)
 
 	require.NoError(t, MigrateRetiredFrontendOptions())
-	assert.Equal(t, "default", requireOptionValue(t, db, retiredThemeOptionKey))
+	assert.Equal(t, "classic", requireOptionValue(t, db, retiredThemeOptionKey))
 	assert.JSONEq(t, legacy[1].Value, requireOptionValue(t, db, "console_setting.api_info"))
 	assert.Equal(t, legacy[2].Value, requireOptionValue(t, db, "console_setting.announcements"))
 	assert.JSONEq(t, `[{"question":"Question","answer":"Answer"}]`, requireOptionValue(t, db, "console_setting.faq"))
 	assert.JSONEq(t, `[{
 		"id":1,"categoryName":"old","url":"https://status.example.com","slug":"status","description":""
 	}]`, requireOptionValue(t, db, "console_setting.uptime_kuma_groups"))
-	for _, key := range []string{"ApiInfo", "Announcements", "FAQ", "UptimeKumaUrl", "UptimeKumaSlug"} {
-		requireOptionMissing(t, db, key)
+	for _, option := range legacy[1:] {
+		assert.Equal(t, option.Value, requireOptionValue(t, db, option.Key))
 	}
 
 	before, err := AllOption()
@@ -72,7 +72,7 @@ func TestMigrateRetiredFrontendOptionsMigratesValidValuesIdempotently(t *testing
 	assert.ElementsMatch(t, before, after)
 }
 
-func TestLegacyConsoleListMigrationCapsAPIInfoAndFAQ(t *testing.T) {
+func TestLegacyConsoleListMigrationDoesNotSilentlyTruncate(t *testing.T) {
 	apiInfo := make([]map[string]any, 51)
 	faq := make([]map[string]any, 51)
 	for i := range apiInfo {
@@ -89,16 +89,34 @@ func TestLegacyConsoleListMigrationCapsAPIInfoAndFAQ(t *testing.T) {
 	faqBytes, err := common.Marshal(faq)
 	require.NoError(t, err)
 
-	migratedAPI, err := transformLegacyAPIInfo(string(apiBytes))
-	require.NoError(t, err)
+	_, err = transformLegacyAPIInfo(string(apiBytes))
+	require.Error(t, err)
 	migratedFAQ, err := transformLegacyFAQ(string(faqBytes))
 	require.NoError(t, err)
-	var apiResult []map[string]any
-	require.NoError(t, common.UnmarshalJsonStr(migratedAPI, &apiResult))
 	var faqResult []map[string]any
 	require.NoError(t, common.UnmarshalJsonStr(migratedFAQ, &faqResult))
-	assert.Len(t, apiResult, 50)
-	assert.Len(t, faqResult, 50)
+	assert.Len(t, faqResult, 51)
+}
+
+func TestMigrateRetiredFrontendOptionsPreservesOverLimitAPIInfo(t *testing.T) {
+	db := useFrontendOptionMigrationDB(t)
+	apiInfo := make([]map[string]any, 51)
+	for i := range apiInfo {
+		apiInfo[i] = map[string]any{
+			"url":         fmt.Sprintf("https://api-%d.example.com", i),
+			"route":       fmt.Sprintf("route-%d", i),
+			"description": "API",
+			"color":       "blue",
+		}
+	}
+	encoded, err := common.Marshal(apiInfo)
+	require.NoError(t, err)
+	legacyValue := string(encoded)
+	require.NoError(t, db.Create(&Option{Key: "ApiInfo", Value: legacyValue}).Error)
+
+	require.NoError(t, MigrateRetiredFrontendOptions())
+	assert.Equal(t, legacyValue, requireOptionValue(t, db, "ApiInfo"))
+	requireOptionMissing(t, db, "console_setting.api_info")
 }
 
 func TestMigrateRetiredFrontendOptionsPreservesMalformedValuesAndContinues(t *testing.T) {
@@ -113,7 +131,7 @@ func TestMigrateRetiredFrontendOptionsPreservesMalformedValuesAndContinues(t *te
 	require.NoError(t, MigrateRetiredFrontendOptions())
 	assert.Equal(t, `{invalid`, requireOptionValue(t, db, "ApiInfo"))
 	requireOptionMissing(t, db, "console_setting.api_info")
-	requireOptionMissing(t, db, "FAQ")
+	assert.Equal(t, legacy[1].Value, requireOptionValue(t, db, "FAQ"))
 	assert.JSONEq(t, legacy[1].Value, requireOptionValue(t, db, "console_setting.faq"))
 	assert.Equal(t, "https://status.example.com", requireOptionValue(t, db, "UptimeKumaUrl"))
 	requireOptionMissing(t, db, "console_setting.uptime_kuma_groups")
@@ -143,8 +161,8 @@ func TestMigrateRetiredFrontendOptionsKeepsAuthoritativeTargets(t *testing.T) {
 	require.NoError(t, MigrateRetiredFrontendOptions())
 	assert.Equal(t, options[1].Value, requireOptionValue(t, db, "console_setting.api_info"))
 	assert.Equal(t, options[4].Value, requireOptionValue(t, db, "console_setting.uptime_kuma_groups"))
-	for _, key := range []string{"ApiInfo", "UptimeKumaUrl", "UptimeKumaSlug"} {
-		requireOptionMissing(t, db, key)
+	for _, option := range []Option{options[0], options[2], options[3]} {
+		assert.Equal(t, option.Value, requireOptionValue(t, db, option.Key))
 	}
 }
 
@@ -162,8 +180,8 @@ func TestMigrateRetiredFrontendOptionsKeepsEmptyAuthoritativeTargets(t *testing.
 	require.NoError(t, MigrateRetiredFrontendOptions())
 	assert.Empty(t, requireOptionValue(t, db, "console_setting.api_info"))
 	assert.Empty(t, requireOptionValue(t, db, "console_setting.uptime_kuma_groups"))
-	for _, key := range []string{"ApiInfo", "UptimeKumaUrl", "UptimeKumaSlug"} {
-		requireOptionMissing(t, db, key)
+	for _, option := range []Option{options[0], options[2], options[3]} {
+		assert.Equal(t, option.Value, requireOptionValue(t, db, option.Key))
 	}
 }
 
