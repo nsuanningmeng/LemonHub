@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils'
 import { uploadTicketAttachment } from '../api'
 import { MAX_ATTACHMENT_BYTES } from '../constants'
 import type { UploadedAttachment } from '../types'
+import { AttachmentImage } from './attachment-image'
 
 interface MessageEditorProps {
   content: string
@@ -169,10 +170,10 @@ export function MessageEditor(props: MessageEditorProps) {
         <div className='flex flex-wrap gap-2'>
           {props.attachments.map((att) => (
             <div key={att.id} className='group/att relative'>
-              <img
-                src={att.url || `/api/ticket/attachment/${att.id}`}
-                alt={att.file_name}
-                className='size-16 rounded-md border object-cover'
+              <AttachmentImage
+                attachmentId={att.id}
+                fileName={att.file_name}
+                className='size-16'
               />
               <button
                 type='button'

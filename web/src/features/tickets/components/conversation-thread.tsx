@@ -24,6 +24,7 @@ import { formatTimestamp } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { TicketMessage } from '../types'
+import { AttachmentImage } from './attachment-image'
 
 export function ConversationThread({
   messages,
@@ -68,18 +69,13 @@ export function ConversationThread({
             {attachments.length > 0 && (
               <div className='mt-2 flex flex-wrap gap-2'>
                 {attachments.map((att) => (
-                  <a
+                  <AttachmentImage
                     key={att.id}
-                    href={`/api/ticket/attachment/${att.id}`}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                  >
-                    <img
-                      src={`/api/ticket/attachment/${att.id}`}
-                      alt={att.file_name}
-                      className='max-h-40 rounded-md border object-cover'
-                    />
-                  </a>
+                    attachmentId={att.id}
+                    fileName={att.file_name}
+                    className='max-h-40'
+                    openOnClick
+                  />
                 ))}
               </div>
             )}
