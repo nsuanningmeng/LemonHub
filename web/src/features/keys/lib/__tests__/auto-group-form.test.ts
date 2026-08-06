@@ -66,7 +66,7 @@ describe('API key Auto group form mapping', () => {
   test('creates an Auto token that inherits the global order', () => {
     const defaults = getApiKeyFormDefaultValues(true)
 
-    assert.equal(defaults.group, 'auto')
+    assert.deepEqual(defaults.groups, ['auto'])
     assert.equal(defaults.auto_groups_mode, 'inherit')
     assert.deepEqual(defaults.auto_groups, [])
     assert.deepEqual(transformFormDataToPayload(defaults).auto_groups, [])
