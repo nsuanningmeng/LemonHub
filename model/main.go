@@ -272,6 +272,12 @@ func migrateDB() error {
 	if err := ensureAffiliateCashSettledColumn(DB); err != nil {
 		return err
 	}
+	if err := preflightExternalIdentityClaims(DB); err != nil {
+		return err
+	}
+	if err := prepareExternalIdentityClaimsSiteScope(DB); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -322,6 +328,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := finalizeExternalIdentityClaimsSiteScope(DB); err != nil {
+		return err
+	}
 	// Defensive: guarantee no NULL site_id rows remain so `WHERE site_id = 0`
 	// (main-site) queries never hide legacy data. The ADD COLUMN DEFAULT 0 above
 	// already backfills standard upgrades on all three engines; this closes the
@@ -363,6 +372,12 @@ func migrateDBFast() error {
 		return err
 	}
 	if err := ensureAffiliateCashSettledColumn(DB); err != nil {
+		return err
+	}
+	if err := preflightExternalIdentityClaims(DB); err != nil {
+		return err
+	}
+	if err := prepareExternalIdentityClaimsSiteScope(DB); err != nil {
 		return err
 	}
 
@@ -439,6 +454,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := finalizeExternalIdentityClaimsSiteScope(DB); err != nil {
+		return err
 	}
 	// Mirror migrateDB(): guarantee no NULL site_id rows remain so main-site
 	// (`WHERE site_id = 0`) queries never hide legacy data.

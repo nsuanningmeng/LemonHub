@@ -163,7 +163,8 @@ Proof 同时绑定用户、登录会话、用户鉴权版本、会话版本和 s
 ## 升级注意事项
 
 - 旧 `session` Cookie 不再使用；升级后现有面板登录会失效，用户需要重新登录。
-- 数据库迁移会新增 `user_sessions`、`auth_flows`、`external_identity_claims` 和 `users.auth_version`，并为已有用户初始化鉴权版本、回填 Telegram 账号唯一归属；若历史数据中同一 Telegram ID 已绑定多个用户，迁移会拒绝继续启动，需先消除歧义。
+- 多节点部署必须先停止所有旧版本应用节点并暂停写入，再由一个 master 节点完成迁移；不要在旧版本与新版本之间执行混合版本滚动升级，因为旧节点不会维护新的外部身份归属表。
+- 数据库迁移会新增 `user_sessions`、`auth_flows`、`external_identity_claims` 和 `users.auth_version`，并为已有用户初始化鉴权版本、按 `site_id` 回填 Telegram 账号唯一归属。不同站点可继续使用相同 Telegram ID；只有同一站点内同一 Telegram ID 绑定多个用户时，迁移才会在变更外部身份表结构前拒绝启动，需先消除歧义。迁移会先建立新的站点级唯一索引，再删除旧全局索引，升级中断不会留下无唯一约束的窗口。
 - 数据库迁移会为 Session 签发计数和分批清理新增索引；已有 `user_sessions` 很大时应为首次启动预留维护窗口。
 - `user_sessions.previous_refresh_hash` 会从定长 `char(64)` 迁移为 `varchar(64)`。应用会兼容读取历史定长字段留下的空格填充；迁移后的目标结构必须保持幂等，连续启动不应反复执行列类型变更。
 - 仅 master 节点定时清理过期登录会话、超过配置保留期的 revoked 会话和已过保留期的 AuthFlow。
