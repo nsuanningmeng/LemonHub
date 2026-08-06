@@ -5,7 +5,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/service/captcha"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -13,14 +12,12 @@ import (
 // human-verification channel (Turnstile / GeeTest / ALTCHA / Tencent).
 // The client token still travels in the legacy "turnstile" query parameter
 // so every existing call site keeps working regardless of channel.
+// Dashboard sessions were replaced by stateless tokens upstream, so the
+// verification result is no longer memoized per session; every guarded
+// request must present a fresh captcha token.
 func CaptchaCheck() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !common.TurnstileCheckEnabled {
-			c.Next()
-			return
-		}
-		session := sessions.Default(c)
-		if session.Get("turnstile") != nil {
 			c.Next()
 			return
 		}
@@ -39,14 +36,6 @@ func CaptchaCheck() gin.HandlerFunc {
 				"message": err.Error(),
 			})
 			c.Abort()
-			return
-		}
-		session.Set("turnstile", true)
-		if err := session.Save(); err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "无法保存会话信息，请重试",
-				"success": false,
-			})
 			return
 		}
 		c.Next()

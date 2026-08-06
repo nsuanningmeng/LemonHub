@@ -19,6 +19,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -40,7 +41,7 @@ func RelayMidjourneyImage(c *gin.Context) {
 	if channel, err := model.CacheGetChannel(midjourneyTask.ChannelId); err == nil {
 		proxy = channel.GetSetting().Proxy
 		if proxy != "" {
-			if httpClient, err = service.NewProxyHttpClient(proxy); err != nil {
+			if httpClient, err = service.GetHttpClientWithProxy(proxy); err != nil {
 				c.JSON(400, gin.H{
 					"error": "proxy_url_invalid",
 				})
@@ -476,7 +477,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			channel, err := model.GetChannelById(originTask.ChannelId, true)
 			if err != nil {
 				// 原渠道查不到时只能走全局兜底：上下文里是分发时选中的另一渠道的配置
-				if overrideText, ok := service.ErrorOverrideTextForChannel(dto.ChannelSettings{}); ok {
+				if overrideText, ok := service.ErrorOverrideTextForChannel(relaydto.ChannelSettings{}); ok {
 					logger.LogError(c, fmt.Sprintf("mj origin channel %d not found (masked for user): %s", originTask.ChannelId, err.Error()))
 					return service.MidjourneyErrorWrapper(constant.MjRequestError, overrideText)
 				}

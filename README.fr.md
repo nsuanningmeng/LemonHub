@@ -1,6 +1,6 @@
 <div align="center">
 
-![LemonHub](/web/default/public/logo.png)
+![LemonHub](/web/public/logo.png)
 
 # LemonHub
 
@@ -219,7 +219,7 @@ Pour les détails sur la passerelle/l'API, reportez-vous à la [documentation ne
 | Variable | Description | Valeur par défaut |
 |---|---|---|
 | `SESSION_SECRET` | Secret de session (requis pour le multi-nœuds) | - |
-| `CRYPTO_SECRET` | Secret de chiffrement (requis pour un Redis partagé) | - |
+| `CRYPTO_SECRET` | Secret de chiffrement ; les nœuds partageant Redis doivent utiliser la même valeur | Par défaut : `SESSION_SECRET` |
 | `SQL_DSN` | Chaîne de connexion à la base de données (MySQL/PostgreSQL) | - |
 | `REDIS_CONN_STRING` | Chaîne de connexion Redis | - |
 | `TRUSTED_REDIRECT_DOMAINS` | Domaines de confiance séparés par des virgules pour la redirection de paiement / les rappels multi-domaines | - |
@@ -234,7 +234,7 @@ Les variables de limitation de débit et la plupart des variables de réglage re
 
 > [!WARNING]
 > - Définissez `SESSION_SECRET`, sinon l'état de connexion est incohérent entre les nœuds.
-> - Avec un Redis partagé, définissez `CRYPTO_SECRET`, sinon les données chiffrées ne peuvent pas être déchiffrées.
+> - Les nœuds partageant le même Redis doivent utiliser le même `CRYPTO_SECRET` (par défaut `SESSION_SECRET`), sinon les données mises en cache/chiffrées ne peuvent pas être partagées.
 
 ### Reprise et cache
 

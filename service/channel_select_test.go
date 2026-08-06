@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -184,12 +185,17 @@ func TestCacheGetRandomSatisfiedChannel_AutoGroupCrossRetryGating(t *testing.T) 
 
 	origAuto := setting.AutoGroups2JsonString()
 	origUsable := setting.UserUsableGroups2JSONString()
+	origGroupRatio := ratio_setting.GroupRatio2JSONString()
 	t.Cleanup(func() {
 		_ = setting.UpdateAutoGroupsByJsonString(origAuto)
 		_ = setting.UpdateUserUsableGroupsByJSONString(origUsable)
+		_ = ratio_setting.UpdateGroupRatioByJSONString(origGroupRatio)
 	})
 	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"d","ga":"a","gb":"b"}`))
 	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`["ga","gb"]`))
+	// IsUserSelectableGroup (via GetUserAutoGroup) now also requires a configured
+	// group ratio, so the auto-group fixture must register ratios for ga/gb.
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"ga":1,"gb":1}`))
 
 	addChannelWithAbility(t, 1, "ga", "m", 0)
 	addChannelWithAbility(t, 2, "gb", "m", 0)

@@ -1,6 +1,6 @@
 <div align="center">
 
-![LemonHub](/web/default/public/logo.png)
+![LemonHub](/web/public/logo.png)
 
 # LemonHub
 
@@ -219,7 +219,7 @@ For gateway/API details, refer to the upstream [new-api documentation](https://d
 | Variable | Description | Default |
 |---|---|---|
 | `SESSION_SECRET` | Session secret (required for multi-node) | - |
-| `CRYPTO_SECRET` | Encryption secret (required for shared Redis) | - |
+| `CRYPTO_SECRET` | Encryption secret; nodes sharing Redis must use the same value | Defaults to `SESSION_SECRET` |
 | `SQL_DSN` | Database connection string (MySQL/PostgreSQL) | - |
 | `REDIS_CONN_STRING` | Redis connection string | - |
 | `TRUSTED_REDIRECT_DOMAINS` | Comma-separated trusted domains for payment redirect / multi-domain callbacks | - |
@@ -234,7 +234,7 @@ Rate-limit and most tuning variables fall back to sensible code defaults, so the
 
 > [!WARNING]
 > - Set `SESSION_SECRET`, otherwise login state is inconsistent across nodes.
-> - With shared Redis, set `CRYPTO_SECRET`, otherwise encrypted data cannot be decrypted.
+> - Nodes sharing the same Redis must use the same `CRYPTO_SECRET` (defaults to `SESSION_SECRET`), otherwise cached/encrypted data cannot be shared.
 
 ### Retry and cache
 

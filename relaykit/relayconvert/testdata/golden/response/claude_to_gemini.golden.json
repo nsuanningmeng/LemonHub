@@ -1,0 +1,36 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "role": "model",
+        "parts": [
+          {
+            "text": "The answer is 42."
+          },
+          {
+            "functionCall": {
+              "name": "get_weather",
+              "args": {
+                "city": "Paris"
+              }
+            }
+          }
+        ]
+      },
+      "finishReason": "STOP",
+      "index": 0,
+      "safetyRatings": []
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 15,
+    "toolUsePromptTokenCount": 0,
+    "candidatesTokenCount": 5,
+    "totalTokenCount": 20,
+    "thoughtsTokenCount": 0,
+    "cachedContentTokenCount": 0,
+    "promptTokensDetails": null,
+    "toolUsePromptTokensDetails": null,
+    "candidatesTokensDetails": null
+  }
+}

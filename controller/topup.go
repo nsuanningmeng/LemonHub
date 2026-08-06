@@ -48,14 +48,14 @@ func GetTopUpInfo(c *gin.Context) {
 			stripeMethod := map[string]string{
 				"name":      "Stripe",
 				"type":      "stripe",
-				"color":     "rgba(var(--semi-purple-5), 1)",
+				"color":     "#635BFF",
 				"min_topup": strconv.Itoa(setting.StripeMinTopUp),
 			}
 			payMethods = append(payMethods, stripeMethod)
 		}
 	}
 
-	// Waffo Pancake displayed above the legacy Waffo gateway.
+	// Waffo Pancake is displayed above the standard Waffo gateway.
 	enableWaffoPancake := isWaffoPancakeTopUpEnabled()
 	if enableWaffoPancake {
 		hasWaffoPancake := false
@@ -70,7 +70,7 @@ func GetTopUpInfo(c *gin.Context) {
 			payMethods = append(payMethods, map[string]string{
 				"name":      "Waffo Pancake",
 				"type":      model.PaymentMethodWaffoPancake,
-				"color":     "rgba(var(--semi-orange-5), 1)",
+				"color":     "#F97316",
 				"min_topup": strconv.Itoa(setting.WaffoPancakeMinTopUp),
 			})
 		}
@@ -91,7 +91,7 @@ func GetTopUpInfo(c *gin.Context) {
 			waffoMethod := map[string]string{
 				"name":      "Waffo (Global Payment)",
 				"type":      model.PaymentMethodWaffo,
-				"color":     "rgba(var(--semi-blue-5), 1)",
+				"color":     "#3B82F6",
 				"min_topup": strconv.Itoa(setting.WaffoMinTopUp),
 			}
 			payMethods = append(payMethods, waffoMethod)
@@ -623,31 +623,31 @@ func EpayReturn(c *gin.Context) {
 	params := parseEpayCallbackParams(c)
 	if len(params) == 0 {
 		// Bare visit without a signed payload: just land the user on the wallet page.
-		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup"))
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet"))
 		return
 	}
 	v := verifyEpayTopUpCallback(c, params, "return")
 	if v == nil {
-		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=fail"))
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=fail"))
 		return
 	}
 	if v.info.TradeStatus != epay.StatusTradeSuccess {
-		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=pending"))
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=pending"))
 		return
 	}
 	finalStatus, err := settleEpayTopUp(c.Request.Context(), v.topUp, v.site, c.ClientIP(), "return")
 	if err != nil {
 		// Paid, but settlement hit a transient error — the notify retry or the
 		// reconciliation sweep will finish it; show the user "processing".
-		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=pending"))
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=pending"))
 		return
 	}
 	if finalStatus == common.TopUpStatusSuccess {
-		c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=success"))
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=success"))
 		return
 	}
 	// manual_review (paid, awaiting admin) or any other parked state.
-	c.Redirect(http.StatusFound, paymentReturnPath(c, "/console/topup?pay=pending"))
+	c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=pending"))
 }
 
 func RequestAmount(c *gin.Context) {

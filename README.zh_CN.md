@@ -1,6 +1,6 @@
 <div align="center">
 
-![LemonHub](/web/default/public/logo.png)
+![LemonHub](/web/public/logo.png)
 
 # LemonHub
 
@@ -219,7 +219,7 @@ LemonHub 保留 new-api 的网关能力，包括：
 | 变量 | 说明 | 默认值 |
 |---|---|---|
 | `SESSION_SECRET` | 会话密钥（多节点必填） | - |
-| `CRYPTO_SECRET` | 加密密钥（共享 Redis 时必填） | - |
+| `CRYPTO_SECRET` | 加密密钥（共享 Redis 的节点需一致） | 默认取 `SESSION_SECRET` |
 | `SQL_DSN` | 数据库连接串（MySQL/PostgreSQL） | - |
 | `REDIS_CONN_STRING` | Redis 连接串 | - |
 | `TRUSTED_REDIRECT_DOMAINS` | 支付跳转 / 多域名回调的可信域名（逗号分隔） | - |
@@ -234,7 +234,7 @@ LemonHub 保留 new-api 的网关能力，包括：
 
 > [!WARNING]
 > - 必须设置 `SESSION_SECRET`，否则各节点登录态不一致。
-> - 共享 Redis 时必须设置 `CRYPTO_SECRET`，否则加密数据无法解密。
+> - 共享 Redis 的节点必须使用相同的 `CRYPTO_SECRET`（默认取 `SESSION_SECRET`），否则缓存/加密数据无法互通。
 
 ### 重试与缓存
 

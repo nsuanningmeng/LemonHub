@@ -3,7 +3,6 @@ package controller
 import (
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
@@ -15,5 +14,5 @@ import (
 // untrusted Host or a nil context (GetRequestBaseURL handles both internally).
 func paymentReturnPath(c *gin.Context, suffix string) string {
 	base := strings.TrimRight(service.GetRequestBaseURL(c), "/")
-	return base + common.ThemeAwarePath(suffix)
+	return base + suffix
 }

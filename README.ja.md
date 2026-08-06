@@ -1,6 +1,6 @@
 <div align="center">
 
-![LemonHub](/web/default/public/logo.png)
+![LemonHub](/web/public/logo.png)
 
 # LemonHub
 
@@ -219,7 +219,7 @@ LemonHub は new-api のゲートウェイ機能を継承しており、以下�
 | 変数 | 説明 | デフォルト |
 |---|---|---|
 | `SESSION_SECRET` | セッションシークレット（マルチノードでは必須） | - |
-| `CRYPTO_SECRET` | 暗号化シークレット（共有 Redis では必須） | - |
+| `CRYPTO_SECRET` | 暗号化シークレット（Redis を共有するノード間で同一にする） | 既定では `SESSION_SECRET` を使用 |
 | `SQL_DSN` | データベース接続文字列（MySQL/PostgreSQL） | - |
 | `REDIS_CONN_STRING` | Redis 接続文字列 | - |
 | `TRUSTED_REDIRECT_DOMAINS` | 決済リダイレクト／マルチドメインコールバック用の信頼済みドメイン（カンマ区切り） | - |
@@ -234,7 +234,7 @@ LemonHub は new-api のゲートウェイ機能を継承しており、以下�
 
 > [!WARNING]
 > - `SESSION_SECRET` を設定してください。設定しないとノード間でログイン状態が不整合になります。
-> - 共有 Redis を使用する場合は `CRYPTO_SECRET` を設定してください。設定しないと暗号化されたデータを復号できません。
+> - 同じ Redis を共有するノードは同じ `CRYPTO_SECRET`（既定では `SESSION_SECRET`）を使用してください。異なるとキャッシュ／暗号化データを共有できません。
 
 ### リトライとキャッシュ
 

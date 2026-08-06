@@ -19,6 +19,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
@@ -89,7 +90,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 		taskErr := service.TaskErrorWrapperLocal(err, "channel_not_found", http.StatusBadRequest)
 		// 渠道路由类错误纳入统一错误信息屏蔽范围；原渠道已查不到，只能走全局兜底，
 		// 不能读上下文（那是分发时选中的另一渠道的配置）
-		if overrideText, ok := service.ErrorOverrideTextForChannel(dto.ChannelSettings{}); ok {
+		if overrideText, ok := service.ErrorOverrideTextForChannel(relaydto.ChannelSettings{}); ok {
 			logger.LogError(c, fmt.Sprintf("origin task channel %d not found (masked for user): %s", originTask.ChannelId, err.Error()))
 			taskErr.UserMessageOverride = overrideText
 		}

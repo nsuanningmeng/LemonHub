@@ -8,7 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -85,12 +84,35 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	rawGroups := getRawTokenGroups(param.Ctx, param.TokenGroup)
 	containsAuto := slices.Contains(rawGroups, "auto")
 
-	// 保留原 "auto" 语义：配置了 auto 但全局未启用任何自动分组时直接报错。
-	if containsAuto && len(setting.GetAutoGroups()) == 0 {
-		return nil, param.TokenGroup, errors.New("auto groups is not enabled")
+	// "auto" 展开使用请求级解析（上游 #6590）：令牌自带的 auto 分组快照优先，
+	// 缺失时回退到全局自动分组列表，均按当前用户可选分组过滤。
+	var autoGroups []string
+	if containsAuto {
+		autoGroups = GetRequestAutoGroups(param.Ctx, userGroup)
 	}
 
-	priorityGroups := ResolveTokenPriorityGroups(rawGroups, userGroup)
+	// 展开优先级分组序列："auto" 就地展开为解析出的自动分组，其余原样保留，
+	// 整体保序去重（语义同 ResolveTokenPriorityGroups，但尊重令牌级 auto 快照）。
+	priorityGroups := make([]string, 0, len(rawGroups)+len(autoGroups))
+	seen := make(map[string]bool, len(rawGroups)+len(autoGroups))
+	for _, g := range rawGroups {
+		expanded := []string{g}
+		if g == "auto" {
+			expanded = autoGroups
+		}
+		for _, eg := range expanded {
+			if eg != "" && !seen[eg] {
+				seen[eg] = true
+				priorityGroups = append(priorityGroups, eg)
+			}
+		}
+	}
+
+	// 保留原 "auto" 语义：配置了 auto 但解析不到任何自动分组、且没有其他
+	// 具体分组可用时直接报错。
+	if containsAuto && len(priorityGroups) == 0 {
+		return nil, param.TokenGroup, errors.New("auto groups is not enabled")
+	}
 
 	// 单一具体分组（无 auto 展开）：走原单分组路径，行为完全不变。
 	if len(priorityGroups) <= 1 && !containsAuto {
