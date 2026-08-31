@@ -2,13 +2,15 @@ package model
 
 import (
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/mysql"
+	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
@@ -34,28 +36,42 @@ type oldTopUp struct {
 
 func (oldTopUp) TableName() string { return "top_ups" }
 
+var mysqlTopUpMigrationDatabaseName = regexp.MustCompile(`^lemonhub_topup_migration_test_[a-z0-9_]+$`)
+
 // TestMySQLTopUpMigrationSafety verifies the epay-reconcile schema change is a SAFE
-// in-place upgrade on a real MySQL 8 instance: on an EXISTING top_ups table with data,
+// in-place upgrade on a real MySQL instance: on an EXISTING top_ups table with data,
 // AutoMigrate must (1) narrow Status LONGTEXT -> varchar(32) without losing/truncating
 // rows, (2) create the composite index idx_topup_provider_status_time in the right
 // column order, (3) be idempotent (a second AutoMigrate issues no further DDL — no
 // restart churn), and (4) keep the reconcile queries working under the MySQL dialect.
 //
-// Guarded by MYSQL_MIGRATION_DSN so the normal SQLite suite skips it; point it at a
-// throwaway MySQL database to run, e.g.
+// Guarded by MYSQL_MIGRATION_DSN plus a strict disposable-database name so the
+// normal SQLite suite skips it and a production database cannot be dropped by typo.
 //
-//	MYSQL_MIGRATION_DSN='root:@tcp(127.0.0.1:3307)/lemonhub_migtest?charset=utf8mb4&parseTime=True&loc=Local'
+//	MYSQL_MIGRATION_DSN='root:@tcp(127.0.0.1:3307)/lemonhub_topup_migration_test_local?charset=utf8mb4&parseTime=True&loc=Local'
 func TestMySQLTopUpMigrationSafety(t *testing.T) {
-	dsn := os.Getenv("MYSQL_MIGRATION_DSN")
-	if dsn == "" {
+	rawDSN := strings.TrimSpace(os.Getenv("MYSQL_MIGRATION_DSN"))
+	if rawDSN == "" {
 		t.Skip("set MYSQL_MIGRATION_DSN to run the MySQL migration-safety test")
 	}
+	dsnConfig, err := mysqldriver.ParseDSN(rawDSN)
+	require.NoError(t, err)
+	require.Regexpf(t, mysqlTopUpMigrationDatabaseName, strings.ToLower(dsnConfig.DBName),
+		"refusing destructive top-up migration test against database %q: its name must match lemonhub_topup_migration_test_*", dsnConfig.DBName)
+	dsnConfig.ParseTime = true
 
-	mdb, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	mdb, err := gorm.Open(gormmysql.Open(dsnConfig.FormatDSN()), &gorm.Config{})
 	require.NoError(t, err)
 	sqlDB, err := mdb.DB()
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = sqlDB.Close() })
+	var selectedDatabase string
+	require.NoError(t, mdb.Raw("SELECT DATABASE()").Scan(&selectedDatabase).Error)
+	require.Regexpf(t, mysqlTopUpMigrationDatabaseName, strings.ToLower(selectedDatabase),
+		"refusing destructive top-up migration test against selected database %q", selectedDatabase)
+	t.Cleanup(func() {
+		_ = mdb.Migrator().DropTable("top_ups")
+		_ = sqlDB.Close()
+	})
 
 	// Start from a clean table, then build the OLD schema and seed data.
 	require.NoError(t, mdb.Migrator().DropTable("top_ups"))
@@ -65,6 +81,21 @@ func TestMySQLTopUpMigrationSafety(t *testing.T) {
 	statusType := mysqlColumnType(t, mdb, "top_ups", "status")
 	require.Contains(t, strings.ToLower(statusType), "text", "precondition: old status column must be a TEXT type")
 	require.False(t, mysqlIndexExists(t, mdb, "top_ups", "idx_topup_provider_status_time"), "precondition: composite index must not exist yet")
+
+	// MySQL non-strict mode would silently truncate this value during LONGTEXT ->
+	// VARCHAR(32). The production preflight must fail before any status DDL and
+	// leave both the schema and row bytes untouched.
+	oversized := oldTopUp{
+		UserId: 99, Amount: 10, Money: 100, TradeNo: "MIG_oversized",
+		PaymentProvider: PaymentProviderEpay, Status: strings.Repeat("x", 33), CreateTime: 999,
+	}
+	require.NoError(t, mdb.Create(&oversized).Error)
+	require.Error(t, preflightMySQLTopUpStatusNarrowing(mdb))
+	assert.Contains(t, strings.ToLower(mysqlColumnType(t, mdb, "top_ups", "status")), "text")
+	var oversizedAfter oldTopUp
+	require.NoError(t, mdb.Where("trade_no = ?", oversized.TradeNo).First(&oversizedAfter).Error)
+	assert.Equal(t, oversized.Status, oversizedAfter.Status)
+	require.NoError(t, mdb.Where("trade_no = ?", oversized.TradeNo).Delete(&oldTopUp{}).Error)
 
 	// Seed rows covering every status literal + both site scopes + multiple providers.
 	seed := []oldTopUp{
@@ -84,6 +115,7 @@ func TestMySQLTopUpMigrationSafety(t *testing.T) {
 	origDB := DB
 	t.Cleanup(func() { DB = origDB })
 	DB = mdb
+	require.NoError(t, preflightMySQLTopUpStatusNarrowing(mdb))
 	require.NoError(t, mdb.AutoMigrate(&TopUp{}), "AutoMigrate old->new must succeed on MySQL")
 
 	// (1) Status narrowed to varchar(32); no data lost or truncated.
@@ -103,26 +135,14 @@ func TestMySQLTopUpMigrationSafety(t *testing.T) {
 	assert.Equal(t, []string{"payment_provider", "status", "create_time"},
 		mysqlIndexColumns(t, mdb, "top_ups", "idx_topup_provider_status_time"), "index column order must match the query predicate")
 
-	// (3) Idempotency / no restart churn — proven two ways:
-	//   (a) SHOW CREATE TABLE is byte-identical before and after a second AutoMigrate.
-	//   (b) The MySQL general log records ZERO ALTER/CREATE-INDEX statements against
-	//       top_ups during that second AutoMigrate (the definitive churn check — the
-	//       AGENTS.md boolean-default problem is exactly a repeated-ALTER-on-restart).
+	// (3) Idempotency / no restart churn: SHOW CREATE TABLE is byte-identical
+	// before and after a second AutoMigrate. This deliberately avoids changing
+	// GLOBAL general-log settings on a MySQL instance that might be shared.
 	createBefore := mysqlShowCreate(t, mdb, "top_ups")
-	require.NoError(t, mdb.Exec("SET GLOBAL log_output = 'TABLE'").Error)
-	require.NoError(t, mdb.Exec("TRUNCATE TABLE mysql.general_log").Error)
-	require.NoError(t, mdb.Exec("SET GLOBAL general_log = 'ON'").Error)
 	require.NoError(t, mdb.AutoMigrate(&TopUp{}), "second AutoMigrate must be a clean no-op")
-	require.NoError(t, mdb.Exec("SET GLOBAL general_log = 'OFF'").Error)
 
 	createAfter := mysqlShowCreate(t, mdb, "top_ups")
 	assert.Equal(t, createBefore, createAfter, "second AutoMigrate must not alter the schema (no churn on restart)")
-
-	var churnDDL int64
-	require.NoError(t, mdb.Raw(
-		"SELECT COUNT(*) FROM mysql.general_log WHERE CONVERT(argument USING utf8mb4) REGEXP ? ",
-		"(ALTER|CREATE INDEX|DROP INDEX).*top_ups").Scan(&churnDDL).Error)
-	assert.Equal(t, int64(0), churnDDL, "a settled schema must issue NO ALTER/CREATE-INDEX on re-migrate (restart churn)")
 
 	// (4) The reconcile queries run under the MySQL dialect and return correct rows.
 	assert.True(t, HasPendingEpayTopUps(0, 9999), "MySQL: pending epay order must be found")

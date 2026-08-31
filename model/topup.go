@@ -66,6 +66,108 @@ var (
 	ErrTopUpQuotaLimitExceeded = errors.New("top-up quota limit exceeded")
 )
 
+// preflightMySQLTopUpStatusNarrowing prevents MySQL's non-strict mode from
+// silently truncating legacy LONGTEXT status values when AutoMigrate changes
+// the column to VARCHAR(32) for the reconciliation index. The legacy column
+// normally inherits the table character set; a non-standard explicit
+// character set is rejected before DDL because a bare GORM MODIFY would reset
+// it to the table default and could mutate unrepresentable text.
+func preflightMySQLTopUpStatusNarrowing(db *gorm.DB) error {
+	if db == nil || db.Dialector.Name() != "mysql" ||
+		!db.Migrator().HasTable(&TopUp{}) || !db.Migrator().HasColumn(&TopUp{}, "status") {
+		return nil
+	}
+
+	tableName := db.NamingStrategy.TableName("TopUp")
+	type mysqlTopUpStatusColumn struct {
+		DataType      string `gorm:"column:data_type"`
+		MaximumLength int64  `gorm:"column:character_maximum_length"`
+		CharacterSet  string `gorm:"column:character_set_name"`
+		Collation     string `gorm:"column:collation_name"`
+		Extra         string `gorm:"column:extra"`
+	}
+	var column mysqlTopUpStatusColumn
+	result := db.Raw(
+		`SELECT DATA_TYPE AS data_type,
+       COALESCE(CHARACTER_MAXIMUM_LENGTH, 0) AS character_maximum_length,
+       COALESCE(CHARACTER_SET_NAME, '') AS character_set_name,
+       COALESCE(COLLATION_NAME, '') AS collation_name,
+       EXTRA AS extra
+FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'status'`,
+		tableName,
+	).Scan(&column)
+	if result.Error != nil {
+		return fmt.Errorf("inspect MySQL top-up status column before narrowing: %w", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return errors.New("missing MySQL top-up status column before narrowing")
+	}
+	if column.Extra != "" {
+		return fmt.Errorf("MySQL top-up status column has unsupported extra attributes %q", column.Extra)
+	}
+	switch strings.ToLower(column.DataType) {
+	case "varchar", "tinytext", "text", "mediumtext", "longtext":
+	default:
+		return fmt.Errorf("MySQL top-up status column has unsupported type %q", column.DataType)
+	}
+
+	const targetLength = 32
+	if !strings.EqualFold(column.DataType, "varchar") || column.MaximumLength != targetLength {
+		var tableComparison struct {
+			CharacterSet string `gorm:"column:character_set_name"`
+			Collation    string `gorm:"column:collation_name"`
+		}
+		result = db.Raw(
+			`SELECT c.CHARACTER_SET_NAME AS character_set_name,
+       t.TABLE_COLLATION AS collation_name
+FROM information_schema.TABLES t
+JOIN information_schema.COLLATIONS c ON c.COLLATION_NAME = t.TABLE_COLLATION
+WHERE t.TABLE_SCHEMA = DATABASE() AND t.TABLE_NAME = ?`,
+			tableName,
+		).Scan(&tableComparison)
+		if result.Error != nil {
+			return fmt.Errorf("inspect MySQL top-up table comparison before narrowing: %w", result.Error)
+		}
+		if result.RowsAffected != 1 || tableComparison.CharacterSet == "" || tableComparison.Collation == "" {
+			return errors.New("missing MySQL top-up table comparison before narrowing")
+		}
+		if !strings.EqualFold(column.CharacterSet, tableComparison.CharacterSet) ||
+			!strings.EqualFold(column.Collation, tableComparison.Collation) {
+			return fmt.Errorf(
+				"MySQL top-up status uses %s/%s but table default is %s/%s; migration stopped before status DDL",
+				column.CharacterSet,
+				column.Collation,
+				tableComparison.CharacterSet,
+				tableComparison.Collation,
+			)
+		}
+	}
+
+	var unsafeRow struct {
+		Id           int   `gorm:"column:id"`
+		StatusLength int64 `gorm:"column:status_length"`
+	}
+	result = db.Table(tableName).
+		Select("id, CHAR_LENGTH(status) AS status_length").
+		Where("status IS NOT NULL AND CHAR_LENGTH(status) > ?", targetLength).
+		Order("id").
+		Limit(1).
+		Scan(&unsafeRow)
+	if result.Error != nil {
+		return fmt.Errorf("preflight MySQL top-up status values before narrowing: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		return fmt.Errorf(
+			"MySQL top-up row %d has a %d-character status; migration stopped before narrowing status to VARCHAR(%d)",
+			unsafeRow.Id,
+			unsafeRow.StatusLength,
+			targetLength,
+		)
+	}
+	return nil
+}
+
 func (topUp *TopUp) Insert() error {
 	var err error
 	err = DB.Create(topUp).Error

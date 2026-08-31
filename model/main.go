@@ -251,6 +251,9 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
+	if err := preflightMySQLTopUpStatusNarrowing(DB); err != nil {
+		return err
+	}
 	// Migrate price_amount column from float/double to decimal for existing tables.
 	// Fail-closed: a value that cannot be stored losslessly halts startup instead
 	// of silently truncating monetary data.
@@ -367,6 +370,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := preflightMySQLTopUpStatusNarrowing(DB); err != nil {
+		return err
+	}
 	// Run the same fail-closed, order-sensitive preflight migrations as migrateDB()
 	// BEFORE any (parallel) AutoMigrate. These are not optional: skipping them can
 	// silently truncate monetary data (price_amount -> decimal) on MySQL non-STRICT

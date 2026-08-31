@@ -242,8 +242,8 @@ func claimUserExternalIdentitiesWithTx(tx *gorm.DB, user *User) error {
 	return nil
 }
 
-func normalizeUserExternalIdentities(user *User) error {
-	if user == nil {
+func normalizeUserExternalIdentities(db *gorm.DB, user *User) error {
+	if db == nil || user == nil {
 		return errors.New("invalid user external identities")
 	}
 	for _, subject := range []*string{
@@ -257,7 +257,7 @@ func normalizeUserExternalIdentities(user *User) error {
 		if *subject == "" {
 			continue
 		}
-		normalized, err := NormalizeExternalIdentitySubject(*subject)
+		normalized, err := normalizeBuiltInExternalIdentitySubjectForStorage(db, *subject)
 		if err != nil {
 			return err
 		}
@@ -274,7 +274,7 @@ func BindUserExternalIdentityWithTx(tx *gorm.DB, userId int, column string, valu
 		return errors.New("invalid user external identity binding")
 	}
 	var err error
-	value, err = NormalizeExternalIdentitySubject(value)
+	value, err = normalizeBuiltInExternalIdentitySubjectForStorage(tx, value)
 	if err != nil {
 		return err
 	}
@@ -709,7 +709,7 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 }
 
 func (user *User) prepareForInsert(tx *gorm.DB) error {
-	if err := normalizeUserExternalIdentities(user); err != nil {
+	if err := normalizeUserExternalIdentities(tx, user); err != nil {
 		return err
 	}
 	user.Email = NormalizeEmail(user.Email)
@@ -1203,7 +1203,7 @@ func (user *User) fillByExternalIdentity(column, subject string, siteId int) err
 	if _, ok := externalIdentityProviderForUserColumn(column); !ok {
 		return errors.New("invalid external identity column")
 	}
-	normalized, err := NormalizeExternalIdentitySubject(subject)
+	normalized, err := normalizeBuiltInExternalIdentitySubjectForStorage(DB, subject)
 	if err != nil {
 		return err
 	}
@@ -1317,7 +1317,7 @@ func isUserExternalIdentityTaken(column, subject string, siteId int) bool {
 	if _, ok := externalIdentityProviderForUserColumn(column); !ok {
 		return true
 	}
-	normalized, err := NormalizeExternalIdentitySubject(subject)
+	normalized, err := normalizeBuiltInExternalIdentitySubjectForStorage(DB, subject)
 	if err != nil {
 		return false
 	}

@@ -3,10 +3,12 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -51,6 +53,16 @@ func GetUserByOAuthBinding(providerId int, providerUserId string, siteId int) (*
 	if err != nil {
 		return nil, err
 	}
+	if err := validateMySQLIdentitySubjectStorage(
+		DB,
+		&UserOAuthBinding{},
+		UserOAuthBinding{}.TableName(),
+		"provider_user_id",
+		"custom OAuth binding subject",
+		providerUserId,
+	); err != nil {
+		return nil, err
+	}
 	var binding UserOAuthBinding
 	err = DB.Where("provider_id = ? AND site_id = ? AND provider_user_id = ?", providerId, siteId, providerUserId).First(&binding).Error
 	if err != nil {
@@ -69,6 +81,16 @@ func GetUserByOAuthBinding(providerId int, providerUserId string, siteId int) (*
 func IsProviderUserIdTaken(providerId int, providerUserId string, siteId int) bool {
 	providerUserId, err := NormalizeExternalIdentitySubject(providerUserId)
 	if err != nil {
+		return false
+	}
+	if err := validateMySQLIdentitySubjectStorage(
+		DB,
+		&UserOAuthBinding{},
+		UserOAuthBinding{}.TableName(),
+		"provider_user_id",
+		"custom OAuth binding subject",
+		providerUserId,
+	); err != nil {
 		return false
 	}
 	var count int64
@@ -98,6 +120,16 @@ func CreateUserOAuthBindingWithTx(tx *gorm.DB, binding *UserOAuthBinding) error 
 	if err != nil {
 		return err
 	}
+	if err := validateMySQLIdentitySubjectStorage(
+		tx,
+		&UserOAuthBinding{},
+		UserOAuthBinding{}.TableName(),
+		"provider_user_id",
+		"custom OAuth binding subject",
+		binding.ProviderUserId,
+	); err != nil {
+		return err
+	}
 	if err := lockCustomOAuthProviderForBinding(tx, binding.ProviderId); err != nil {
 		return err
 	}
@@ -122,6 +154,16 @@ func UpdateUserOAuthBinding(userId, providerId int, newProviderUserId string) er
 		return errors.New("invalid OAuth binding")
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := validateMySQLIdentitySubjectStorage(
+			tx,
+			&UserOAuthBinding{},
+			UserOAuthBinding{}.TableName(),
+			"provider_user_id",
+			"custom OAuth binding subject",
+			newProviderUserId,
+		); err != nil {
+			return err
+		}
 		if err := lockCustomOAuthProviderForBinding(tx, providerId); err != nil {
 			return err
 		}
@@ -195,7 +237,7 @@ func lockCustomOAuthProviderForBinding(tx *gorm.DB, providerId int) error {
 // explicitly; no account is selected by row order and no data is auto-deduped.
 func preflightUserOAuthBindingsSiteScope(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&UserOAuthBinding{}) {
-		return nil
+		return preflightCustomOAuthClaimConsistency(db, nil, false)
 	}
 	var bindings []UserOAuthBinding
 	if err := db.Select("id", "user_id", "provider_id", "provider_user_id").Order("id").Find(&bindings).Error; err != nil {
@@ -256,10 +298,275 @@ func preflightUserOAuthBindingsSiteScope(db *gorm.DB) error {
 		subjectOwners[sKey] = binding.UserId
 		userBindings[uKey] = binding.Id
 	}
+	if err := preflightUserOAuthBindingCollationConflicts(db, userHasSite, len(bindings)); err != nil {
+		return err
+	}
+	return preflightCustomOAuthClaimConsistency(db, bindings, userHasSite)
+}
+
+func preflightCustomOAuthClaimConsistency(db *gorm.DB, bindings []UserOAuthBinding, userHasSite bool) error {
+	if !db.Migrator().HasTable(&ExternalIdentityClaim{}) {
+		return nil
+	}
+	type bindingKey struct {
+		ProviderId int
+		UserId     int
+	}
+	bindingByUser := make(map[bindingKey]UserOAuthBinding, len(bindings))
+	providers := make(map[int]struct{})
+	for _, binding := range bindings {
+		bindingByUser[bindingKey{ProviderId: binding.ProviderId, UserId: binding.UserId}] = binding
+		providers[binding.ProviderId] = struct{}{}
+	}
+	var claims []ExternalIdentityClaim
+	const customProviderPrefix = "custom_oauth:"
+	if err := db.Select("id", "provider", "subject", "user_id").
+		Where("substr(provider, 1, ?) = ?", len(customProviderPrefix), customProviderPrefix).
+		Order("id").
+		Find(&claims).Error; err != nil {
+		return fmt.Errorf("preflight persisted custom OAuth claims: %w", err)
+	}
+	for _, claim := range claims {
+		providerText := strings.TrimPrefix(claim.Provider, customProviderPrefix)
+		providerId, err := strconv.Atoi(providerText)
+		if err != nil || providerId <= 0 || customOAuthExternalIdentityProvider(providerId) != claim.Provider {
+			return fmt.Errorf("invalid custom OAuth provider on persisted external identity claim %d", claim.Id)
+		}
+		subject, err := NormalizeExternalIdentitySubject(claim.Subject)
+		if err != nil || subject != claim.Subject {
+			return fmt.Errorf("invalid subject on persisted custom OAuth claim %d", claim.Id)
+		}
+		binding, exists := bindingByUser[bindingKey{ProviderId: providerId, UserId: claim.UserId}]
+		if !exists || binding.ProviderUserId != subject {
+			return fmt.Errorf(
+				"persisted custom OAuth claim %d conflicts with provider %d binding for user %d",
+				claim.Id,
+				providerId,
+				claim.UserId,
+			)
+		}
+		providers[providerId] = struct{}{}
+	}
+	if len(bindings) == 0 || len(claims) == 0 {
+		return nil
+	}
+
+	bindingTable := UserOAuthBinding{}.TableName()
+	claimTable := ExternalIdentityClaim{}.TableName()
+	userTable := db.NamingStrategy.TableName("User")
+	bindingSubject := db.Statement.Quote(clause.Column{Table: "b", Name: "provider_user_id"})
+	bindingUser := db.Statement.Quote(clause.Column{Table: "b", Name: "user_id"})
+	claimSubject := db.Statement.Quote(clause.Column{Table: "c", Name: "subject"})
+	claimUser := db.Statement.Quote(clause.Column{Table: "c", Name: "user_id"})
+	bindingSite := "0"
+	claimSite := "0"
+	subjectEquality := fmt.Sprintf(
+		"(%s = %s OR %s = %s)",
+		claimSubject,
+		bindingSubject,
+		bindingSubject,
+		claimSubject,
+	)
+	if db.Dialector.Name() == "mysql" {
+		targets, err := mysqlExternalIdentityClaimComparisons(db)
+		if err != nil {
+			return err
+		}
+		if len(targets) != 1 {
+			return errors.New("missing MySQL external identity claim comparison")
+		}
+		subjectEquality = fmt.Sprintf(
+			"CONVERT(%s USING %s) COLLATE %s = %s",
+			bindingSubject,
+			targets[0].CharacterSet,
+			targets[0].Collation,
+			claimSubject,
+		)
+	}
+	if userHasSite {
+		bindingSite = "COALESCE(" + db.Statement.Quote(clause.Column{Table: "bu", Name: "site_id"}) + ", 0)"
+		claimSite = "COALESCE(" + db.Statement.Quote(clause.Column{Table: "cu", Name: "site_id"}) + ", 0)"
+	}
+	joinBindingOwner := fmt.Sprintf(
+		"JOIN %s AS bu ON %s = %s",
+		db.Statement.Quote(clause.Table{Name: userTable}),
+		db.Statement.Quote(clause.Column{Table: "bu", Name: "id"}),
+		bindingUser,
+	)
+	joinClaimOwner := fmt.Sprintf(
+		"JOIN %s AS cu ON %s = %s",
+		db.Statement.Quote(clause.Table{Name: userTable}),
+		db.Statement.Quote(clause.Column{Table: "cu", Name: "id"}),
+		claimUser,
+	)
+	for providerId := range providers {
+		joinClaim := fmt.Sprintf(
+			"JOIN %s AS c ON %s = ? AND %s",
+			db.Statement.Quote(clause.Table{Name: claimTable}),
+			db.Statement.Quote(clause.Column{Table: "c", Name: "provider"}),
+			subjectEquality,
+		)
+		var conflict struct {
+			BindingId   int   `gorm:"column:binding_id"`
+			BindingUser int   `gorm:"column:binding_user_id"`
+			ClaimId     int64 `gorm:"column:claim_id"`
+			ClaimUser   int   `gorm:"column:claim_user_id"`
+		}
+		result := db.Table(bindingTable+" AS b").
+			Joins(joinBindingOwner).
+			Joins(joinClaim, customOAuthExternalIdentityProvider(providerId)).
+			Joins(joinClaimOwner).
+			Select(fmt.Sprintf(
+				"%s AS binding_id, %s AS binding_user_id, %s AS claim_id, %s AS claim_user_id",
+				db.Statement.Quote(clause.Column{Table: "b", Name: "id"}),
+				bindingUser,
+				db.Statement.Quote(clause.Column{Table: "c", Name: "id"}),
+				claimUser,
+			)).
+			Where(db.Statement.Quote(clause.Column{Table: "b", Name: "provider_id"})+" = ?", providerId).
+			Where(claimUser + " <> " + bindingUser).
+			Where(bindingSite + " = " + claimSite).
+			Limit(1).
+			Scan(&conflict)
+		if result.Error != nil {
+			return fmt.Errorf("preflight custom OAuth provider %d bindings against persisted claims: %w", providerId, result.Error)
+		}
+		if result.RowsAffected > 0 {
+			return fmt.Errorf(
+				"persisted custom OAuth claim %d for user %d conflicts with binding %d for user %d",
+				conflict.ClaimId,
+				conflict.ClaimUser,
+				conflict.BindingId,
+				conflict.BindingUser,
+			)
+		}
+	}
+	return nil
+}
+
+func preflightUserOAuthBindingCollationConflicts(db *gorm.DB, userHasSite bool, bindingCount int) error {
+	bindingTable := UserOAuthBinding{}.TableName()
+	userTable := db.NamingStrategy.TableName("User")
+	providerColumn := db.Statement.Quote(clause.Column{Table: "b", Name: "provider_id"})
+	userColumn := db.Statement.Quote(clause.Column{Table: "b", Name: "user_id"})
+	subjectColumn := db.Statement.Quote(clause.Column{Table: "b", Name: "provider_user_id"})
+	siteExpression := "0"
+	groupBySite := ""
+	if userHasSite {
+		siteColumn := db.Statement.Quote(clause.Column{Table: "u", Name: "site_id"})
+		siteExpression = "COALESCE(" + siteColumn + ", 0)"
+		groupBySite = siteExpression + ", "
+	}
+
+	type identityComparison struct {
+		Name       string
+		Expression string
+	}
+	comparisons := []identityComparison{{Name: "source", Expression: subjectColumn}}
+	if db.Dialector.Name() == "mysql" {
+		source, err := mysqlIdentityStringColumnDefinition(
+			db,
+			bindingTable,
+			"provider_user_id",
+			"custom OAuth binding source",
+		)
+		if err != nil {
+			return err
+		}
+		targets, err := mysqlExternalIdentityClaimComparisons(db)
+		if err != nil {
+			return err
+		}
+		for _, target := range targets {
+			if err := preflightMySQLIdentityColumnConversion(
+				db,
+				bindingTable,
+				"id",
+				"provider_user_id",
+				source,
+				target,
+			); err != nil {
+				return err
+			}
+			if strings.EqualFold(source.CharacterSet, target.CharacterSet) &&
+				strings.EqualFold(source.Collation, target.Collation) {
+				continue
+			}
+			comparisons = append(comparisons, identityComparison{
+				Name: target.Name,
+				Expression: fmt.Sprintf(
+					"CONVERT(%s USING %s) COLLATE %s",
+					subjectColumn,
+					target.CharacterSet,
+					target.Collation,
+				),
+			})
+		}
+	}
+	if bindingCount < 2 {
+		return nil
+	}
+
+	joinUsers := fmt.Sprintf(
+		"JOIN %s AS u ON %s = %s",
+		db.Statement.Quote(clause.Table{Name: userTable}),
+		db.Statement.Quote(clause.Column{Table: "u", Name: "id"}),
+		userColumn,
+	)
+	for _, comparison := range comparisons {
+		var collision struct {
+			ProviderId     int
+			SiteId         int
+			FirstUserId    int
+			LastUserId     int
+			DuplicateCount int64
+		}
+		err := db.Table(bindingTable+" AS b").
+			Joins(joinUsers).
+			Select(fmt.Sprintf(
+				"%s AS provider_id, %s AS site_id, MIN(%s) AS first_user_id, MAX(%s) AS last_user_id, COUNT(*) AS duplicate_count",
+				providerColumn,
+				siteExpression,
+				userColumn,
+				userColumn,
+			)).
+			Where(subjectColumn+" IS NOT NULL AND "+subjectColumn+" <> ?", "").
+			Group(providerColumn + ", " + groupBySite + comparison.Expression).
+			Having("COUNT(*) > 1").
+			Limit(1).
+			Scan(&collision).Error
+		if err != nil {
+			return fmt.Errorf("preflight custom OAuth binding ownership under %s database collation: %w", comparison.Name, err)
+		}
+		if collision.DuplicateCount > 1 {
+			return fmt.Errorf(
+				"ambiguous custom OAuth provider %d ownership in site %d under database collation (%s): users %d and %d share equivalent provider IDs",
+				collision.ProviderId,
+				collision.SiteId,
+				comparison.Name,
+				collision.FirstUserId,
+				collision.LastUserId,
+			)
+		}
+	}
 	return nil
 }
 
 func prepareUserOAuthBindingsSiteScope(db *gorm.DB) error {
+	if db.Dialector.Name() == "mysql" {
+		if err := ensureMySQLIdentityIndexStorage(db, &UserOAuthBinding{}, UserOAuthBinding{}.TableName()); err != nil {
+			return err
+		}
+		if err := widenMySQLIdentitySubjectColumn(
+			db,
+			&UserOAuthBinding{},
+			UserOAuthBinding{}.TableName(),
+			"provider_user_id",
+			"custom OAuth binding subject",
+		); err != nil {
+			return err
+		}
+	}
 	if !db.Migrator().HasTable(&UserOAuthBinding{}) {
 		return nil
 	}
@@ -306,10 +613,31 @@ func prepareUserOAuthBindingsSiteScope(db *gorm.DB) error {
 			if err := tx.Migrator().CreateIndex(&UserOAuthBinding{}, userOAuthBindingSiteSubjectIndex); err != nil {
 				return fmt.Errorf("create site-scoped custom OAuth binding index: %w", err)
 			}
+			siteScoped, err = userOAuthBindingSubjectIndexIsSiteScoped(tx, userOAuthBindingSiteSubjectIndex)
+			if err != nil {
+				return fmt.Errorf("verify site-scoped custom OAuth binding index: %w", err)
+			}
+			if !siteScoped {
+				return fmt.Errorf("custom OAuth binding index %s was not created with full unique columns", userOAuthBindingSiteSubjectIndex)
+			}
 		}
-		if tx.Migrator().HasIndex(&UserOAuthBinding{}, legacyUserOAuthBindingGlobalSubjectIndex) {
-			if err := tx.Migrator().DropIndex(&UserOAuthBinding{}, legacyUserOAuthBindingGlobalSubjectIndex); err != nil {
-				return fmt.Errorf("drop global custom OAuth binding index: %w", err)
+		legacyIndexes, err := legacyGlobalUserOAuthBindingSubjectIndexes(tx)
+		if err != nil {
+			return fmt.Errorf("inspect global custom OAuth binding indexes: %w", err)
+		}
+		canonicalLegacyFound := false
+		for _, name := range legacyIndexes {
+			if name == legacyUserOAuthBindingGlobalSubjectIndex {
+				canonicalLegacyFound = true
+			}
+		}
+		if tx.Migrator().HasIndex(&UserOAuthBinding{}, legacyUserOAuthBindingGlobalSubjectIndex) &&
+			!canonicalLegacyFound {
+			return fmt.Errorf("custom OAuth binding index %s has an unexpected definition", legacyUserOAuthBindingGlobalSubjectIndex)
+		}
+		for _, name := range legacyIndexes {
+			if err := tx.Migrator().DropIndex(&UserOAuthBinding{}, name); err != nil {
+				return fmt.Errorf("drop global custom OAuth binding index %s: %w", name, err)
 			}
 		}
 		return nil
@@ -331,12 +659,111 @@ func finalizeUserOAuthBindingsSiteScope(db *gorm.DB) error {
 	if !siteScoped {
 		return fmt.Errorf("site-scoped custom OAuth binding index %s was not created", userOAuthBindingSiteSubjectIndex)
 	}
-	if db.Migrator().HasIndex(&UserOAuthBinding{}, legacyUserOAuthBindingGlobalSubjectIndex) {
-		if err := db.Migrator().DropIndex(&UserOAuthBinding{}, legacyUserOAuthBindingGlobalSubjectIndex); err != nil {
-			return fmt.Errorf("drop global custom OAuth binding index: %w", err)
+	legacyIndexes, err := legacyGlobalUserOAuthBindingSubjectIndexes(db)
+	if err != nil {
+		return fmt.Errorf("inspect global custom OAuth binding indexes: %w", err)
+	}
+	canonicalLegacyFound := false
+	for _, name := range legacyIndexes {
+		if name == legacyUserOAuthBindingGlobalSubjectIndex {
+			canonicalLegacyFound = true
+		}
+	}
+	if db.Migrator().HasIndex(&UserOAuthBinding{}, legacyUserOAuthBindingGlobalSubjectIndex) &&
+		!canonicalLegacyFound {
+		return fmt.Errorf("custom OAuth binding index %s has an unexpected definition", legacyUserOAuthBindingGlobalSubjectIndex)
+	}
+	for _, name := range legacyIndexes {
+		if err := db.Migrator().DropIndex(&UserOAuthBinding{}, name); err != nil {
+			return fmt.Errorf("drop global custom OAuth binding index %s: %w", name, err)
 		}
 	}
 	return nil
+}
+
+func legacyGlobalUserOAuthBindingSubjectIndexes(db *gorm.DB) ([]string, error) {
+	tableName := UserOAuthBinding{}.TableName()
+	if db.Dialector.Name() == "sqlite" {
+		var indexes []struct {
+			Name string `gorm:"column:name"`
+			SQL  string `gorm:"column:sql"`
+		}
+		if err := db.Raw(
+			"SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+			tableName,
+		).Scan(&indexes).Error; err != nil {
+			return nil, err
+		}
+		var names []string
+		for _, index := range indexes {
+			columns, unique := sqliteIndexColumns(index.SQL)
+			if unique && len(columns) == 2 &&
+				((columns[0] == "provider_id" && columns[1] == "provider_user_id") ||
+					(columns[0] == "provider_user_id" && columns[1] == "provider_id")) {
+				names = append(names, index.Name)
+			}
+		}
+		return names, nil
+	}
+	if db.Dialector.Name() == "mysql" {
+		columns, err := mysqlIdentityIndexColumns(db, tableName, "")
+		if err != nil {
+			return nil, err
+		}
+		grouped := make(map[string][]mysqlIdentityIndexColumn)
+		var order []string
+		for _, column := range columns {
+			if _, exists := grouped[column.IndexName]; !exists {
+				order = append(order, column.IndexName)
+			}
+			grouped[column.IndexName] = append(grouped[column.IndexName], column)
+		}
+		var names []string
+		for _, name := range order {
+			indexColumns := grouped[name]
+			if len(indexColumns) != 2 || indexColumns[0].NonUnique != 0 ||
+				indexColumns[1].NonUnique != 0 || indexColumns[0].ColumnName == nil ||
+				indexColumns[1].ColumnName == nil {
+				continue
+			}
+			first := strings.ToLower(*indexColumns[0].ColumnName)
+			second := strings.ToLower(*indexColumns[1].ColumnName)
+			if (first == "provider_id" && second == "provider_user_id") ||
+				(first == "provider_user_id" && second == "provider_id") {
+				names = append(names, name)
+			}
+		}
+		return names, nil
+	}
+
+	indexes, err := db.Migrator().GetIndexes(&UserOAuthBinding{})
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, index := range indexes {
+		unique, known := index.Unique()
+		columns := index.Columns()
+		if !known || !unique || len(columns) != 2 {
+			continue
+		}
+		first := strings.ToLower(columns[0])
+		second := strings.ToLower(columns[1])
+		if (first == "provider_id" && second == "provider_user_id") ||
+			(first == "provider_user_id" && second == "provider_id") {
+			if db.Dialector.Name() == "postgres" {
+				unconditional, err := postgresIdentityIndexIsUnconditional(db, tableName, index.Name())
+				if err != nil {
+					return nil, err
+				}
+				if !unconditional {
+					continue
+				}
+			}
+			names = append(names, index.Name())
+		}
+	}
+	return names, nil
 }
 
 func userOAuthBindingSubjectIndexIsSiteScoped(db *gorm.DB, name string) (bool, error) {
@@ -346,19 +773,32 @@ func userOAuthBindingSubjectIndexIsSiteScoped(db *gorm.DB, name string) (bool, e
 			UserOAuthBinding{}.TableName(), name).Scan(&sql).Error; err != nil {
 			return false, err
 		}
-		normalized := strings.ToLower(sql)
-		columnsAt := strings.LastIndex(normalized, "(")
-		if columnsAt < 0 || !strings.Contains(normalized, "create unique index") {
+		parts, unique := sqliteIndexColumns(sql)
+		if !unique {
 			return false, nil
 		}
-		parts := strings.Split(strings.TrimSpace(strings.TrimSuffix(normalized[columnsAt+1:], ")")), ",")
 		if len(parts) != 3 {
 			return false, nil
 		}
-		for i := range parts {
-			parts[i] = strings.Trim(strings.TrimSpace(parts[i]), "`\"[]")
-		}
 		return parts[0] == "provider_id" && parts[1] == "site_id" && parts[2] == "provider_user_id", nil
+	}
+	if db.Dialector.Name() == "mysql" {
+		return mysqlIdentityIndexIsFullUnique(
+			db,
+			UserOAuthBinding{}.TableName(),
+			name,
+			[]string{"provider_id", "site_id", "provider_user_id"},
+		)
+	}
+	if db.Dialector.Name() == "postgres" {
+		unconditional, err := postgresIdentityIndexIsUnconditional(
+			db,
+			UserOAuthBinding{}.TableName(),
+			name,
+		)
+		if err != nil || !unconditional {
+			return false, err
+		}
 	}
 	indexes, err := db.Migrator().GetIndexes(&UserOAuthBinding{})
 	if err != nil {
@@ -372,11 +812,17 @@ func userOAuthBindingSubjectIndexIsSiteScoped(db *gorm.DB, name string) (bool, e
 		if !known || !unique {
 			return false, nil
 		}
-		found := map[string]bool{}
-		for _, column := range index.Columns() {
-			found[strings.ToLower(column)] = true
+		columns := index.Columns()
+		if len(columns) != 3 {
+			return false, nil
 		}
-		return len(index.Columns()) == 3 && found["provider_id"] && found["site_id"] && found["provider_user_id"], nil
+		expected := []string{"provider_id", "site_id", "provider_user_id"}
+		for position, column := range columns {
+			if !strings.EqualFold(column, expected[position]) {
+				return false, nil
+			}
+		}
+		return true, nil
 	}
 	return false, nil
 }
