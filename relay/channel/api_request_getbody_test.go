@@ -453,8 +453,7 @@ func runGoAwayAfterFirstRequestServer(ln net.Listener) <-chan h2ServerResult {
 		// avoiding another Windows close-vs-frame-read race.
 		resCh <- res
 		delivered = true
-		var probe [1]byte
-		_, _ = secondConn.Read(probe[:])
+		_, _ = io.Copy(io.Discard, secondConn)
 	}()
 	return resCh
 }
@@ -569,8 +568,11 @@ func TestUpstreamGetBody_HTTP2RetryAfterGracefulGoAway_PassThrough(t *testing.T)
 
 	resp, err := client.Do(req)
 	require.NoError(t, err, "the transport must retry on a new connection after graceful GOAWAY")
-	defer resp.Body.Close()
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	responseBody, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	assert.Equal(t, []byte(`{}`), responseBody)
 
 	srv := awaitH2ServerResult(t, resCh)
 	require.NoError(t, srv.err)
