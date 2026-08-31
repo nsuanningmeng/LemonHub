@@ -18,6 +18,8 @@ import (
 
 const UserNameMaxLength = 20
 
+var ErrStaleUserUpdate = errors.New("user changed since it was loaded")
+
 var userSortColumns = map[string]string{
 	"id":            "id",
 	"username":      "username",
@@ -138,6 +140,7 @@ type User struct {
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
 		Id:          user.Id,
+		SiteId:      user.SiteId,
 		Group:       user.Group,
 		Quota:       user.Quota,
 		Status:      user.Status,
@@ -160,6 +163,22 @@ func (user *User) GetAccessToken() string {
 
 func (user *User) SetAccessToken(token string) {
 	user.AccessToken = &token
+}
+
+// UpdateUserAccessToken rotates a dashboard personal access token without
+// writing a stale user snapshot back over concurrently updated fields.
+func UpdateUserAccessToken(id int, token string) error {
+	if id == 0 {
+		return errors.New("id 为空！")
+	}
+	result := DB.Model(&User{}).Where("id = ?", id).Update("access_token", token)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (user *User) GetSetting() dto.UserSetting {
@@ -195,6 +214,107 @@ func UpdateUserSetting(userId int, setting dto.UserSetting) error {
 		return err
 	}
 	return updateUserSettingCache(userId, settingValue)
+}
+
+// userBindColumns 允许通过 UpdateUserBindColumn 更新的第三方账号绑定列白名单。
+// 列名只可能来自代码内部的 provider 实现，白名单是防御纵深，不依赖调用方自律。
+var userBindColumns = map[string]bool{
+	"github_id":   true,
+	"discord_id":  true,
+	"oidc_id":     true,
+	"linux_do_id": true,
+	"wechat_id":   true,
+}
+
+func claimUserExternalIdentitiesWithTx(tx *gorm.DB, user *User) error {
+	if tx == nil || user == nil || user.Id <= 0 {
+		return errors.New("invalid user external identities")
+	}
+	for _, source := range externalIdentityUserSources {
+		subject := strings.TrimSpace(source.Subject(user))
+		if subject == "" {
+			continue
+		}
+		if err := ClaimExternalIdentityWithTx(tx, source.Provider, subject, user.Id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func normalizeUserExternalIdentities(user *User) error {
+	if user == nil {
+		return errors.New("invalid user external identities")
+	}
+	for _, subject := range []*string{
+		&user.GitHubId,
+		&user.DiscordId,
+		&user.OidcId,
+		&user.LinuxDOId,
+		&user.WeChatId,
+		&user.TelegramId,
+	} {
+		if *subject == "" {
+			continue
+		}
+		normalized, err := NormalizeExternalIdentitySubject(*subject)
+		if err != nil {
+			return err
+		}
+		*subject = normalized
+	}
+	return nil
+}
+
+// BindUserExternalIdentityWithTx replaces one built-in provider binding and
+// its durable ownership claim in the same transaction.
+func BindUserExternalIdentityWithTx(tx *gorm.DB, userId int, column string, value string) error {
+	provider, ok := externalIdentityProviderForUserColumn(column)
+	if tx == nil || userId <= 0 || !ok {
+		return errors.New("invalid user external identity binding")
+	}
+	var err error
+	value, err = NormalizeExternalIdentitySubject(value)
+	if err != nil {
+		return err
+	}
+	var currentValue string
+	if err := tx.Model(&User{}).Where("id = ?", userId).Pluck(column, &currentValue).Error; err != nil {
+		return err
+	}
+	if strings.TrimSpace(currentValue) == value {
+		return ClaimExternalIdentityWithTx(tx, provider, value, userId)
+	}
+	if err := ReleaseExternalIdentityWithTx(tx, provider, userId); err != nil {
+		return err
+	}
+	if err := ClaimExternalIdentityWithTx(tx, provider, value, userId); err != nil {
+		return err
+	}
+	result := tx.Model(&User{}).Where("id = ?", userId).Update(column, value)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// UpdateUserBindColumn 第三方账号绑定字段的专用更新。
+// 绑定操作必须只写绑定列：若改为“读取完整用户 → 改一个字段 → 整体更新”，
+// 读快照期间并发发生的封禁、降权或分组变更会被旧快照覆盖恢复。
+// 角色、状态、分组只允许通过各自带锁/CAS 的专用方法修改。
+func UpdateUserBindColumn(userId int, column string, value string) error {
+	if userId <= 0 {
+		return errors.New("id 为空！")
+	}
+	if !userBindColumns[column] {
+		return fmt.Errorf("invalid user bind column: %s", column)
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		return BindUserExternalIdentityWithTx(tx, userId, column, value)
+	})
 }
 
 // 根据用户角色生成默认的边栏配置
@@ -268,10 +388,11 @@ func CheckUserExistOrDeleted(username string, email string, siteId int) (bool, e
 	// check email if empty
 	// site_id must be matched explicitly (struct-query would drop site_id=0, the main site).
 	var err error
+	email = NormalizeEmail(email)
 	if email == "" {
 		err = DB.Unscoped().First(&user, "username = ? AND site_id = ?", username, siteId).Error
 	} else {
-		err = DB.Unscoped().First(&user, "(username = ? OR email = ?) AND site_id = ?", username, email, siteId).Error
+		err = DB.Unscoped().First(&user, "(username = ? OR LOWER(email) = ?) AND site_id = ?", username, email, siteId).Error
 	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -283,6 +404,87 @@ func CheckUserExistOrDeleted(username string, email string, siteId int) (bool, e
 	}
 	// exist, return true, nil
 	return true, nil
+}
+
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func emailQuery(tx *gorm.DB, email string, siteId int) *gorm.DB {
+	if tx == nil {
+		tx = DB
+	}
+	return tx.Unscoped().Model(&User{}).
+		Where("LOWER(email) = ? AND site_id = ?", NormalizeEmail(email), siteId)
+}
+
+func IsEmailAvailable(email string, siteId int, excludeUserID int) (bool, error) {
+	email = NormalizeEmail(email)
+	if email == "" {
+		return true, nil
+	}
+	query := emailQuery(DB, email, siteId)
+	if excludeUserID > 0 {
+		query = query.Where("id <> ?", excludeUserID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
+func EnsureEmailAvailable(email string, siteId int, excludeUserID int) error {
+	available, err := IsEmailAvailable(email, siteId, excludeUserID)
+	if err != nil {
+		return err
+	}
+	if !available {
+		return ErrEmailAlreadyTaken
+	}
+	return nil
+}
+
+// withNormalizedEmailLock serializes same-site writers targeting one normalized
+// email. PostgreSQL uses a transaction advisory lock, MySQL uses a locking read,
+// and SQLite relies on its single-writer transaction model.
+func withNormalizedEmailLock(tx *gorm.DB, email string, siteId int, fn func(tx *gorm.DB) error) error {
+	email = NormalizeEmail(email)
+	if email == "" {
+		return fn(tx)
+	}
+	switch {
+	case common.UsingMainDatabase(common.DatabaseTypePostgreSQL):
+		lockKey := fmt.Sprintf("%d:%s", siteId, email)
+		if err := tx.Exec("SELECT pg_advisory_xact_lock(hashtext(?))", lockKey).Error; err != nil {
+			return err
+		}
+	case common.UsingMainDatabase(common.DatabaseTypeMySQL):
+		var ids []int
+		if err := tx.Raw("SELECT id FROM users WHERE site_id = ? AND email = ? FOR UPDATE", siteId, email).Scan(&ids).Error; err != nil {
+			return err
+		}
+	}
+	return fn(tx)
+}
+
+func ensureEmailAvailableWithTx(tx *gorm.DB, email string, siteId int, excludeUserID int) error {
+	email = NormalizeEmail(email)
+	if email == "" {
+		return nil
+	}
+	query := emailQuery(tx, email, siteId)
+	if excludeUserID > 0 {
+		query = query.Where("id <> ?", excludeUserID)
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return ErrEmailAlreadyTaken
+	}
+	return nil
 }
 
 func GetMaxUserId() int {
@@ -471,7 +673,7 @@ func HardDeleteUserById(id int) error {
 func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// 检查quota是否小于最小额度
 	if float64(quota) < common.QuotaPerUnit {
-		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
+		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(common.QuotaFromFloat(common.QuotaPerUnit)))
 	}
 
 	// Single conditional UPDATE: the aff_quota >= ? guard makes concurrent
@@ -479,8 +681,12 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	// clobber a concurrent consumption update to quota/used_quota/request_count
 	// (a stale full-row Save here previously could restore pre-consumption
 	// values and erase usage).
+	maxCurrentQuota, err := topUpQuotaMaxCurrent(quota)
+	if err != nil {
+		return err
+	}
 	result := DB.Model(&User{}).
-		Where("id = ? AND aff_quota >= ?", user.Id, quota).
+		Where("id = ? AND aff_quota >= ? AND quota <= ?", user.Id, quota, maxCurrentQuota).
 		Updates(map[string]interface{}{
 			"aff_quota": gorm.Expr("aff_quota - ?", quota),
 			"quota":     gorm.Expr("quota + ?", quota),
@@ -489,38 +695,63 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return errors.New("邀请额度不足！")
+		var current User
+		if err := DB.Select("quota", "aff_quota").Where("id = ?", user.Id).First(&current).Error; err != nil {
+			return err
+		}
+		if current.AffQuota < quota {
+			return errors.New("邀请额度不足！")
+		}
+		return ErrTopUpQuotaLimitExceeded
 	}
+	syncCreditUserQuotaCache(user.Id, quota, "affiliate quota transfer")
 	return nil
 }
 
-func (user *User) Insert(inviterId int) error {
+func (user *User) prepareForInsert(tx *gorm.DB) error {
+	if err := normalizeUserExternalIdentities(user); err != nil {
+		return err
+	}
+	user.Email = NormalizeEmail(user.Email)
+	if err := ensureEmailAvailableWithTx(tx, user.Email, user.SiteId, 0); err != nil {
+		return err
+	}
+	if user.Password == "" {
+		return nil
+	}
 	var err error
-	if user.Password != "" {
-		user.Password, err = common.Password2Hash(user.Password)
-		if err != nil {
-			return err
-		}
-	}
-	user.Quota = common.QuotaForNewUser
-	//user.SetAccessToken(common.GetUUID())
-	user.AffCode = common.GetRandomString(4)
-	// Record the inviter relationship so referral rewards can be settled on the user's
-	// first successful top-up (rewards are deferred, not granted at registration).
-	if inviterId != 0 {
-		user.InviterId = inviterId
-	}
+	user.Password, err = common.Password2Hash(user.Password)
+	return err
+}
 
-	// 初始化用户设置，包括默认的边栏配置
-	if user.Setting == "" {
-		defaultSetting := dto.UserSetting{}
-		// 这里暂时不设置SidebarModules，因为需要在用户创建后根据角色设置
-		user.SetSetting(defaultSetting)
-	}
+func (user *User) Insert(inviterId int) error {
+	if err := DB.Transaction(func(tx *gorm.DB) error {
+		return withNormalizedEmailLock(tx, user.Email, user.SiteId, func(tx *gorm.DB) error {
+			if err := user.prepareForInsert(tx); err != nil {
+				return err
+			}
+			user.Quota = common.QuotaForNewUser
+			user.AffCode = common.GetRandomString(4)
+			// LemonHub defers referral rewards until the invitee's first paid
+			// top-up, but the relationship itself must be persisted at signup.
+			if inviterId != 0 {
+				user.InviterId = inviterId
+			}
 
-	result := DB.Create(user)
-	if result.Error != nil {
-		return result.Error
+			// 初始化用户设置，包括默认的边栏配置
+			if user.Setting == "" {
+				defaultSetting := dto.UserSetting{}
+				// 这里暂时不设置SidebarModules，因为需要在用户创建后根据角色设置
+				user.SetSetting(defaultSetting)
+			}
+
+			if err := tx.Create(user).Error; err != nil {
+				return err
+			}
+			return claimUserExternalIdentitiesWithTx(tx, user)
+		})
+	}); err != nil {
+		return err
 	}
 
 	user.finishInsert(inviterId)
@@ -564,33 +795,27 @@ func (user *User) FinishInsert(inviterId int) {
 // This is used for OAuth registration where user creation and binding need to be atomic.
 // Post-creation tasks (sidebar config, logs, inviter rewards) are handled after the transaction commits.
 func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
-	var err error
-	if user.Password != "" {
-		user.Password, err = common.Password2Hash(user.Password)
-		if err != nil {
+	return withNormalizedEmailLock(tx, user.Email, user.SiteId, func(tx *gorm.DB) error {
+		if err := user.prepareForInsert(tx); err != nil {
 			return err
 		}
-	}
-	user.Quota = common.QuotaForNewUser
-	user.AffCode = common.GetRandomString(4)
-	// Record the inviter relationship so referral rewards can be settled on the user's
-	// first successful top-up (rewards are deferred, not granted at registration).
-	if inviterId != 0 {
-		user.InviterId = inviterId
-	}
+		user.Quota = common.QuotaForNewUser
+		user.AffCode = common.GetRandomString(4)
+		if inviterId != 0 {
+			user.InviterId = inviterId
+		}
 
-	// 初始化用户设置
-	if user.Setting == "" {
-		defaultSetting := dto.UserSetting{}
-		user.SetSetting(defaultSetting)
-	}
+		// 初始化用户设置
+		if user.Setting == "" {
+			defaultSetting := dto.UserSetting{}
+			user.SetSetting(defaultSetting)
+		}
 
-	result := tx.Create(user)
-	if result.Error != nil {
-		return result.Error
-	}
-
-	return nil
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		return claimUserExternalIdentitiesWithTx(tx, user)
+	})
 }
 
 // FinalizeOAuthUserCreation performs post-transaction tasks for OAuth user creation.
@@ -648,8 +873,16 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	newUser := *user
 	current := User{}
-	if err = tx.First(&current, user.Id).Error; err != nil {
+	if err = lockForUpdate(tx).First(&current, user.Id).Error; err != nil {
 		return err
+	}
+	// Full User snapshots carry the authentication version that was observed by
+	// the caller. Refuse to write one after a concurrent ban, role/group change,
+	// or site transfer; otherwise its non-zero fields could silently restore the
+	// old authorization state. Purpose-built partial updates leave AuthVersion
+	// zero and only write their explicitly populated fields.
+	if newUser.AuthVersion > 0 && newUser.AuthVersion != current.AuthVersion {
+		return ErrStaleUserUpdate
 	}
 	// Updates(struct) ignores zero values. Match that behavior when deciding
 	// whether this request actually changes authentication-sensitive state;
@@ -664,7 +897,23 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 			return err
 		}
 	}
-	if err = tx.Model(&current).Omit("quota", "used_quota", "request_count", "auth_version").Updates(newUser).Error; err != nil {
+	if err = tx.Model(&current).Omit(
+		"site_id",
+		"access_token",
+		"quota",
+		"used_quota",
+		"request_count",
+		"aff_count",
+		"aff_quota",
+		"aff_history",
+		"auth_version",
+		"github_id",
+		"discord_id",
+		"oidc_id",
+		"linux_do_id",
+		"wechat_id",
+		"telegram_id",
+	).Updates(newUser).Error; err != nil {
 		return err
 	}
 	return tx.First(user, user.Id).Error
@@ -760,11 +1009,17 @@ func (user *User) ClearBinding(bindingType string) error {
 	}
 
 	if err := DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&User{}).Where("id = ?", user.Id).Update(column, "").Error; err != nil {
-			return err
+		if provider, claimed := externalIdentityProviderForUserColumn(column); claimed {
+			if err := ReleaseExternalIdentityWithTx(tx, provider, user.Id); err != nil {
+				return err
+			}
 		}
-		if bindingType == ExternalIdentityProviderTelegram {
-			return ReleaseExternalIdentityWithTx(tx, ExternalIdentityProviderTelegram, user.Id)
+		result := tx.Model(&User{}).Where("id = ?", user.Id).Update(column, "")
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
 		}
 		return nil
 	}); err != nil {
@@ -874,12 +1129,15 @@ func (user *User) ValidateAndFill() (err error) {
 	}
 	// find by username or email, scoped to the caller-provided site_id (set before
 	// calling, e.g. from the request Host) so sub-sites have isolated accounts.
-	err = DB.Where("(username = ? OR email = ?) AND site_id = ?", username, username, user.SiteId).First(user).Error
+	err = DB.Where("(username = ? OR LOWER(email) = ?) AND site_id = ?", username, NormalizeEmail(username), user.SiteId).First(user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrInvalidCredentials
 		}
 		return fmt.Errorf("%w: %v", ErrDatabase, err)
+	}
+	if user.Password == "" {
+		return ErrInvalidCredentials
 	}
 	okay := common.ValidatePasswordAndHash(password, user.Password)
 	if !okay || user.Status != common.UserStatusEnabled {
@@ -901,16 +1159,12 @@ func (user *User) FillUserByEmail(siteId int) error {
 		return errors.New("email 为空！")
 	}
 	// Explicit site_id condition: struct-query would drop site_id=0 (the main site).
-	DB.Where("email = ? AND site_id = ?", user.Email, siteId).First(user)
+	DB.Where("LOWER(email) = ? AND site_id = ?", NormalizeEmail(user.Email), siteId).First(user)
 	return nil
 }
 
 func (user *User) FillUserByGitHubId(siteId int) error {
-	if user.GitHubId == "" {
-		return errors.New("GitHub id 为空！")
-	}
-	DB.Where("github_id = ? AND site_id = ?", user.GitHubId, siteId).First(user)
-	return nil
+	return user.fillByExternalIdentity("github_id", user.GitHubId, siteId)
 }
 
 // UpdateGitHubId updates the user's GitHub ID (used for migration from login to numeric ID)
@@ -918,49 +1172,50 @@ func (user *User) UpdateGitHubId(newGitHubId string) error {
 	if user.Id == 0 {
 		return errors.New("user id is empty")
 	}
-	return DB.Model(user).Update("github_id", newGitHubId).Error
+	if err := UpdateUserBindColumn(user.Id, "github_id", newGitHubId); err != nil {
+		return err
+	}
+	user.GitHubId, _ = NormalizeExternalIdentitySubject(newGitHubId)
+	return nil
 }
 
 func (user *User) FillUserByDiscordId(siteId int) error {
-	if user.DiscordId == "" {
-		return errors.New("discord id 为空！")
-	}
-	DB.Where("discord_id = ? AND site_id = ?", user.DiscordId, siteId).First(user)
-	return nil
+	return user.fillByExternalIdentity("discord_id", user.DiscordId, siteId)
 }
 
 func (user *User) FillUserByOidcId(siteId int) error {
-	if user.OidcId == "" {
-		return errors.New("oidc id 为空！")
-	}
-	DB.Where("oidc_id = ? AND site_id = ?", user.OidcId, siteId).First(user)
-	return nil
+	return user.fillByExternalIdentity("oidc_id", user.OidcId, siteId)
 }
 
 func (user *User) FillUserByWeChatId(siteId int) error {
-	if user.WeChatId == "" {
-		return errors.New("WeChat id 为空！")
-	}
-	DB.Where("wechat_id = ? AND site_id = ?", user.WeChatId, siteId).First(user)
-	return nil
+	return user.fillByExternalIdentity("wechat_id", user.WeChatId, siteId)
 }
 
 func (user *User) FillUserByTelegramId(siteId int) error {
-	if user.TelegramId == "" {
-		return errors.New("Telegram id 为空！")
-	}
-	err := DB.Where("telegram_id = ? AND site_id = ?", user.TelegramId, siteId).First(user).Error
+	err := user.fillByExternalIdentity("telegram_id", user.TelegramId, siteId)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return errors.New("该 Telegram 账户未绑定")
 	}
-	return nil
+	return err
+}
+
+func (user *User) fillByExternalIdentity(column, subject string, siteId int) error {
+	if _, ok := externalIdentityProviderForUserColumn(column); !ok {
+		return errors.New("invalid external identity column")
+	}
+	normalized, err := NormalizeExternalIdentitySubject(subject)
+	if err != nil {
+		return err
+	}
+	return DB.Where(column+" = ? AND site_id = ?", normalized, siteId).First(user).Error
 }
 
 // The Is*AlreadyTaken checks compare RowsAffected > 0 (not == 1): if duplicates
 // ever exist (no unique index on these columns), the identifier must still
 // report taken instead of silently allowing more duplicates.
 func IsEmailAlreadyTaken(email string, siteId int) bool {
-	return DB.Unscoped().Where("email = ? AND site_id = ?", email, siteId).Find(&User{}).RowsAffected > 0
+	email = NormalizeEmail(email)
+	return email != "" && DB.Unscoped().Where("LOWER(email) = ? AND site_id = ?", email, siteId).Find(&User{}).RowsAffected > 0
 }
 
 // BindUserEmail sets the user's email after re-verifying same-site uniqueness
@@ -973,6 +1228,7 @@ func IsEmailAlreadyTaken(email string, siteId int) bool {
 // phantom window remains. Deleted accounts still hold their address (Unscoped),
 // matching IsEmailAlreadyTaken.
 func BindUserEmail(userId int, email string) error {
+	email = NormalizeEmail(email)
 	if email == "" {
 		return errors.New("邮箱地址为空！")
 	}
@@ -981,41 +1237,91 @@ func BindUserEmail(userId int, email string) error {
 		if err := tx.First(&self, "id = ?", userId).Error; err != nil {
 			return err
 		}
-		var holders []User
-		if err := lockForUpdate(tx).Unscoped().
-			Where("email = ? AND site_id = ? AND id <> ?", email, self.SiteId, userId).
-			Find(&holders).Error; err != nil {
-			return err
-		}
-		if len(holders) > 0 {
-			return errors.New("邮箱地址已被占用")
-		}
-		return tx.Model(&User{}).Where("id = ?", userId).Update("email", email).Error
+		return withNormalizedEmailLock(tx, email, self.SiteId, func(tx *gorm.DB) error {
+			if err := ensureEmailAvailableWithTx(tx, email, self.SiteId, userId); err != nil {
+				return err
+			}
+			return tx.Model(&User{}).Where("id = ?", userId).Update("email", email).Error
+		})
 	})
 	if err != nil {
 		return err
 	}
-	return InvalidateUserCache(userId)
+	return updateUserEmailCache(userId, email)
+}
+
+// BindUserEmailIfEmpty attaches an optional, externally supplied profile email
+// without overwriting an email the user already chose. Duplicate same-site
+// addresses are skipped rather than returned as an error so payment settlement
+// callers can treat this as best-effort metadata enrichment.
+func BindUserEmailIfEmpty(userId int, email string) (bool, error) {
+	email = NormalizeEmail(email)
+	if userId <= 0 || email == "" {
+		return false, nil
+	}
+
+	updated := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var self User
+		if err := tx.Select("id", "site_id", "email").Where("id = ?", userId).First(&self).Error; err != nil {
+			return err
+		}
+		if NormalizeEmail(self.Email) != "" {
+			return nil
+		}
+
+		return withNormalizedEmailLock(tx, email, self.SiteId, func(tx *gorm.DB) error {
+			if err := ensureEmailAvailableWithTx(tx, email, self.SiteId, userId); err != nil {
+				if errors.Is(err, ErrEmailAlreadyTaken) {
+					return nil
+				}
+				return err
+			}
+			result := tx.Model(&User{}).
+				Where("id = ? AND (email = '' OR email IS NULL)", userId).
+				Update("email", email)
+			if result.Error != nil {
+				return result.Error
+			}
+			updated = result.RowsAffected == 1
+			return nil
+		})
+	})
+	if err != nil || !updated {
+		return updated, err
+	}
+	return true, updateUserEmailCache(userId, email)
 }
 
 func IsWeChatIdAlreadyTaken(wechatId string, siteId int) bool {
-	return DB.Unscoped().Where("wechat_id = ? AND site_id = ?", wechatId, siteId).Find(&User{}).RowsAffected > 0
+	return isUserExternalIdentityTaken("wechat_id", wechatId, siteId)
 }
 
 func IsGitHubIdAlreadyTaken(githubId string, siteId int) bool {
-	return DB.Unscoped().Where("github_id = ? AND site_id = ?", githubId, siteId).Find(&User{}).RowsAffected > 0
+	return isUserExternalIdentityTaken("github_id", githubId, siteId)
 }
 
 func IsDiscordIdAlreadyTaken(discordId string, siteId int) bool {
-	return DB.Unscoped().Where("discord_id = ? AND site_id = ?", discordId, siteId).Find(&User{}).RowsAffected > 0
+	return isUserExternalIdentityTaken("discord_id", discordId, siteId)
 }
 
 func IsOidcIdAlreadyTaken(oidcId string, siteId int) bool {
-	return DB.Where("oidc_id = ? AND site_id = ?", oidcId, siteId).Find(&User{}).RowsAffected > 0
+	return isUserExternalIdentityTaken("oidc_id", oidcId, siteId)
 }
 
 func IsTelegramIdAlreadyTaken(telegramId string, siteId int) bool {
-	return DB.Unscoped().Where("telegram_id = ? AND site_id = ?", telegramId, siteId).Find(&User{}).RowsAffected > 0
+	return isUserExternalIdentityTaken("telegram_id", telegramId, siteId)
+}
+
+func isUserExternalIdentityTaken(column, subject string, siteId int) bool {
+	if _, ok := externalIdentityProviderForUserColumn(column); !ok {
+		return true
+	}
+	normalized, err := NormalizeExternalIdentitySubject(subject)
+	if err != nil {
+		return false
+	}
+	return DB.Unscoped().Where(column+" = ? AND site_id = ?", normalized, siteId).Find(&User{}).RowsAffected > 0
 }
 
 // ResetUserPasswordByEmail resets the password for the account with the given email on
@@ -1027,6 +1333,7 @@ func IsTelegramIdAlreadyTaken(telegramId string, siteId int) bool {
 // index, so races or legacy data can produce same-site duplicates; blind-updating them
 // all would let whoever holds the reset token take over every duplicate at once.
 func ResetUserPasswordByEmail(email string, password string, siteId int) error {
+	email = NormalizeEmail(email)
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
 	}
@@ -1036,22 +1343,26 @@ func ResetUserPasswordByEmail(email string, password string, siteId int) error {
 	}
 	var userId int
 	if err = DB.Transaction(func(tx *gorm.DB) error {
-		var ids []int
-		if err := tx.Model(&User{}).Where("email = ? AND site_id = ?", email, siteId).
-			Pluck("id", &ids).Error; err != nil {
-			return err
-		}
-		if len(ids) == 0 {
-			return errors.New("该邮箱未绑定任何账户")
-		}
-		if len(ids) > 1 {
-			return errors.New("该邮箱匹配到多个账户，请联系管理员处理")
-		}
-		userId = ids[0]
-		if _, err := IncrementUserAuthVersionWithTx(tx, userId); err != nil {
-			return err
-		}
-		return tx.Model(&User{}).Where("id = ?", userId).Update("password", hashedPassword).Error
+		return withNormalizedEmailLock(tx, email, siteId, func(tx *gorm.DB) error {
+			var ids []int
+			if err := tx.Model(&User{}).
+				Where("LOWER(email) = ? AND site_id = ?", email, siteId).
+				Pluck("id", &ids).Error; err != nil {
+				return err
+			}
+			switch len(ids) {
+			case 0:
+				return ErrEmailNotFound
+			case 1:
+				userId = ids[0]
+			default:
+				return ErrEmailAmbiguous
+			}
+			if _, err := IncrementUserAuthVersionWithTx(tx, userId); err != nil {
+				return err
+			}
+			return tx.Model(&User{}).Where("id = ?", userId).Update("password", hashedPassword).Error
+		})
 	}); err != nil {
 		return err
 	}
@@ -1123,24 +1434,9 @@ func ValidateAccessToken(token string) (*User, error) {
 
 // GetUserQuota gets quota from Redis first, falls back to DB if needed
 func GetUserQuota(id int, fromDB bool) (quota int, err error) {
-	defer func() {
-		// Update Redis cache asynchronously on successful DB read
-		if shouldUpdateRedis(fromDB, err) {
-			gopool.Go(func() {
-				if err := updateUserQuotaCache(id, quota); err != nil {
-					common.SysLog("failed to update user quota cache: " + err.Error())
-				}
-			})
-		}
-	}()
 	if !fromDB && common.RedisEnabled {
-		quota, err := getUserQuotaCache(id)
-		if err == nil {
-			return quota, nil
-		}
-		// Don't return error - fall through to DB
+		return getUserQuotaCache(id)
 	}
-	fromDB = true
 	err = DB.Model(&User{}).Where("id = ?", id).Select("quota").Find(&quota).Error
 	if err != nil {
 		return 0, err
@@ -1229,17 +1525,7 @@ func IncreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheIncrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to increase user quota: " + err.Error())
-		}
-	})
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
-		return nil
-	}
-	return increaseUserQuota(id, quota)
+	return applyUserQuotaDelta(id, quota, db)
 }
 
 func increaseUserQuota(id int, quota int) (err error) {
@@ -1254,17 +1540,7 @@ func DecreaseUserQuota(id int, quota int, db bool) (err error) {
 	if quota < 0 {
 		return errors.New("quota 不能为负数！")
 	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog("failed to decrease user quota: " + err.Error())
-		}
-	})
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
-		return nil
-	}
-	return decreaseUserQuota(id, quota)
+	return applyUserQuotaDelta(id, -quota, db)
 }
 
 func decreaseUserQuota(id int, quota int) (err error) {
@@ -1311,6 +1587,17 @@ func UpdateUserUsedQuotaAndRequestCount(id int, quota int) {
 	updateUserUsedQuotaAndRequestCount(id, quota, 1)
 }
 
+// UpdateUserUsedQuota adjusts accumulated usage without changing request count.
+func UpdateUserUsedQuota(id int, quota int) {
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeUsedQuota, id, quota)
+		return
+	}
+	if err := DB.Model(&User{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error; err != nil {
+		common.SysLog("failed to update user used quota: " + err.Error())
+	}
+}
+
 func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	err := DB.Model(&User{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
@@ -1329,9 +1616,9 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	//}
 }
 
-func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
+func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) error {
 	if quota == 0 && usedQuota == 0 && requestCount == 0 {
-		return
+		return nil
 	}
 
 	err := DB.Model(&User{}).Where("id = ?", id).Updates(
@@ -1344,24 +1631,7 @@ func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, r
 	if err != nil {
 		common.SysLog("failed to batch update user quota, used quota and request count: " + err.Error())
 	}
-}
-
-func updateUserUsedQuota(id int, quota int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
-		map[string]interface{}{
-			"used_quota": gorm.Expr("used_quota + ?", quota),
-		},
-	).Error
-	if err != nil {
-		common.SysLog("failed to update user used quota: " + err.Error())
-	}
-}
-
-func updateUserRequestCount(id int, count int) {
-	err := DB.Model(&User{}).Where("id = ?", id).Update("request_count", gorm.Expr("request_count + ?", count)).Error
-	if err != nil {
-		common.SysLog("failed to update user request count: " + err.Error())
-	}
+	return err
 }
 
 // GetUsernameById gets username from Redis first, falls back to DB if needed
@@ -1393,17 +1663,11 @@ func GetUsernameById(id int, fromDB bool) (username string, err error) {
 }
 
 func IsLinuxDOIdAlreadyTaken(linuxDOId string, siteId int) bool {
-	var user User
-	err := DB.Unscoped().Where("linux_do_id = ? AND site_id = ?", linuxDOId, siteId).First(&user).Error
-	return !errors.Is(err, gorm.ErrRecordNotFound)
+	return isUserExternalIdentityTaken("linux_do_id", linuxDOId, siteId)
 }
 
 func (user *User) FillUserByLinuxDOId(siteId int) error {
-	if user.LinuxDOId == "" {
-		return errors.New("linux do id is empty")
-	}
-	err := DB.Where("linux_do_id = ? AND site_id = ?", user.LinuxDOId, siteId).First(user).Error
-	return err
+	return user.fillByExternalIdentity("linux_do_id", user.LinuxDOId, siteId)
 }
 
 func RootUserExists() bool {

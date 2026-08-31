@@ -5,7 +5,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -52,7 +51,12 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 			return nil
 		}
 
-		quota := common.QuotaFromDecimal(decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+		quota, quotaErr := common.QuotaFromDecimalStrict(
+			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
+		)
+		if quotaErr != nil || quota <= 0 {
+			return ErrInvalidTopUpQuota
+		}
 
 		target := common.TopUpStatusSuccess
 		if topUp.SiteId > 0 {
@@ -83,8 +87,7 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 		}
 
 		if target == common.TopUpStatusSuccess {
-			if e := tx.Model(&User{}).Where("id = ?", topUp.UserId).
-				Update("quota", gorm.Expr("quota + ?", quota)).Error; e != nil {
+			if e := creditTopUpQuota(tx, topUp.UserId, quota, nil); e != nil {
 				return e
 			}
 			quotaAdded = quota
@@ -105,12 +108,7 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 		return "", 0, err
 	}
 	if quotaAdded > 0 && settledUserId > 0 {
-		uid, q := settledUserId, quotaAdded
-		gopool.Go(func() {
-			if e := cacheIncrUserQuota(uid, int64(q)); e != nil {
-				common.SysLog("failed to refresh user quota cache after topup: " + e.Error())
-			}
-		})
+		syncCreditUserQuotaCache(settledUserId, quotaAdded, "sub-site epay topup")
 	}
 	return finalStatus, quotaAdded, err
 }

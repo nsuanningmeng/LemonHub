@@ -16,13 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
-import { api } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -60,8 +59,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { SettingsSection } from '../components/settings-section'
+import { api } from '@/lib/api'
+
 import { SettingsPageFormActions } from '../components/settings-page-context'
+import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 type SuppressionReason = 'hard_bounce' | 'complaint'
@@ -211,8 +212,7 @@ export function EmailSuppressionSection(_props: EmailSuppressionSectionProps) {
   const hasNext = page * PAGE_SIZE < total
 
   const REASON_BADGE: Record<SuppressionReason, string> = {
-    hard_bounce:
-      'bg-destructive/10 text-destructive border-destructive/30',
+    hard_bounce: 'bg-destructive/10 text-destructive border-destructive/30',
     complaint:
       'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
   }
@@ -418,7 +418,9 @@ export function EmailSuppressionSection(_props: EmailSuppressionSectionProps) {
           <DialogHeader>
             <DialogTitle>{t('Add address')}</DialogTitle>
             <DialogDescription>
-              {t('The address will never receive email of the selected scope again.')}
+              {t(
+                'The address will never receive email of the selected scope again.'
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className='grid gap-4'>

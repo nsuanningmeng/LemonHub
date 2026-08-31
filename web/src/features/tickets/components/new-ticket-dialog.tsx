@@ -41,10 +41,7 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 
 import { createTicket } from '../api'
-import {
-  DEFAULT_TICKET_PRIORITY,
-  TICKET_PRIORITY_OPTIONS,
-} from '../constants'
+import { DEFAULT_TICKET_PRIORITY, TICKET_PRIORITY_OPTIONS } from '../constants'
 import type {
   TicketPriority,
   TicketTypeConfig,

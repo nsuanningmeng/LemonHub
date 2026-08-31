@@ -18,8 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import { SectionPageLayout } from '@/components/layout'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+
 import { BrandingTab } from './components/branding-tab'
 import { OverviewTab } from './components/overview-tab'
 import { PayConfigTab } from './components/pay-config-tab'
@@ -40,12 +42,14 @@ export function SiteAdminConsole() {
           className='gap-4'
         >
           <TabsList>
-            <TabsTrigger value='overview'>
-              {t('Overview & Wallet')}
+            <TabsTrigger value='overview'>{t('Overview & Wallet')}</TabsTrigger>
+            <TabsTrigger value='redemption'>
+              {t('Redemption Codes')}
             </TabsTrigger>
-            <TabsTrigger value='redemption'>{t('Redemption Codes')}</TabsTrigger>
             <TabsTrigger value='branding'>{t('Branding Settings')}</TabsTrigger>
-            <TabsTrigger value='pay-config'>{t('Payment Settings')}</TabsTrigger>
+            <TabsTrigger value='pay-config'>
+              {t('Payment Settings')}
+            </TabsTrigger>
             <TabsTrigger value='pricing'>{t('Model Pricing')}</TabsTrigger>
           </TabsList>
 

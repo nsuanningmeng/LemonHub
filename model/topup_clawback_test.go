@@ -132,3 +132,106 @@ func TestReverseStripeTopUp(t *testing.T) {
 		assert.Equal(t, common.TopUpStatusSuccess, reloadTopUp("rev-zero").Status)
 	})
 }
+
+func seedCachedStripeClawback(t *testing.T, quota int, money float64) (User, TopUp) {
+	t.Helper()
+	user := createReserveTestUser(t, quota)
+	topUp := TopUp{
+		UserId:          user.Id,
+		Amount:          int64(money),
+		Money:           money,
+		TradeNo:         "stripe-cache-" + common.GetUUID(),
+		PaymentIntent:   "pi-cache-" + common.GetUUID(),
+		PaymentProvider: PaymentProviderStripe,
+		PaymentMethod:   PaymentMethodStripe,
+		Status:          common.TopUpStatusSuccess,
+		CreateTime:      common.GetTimestamp(),
+	}
+	require.NoError(t, DB.Create(&topUp).Error)
+	require.NoError(t, populateUserCache(user))
+	t.Cleanup(func() {
+		_ = DB.Delete(&topUp).Error
+		_ = DB.Unscoped().Delete(&user).Error
+	})
+	return user, topUp
+}
+
+func TestStripeClawbackCacheAuthorityFailures(t *testing.T) {
+	previousQPU := common.QuotaPerUnit
+	common.QuotaPerUnit = 1
+	t.Cleanup(func() { common.QuotaPerUnit = previousQPU })
+
+	t.Run("redis outage fails closed without advancing durable state", func(t *testing.T) {
+		server := useUserCacheMiniRedis(t)
+		user, topUp := seedCachedStripeClawback(t, 100, 100)
+		server.Close()
+
+		err := ReverseStripeTopUp(topUp.PaymentIntent, 30, 100, false, "test")
+		assert.ErrorIs(t, err, ErrQuotaCacheUnavailable)
+		assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
+		var persisted TopUp
+		require.NoError(t, DB.First(&persisted, topUp.Id).Error)
+		assert.Zero(t, persisted.ClawedBackQuota)
+
+		require.NoError(t, server.Restart())
+		require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 30, 100, false, "test"))
+		assert.Equal(t, 70, getUserQuotaFromDB(t, user.Id))
+		cached, err := cacheGetUserBase(user.Id)
+		require.NoError(t, err)
+		assert.Equal(t, 70, cached.Quota)
+	})
+
+	t.Run("database rollback compensates the authoritative cache", func(t *testing.T) {
+		useUserCacheMiniRedis(t)
+		user, topUp := seedCachedStripeClawback(t, 100, 100)
+		trigger := "fail_stripe_clawback_quota"
+		require.NoError(t, DB.Exec("DROP TRIGGER IF EXISTS "+trigger).Error)
+		require.NoError(t, DB.Exec(`CREATE TRIGGER fail_stripe_clawback_quota
+BEFORE UPDATE OF quota ON users BEGIN SELECT RAISE(ABORT, 'forced stripe clawback failure'); END`).Error)
+		t.Cleanup(func() { _ = DB.Exec("DROP TRIGGER IF EXISTS " + trigger).Error })
+
+		err := ReverseStripeTopUp(topUp.PaymentIntent, 30, 100, false, "test")
+		require.Error(t, err)
+		assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
+		cached, cacheErr := cacheGetUserBase(user.Id)
+		require.NoError(t, cacheErr)
+		assert.Equal(t, 100, cached.Quota)
+		var persisted TopUp
+		require.NoError(t, DB.First(&persisted, topUp.Id).Error)
+		assert.Zero(t, persisted.ClawedBackQuota)
+
+		require.NoError(t, DB.Exec("DROP TRIGGER IF EXISTS "+trigger).Error)
+		require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 30, 100, false, "test"))
+		assert.Equal(t, 70, getUserQuotaFromDB(t, user.Id))
+	})
+
+	t.Run("uncertain rollback fence rehydrates before retry instead of double debit", func(t *testing.T) {
+		server := useUserCacheMiniRedis(t)
+		user, topUp := seedCachedStripeClawback(t, 100, 100)
+		result, err := cacheApplyUserQuotaDelta(user.Id, -30)
+		require.NoError(t, err)
+		require.Equal(t, cacheQuotaOK, result)
+		require.NoError(t, fenceUserQuotaCacheUncertainty(user.Id, "test_ambiguous_rollback"))
+		assert.True(t, server.Exists(getUserQuotaUncertaintyKey(user.Id)))
+		assert.False(t, server.Exists(getUserCacheKey(user.Id)))
+
+		require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 30, 100, false, "test"))
+		assert.Equal(t, 70, getUserQuotaFromDB(t, user.Id))
+		cached, cacheErr := cacheGetUserBase(user.Id)
+		require.NoError(t, cacheErr)
+		assert.Equal(t, 70, cached.Quota, "the tentative debit must be discarded before the retry debit")
+		assert.False(t, server.Exists(getUserQuotaUncertaintyKey(user.Id)))
+	})
+
+	t.Run("saturated credited amount is rejected instead of becoming a clawback", func(t *testing.T) {
+		oldRedisEnabled := common.RedisEnabled
+		common.RedisEnabled = false
+		t.Cleanup(func() { common.RedisEnabled = oldRedisEnabled })
+		user, topUp := seedCachedStripeClawback(t, 100, float64(common.MaxQuota)*2)
+
+		err := ReverseStripeTopUp(topUp.PaymentIntent, 1, 1, false, "test")
+		var clamp *common.QuotaClamp
+		assert.ErrorAs(t, err, &clamp)
+		assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
+	})
+}

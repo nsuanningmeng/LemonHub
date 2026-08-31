@@ -222,7 +222,6 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
           )
         }
 
-
         return (
           <ApiKeyGroupCell
             group={group}

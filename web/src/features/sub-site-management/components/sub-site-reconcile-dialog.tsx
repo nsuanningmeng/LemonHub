@@ -18,6 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+
+import {
+  StaticDataTable,
+  type StaticDataTableColumn,
+} from '@/components/data-table'
+import { StatusBadge } from '@/components/status-badge'
 import {
   Dialog,
   DialogContent,
@@ -26,12 +32,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  StaticDataTable,
-  type StaticDataTableColumn,
-} from '@/components/data-table'
-import { StatusBadge } from '@/components/status-badge'
 import { formatMilliYuan } from '@/components/wallet-logs-table'
+
 import { reconcileSites } from '../api'
 import { type ReconcileResult } from '../types'
 import { useSubSite } from './sub-site-provider'
@@ -62,7 +64,9 @@ export function SubSiteReconcileDialog() {
       id: 'balance',
       header: t('Balance'),
       cell: (row) => (
-        <span className='font-mono text-sm'>¥{formatMilliYuan(row.balance)}</span>
+        <span className='font-mono text-sm'>
+          ¥{formatMilliYuan(row.balance)}
+        </span>
       ),
     },
     {

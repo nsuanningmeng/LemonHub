@@ -265,7 +265,9 @@ export async function getAffAdminCashPayouts(
     inviter_id: String(inviterId),
     limit: String(limit),
   })
-  const res = await api.get(`/api/user/aff/admin/cash-payouts?${params.toString()}`)
+  const res = await api.get(
+    `/api/user/aff/admin/cash-payouts?${params.toString()}`
+  )
   return res.data
 }
 

@@ -44,10 +44,7 @@ import {
   replyAdminTicket,
   setAdminTicketStatus,
 } from '../../api'
-import {
-  TICKET_PRIORITY_OPTIONS,
-  TICKET_STATUS_OPTIONS,
-} from '../../constants'
+import { TICKET_PRIORITY_OPTIONS, TICKET_STATUS_OPTIONS } from '../../constants'
 import type { UploadedAttachment } from '../../types'
 import { ConversationThread } from '../conversation-thread'
 import { MessageEditor } from '../message-editor'
@@ -176,7 +173,7 @@ export function AdminTicketDetailDialog({
                 </div>
               )}
             </div>
-            <DialogDescription className='break-words [overflow-wrap:anywhere]'>
+            <DialogDescription className='[overflow-wrap:anywhere] break-words'>
               {ticket
                 ? `#${ticket.id} · ${ticket.username ?? ''} ${
                     ticket.user_email ? `(${ticket.user_email})` : ''

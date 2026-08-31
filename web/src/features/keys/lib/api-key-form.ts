@@ -21,7 +21,7 @@ import { z } from 'zod'
 
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
-import { DEFAULT_GROUP } from '../constants'
+import { DEFAULT_GROUP, MAX_API_KEY_GROUPS } from '../constants'
 import type { ApiKey, ApiKeyFormData } from '../types'
 
 // ============================================================================
@@ -40,7 +40,15 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
       unlimited_quota: z.boolean(),
       model_limits: z.array(z.string()),
       allow_ips: z.string().optional(),
-      groups: z.array(z.string()),
+      groups: z
+        .array(z.string())
+        .min(1, t('Select a group'))
+        .max(
+          MAX_API_KEY_GROUPS,
+          t('Maximum {{max}} groups selected', {
+            max: MAX_API_KEY_GROUPS,
+          })
+        ),
       auto_groups_mode: z.enum(['inherit', 'custom']),
       auto_groups: z.array(z.string()),
       cross_group_retry: z.boolean().optional(),

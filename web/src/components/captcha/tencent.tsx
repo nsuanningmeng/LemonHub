@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useRef, useState } from 'react'
 import i18next from 'i18next'
-import { useTranslation } from 'react-i18next'
 import { CheckCircle2, ShieldCheck } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
 import { Button } from '@/components/ui/button'
+
 import type { CaptchaChannelProps } from './types'
 
 interface TencentCaptchaResult {
@@ -46,7 +48,8 @@ interface TencentProps extends CaptchaChannelProps {
 }
 
 const TENCENT_SCRIPT_ID = 'tencent-captcha-global'
-const TENCENT_SCRIPT_SRC = 'https://ca.turing.captcha.qcloud.com/TJNCaptcha-global.js'
+const TENCENT_SCRIPT_SRC =
+  'https://ca.turing.captcha.qcloud.com/TJNCaptcha-global.js'
 
 function loadTencentScript(): Promise<void> {
   if (window.TencentCaptcha) return Promise.resolve()
@@ -104,7 +107,9 @@ export function TencentCaptchaWidget({
             !res.ticket.startsWith('trerror')
           ) {
             setVerified(true)
-            onVerify(JSON.stringify({ ticket: res.ticket, randstr: res.randstr }))
+            onVerify(
+              JSON.stringify({ ticket: res.ticket, randstr: res.randstr })
+            )
           } else if (res.ret !== 2) {
             setVerified(false)
             onExpire?.()

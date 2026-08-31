@@ -259,7 +259,9 @@ export function BotProtectionSection({
                     <FormLabel>{t('Captcha ID')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={t('GeeTest captcha_id from the GeeTest console')}
+                        placeholder={t(
+                          'GeeTest captcha_id from the GeeTest console'
+                        )}
                         autoComplete='off'
                         {...field}
                       />
@@ -274,7 +276,9 @@ export function BotProtectionSection({
                 render={({ field }) => (
                   <SecretInput
                     label={t('Captcha Key')}
-                    placeholder={t('GeeTest captcha_key from the GeeTest console')}
+                    placeholder={t(
+                      'GeeTest captcha_key from the GeeTest console'
+                    )}
                     {...field}
                   />
                 )}
@@ -300,7 +304,9 @@ export function BotProtectionSection({
                     <FormLabel>{t('Captcha App ID')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={t('CaptchaAppId from the Tencent Cloud captcha console')}
+                        placeholder={t(
+                          'CaptchaAppId from the Tencent Cloud captcha console'
+                        )}
                         autoComplete='off'
                         {...field}
                       />
@@ -315,7 +321,9 @@ export function BotProtectionSection({
                 render={({ field }) => (
                   <SecretInput
                     label={t('Captcha App Secret Key')}
-                    placeholder={t('AppSecretKey from the Tencent Cloud captcha console')}
+                    placeholder={t(
+                      'AppSecretKey from the Tencent Cloud captcha console'
+                    )}
                     {...field}
                   />
                 )}
@@ -328,7 +336,9 @@ export function BotProtectionSection({
                     <FormLabel>{t('Cloud API Secret ID')}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder={t('Tencent Cloud CAM SecretId used to sign verify calls')}
+                        placeholder={t(
+                          'Tencent Cloud CAM SecretId used to sign verify calls'
+                        )}
                         autoComplete='off'
                         {...field}
                       />
@@ -343,7 +353,9 @@ export function BotProtectionSection({
                 render={({ field }) => (
                   <SecretInput
                     label={t('Cloud API Secret Key')}
-                    placeholder={t('Tencent Cloud CAM SecretKey used to sign verify calls')}
+                    placeholder={t(
+                      'Tencent Cloud CAM SecretKey used to sign verify calls'
+                    )}
                     {...field}
                   />
                 )}

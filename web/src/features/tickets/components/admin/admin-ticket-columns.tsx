@@ -55,7 +55,7 @@ export function useAdminTicketColumns({
       id: 'user',
       header: t('User'),
       cell: ({ row }) => (
-        <div className='flex min-w-0 max-w-[180px] flex-col'>
+        <div className='flex max-w-[180px] min-w-0 flex-col'>
           <span className='truncate text-sm font-medium'>
             {row.original.username || '-'}
           </span>

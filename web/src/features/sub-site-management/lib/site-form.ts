@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { z } from 'zod'
 import type { TFunction } from 'i18next'
+import { z } from 'zod'
+
 import { SITE_VALIDATION } from '../constants'
 import { type Site, type SiteCreatePayload } from '../types'
 
@@ -31,9 +32,7 @@ export function getSiteFormSchema(t: TFunction) {
       .string()
       .min(SITE_VALIDATION.NAME_MIN_LENGTH, t('Name is required'))
       .max(SITE_VALIDATION.NAME_MAX_LENGTH, t('Name is too long')),
-    domains_text: z
-      .string()
-      .min(1, t('At least one domain is required')),
+    domains_text: z.string().min(1, t('At least one domain is required')),
     owner_username: z.string().optional(),
     logo: z.string().optional(),
     notice: z.string().optional(),
@@ -100,7 +99,9 @@ export const SITE_FORM_DEFAULT_VALUES: SiteFormValues = {
  * Transform form values to API create/update payload.
  * Splits domains_text by newline, trims each, drops blank lines.
  */
-export function transformFormToPayload(data: SiteFormValues): SiteCreatePayload {
+export function transformFormToPayload(
+  data: SiteFormValues
+): SiteCreatePayload {
   const domains = data.domains_text
     .split('\n')
     .map((d) => d.trim())

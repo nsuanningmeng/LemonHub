@@ -21,6 +21,7 @@ import {
   CardStaggerContainer,
   CardStaggerItem,
 } from '@/components/page-transition'
+import { useCaptcha } from '@/features/auth/hooks/use-captcha'
 import { useStatus } from '@/hooks/use-status'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -33,7 +34,6 @@ import { ProfileSecurityCard } from './components/profile-security-card'
 import { ProfileSettingsCard } from './components/profile-settings-card'
 import { SidebarModulesCard } from './components/sidebar-modules-card'
 import { TwoFACard } from './components/two-fa-card'
-import { useCaptcha } from '@/features/auth/hooks/use-captcha'
 import { useProfile } from './hooks'
 
 export function Profile() {

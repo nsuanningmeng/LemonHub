@@ -153,8 +153,7 @@ func RedeemForSite(key string, userId int, siteId int) (quota int, err error) {
 		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		return tx.Model(&User{}).Where("id = ?", userId).
-			Update("quota", gorm.Expr("quota + ?", redemption.Quota)).Error
+		return creditTopUpQuota(tx, userId, redemption.Quota, nil)
 	})
 	if err != nil {
 		// Mirror model.Redeem: log the specific cause, return a generic error so the
@@ -162,6 +161,7 @@ func RedeemForSite(key string, userId int, siteId int) (quota int, err error) {
 		common.SysError("redemption failed: " + err.Error())
 		return 0, ErrRedeemFailed
 	}
+	syncCreditUserQuotaCache(userId, redemption.Quota, "site redemption")
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	return redemption.Quota, nil
 }

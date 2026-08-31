@@ -19,11 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { MailQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
+import { AnimateInView } from '@/components/animate-in-view'
+import { PublicLayout } from '@/components/layout'
+import { Footer } from '@/components/layout/components/footer'
 import { Markdown } from '@/components/ui/markdown'
 import { Skeleton } from '@/components/ui/skeleton'
-import { AnimateInView } from '@/components/animate-in-view'
-import { Footer } from '@/components/layout/components/footer'
-import { PublicLayout } from '@/components/layout'
+
 import { getContactContent } from './api'
 
 function isValidUrl(value: string) {

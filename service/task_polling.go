@@ -42,6 +42,22 @@ var GetTaskAdaptorFunc func(platform constant.TaskPlatform) TaskPollingAdaptor
 // 每次最多处理 100 条，剩余的下个周期继续处理。
 // 使用 per-task CAS (UpdateWithStatus) 防止覆盖被正常轮询已推进的任务。
 func sweepTimedOutTasks(ctx context.Context) {
+	const pendingBillingGraceSeconds = int64(300)
+	pendingCutoff := time.Now().Unix() - pendingBillingGraceSeconds
+	for _, task := range model.GetStalePendingBillingTasks(pendingCutoff, 100) {
+		marked, err := task.MarkBillingManualReview("submission_interrupted_before_billing_ready")
+		if err != nil {
+			logger.LogError(ctx, fmt.Sprintf("mark stale pending task billing for review %s: %v", task.TaskID, err))
+			continue
+		}
+		if marked {
+			logger.LogError(ctx, fmt.Sprintf(
+				"task %s requires manual billing reconciliation: submission remained pending for more than %d seconds",
+				task.TaskID, pendingBillingGraceSeconds,
+			))
+		}
+	}
+
 	if constant.TaskTimeoutMinutes <= 0 {
 		return
 	}

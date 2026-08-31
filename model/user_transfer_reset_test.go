@@ -47,6 +47,38 @@ func TestTransferAffQuotaToQuotaConditionalUpdate(t *testing.T) {
 	assert.Equal(t, 42, got.RequestCount, "transfer must not rewrite request_count")
 }
 
+func TestTransferAffQuotaToQuotaEnforcesInt32CapacityAndSyncsCache(t *testing.T) {
+	truncateTables(t)
+	useUserCacheMiniRedis(t)
+
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 1
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+
+	u := createReserveTestUser(t, common.MaxQuota-10)
+	u.AffQuota = 20
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", u.Id).Update("aff_quota", u.AffQuota).Error)
+	require.NoError(t, populateUserCache(u))
+
+	// Reaching MaxQuota is intentionally rejected: wallet columns reserve
+	// MaxQuota as the saturation sentinel and may hold at most MaxQuota-1.
+	err := u.TransferAffQuotaToQuota(10)
+	assert.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
+	var unchanged User
+	require.NoError(t, DB.First(&unchanged, u.Id).Error)
+	assert.Equal(t, common.MaxQuota-10, unchanged.Quota)
+	assert.Equal(t, 20, unchanged.AffQuota)
+
+	require.NoError(t, u.TransferAffQuotaToQuota(9))
+	var updated User
+	require.NoError(t, DB.First(&updated, u.Id).Error)
+	assert.Equal(t, common.MaxQuota-1, updated.Quota)
+	assert.Equal(t, 11, updated.AffQuota)
+	cached, err := GetUserCache(u.Id)
+	require.NoError(t, err)
+	assert.Equal(t, common.MaxQuota-1, cached.Quota, "successful transfer must be spendable immediately")
+}
+
 // TestResetUserPasswordByEmailRequiresExactlyOneMatch: (site_id, email) has no unique
 // index, so duplicates can exist; a reset token holder must not be able to take over
 // every duplicate at once, and a reset against a non-existent account must fail loudly

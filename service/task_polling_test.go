@@ -390,6 +390,7 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 		Status:  common.ChannelStatusEnabled,
 		BaseURL: &baseURL,
 	}).Error)
+	seedChargedAccounting(t, userID, channelID, tokenID, taskQuota, 1)
 
 	task := makeTask(userID, channelID, taskQuota, tokenID, BillingSourceWallet, 0)
 	task.TaskID = publicTaskID
@@ -423,6 +424,9 @@ func TestUpdateSunoTasksStalePollsRefundExactlyOnce(t *testing.T) {
 	assert.Zero(t, reloaded.Quota)
 	assert.Equal(t, initialUserQuota+taskQuota, getUserQuota(t, userID))
 	assert.Equal(t, initialTokenQuota+taskQuota, getTokenRemainQuota(t, tokenID))
+	assert.Zero(t, getTokenUsedQuota(t, tokenID))
+	usedQuota, _ := getUserUsageAccounting(t, userID)
+	assert.Zero(t, usedQuota)
 	assert.Equal(t, int64(1), countLogs(t))
 }
 
@@ -476,6 +480,10 @@ func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
 	modernTask.Progress = "50%"
 	modernTask.SubmitTime = 1771718400 // 2026-02-22 00:00:00 UTC
 	require.NoError(t, model.DB.Create(modernTask).Error)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
+		"used_quota":    modernTaskQuota,
+		"request_count": 1,
+	}).Error)
 
 	previousTimeout := constant.TaskTimeoutMinutes
 	constant.TaskTimeoutMinutes = 1
@@ -494,5 +502,53 @@ func TestSweepTimedOutTasksHonorsRefundRolloutBoundary(t *testing.T) {
 	assert.Contains(t, reloadedLegacy.FailReason, "旧系统遗留任务")
 	assert.Contains(t, reloadedModern.FailReason, "任务超时")
 	assert.Equal(t, initialQuota+modernTaskQuota, getUserQuota(t, userID))
+	usedQuota, _ := getUserUsageAccounting(t, userID)
+	assert.Zero(t, usedQuota)
 	assert.Equal(t, int64(1), countLogs(t))
+}
+
+func TestSweepTimedOutTasksMovesStalePendingSubmissionToManualReviewWithoutBilling(t *testing.T) {
+	truncate(t)
+
+	const userID, taskQuota = 404, 1_200
+	seedUser(t, userID, 8_800)
+	task := makeTask(userID, 0, taskQuota, 0, BillingSourceWallet, 0)
+	task.TaskID = "pending_submission_after_restart"
+	task.Progress = "50%"
+	task.SubmitTime = time.Now().Add(-10 * time.Minute).Unix()
+	task.UpdatedAt = time.Now().Add(-10 * time.Minute).Unix()
+	task.BillingStatus = model.TaskBillingStatusPending
+	task.TokenCharged = common.GetPointer(false)
+	task.PrivateData.SubmissionBilling = &model.TaskSubmissionBilling{
+		PreConsumedQuota: 1_000,
+		TargetQuota:      taskQuota,
+		FundingQuota:     1_000,
+		UpdatedAt:        time.Now().Add(-10 * time.Minute).Unix(),
+	}
+	require.NoError(t, model.DB.Create(task).Error)
+
+	previousTimeout := constant.TaskTimeoutMinutes
+	constant.TaskTimeoutMinutes = 1
+	t.Cleanup(func() { constant.TaskTimeoutMinutes = previousTimeout })
+
+	sweepTimedOutTasks(context.Background())
+
+	var restarted model.Task
+	require.NoError(t, model.DB.First(&restarted, task.ID).Error)
+	assert.Equal(t, model.TaskBillingStatusManualReview, restarted.BillingStatus)
+	assert.EqualValues(t, model.TaskStatusInProgress, restarted.Status)
+	assert.Equal(t, "50%", restarted.Progress)
+	assert.Equal(t, taskQuota, restarted.Quota)
+	require.NotNil(t, restarted.PrivateData.SubmissionBilling)
+	assert.Equal(t, "submission_interrupted_before_billing_ready", restarted.PrivateData.SubmissionBilling.Failure)
+	assert.Equal(t, 1_000, restarted.PrivateData.SubmissionBilling.FundingQuota)
+	assert.Empty(t, model.GetAllUnFinishSyncTasks(10))
+	assert.False(t, model.HasUnfinishedSyncTasks())
+	_, exists, err := model.GetByTaskId(userID, task.TaskID)
+	require.NoError(t, err)
+	assert.False(t, exists)
+	assert.False(t, RefundTaskQuota(context.Background(), &restarted, "timeout retry"))
+	RecalculateTaskQuota(context.Background(), &restarted, 0, "timeout retry")
+	assert.Equal(t, 8_800, getUserQuota(t, userID))
+	assert.Zero(t, countLogs(t))
 }

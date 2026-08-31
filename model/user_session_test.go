@@ -588,6 +588,7 @@ func TestUserSessionGrowthQueryIndexesExist(t *testing.T) {
 func TestUserBaseIncludesAuthorizationFields(t *testing.T) {
 	user := User{
 		Id:          42,
+		SiteId:      9,
 		Username:    "cache-user",
 		Role:        common.RoleAdminUser,
 		Status:      common.UserStatusEnabled,
@@ -596,6 +597,7 @@ func TestUserBaseIncludesAuthorizationFields(t *testing.T) {
 		AuthVersion: 7,
 	}
 	base := user.ToBaseUser()
+	assert.Equal(t, user.SiteId, base.SiteId)
 	assert.Equal(t, user.Role, base.Role)
 	assert.Equal(t, user.AuthVersion, base.AuthVersion)
 	assert.Equal(t, userCacheSchemaVersion, base.CacheSchema)

@@ -275,7 +275,13 @@ func migrateDB() error {
 	if err := preflightExternalIdentityClaims(DB); err != nil {
 		return err
 	}
+	if err := preflightUserOAuthBindingsSiteScope(DB); err != nil {
+		return err
+	}
 	if err := prepareExternalIdentityClaimsSiteScope(DB); err != nil {
+		return err
+	}
+	if err := prepareUserOAuthBindingsSiteScope(DB); err != nil {
 		return err
 	}
 
@@ -296,6 +302,7 @@ func migrateDB() error {
 		&TopUp{},
 		&QuotaData{},
 		&Task{},
+		&TaskBillingLedger{},
 		&Model{},
 		&Vendor{},
 		&PrefillGroup{},
@@ -329,6 +336,9 @@ func migrateDB() error {
 		return err
 	}
 	if err := finalizeExternalIdentityClaimsSiteScope(DB); err != nil {
+		return err
+	}
+	if err := finalizeUserOAuthBindingsSiteScope(DB); err != nil {
 		return err
 	}
 	// Defensive: guarantee no NULL site_id rows remain so `WHERE site_id = 0`
@@ -377,7 +387,13 @@ func migrateDBFast() error {
 	if err := preflightExternalIdentityClaims(DB); err != nil {
 		return err
 	}
+	if err := preflightUserOAuthBindingsSiteScope(DB); err != nil {
+		return err
+	}
 	if err := prepareExternalIdentityClaimsSiteScope(DB); err != nil {
+		return err
+	}
+	if err := prepareUserOAuthBindingsSiteScope(DB); err != nil {
 		return err
 	}
 
@@ -403,6 +419,7 @@ func migrateDBFast() error {
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
 		{&Task{}, "Task"},
+		{&TaskBillingLedger{}, "TaskBillingLedger"},
 		{&Model{}, "Model"},
 		{&Vendor{}, "Vendor"},
 		{&PrefillGroup{}, "PrefillGroup"},
@@ -456,6 +473,9 @@ func migrateDBFast() error {
 		}
 	}
 	if err := finalizeExternalIdentityClaimsSiteScope(DB); err != nil {
+		return err
+	}
+	if err := finalizeUserOAuthBindingsSiteScope(DB); err != nil {
 		return err
 	}
 	// Mirror migrateDB(): guarantee no NULL site_id rows remain so main-site

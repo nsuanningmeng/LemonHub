@@ -544,9 +544,7 @@ export function UsersMutateDrawer({
                         control={form.control}
                         name='aff_cash_settled'
                         render={({ field }) => (
-                          <FormItem
-                            className={sideDrawerSwitchItemClassName()}
-                          >
+                          <FormItem className={sideDrawerSwitchItemClassName()}>
                             <div className='flex flex-col gap-0.5'>
                               <FormLabel className='text-sm'>
                                 {t('Cash-settled promoter')}

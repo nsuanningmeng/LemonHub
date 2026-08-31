@@ -14,8 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/samber/lo"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,8 +21,8 @@ func convertCf2CompletionsRequest(textRequest dto.GeneralOpenAIRequest) *CfReque
 	p, _ := textRequest.Prompt.(string)
 	return &CfRequest{
 		Prompt:      p,
-		MaxTokens:   textRequest.GetMaxTokens(),
-		Stream:      lo.FromPtrOr(textRequest.Stream, false),
+		MaxTokens:   textRequest.GetMaxTokensPointer(),
+		Stream:      textRequest.Stream,
 		Temperature: textRequest.Temperature,
 	}
 }
@@ -61,7 +59,7 @@ func cfStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 			responseText += choice.Delta.GetContentString()
 		}
 		response.Id = id
-		response.Model = info.UpstreamModelName
+		response.Model = info.PublicResponseModelName(info.UpstreamModelName)
 		err = helper.ObjectData(c, response)
 		if isFirst {
 			isFirst = false
@@ -77,7 +75,7 @@ func cfStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 	}
 	usage := service.ResponseText2Usage(c, responseText, info.UpstreamModelName, info.GetEstimatePromptTokens())
 	if info.ShouldIncludeUsage {
-		response := helper.GenerateFinalUsageResponse(id, info.StartTime.Unix(), info.UpstreamModelName, *usage)
+		response := helper.GenerateFinalUsageResponse(id, info.StartTime.Unix(), info.PublicResponseModelName(info.UpstreamModelName), *usage)
 		err := helper.ObjectData(c, response)
 		if err != nil {
 			logger.LogError(c, "error_rendering_final_usage_response: "+err.Error())
@@ -101,7 +99,7 @@ func cfHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
 	}
-	response.Model = info.UpstreamModelName
+	response.Model = info.PublicResponseModelName(info.UpstreamModelName)
 	var responseText string
 	for _, choice := range response.Choices {
 		responseText += choice.Message.StringContent()

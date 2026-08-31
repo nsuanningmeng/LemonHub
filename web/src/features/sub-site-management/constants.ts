@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type TFunction } from 'i18next'
+
 import { type StatusBadgeProps } from '@/components/status-badge'
 
 // ============================================================================
@@ -28,8 +29,8 @@ export const SITE_STATUS = {
   DISABLED: 2,
 } as const
 
-export const SITE_STATUS_VALUES = Object.values(SITE_STATUS).map(
-  (value) => String(value)
+export const SITE_STATUS_VALUES = Object.values(SITE_STATUS).map((value) =>
+  String(value)
 ) as `${number}`[]
 
 // labelKey values are i18n keys; use t(config.labelKey) in components

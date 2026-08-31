@@ -56,6 +56,20 @@ func TestSanitizeURLForLogKeepsURLWithoutSensitiveQuery(t *testing.T) {
 	assert.Equal(t, rawURL, got)
 }
 
+func TestSanitizeUpstreamURLForLogMasksArbitraryQueryValues(t *testing.T) {
+	rawURL := "https://user:password@upstream.example/v1/chat?region=us-east-1&custom_name=literal-secret#private"
+
+	got := SanitizeUpstreamURLForLog(rawURL)
+
+	assert.NotContains(t, got, "literal-secret")
+	assert.NotContains(t, got, "us-east-1")
+	assert.NotContains(t, got, "user")
+	assert.NotContains(t, got, "password")
+	assert.NotContains(t, got, "private")
+	assert.Contains(t, got, "custom_name=%2A%2A%2Amasked%2A%2A%2A")
+	assert.Contains(t, got, "region=%2A%2A%2Amasked%2A%2A%2A")
+}
+
 func TestValidateMultipartDirectNormalizesImageField(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := strings.NewReader(`{"model":"wan2.7-i2v","prompt":"animate","image":" https://example.com/first.png "}`)

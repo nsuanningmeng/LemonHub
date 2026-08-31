@@ -80,7 +80,9 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
   const normalizedDefaults: SystemInfoFormValues = {
     SystemName: normalizeValue(defaultValues.SystemName),
     ServerAddress: normalizeValue(defaultValues.ServerAddress),
-    TrustedRedirectDomains: normalizeValue(defaultValues.TrustedRedirectDomains),
+    TrustedRedirectDomains: normalizeValue(
+      defaultValues.TrustedRedirectDomains
+    ),
     Logo: normalizeValue(defaultValues.Logo),
     Footer: normalizeValue(defaultValues.Footer),
     SeoDescription: normalizeValue(defaultValues.SeoDescription),

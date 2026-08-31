@@ -60,6 +60,7 @@ func xAIStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		}
 
 		openaiResponse := streamResponseXAI2OpenAI(xAIResp, usage)
+		openaiResponse.Model = info.PublicResponseModelName(openaiResponse.Model)
 		_ = openai.ProcessStreamResponse(*openaiResponse, &responseTextBuilder, &toolCount)
 		if err := helper.ObjectData(c, openaiResponse); err != nil {
 			common.SysLog(err.Error())
@@ -93,6 +94,7 @@ func xAIHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response
 		xaiResponse.Usage.CompletionTokens = xaiResponse.Usage.TotalTokens - xaiResponse.Usage.PromptTokens
 		xaiResponse.Usage.CompletionTokenDetails.TextTokens = xaiResponse.Usage.CompletionTokens - xaiResponse.Usage.CompletionTokenDetails.ReasoningTokens
 	}
+	xaiResponse.Model = info.PublicResponseModelName(xaiResponse.Model)
 
 	// new body
 	encodeJson, err := common.Marshal(xaiResponse)

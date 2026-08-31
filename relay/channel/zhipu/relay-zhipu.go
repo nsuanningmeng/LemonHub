@@ -16,8 +16,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/samber/lo"
-
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -99,7 +97,7 @@ func requestOpenAI2Zhipu(request dto.GeneralOpenAIRequest) *ZhipuRequest {
 	return &ZhipuRequest{
 		Prompt:      messages,
 		Temperature: request.Temperature,
-		TopP:        lo.FromPtrOr(request.TopP, 0),
+		TopP:        request.TopP,
 		Incremental: false,
 	}
 }
@@ -190,6 +188,7 @@ func zhipuStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 		select {
 		case data := <-dataChan:
 			response := streamResponseZhipu2OpenAI(data)
+			response.Model = info.PublicResponseModelName(response.Model)
 			jsonResponse, err := json.Marshal(response)
 			if err != nil {
 				common.SysLog("error marshalling stream response: " + err.Error())
@@ -205,6 +204,7 @@ func zhipuStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 				return true
 			}
 			response, zhipuUsage := streamMetaResponseZhipu2OpenAI(&zhipuResponse)
+			response.Model = info.PublicResponseModelName(response.Model)
 			jsonResponse, err := json.Marshal(response)
 			if err != nil {
 				common.SysLog("error marshalling stream response: " + err.Error())
@@ -240,6 +240,7 @@ func zhipuHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respon
 		}, resp.StatusCode)
 	}
 	fullTextResponse := responseZhipu2OpenAI(&zhipuResponse)
+	fullTextResponse.Model = info.PublicResponseModelName(fullTextResponse.Model)
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
+
 import { ReferralAdminLeaderboard } from './referral-admin-leaderboard'
 import { ReferralAdminSummaryCards } from './referral-admin-summary-cards'
 

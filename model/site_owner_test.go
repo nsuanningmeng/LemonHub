@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestCreateSiteOwnerPromotionAndWallet verifies that creating a sub-site promotes its
@@ -77,4 +79,64 @@ func TestCreateSiteOwnerPromotionAndWallet(t *testing.T) {
 	if err := AdjustSiteWallet(site.Id, -999999, "big", owner.Id); !errors.Is(err, ErrInsufficientWalletBalance) {
 		t.Fatalf("over-deduct should be insufficient, got %v", err)
 	}
+}
+
+func TestCreateSiteMovesOwnerIdentityScopeAndAuthVersion(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(
+		&Site{},
+		&SiteDomain{},
+		&User{},
+		&CustomOAuthProvider{},
+		&UserOAuthBinding{},
+		&ExternalIdentityClaim{},
+	))
+	oldRedisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
+	t.Cleanup(func() { common.RedisEnabled = oldRedisEnabled })
+
+	owner := User{
+		Username:    "identity_site_owner",
+		Password:    "password",
+		AffCode:     "identity-site-owner",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		AuthVersion: 3,
+	}
+	require.NoError(t, DB.Create(&owner).Error)
+	t.Cleanup(func() { DB.Unscoped().Delete(&User{}, owner.Id) })
+	require.NoError(t, UpdateUserBindColumn(owner.Id, "github_id", "site-owner-github"))
+	provider := createCustomOAuthProviderForBindingTest(t, DB)
+	require.NoError(t, CreateUserOAuthBinding(&UserOAuthBinding{
+		UserId: owner.Id, ProviderId: provider.Id, ProviderUserId: "site-owner-custom",
+	}))
+	t.Cleanup(func() {
+		DB.Where("user_id = ?", owner.Id).Delete(&UserOAuthBinding{})
+		DB.Where("user_id = ?", owner.Id).Delete(&ExternalIdentityClaim{})
+	})
+
+	site := Site{
+		Name:          "identity-owner-site",
+		OwnerUsername: owner.Username,
+		Domains:       []string{"identity-owner.example.com"},
+	}
+	require.NoError(t, CreateSite(&site))
+	t.Cleanup(func() {
+		DB.Where("site_id = ?", site.Id).Delete(&SiteDomain{})
+		DB.Delete(&Site{}, site.Id)
+	})
+
+	var moved User
+	require.NoError(t, DB.First(&moved, owner.Id).Error)
+	assert.Equal(t, site.Id, moved.SiteId)
+	assert.Equal(t, int64(4), moved.AuthVersion)
+
+	var claims []ExternalIdentityClaim
+	require.NoError(t, DB.Where("user_id = ?", owner.Id).Order("provider").Find(&claims).Error)
+	require.Len(t, claims, 2)
+	for _, claim := range claims {
+		assert.Equal(t, site.Id, claim.SiteId)
+	}
+	var binding UserOAuthBinding
+	require.NoError(t, DB.Where("user_id = ? AND provider_id = ?", owner.Id, provider.Id).First(&binding).Error)
+	assert.Equal(t, site.Id, binding.SiteId)
 }

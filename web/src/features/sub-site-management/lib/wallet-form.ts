@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { z } from 'zod'
 import type { TFunction } from 'i18next'
+import { z } from 'zod'
 
 // ============================================================================
 // Wallet Form Schemas
@@ -28,9 +28,7 @@ import type { TFunction } from 'i18next'
 
 export function getRechargeFormSchema(t: TFunction) {
   return z.object({
-    amount_yuan: z
-      .number()
-      .gt(0, t('Amount must be greater than 0')),
+    amount_yuan: z.number().gt(0, t('Amount must be greater than 0')),
     remark: z.string().optional(),
   })
 }
@@ -47,9 +45,7 @@ export const RECHARGE_FORM_DEFAULT_VALUES: RechargeFormValues = {
 
 export function getAdjustFormSchema(t: TFunction) {
   return z.object({
-    amount_yuan: z
-      .number()
-      .refine((v) => v !== 0, t('Amount cannot be zero')),
+    amount_yuan: z.number().refine((v) => v !== 0, t('Amount cannot be zero')),
     remark: z.string().min(1, t('Remark is required')),
   })
 }

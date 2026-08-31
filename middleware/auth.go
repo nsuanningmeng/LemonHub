@@ -354,6 +354,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		}
 
 		c.Set("id", token.UserId)
+		c.Set("operator_site_id", userCache.SiteId)
 		c.Set("token_id", token.Id)
 		c.Set("token_key", token.Key)
 		c.Next()
@@ -385,7 +386,8 @@ func TokenAuth() func(c *gin.Context) {
 			}
 		}
 		// gemini api 从query中获取key
-		if strings.HasPrefix(c.Request.URL.Path, "/v1beta/models") ||
+		if c.Request.URL.Path == "/v1/models" ||
+			strings.HasPrefix(c.Request.URL.Path, "/v1beta/models") ||
 			strings.HasPrefix(c.Request.URL.Path, "/v1beta/openai/models") ||
 			strings.HasPrefix(c.Request.URL.Path, "/v1/models/") {
 			skKey := c.Query("key")
@@ -465,6 +467,9 @@ func TokenAuth() func(c *gin.Context) {
 		}
 
 		userCache.WriteContext(c)
+		// Billing markup and tenant-aware relay behavior are keyed from the
+		// authenticated owner, never from the request Host.
+		c.Set("operator_site_id", userCache.SiteId)
 
 		userGroup := userCache.Group
 		// 令牌支持多分组（逗号分隔有序列表），逐个校验访问权限与有效性。

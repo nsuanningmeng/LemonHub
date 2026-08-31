@@ -9,11 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCompleteEpayTopUpSaturatesOversizedAmount protects the billing invariant that a
-// top-up credit can never wrap negative (or exceed the int32 quota column): an order
-// whose Amount*QuotaPerUnit overflows int32 must settle with the credit clamped to
-// common.MaxQuota — a positive, storable value — instead of a wrapped/overflowing one.
-func TestCompleteEpayTopUpSaturatesOversizedAmount(t *testing.T) {
+// TestCompleteEpayTopUpRejectsOversizedAmount protects the billing invariant that a
+// top-up credit can never wrap negative or reach the reserved int32 saturation bound.
+// Invalid legacy orders remain pending for manual resolution and credit no quota.
+func TestCompleteEpayTopUpRejectsOversizedAmount(t *testing.T) {
 	require.NoError(t, DB.AutoMigrate(&TopUp{}, &User{}))
 	const tradeNo = "SATURATE1"
 	cleanup := func() {
@@ -37,12 +36,15 @@ func TestCompleteEpayTopUpSaturatesOversizedAmount(t *testing.T) {
 	}).Error)
 
 	finalStatus, quotaAdded, err := CompleteEpayTopUp(tradeNo, 0, 1)
-	require.NoError(t, err)
-	assert.Equal(t, common.TopUpStatusSuccess, finalStatus)
-	assert.Equal(t, common.MaxQuota, quotaAdded, "oversized credit must clamp to MaxQuota, never wrap")
+	require.ErrorIs(t, err, ErrInvalidTopUpQuota)
+	assert.Empty(t, finalStatus)
+	assert.Zero(t, quotaAdded)
 
 	var got User
 	require.NoError(t, DB.Select("quota").First(&got, u.Id).Error)
-	assert.Equal(t, common.MaxQuota, got.Quota)
-	assert.Positive(t, got.Quota, "a top-up must never debit the account")
+	assert.Zero(t, got.Quota)
+
+	var gotTopUp TopUp
+	require.NoError(t, DB.Select("status").Where("trade_no = ?", tradeNo).First(&gotTopUp).Error)
+	assert.Equal(t, common.TopUpStatusPending, gotTopUp.Status)
 }

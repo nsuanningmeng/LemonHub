@@ -296,7 +296,7 @@ func AddToken(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
 			return
 		}
-		maxQuotaValue := int((1000000000 * common.QuotaPerUnit))
+		maxQuotaValue := common.QuotaFromFloat(1000000000 * common.QuotaPerUnit)
 		if token.RemainQuota > maxQuotaValue {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return
@@ -394,7 +394,7 @@ func UpdateToken(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
 			return
 		}
-		maxQuotaValue := int((1000000000 * common.QuotaPerUnit))
+		maxQuotaValue := common.QuotaFromFloat(1000000000 * common.QuotaPerUnit)
 		if token.RemainQuota > maxQuotaValue {
 			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
 			return

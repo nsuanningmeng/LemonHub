@@ -23,7 +23,7 @@ func useRateLimitMiniRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
 	previousRedisEnabled := common.RedisEnabled
 	previousRedisClient := common.RDB
 	redisServer := miniredis.RunT(t)
-	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr(), MaxRetries: -1})
 	require.NoError(t, redisClient.Ping(context.Background()).Err())
 
 	common.RedisEnabled = true

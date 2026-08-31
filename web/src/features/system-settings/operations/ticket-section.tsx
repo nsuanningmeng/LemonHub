@@ -16,20 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
-import * as z from 'zod'
-import { useFieldArray, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
+import { useMemo } from 'react'
+import { useFieldArray, useForm } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import * as z from 'zod'
+
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Form,
@@ -44,6 +40,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -53,8 +50,8 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
-import { safeNumberFieldProps } from '../utils/numeric-field'
 import type { TicketTypeConfig } from '../types'
+import { safeNumberFieldProps } from '../utils/numeric-field'
 
 const COMMON_MIME_TYPES = [
   'image/png',
@@ -181,7 +178,9 @@ function toPersisted(values: {
     'ticket_setting.attachment_retention_days': values.attachmentRetentionDays,
     'ticket_setting.closed_ticket_retention_days':
       values.closedTicketRetentionDays,
-    'ticket_setting.allowed_mime_types': JSON.stringify(values.allowedMimeTypes),
+    'ticket_setting.allowed_mime_types': JSON.stringify(
+      values.allowedMimeTypes
+    ),
     'ticket_setting.types': JSON.stringify(normalizedTypes),
   }
 }
@@ -212,7 +211,8 @@ export function TicketSection({ defaultValues }: TicketSectionProps) {
   // Show the common image types plus any extra saved values so nothing is lost.
   const mimeOptions = useMemo(() => {
     const extras = defaultValues.allowedMimeTypes.filter(
-      (value) => !COMMON_MIME_TYPES.includes(value as (typeof COMMON_MIME_TYPES)[number])
+      (value) =>
+        !COMMON_MIME_TYPES.includes(value as (typeof COMMON_MIME_TYPES)[number])
     )
     return [...COMMON_MIME_TYPES, ...extras]
   }, [defaultValues.allowedMimeTypes])
@@ -229,9 +229,7 @@ export function TicketSection({ defaultValues }: TicketSectionProps) {
     })
     const next = toPersisted(values)
 
-    const updates = (
-      Object.keys(next) as Array<keyof PersistedTicketSettings>
-    )
+    const updates = (Object.keys(next) as Array<keyof PersistedTicketSettings>)
       .filter((key) => next[key] !== baseline[key])
       .map((key) => ({ key, value: next[key] }))
 
@@ -267,7 +265,10 @@ export function TicketSection({ defaultValues }: TicketSectionProps) {
                   </FormDescription>
                 </SettingsSwitchContent>
                 <FormControl>
-                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
                 </FormControl>
               </SettingsSwitchItem>
             )}
@@ -281,7 +282,9 @@ export function TicketSection({ defaultValues }: TicketSectionProps) {
                 <SettingsSwitchContent>
                   <FormLabel>{t('Notify admins of new tickets')}</FormLabel>
                   <FormDescription>
-                    {t('Send a notification to admins when a ticket is created.')}
+                    {t(
+                      'Send a notification to admins when a ticket is created.'
+                    )}
                   </FormDescription>
                 </SettingsSwitchContent>
                 <FormControl>
@@ -528,7 +531,9 @@ export function TicketSection({ defaultValues }: TicketSectionProps) {
                               checked={field.value}
                               onCheckedChange={field.onChange}
                             />
-                            <Label className='font-normal'>{t('Enabled')}</Label>
+                            <Label className='font-normal'>
+                              {t('Enabled')}
+                            </Label>
                           </div>
                         )}
                       />

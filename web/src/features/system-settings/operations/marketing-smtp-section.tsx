@@ -237,7 +237,9 @@ export function MarketingSmtpSection({
                   />
                 </FormControl>
                 <FormDescription>
-                  {t('Leave empty to use the main SMTP settings for bulk email')}
+                  {t(
+                    'Leave empty to use the main SMTP settings for bulk email'
+                  )}
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -282,9 +284,13 @@ export function MarketingSmtpSection({
                   })}
                   onValueChange={(value) => {
                     const mode = value as SmtpSecurityMode
-                    form.setValue('MarketingSMTPSSLEnabled', mode === 'ssl_tls', {
-                      shouldDirty: true,
-                    })
+                    form.setValue(
+                      'MarketingSMTPSSLEnabled',
+                      mode === 'ssl_tls',
+                      {
+                        shouldDirty: true,
+                      }
+                    )
                     form.setValue(
                       'MarketingSMTPStartTLSEnabled',
                       mode === 'starttls',

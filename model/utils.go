@@ -40,6 +40,9 @@ func InitBatchUpdater() {
 }
 
 func addNewRecord(type_ int, id int, value int) {
+	if value == 0 {
+		return
+	}
 	batchUpdateLocks[type_].Lock()
 	defer batchUpdateLocks[type_].Unlock()
 	if _, ok := batchUpdateStores[type_][id]; !ok {
@@ -47,6 +50,17 @@ func addNewRecord(type_ int, id int, value int) {
 	} else {
 		batchUpdateStores[type_][id] += value
 	}
+}
+
+// hasPendingBatchUpdate reports whether this process still has an unapplied
+// balance delta for one record. A Redis cache miss must not be hydrated from
+// the database while such a delta exists: in batch mode that database row is
+// intentionally stale and would make the re-created cache authorize quota a
+// second time.
+func hasPendingBatchUpdate(type_ int, id int) bool {
+	batchUpdateLocks[type_].Lock()
+	defer batchUpdateLocks[type_].Unlock()
+	return batchUpdateStores[type_][id] != 0
 }
 
 func batchUpdate() {
@@ -85,6 +99,11 @@ func batchUpdate() {
 				err := increaseTokenQuota(key, value)
 				if err != nil {
 					common.SysLog("failed to batch update token quota: " + err.Error())
+					// The Redis balance already includes this delta. Merge it back
+					// into the live store so a transient database failure cannot
+					// disappear when the cache expires. addNewRecord holds the new
+					// store lock and therefore composes safely with concurrent deltas.
+					addNewRecord(BatchUpdateTypeTokenQuota, key, value)
 				}
 			case BatchUpdateTypeChannelUsedQuota:
 				updateChannelUsedQuota(key, value)
@@ -107,7 +126,11 @@ func batchUpdate() {
 		userIDs[key] = struct{}{}
 	}
 	for key := range userIDs {
-		updateUserQuotaUsedQuotaAndRequestCount(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key])
+		if err := updateUserQuotaUsedQuotaAndRequestCount(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key]); err != nil {
+			addNewRecord(BatchUpdateTypeUserQuota, key, userQuotaStore[key])
+			addNewRecord(BatchUpdateTypeUsedQuota, key, usedQuotaStore[key])
+			addNewRecord(BatchUpdateTypeRequestCount, key, requestCountStore[key])
+		}
 	}
 	common.SysLog("batch update finished")
 }

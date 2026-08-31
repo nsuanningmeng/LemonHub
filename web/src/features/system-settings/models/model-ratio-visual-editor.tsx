@@ -16,6 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type {
+  ColumnFiltersState,
+  OnChangeFn,
+  PaginationState,
+  RowSelectionState,
+  VisibilityState,
+  SortingState,
+} from '@tanstack/react-table'
+import { Copy, Plus } from 'lucide-react'
 import {
   useState,
   useMemo,
@@ -26,19 +35,9 @@ import {
   useImperativeHandle,
   useRef,
 } from 'react'
-import {
-  type ColumnFiltersState,
-  type OnChangeFn,
-  type PaginationState,
-  type RowSelectionState,
-  type VisibilityState,
-  type SortingState,
-} from '@tanstack/react-table'
-import { useMediaQuery } from '@/hooks'
-import { Copy, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+
 import {
   DataTableBulkActions,
   DataTableToolbar,
@@ -47,7 +46,10 @@ import {
   DataTableView,
   useDataTable,
 } from '@/components/data-table'
+import { Button } from '@/components/ui/button'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
+import { useMediaQuery } from '@/hooks'
+
 import { safeJsonParse } from '../utils/json-parser'
 import type { PricingMode } from './model-pricing-core'
 import {
@@ -238,7 +240,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
         }
       })
       .filter((row) => !row.isDraftDeleted)
-      .filter((row) => filterMode !== 'unset' || isBasePricingUnset(row.draft ?? row.saved))
+      .filter(
+        (row) =>
+          filterMode !== 'unset' || isBasePricingUnset(row.draft ?? row.saved)
+      )
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [
     candidateModelNames,
@@ -681,6 +686,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           <DataTableToolbar
             table={table}
             searchPlaceholder={t('Search models...')}
+            searchDebounceMs={250}
             filters={
               filterMode === 'unset'
                 ? undefined

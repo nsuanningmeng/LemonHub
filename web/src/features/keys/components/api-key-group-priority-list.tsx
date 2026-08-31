@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronsUpDown, Plus, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { Button } from '@/components/ui/button'
 import {
   Command,
@@ -33,7 +34,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { type ApiKeyGroupOption } from './api-key-group-combobox'
+
+import { MAX_API_KEY_GROUPS } from '../constants'
+import type { ApiKeyGroupOption } from './api-key-group-combobox'
 import { GroupRatioBadge } from './auto-group-visuals'
 
 type ApiKeyGroupPriorityListProps = {
@@ -88,13 +91,16 @@ export function ApiKeyGroupPriorityList({
   }, [options, value, searchValue])
 
   const addGroup = (groupValue: string) => {
-    if (value.includes(groupValue)) return
+    if (value.length >= MAX_API_KEY_GROUPS || value.includes(groupValue)) {
+      return
+    }
     onChange([...value, groupValue])
     setSearchValue('')
     setOpen(false)
   }
 
   const removeGroup = (groupValue: string) => {
+    if (value.length <= 1) return
     onChange(value.filter((item) => item !== groupValue))
   }
 
@@ -106,6 +112,15 @@ export function ApiKeyGroupPriorityList({
     next[index] = next[target]
     next[target] = tmp
     onChange(next)
+  }
+
+  let addGroupLabel = t('Add another group')
+  if (value.length >= MAX_API_KEY_GROUPS) {
+    addGroupLabel = t('Maximum {{max}} groups selected', {
+      max: MAX_API_KEY_GROUPS,
+    })
+  } else if (value.length === 0) {
+    addGroupLabel = placeholder || t('Select groups (top = highest priority)')
   }
 
   return (
@@ -163,7 +178,7 @@ export function ApiKeyGroupPriorityList({
                   variant='ghost'
                   size='icon-sm'
                   className='text-muted-foreground hover:text-destructive'
-                  disabled={disabled}
+                  disabled={disabled || value.length <= 1}
                   onClick={() => removeGroup(groupValue)}
                   aria-label={t('Remove')}
                 >
@@ -183,16 +198,18 @@ export function ApiKeyGroupPriorityList({
               variant='outline'
               role='combobox'
               aria-expanded={open}
-              disabled={disabled || availableOptions.length === 0}
+              disabled={
+                disabled ||
+                value.length >= MAX_API_KEY_GROUPS ||
+                availableOptions.length === 0
+              }
               className='border-input bg-muted/40 hover:bg-muted/55 w-full justify-between gap-2 rounded-lg px-3 py-2 text-start shadow-none'
             />
           }
         >
           <span className='text-muted-foreground flex min-w-0 items-center gap-1.5 truncate'>
             <Plus className='h-4 w-4 shrink-0' />
-            {value.length === 0
-              ? placeholder || t('Select groups (top = highest priority)')
-              : t('Add another group')}
+            {addGroupLabel}
           </span>
           <ChevronsUpDown className='h-4 w-4 shrink-0 opacity-50' />
         </PopoverTrigger>

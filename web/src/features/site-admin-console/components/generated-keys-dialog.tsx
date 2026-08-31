@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Copy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -29,13 +29,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 
 type GeneratedKeysDialogProps = {
   keys: string[] | null
   onClose: () => void
 }
 
-export function GeneratedKeysDialog({ keys, onClose }: GeneratedKeysDialogProps) {
+export function GeneratedKeysDialog({
+  keys,
+  onClose,
+}: GeneratedKeysDialogProps) {
   const { t } = useTranslation()
   const { copyToClipboard } = useCopyToClipboard()
 

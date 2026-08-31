@@ -69,8 +69,8 @@ func useIndependentAuthSessionRedis(t *testing.T) (*miniredis.Miniredis, *redis.
 	previousSyncFrequency := common.SyncFrequency
 	serverA := miniredis.RunT(t)
 	serverB := miniredis.RunT(t)
-	clientA := redis.NewClient(&redis.Options{Addr: serverA.Addr()})
-	clientB := redis.NewClient(&redis.Options{Addr: serverB.Addr()})
+	clientA := redis.NewClient(&redis.Options{Addr: serverA.Addr(), MaxRetries: -1})
+	clientB := redis.NewClient(&redis.Options{Addr: serverB.Addr(), MaxRetries: -1})
 	common.RedisEnabled = true
 	common.SyncFrequency = 2
 	common.RDB = clientA

@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"gorm.io/gorm"
 )
 
 type TaskStatus string
@@ -46,24 +48,32 @@ const (
 const TaskRefundLegacyCutoff int64 = 1771718400 // 2026-02-22 00:00:00 UTC
 
 type Task struct {
-	ID         int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
-	CreatedAt  int64                 `json:"created_at" gorm:"index"`
-	UpdatedAt  int64                 `json:"updated_at"`
-	TaskID     string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
-	Platform   constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
-	UserId     int                   `json:"user_id" gorm:"index"`
-	Group      string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
-	ChannelId  int                   `json:"channel_id" gorm:"index"`
-	Quota      int                   `json:"quota"`
-	Action     string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
-	Status     TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
-	FailReason string                `json:"fail_reason"`
-	SubmitTime int64                 `json:"submit_time" gorm:"index"`
-	StartTime  int64                 `json:"start_time" gorm:"index"`
-	FinishTime int64                 `json:"finish_time" gorm:"index"`
-	Progress   string                `json:"progress" gorm:"type:varchar(20);index"`
-	Properties Properties            `json:"properties" gorm:"type:json"`
-	Username   string                `json:"username,omitempty" gorm:"-"`
+	ID        int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
+	CreatedAt int64                 `json:"created_at" gorm:"index"`
+	UpdatedAt int64                 `json:"updated_at"`
+	TaskID    string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
+	Platform  constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
+	UserId    int                   `json:"user_id" gorm:"index"`
+	Group     string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
+	ChannelId int                   `json:"channel_id" gorm:"index"`
+	Quota     int                   `json:"quota"`
+	// BillingStatus gates automatic poll/settle/refund side effects. Empty is
+	// the legacy-ready value; new submissions remain pending until their
+	// aggregate baseline and ready marker commit together.
+	BillingStatus string `json:"-" gorm:"type:varchar(32);index"`
+	// TokenCharged is tri-state for compatibility: nil means a legacy row whose
+	// token participation is inferred from PrivateData.TokenId. New rows persist
+	// true/false explicitly, including false for playground requests.
+	TokenCharged *bool      `json:"-"`
+	Action       string     `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
+	Status       TaskStatus `json:"status" gorm:"type:varchar(20);index"` // 任务状态
+	FailReason   string     `json:"fail_reason"`
+	SubmitTime   int64      `json:"submit_time" gorm:"index"`
+	StartTime    int64      `json:"start_time" gorm:"index"`
+	FinishTime   int64      `json:"finish_time" gorm:"index"`
+	Progress     string     `json:"progress" gorm:"type:varchar(20);index"`
+	Properties   Properties `json:"properties" gorm:"type:json"`
+	Username     string     `json:"username,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
@@ -110,6 +120,78 @@ type TaskPrivateData struct {
 	TokenId        int                 `json:"token_id,omitempty"`        // 令牌 ID，用于令牌额度退款
 	NodeName       string              `json:"node_name,omitempty"`       // 发起任务的节点名，轮询结算阶段据此归属日志而非最后查询节点
 	BillingContext *TaskBillingContext `json:"billing_context,omitempty"` // 计费参数快照（用于轮询阶段重新计算）
+	// AggregateUsageState is written together with the initial usage journal.
+	// An empty value is legacy-unknown and is persisted as such on first
+	// settlement; unknown rows never mutate aggregate used counters.
+	AggregateUsageState string                 `json:"aggregate_usage_state,omitempty"`
+	SubmissionBilling   *TaskSubmissionBilling `json:"submission_billing,omitempty"`
+	BillingOperation    *TaskBillingOperation  `json:"billing_operation,omitempty"`
+}
+
+const (
+	TaskAggregateUsageAccounted     = "accounted"
+	TaskAggregateUsageLegacyUnknown = "legacy_unknown"
+
+	TaskBillingStatusPending      = "settlement_pending"
+	TaskBillingStatusReconciling  = "reconciliation_pending"
+	TaskBillingStatusReady        = "ready"
+	TaskBillingStatusManualReview = "manual_review"
+
+	TaskBillingStageStatePending       = "pending"
+	TaskBillingStageStateApplied       = "applied"
+	TaskBillingStageStateUndone        = "undone"
+	TaskBillingStageStateNotApplied    = "not_applied"
+	TaskBillingStageStateNotApplicable = "not_applicable"
+)
+
+// TaskSubmissionBilling is the durable recovery snapshot for the window
+// between upstream acceptance and billing readiness. It contains accounting
+// amounts and uncertainty markers only; no credentials are persisted.
+type TaskSubmissionBilling struct {
+	PreConsumedQuota int    `json:"pre_consumed_quota"`
+	TargetQuota      int    `json:"target_quota"`
+	FundingQuota     int    `json:"funding_quota"`
+	TokenQuota       int    `json:"token_quota"`
+	FundingUncertain bool   `json:"funding_uncertain,omitempty"`
+	TokenUncertain   bool   `json:"token_uncertain,omitempty"`
+	Failure          string `json:"failure,omitempty"`
+	UpdatedAt        int64  `json:"updated_at"`
+}
+
+// TaskBillingOperation is the durable admin-facing snapshot for a terminal
+// refund/settlement that has not yet reached a complete journal state.
+type TaskBillingOperation struct {
+	Operation     string `json:"operation"`
+	PreQuota      int    `json:"pre_quota"`
+	TargetQuota   int    `json:"target_quota"`
+	Delta         int    `json:"delta"`
+	FundingStage  string `json:"funding_stage"`
+	TokenStage    string `json:"token_stage"`
+	FinalizeStage string `json:"finalize_stage"`
+	Failure       string `json:"failure,omitempty"`
+	UpdatedAt     int64  `json:"updated_at"`
+}
+
+// BillingReady reports whether automatic billing side effects are allowed.
+// Empty is deliberately accepted for rows created before the readiness gate.
+func (t *Task) BillingReady() bool {
+	return t != nil && (t.BillingStatus == "" || t.BillingStatus == TaskBillingStatusReady)
+}
+
+// TokenBillingEnabled preserves legacy TokenId semantics while letting new
+// rows explicitly record that no token balance was ever charged.
+func (t *Task) TokenBillingEnabled() bool {
+	if t == nil || t.PrivateData.TokenId <= 0 {
+		return false
+	}
+	if t.TokenCharged == nil {
+		return true
+	}
+	return *t.TokenCharged
+}
+
+func taskBillingReadyScope(query *gorm.DB) *gorm.DB {
+	return query.Where("(billing_status IS NULL OR billing_status = ? OR billing_status = ?)", "", TaskBillingStatusReady)
 }
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
@@ -218,7 +300,7 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 	var err error
 
 	// 初始化查询构建器
-	query := DB.Where("user_id = ?", userId)
+	query := taskBillingReadyScope(DB).Where("user_id = ?", userId)
 
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
@@ -296,7 +378,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 
 func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	var tasks []*Task
-	err := DB.Where("progress != ?", "100%").
+	err := taskBillingReadyScope(DB).Where("progress != ?", "100%").
 		Where("status NOT IN ?", []string{TaskStatusFailure, TaskStatusSuccess}).
 		Where("submit_time < ?", cutoffUnix).
 		Order("submit_time").
@@ -308,11 +390,152 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 	return tasks
 }
 
+// GetStalePendingBillingTasks returns submissions or terminal reconciliations
+// whose worker may have died before billing became ready. UpdatedAt is the
+// operation heartbeat: using SubmitTime would immediately reap an actively
+// settling task that happened to run for longer than the grace period.
+func GetStalePendingBillingTasks(cutoffUnix int64, limit int) []*Task {
+	var tasks []*Task
+	err := DB.Where("billing_status IN ?", []string{TaskBillingStatusPending, TaskBillingStatusReconciling}).
+		Where("updated_at < ?", cutoffUnix).
+		Order("submit_time").
+		Limit(limit).
+		Find(&tasks).Error
+	if err != nil {
+		return nil
+	}
+	return tasks
+}
+
+// MarkBillingManualReview is a pending->manual CAS. A concurrently committed
+// aggregate baseline wins by changing the row to ready in its own transaction.
+func (t *Task) MarkBillingManualReview(reason string) (bool, error) {
+	if t == nil || t.ID <= 0 {
+		return false, errors.New("task must be persisted before billing review")
+	}
+	if t.BillingStatus == TaskBillingStatusReconciling && t.PrivateData.BillingOperation != nil {
+		t.PrivateData.BillingOperation.Failure = reason
+		t.PrivateData.BillingOperation.UpdatedAt = common.GetTimestamp()
+	} else {
+		if t.PrivateData.SubmissionBilling == nil {
+			t.PrivateData.SubmissionBilling = &TaskSubmissionBilling{}
+		}
+		t.PrivateData.SubmissionBilling.Failure = reason
+		t.PrivateData.SubmissionBilling.UpdatedAt = common.GetTimestamp()
+	}
+	result := DB.Model(&Task{}).
+		Where("id = ? AND billing_status IN ?", t.ID,
+			[]string{TaskBillingStatusPending, TaskBillingStatusReconciling}).
+		Updates(map[string]interface{}{
+			"billing_status": TaskBillingStatusManualReview,
+			"private_data":   t.PrivateData,
+			"updated_at":     common.GetTimestamp(),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected > 0 {
+		t.BillingStatus = TaskBillingStatusManualReview
+		return true, nil
+	}
+	return false, nil
+}
+
+func (t *Task) BeginBillingReconciliation(operation TaskBillingOperation) (bool, error) {
+	if t == nil || t.ID <= 0 {
+		return false, errors.New("task must be persisted before billing reconciliation")
+	}
+	now := common.GetTimestamp()
+	operation.UpdatedAt = now
+	t.PrivateData.BillingOperation = &operation
+	result := DB.Model(&Task{}).
+		Where("id = ? AND (billing_status IS NULL OR billing_status = ? OR billing_status = ?)",
+			t.ID, "", TaskBillingStatusReady).
+		Updates(map[string]interface{}{
+			"billing_status": TaskBillingStatusReconciling,
+			"private_data":   t.PrivateData,
+			"updated_at":     now,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return false, nil
+	}
+	t.BillingStatus = TaskBillingStatusReconciling
+	return true, nil
+}
+
+func (t *Task) CompleteBillingReconciliation() (bool, error) {
+	if t == nil || t.ID <= 0 {
+		return false, errors.New("task must be persisted before billing reconciliation")
+	}
+	result := DB.Model(&Task{}).
+		Where("id = ? AND billing_status = ?", t.ID, TaskBillingStatusReconciling).
+		Updates(map[string]interface{}{
+			"billing_status": TaskBillingStatusReady,
+			"updated_at":     common.GetTimestamp(),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return false, nil
+	}
+	t.BillingStatus = TaskBillingStatusReady
+	return true, nil
+}
+
+func (t *Task) UpdateBillingReconciliationSnapshot(operation TaskBillingOperation, manual bool) error {
+	if t == nil || t.ID <= 0 {
+		return errors.New("task must be persisted before billing reconciliation")
+	}
+	now := common.GetTimestamp()
+	operation.UpdatedAt = now
+	status := TaskBillingStatusReconciling
+	if manual {
+		status = TaskBillingStatusManualReview
+	}
+	var mergedPrivateData TaskPrivateData
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var current Task
+		if err := lockForUpdate(tx).Select("id", "billing_status", "private_data").
+			Where("id = ?", t.ID).First(&current).Error; err != nil {
+			return err
+		}
+		if current.BillingStatus != TaskBillingStatusReconciling {
+			return ErrTaskBillingOperationPending
+		}
+		current.PrivateData.BillingOperation = &operation
+		result := tx.Model(&Task{}).
+			Where("id = ? AND billing_status = ?", t.ID, TaskBillingStatusReconciling).
+			Updates(map[string]interface{}{
+				"billing_status": status,
+				"private_data":   current.PrivateData,
+				"updated_at":     now,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrTaskBillingOperationPending
+		}
+		mergedPrivateData = current.PrivateData
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	t.PrivateData = mergedPrivateData
+	t.BillingStatus = status
+	return nil
+}
+
 func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
 	var err error
 	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
+	err = taskBillingReadyScope(DB).Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
 	if err != nil {
 		return nil
 	}
@@ -325,7 +548,7 @@ func GetAllUnFinishSyncTasks(limit int) []*Task {
 // the scheduler skips creating a row entirely.
 func HasUnfinishedSyncTasks() bool {
 	var id int64
-	err := DB.Model(&Task{}).
+	err := taskBillingReadyScope(DB.Model(&Task{})).
 		Where("progress != ?", "100%").
 		Where("status != ?", TaskStatusFailure).
 		Where("status != ?", TaskStatusSuccess).
@@ -340,7 +563,7 @@ func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
 	}
 	var task *Task
 	var err error
-	err = DB.Where("user_id = ? and task_id = ?", userId, taskId).
+	err = taskBillingReadyScope(DB).Where("user_id = ? and task_id = ?", userId, taskId).
 		First(&task).Error
 	exist, err := RecordExist(err)
 	if err != nil {
@@ -355,7 +578,7 @@ func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
 	}
 	var task []*Task
 	var err error
-	err = DB.Where("user_id = ? and task_id in (?)", userId, taskIds).
+	err = taskBillingReadyScope(DB).Where("user_id = ? and task_id in (?)", userId, taskIds).
 		Find(&task).Error
 	if err != nil {
 		return nil, err
@@ -485,7 +708,7 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 // TaskCountAllUserTask returns total tasks for given user
 func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	var total int64
-	query := DB.Model(&Task{}).Where("user_id = ?", userId)
+	query := taskBillingReadyScope(DB.Model(&Task{})).Where("user_id = ?", userId)
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}

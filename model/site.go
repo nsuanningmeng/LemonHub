@@ -38,10 +38,10 @@ type Site struct {
 	ModelPriceRate int `json:"model_price_rate" gorm:"type:int;default:10000"`
 	// ModelPriceRateMax is the upper cap (万分比) the MAIN admin sets for this sub-site's markup.
 	// 0 means "no cap" (sub-site may set any value >= 10000). When > 0 it must be >= 10000.
-	ModelPriceRateMax int `json:"model_price_rate_max" gorm:"type:int;default:0"`
-	PayConfig           string `json:"pay_config" gorm:"type:text"` // JSON, per-site payment config (used from phase 4)
-	CreatedTime         int64  `json:"created_time" gorm:"bigint"`
-	UpdatedTime         int64  `json:"updated_time" gorm:"bigint"`
+	ModelPriceRateMax int    `json:"model_price_rate_max" gorm:"type:int;default:0"`
+	PayConfig         string `json:"pay_config" gorm:"type:text"` // JSON, per-site payment config (used from phase 4)
+	CreatedTime       int64  `json:"created_time" gorm:"bigint"`
+	UpdatedTime       int64  `json:"updated_time" gorm:"bigint"`
 
 	// Transient fields, never persisted by GORM.
 	Domains       []string `json:"domains" gorm:"-"`
@@ -330,7 +330,10 @@ func resolveOwner(tx *gorm.DB, username string) (*User, error) {
 		return nil, errors.New("归属代理账号不能为空")
 	}
 	var user User
-	if err := tx.Where("username = ? AND site_id = ?", username, 0).First(&user).Error; err != nil {
+	// Serialize site ownership transfer with concurrent OAuth claims and with a
+	// second CreateSite request for the same main-site account. Every identity
+	// claim takes this same user-row lock before deriving its site scope.
+	if err := lockForUpdate(tx).Where("username = ? AND site_id = ?", username, 0).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("归属代理账号不存在（须为主站账号）: " + username)
 		}
@@ -360,6 +363,7 @@ func CreateSite(site *Site) error {
 	}
 	normalizeSiteModelPriceRate(site)
 
+	var ownerId int
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		owner, err := resolveOwner(tx, site.OwnerUsername)
 		if err != nil {
@@ -369,6 +373,7 @@ func CreateSite(site *Site) error {
 			return err
 		}
 		site.OwnerUserId = owner.Id
+		ownerId = owner.Id
 		site.CreatedTime = common.GetTimestamp()
 		site.UpdatedTime = site.CreatedTime
 		// Persist core row (transient Domains/OwnerUsername are gorm:"-").
@@ -384,6 +389,9 @@ func CreateSite(site *Site) error {
 		// so they administer it via SiteAdminAuth-gated endpoints. Role is only raised
 		// (never lowered) for a common user; site_id is repointed to the new sub-site
 		// (the brand-new site has no users, so the composite (site_id,username) is free).
+		if _, err := IncrementUserAuthVersionWithTx(tx, owner.Id); err != nil {
+			return err
+		}
 		ownerUpdates := map[string]interface{}{"site_id": site.Id}
 		if owner.Role < common.RoleSubSiteAdmin {
 			ownerUpdates["role"] = common.RoleSubSiteAdmin
@@ -391,9 +399,23 @@ func CreateSite(site *Site) error {
 		if err := tx.Model(&User{}).Where("id = ?", owner.Id).Updates(ownerUpdates).Error; err != nil {
 			return err
 		}
+		// External identities and custom OAuth lookups use the same tenant scope
+		// as their owner. Moving the owner without these rows would strand login
+		// ownership in the main site and allow a second account to claim it.
+		if err := tx.Model(&ExternalIdentityClaim{}).Where("user_id = ?", owner.Id).
+			Update("site_id", site.Id).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&UserOAuthBinding{}).Where("user_id = ?", owner.Id).
+			Update("site_id", site.Id).Error; err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
+		return err
+	}
+	if err := PublishUserAuthCache(ownerId); err != nil {
 		return err
 	}
 	site.Domains = domains
@@ -449,13 +471,13 @@ func UpdateSite(site *Site) error {
 			"home_badge":            site.HomeBadge,
 			"home_title_line1":      site.HomeTitleLine1,
 			"home_title_line2":      site.HomeTitleLine2,
-			"status":                 site.Status,
-			"discount_rate":          site.DiscountRate,
-			"wallet_warn_threshold":  site.WalletWarnThreshold,
-			"pay_config":             site.PayConfig,
-			"model_price_rate":       site.ModelPriceRate,
-			"model_price_rate_max":   site.ModelPriceRateMax,
-			"updated_time":           common.GetTimestamp(),
+			"status":                site.Status,
+			"discount_rate":         site.DiscountRate,
+			"wallet_warn_threshold": site.WalletWarnThreshold,
+			"pay_config":            site.PayConfig,
+			"model_price_rate":      site.ModelPriceRate,
+			"model_price_rate_max":  site.ModelPriceRateMax,
+			"updated_time":          common.GetTimestamp(),
 		}
 		if err := tx.Model(&Site{}).Where("id = ?", site.Id).Updates(updates).Error; err != nil {
 			return err

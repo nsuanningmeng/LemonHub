@@ -274,11 +274,20 @@ type StreamOptions struct {
 }
 
 func (r *GeneralOpenAIRequest) GetMaxTokens() uint {
-	maxCompletionTokens := lo.FromPtrOr(r.MaxCompletionTokens, uint(0))
-	if maxCompletionTokens != 0 {
-		return maxCompletionTokens
+	return lo.FromPtrOr(r.GetMaxTokensPointer(), uint(0))
+}
+
+// GetMaxTokensPointer resolves the OpenAI max-token aliases while preserving
+// whether the client supplied the field. max_completion_tokens takes
+// precedence even when its explicit value is zero.
+func (r *GeneralOpenAIRequest) GetMaxTokensPointer() *uint {
+	if r == nil {
+		return nil
 	}
-	return lo.FromPtrOr(r.MaxTokens, uint(0))
+	if r.MaxCompletionTokens != nil {
+		return r.MaxCompletionTokens
+	}
+	return r.MaxTokens
 }
 
 func (r *GeneralOpenAIRequest) ParseInput() []string {
@@ -859,14 +868,19 @@ type OpenAIResponsesRequest struct {
 	Include json.RawMessage `json:"include,omitempty"`
 	// 在后台运行推理，暂时还不支持依赖的接口
 	// Background         json.RawMessage `json:"background,omitempty"`
-	Conversation       json.RawMessage `json:"conversation,omitempty"`
-	ContextManagement  json.RawMessage `json:"context_management,omitempty"`
-	Instructions       json.RawMessage `json:"instructions,omitempty"`
-	MaxOutputTokens    *uint           `json:"max_output_tokens,omitempty"`
-	TopLogProbs        *int            `json:"top_logprobs,omitempty"`
-	Metadata           json.RawMessage `json:"metadata,omitempty"`
-	Moderation         json.RawMessage `json:"moderation,omitempty"`
-	ParallelToolCalls  json.RawMessage `json:"parallel_tool_calls,omitempty"`
+	Conversation      json.RawMessage `json:"conversation,omitempty"`
+	ContextManagement json.RawMessage `json:"context_management,omitempty"`
+	Instructions      json.RawMessage `json:"instructions,omitempty"`
+	MaxOutputTokens   *uint           `json:"max_output_tokens,omitempty"`
+	TopLogProbs       *int            `json:"top_logprobs,omitempty"`
+	Metadata          json.RawMessage `json:"metadata,omitempty"`
+	Moderation        json.RawMessage `json:"moderation,omitempty"`
+	ParallelToolCalls json.RawMessage `json:"parallel_tool_calls,omitempty"`
+	// FrequencyPenalty/PresencePenalty are not part of the official OpenAI
+	// Responses API; they are forwarded verbatim for OpenAI-compatible upstreams
+	// (e.g. vLLM) that accept them.
+	FrequencyPenalty   json.RawMessage `json:"frequency_penalty,omitempty"`
+	PresencePenalty    json.RawMessage `json:"presence_penalty,omitempty"`
 	PreviousResponseID string          `json:"previous_response_id,omitempty"`
 	Reasoning          *Reasoning      `json:"reasoning,omitempty"`
 	// ServiceTier specifies upstream service level and may affect billing.

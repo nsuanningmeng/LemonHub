@@ -18,9 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { type ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
-import { formatTimestampToDate } from '@/lib/format'
+
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
+import { formatTimestampToDate } from '@/lib/format'
+
 import { SITE_STATUSES } from '../constants'
 import { type Site } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -117,9 +119,7 @@ export function useSubSiteColumns(): ColumnDef<Site>[] {
         const rate = row.getValue('discount_rate') as number
         return (
           <span className='font-mono text-sm'>
-            {rate === 10000
-              ? t('No Discount')
-              : `${(rate / 100).toFixed(0)}%`}
+            {rate === 10000 ? t('No Discount') : `${(rate / 100).toFixed(0)}%`}
           </span>
         )
       },

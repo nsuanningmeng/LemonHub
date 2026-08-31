@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 /**
  * getCurrentBaseURL returns the base URL of the current application.
  * It prioritizes window.location.origin to ensure multi-domain support,

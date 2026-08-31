@@ -41,6 +41,10 @@ func GeminiTextGenerationHandler(c *gin.Context, info *relaycommon.RelayInfo, re
 
 	// 计算使用量（优先上游 UsageMetadata，缺失时本地估算并保留 Gemini 计费语义）
 	usage := buildUsageFromGeminiResponse(c, info, &geminiResponse)
+	responseBody, err = info.RewriteModelForPublicResponse(responseBody, "model", "modelVersion", "model_version")
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
 
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
@@ -73,6 +77,10 @@ func NativeGeminiEmbeddingHandler(c *gin.Context, resp *http.Response, info *rel
 		}
 	}
 
+	responseBody, err = info.RewriteModelForPublicResponse(responseBody, "model", "modelVersion", "model_version")
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return usage, nil
@@ -82,7 +90,12 @@ func GeminiTextGenerationStreamHandler(c *gin.Context, info *relaycommon.RelayIn
 	helper.SetEventStreamHeaders(c)
 
 	return geminiStreamHandler(c, info, resp, func(data string, geminiResponse *dto.GeminiChatResponse) bool {
-		err := helper.StringData(c, data)
+		publicData, err := info.RewriteModelForPublicResponse(common.StringToByteSlice(data), "model", "modelVersion", "model_version")
+		if err != nil {
+			logger.LogError(c, "failed to rewrite Gemini stream model: "+err.Error())
+			return false
+		}
+		err = helper.StringData(c, string(publicData))
 		if err != nil {
 			logger.LogError(c, "failed to write stream data: "+err.Error())
 			return false

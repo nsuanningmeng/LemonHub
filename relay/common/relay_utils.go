@@ -67,6 +67,40 @@ func SanitizeURLForLog(rawURL string) string {
 	return parsedURL.String()
 }
 
+// SanitizeUpstreamURLForLog removes every query value from an upstream URL.
+// Channel routes can put credentials under arbitrary operator-defined query
+// names, so the name-based allowlist used by SanitizeURLForLog is not a safe
+// boundary for relay transport logs. Keeping the keys is sufficient to debug
+// URL construction without persisting credentials or request data.
+func SanitizeUpstreamURLForLog(rawURL string) string {
+	if rawURL == "" {
+		return rawURL
+	}
+
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return "[invalid upstream URL]"
+	}
+	changed := false
+	if parsedURL.User != nil {
+		parsedURL.User = nil
+		changed = true
+	}
+	if parsedURL.Fragment != "" {
+		parsedURL.Fragment = ""
+		changed = true
+	}
+	query := parsedURL.Query()
+	if len(query) == 0 && !changed {
+		return rawURL
+	}
+	for key := range query {
+		query.Set(key, "***masked***")
+	}
+	parsedURL.RawQuery = query.Encode()
+	return parsedURL.String()
+}
+
 func isSensitiveURLQueryKey(key string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(key))
 	switch normalized {

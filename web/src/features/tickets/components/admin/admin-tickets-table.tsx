@@ -28,10 +28,7 @@ import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 
 import { getAdminTickets, getTicketConfig } from '../../api'
-import {
-  TICKET_PRIORITY_OPTIONS,
-  TICKET_STATUS_OPTIONS,
-} from '../../constants'
+import { TICKET_PRIORITY_OPTIONS, TICKET_STATUS_OPTIONS } from '../../constants'
 import { useAdminTicketColumns } from './admin-ticket-columns'
 import { AdminTicketDetailDialog } from './admin-ticket-detail-dialog'
 

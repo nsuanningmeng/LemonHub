@@ -18,8 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Trophy } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatQuota, formatTimestampToDate } from '@/lib/format'
-import { cn } from '@/lib/utils'
+
 import { Badge } from '@/components/ui/badge'
 import {
   Card,
@@ -37,6 +36,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { formatQuota, formatTimestampToDate } from '@/lib/format'
+import { cn } from '@/lib/utils'
+
 import type { AffLeaderboardItem } from '../types'
 
 interface ReferralLeaderboardTableProps {
@@ -120,10 +122,7 @@ export function ReferralLeaderboardTable(props: ReferralLeaderboardTableProps) {
                     <TableCell>
                       <Badge
                         variant='secondary'
-                        className={cn(
-                          'tabular-nums',
-                          RANK_BADGE_CLASS[rank]
-                        )}
+                        className={cn('tabular-nums', RANK_BADGE_CLASS[rank])}
                       >
                         {rank}
                       </Badge>

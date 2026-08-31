@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+
 import type {
   Site,
   ApiResponse,
@@ -121,7 +122,9 @@ export async function getSiteWalletLogs(
 }
 
 // Reconcile all sub-site wallets against their ledgers
-export async function reconcileSites(): Promise<ApiResponse<ReconcileResult[]>> {
+export async function reconcileSites(): Promise<
+  ApiResponse<ReconcileResult[]>
+> {
   const res = await api.get('/api/site/reconcile')
   return res.data
 }

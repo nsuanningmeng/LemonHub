@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import i18next from 'i18next'
 import { toast } from 'sonner'
+
 import { deleteUser, manageUser } from '../api'
 import { type ManageUserAction } from '../types'
 

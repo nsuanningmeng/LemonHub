@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -231,11 +232,21 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 		handleOAuthError(c, err)
 		return
 	}
+	oauthUser.ProviderUserID, err = model.NormalizeExternalIdentitySubject(oauthUser.ProviderUserID)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
 
-	// Binding is performed on the logged-in user's own sub-site domain, so the site is
-	// the request site. Scope the "already bound" checks to it so the same provider
-	// account can exist independently on different sub-sites.
-	siteId := middleware.GetRequestSiteId(c)
+	// Derive tenant scope from the authenticated owner rather than Host. Dashboard
+	// sessions can reach the callback through another configured domain; the claim
+	// transaction uses the owner's authoritative site and this precheck must match it.
+	userId := pendingFlow.UserId
+	siteId, err := model.GetUserSiteId(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	// Check if this OAuth account is already bound (check both new ID and legacy ID)
 	if provider.IsUserIDTaken(oauthUser.ProviderUserID, siteId) {
@@ -261,25 +272,18 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 		return
 	}
 
-	user := model.User{Id: pendingFlow.UserId}
-	err = user.FillUserById()
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
 	// Handle binding based on provider type
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
 		// Custom provider: use user_oauth_bindings table
-		err = model.UpdateUserOAuthBinding(user.Id, genericProvider.GetProviderId(), oauthUser.ProviderUserID)
+		err = model.UpdateUserOAuthBinding(userId, genericProvider.GetProviderId(), oauthUser.ProviderUserID)
 		if err != nil {
 			common.ApiError(c, err)
 			return
 		}
 	} else {
-		// Built-in provider: update user record directly
-		provider.SetProviderUserID(&user, oauthUser.ProviderUserID)
-		err = user.Update(false)
+		// Built-in provider: 只更新绑定列。完整快照的 user.Update 会把读取时刻的
+		// role/status/group 一并写回，覆盖并发发生的封禁、降权或分组变更。
+		err = model.UpdateUserBindColumn(userId, provider.ProviderUserIDColumn(), oauthUser.ProviderUserID)
 		if err != nil {
 			common.ApiError(c, err)
 			return
@@ -294,6 +298,11 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider, pendingFlow *model
 // findOrCreateOAuthUser finds existing user or creates new user
 func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *oauth.OAuthUser, affiliateCode string) (*model.User, error) {
 	user := &model.User{}
+	var err error
+	oauthUser.ProviderUserID, err = model.NormalizeExternalIdentitySubject(oauthUser.ProviderUserID)
+	if err != nil {
+		return nil, err
+	}
 
 	// Resolve the sub-site from the request Host (0 = main site). All identity lookups
 	// and the new-user insert below are scoped to it so sub-sites stay isolated.
@@ -303,6 +312,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	if provider.IsUserIDTaken(oauthUser.ProviderUserID, siteId) {
 		err := provider.FillUserByProviderID(user, oauthUser.ProviderUserID, siteId)
 		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, &OAuthUserDeletedError{}
+			}
 			return nil, err
 		}
 		// Check if user has been deleted
@@ -317,6 +329,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		if provider.IsUserIDTaken(legacyID, siteId) {
 			err := provider.FillUserByProviderID(user, legacyID, siteId)
 			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return nil, &OAuthUserDeletedError{}
+				}
 				return nil, err
 			}
 			if user.Id != 0 {
@@ -325,7 +340,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 					user.Id, legacyID, oauthUser.ProviderUserID))
 				if err := user.UpdateGitHubId(oauthUser.ProviderUserID); err != nil {
 					common.SysError(fmt.Sprintf("[OAuth] Failed to migrate user %d: %s", user.Id, err.Error()))
-					// Continue with login even if migration fails
+					return nil, err
 				}
 				return user, nil
 			}
@@ -398,27 +413,11 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
 		user.FinalizeOAuthUserCreation(inviterId)
 	} else {
-		// Built-in provider: create user and update provider ID in a transaction
+		// Built-in provider: persist the user column and its site-scoped durable
+		// identity claim in the same insertion transaction.
+		provider.SetProviderUserID(user, oauthUser.ProviderUserID)
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
-			// Create user
-			if err := user.InsertWithTx(tx, inviterId); err != nil {
-				return err
-			}
-
-			// Set the provider user ID on the user model and update
-			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
-			if err := tx.Model(user).Updates(map[string]interface{}{
-				"github_id":   user.GitHubId,
-				"discord_id":  user.DiscordId,
-				"oidc_id":     user.OidcId,
-				"linux_do_id": user.LinuxDOId,
-				"wechat_id":   user.WeChatId,
-				"telegram_id": user.TelegramId,
-			}).Error; err != nil {
-				return err
-			}
-
-			return nil
+			return user.InsertWithTx(tx, inviterId)
 		})
 		if err != nil {
 			return nil, err

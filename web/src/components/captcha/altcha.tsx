@@ -16,14 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useRef } from 'react'
 import i18next from 'i18next'
+import { useEffect, useRef } from 'react'
 import 'altcha'
 import 'altcha/i18n/zh-cn'
 import 'altcha/i18n/fr-fr'
 import 'altcha/i18n/ja'
 import 'altcha/i18n/ru'
 import 'altcha/i18n/vi'
+
 import type { CaptchaChannelProps } from './types'
 
 declare module 'react' {

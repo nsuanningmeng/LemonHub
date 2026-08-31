@@ -148,7 +148,9 @@ export function CleanupDialog({ open, onOpenChange }: CleanupDialogProps) {
                   <span className='text-muted-foreground'>
                     {t('Deleted messages')}
                   </span>
-                  <span className='tabular-nums'>{result.deleted_messages}</span>
+                  <span className='tabular-nums'>
+                    {result.deleted_messages}
+                  </span>
                 </div>
               )}
               {result.errors && result.errors.length > 0 && (

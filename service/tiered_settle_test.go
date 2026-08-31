@@ -484,6 +484,8 @@ func TestPrepareTieredBillingForSelectedGroupTopUpArrearsAllowsNegativeBalance(t
 	// Settlement still reconciles against the full reservation: actual 80k
 	// refunds the 20k over-reserve, landing at seed - (actual - initial) = -10k.
 	require.NoError(t, session.Settle(80_000))
+	assert.Zero(t, session.taskSubmissionBillingSnapshot(80_000, "").TokenQuota,
+		"playground settlement must not invent a token charge")
 	userQuota, err = model.GetUserQuota(userID, false)
 	require.NoError(t, err)
 	assert.Equal(t, -10_000, userQuota)
@@ -509,6 +511,8 @@ func TestBillingSessionReserveWalletTopUpDecrementsBalance(t *testing.T) {
 
 	assert.Equal(t, 100_000, session.GetPreConsumedQuota())
 	assert.Equal(t, 100_000, relayInfo.FinalPreConsumedQuota)
+	assert.Zero(t, session.taskSubmissionBillingSnapshot(100_000, "").TokenQuota,
+		"playground reservation must not be persisted as a token charge")
 	userQuota, err := model.GetUserQuota(userID, false)
 	require.NoError(t, err)
 	assert.Equal(t, 450_000, userQuota)

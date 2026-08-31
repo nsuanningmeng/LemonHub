@@ -256,7 +256,7 @@ export function QuotaSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Percentage of each invited user\'s top-up credited to the inviter. Default 5.'
+                      "Percentage of each invited user's top-up credited to the inviter. Default 5."
                     )}
                   </FormDescription>
                   <FormMessage />

@@ -16,14 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { z } from 'zod'
 import type { TFunction } from 'i18next'
+import { z } from 'zod'
+
 import { parseQuotaFromDollars } from '@/lib/format'
+
 import { REDEMPTION_VALIDATION } from '../constants'
-import {
-  type BrandingPayload,
-  type CreateRedemptionPayload,
-  type PayConfig,
+import type {
+  BrandingPayload,
+  CreateRedemptionPayload,
+  PayConfig,
 } from '../types'
 
 // ============================================================================

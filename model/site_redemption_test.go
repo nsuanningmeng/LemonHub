@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestSearchRedemptionsNumericKeywordSiteScoped is a security regression for 越权: a
@@ -42,6 +44,65 @@ func TestSearchRedemptionsNumericKeywordSiteScoped(t *testing.T) {
 	if _, total, _ = SearchRedemptions(idKw, "", 0, 10, SiteScopeAll); total != 1 {
 		t.Fatalf("SiteScopeAll numeric search should find the code, total=%d", total)
 	}
+}
+
+func TestRedeemForSiteSynchronizesCacheAndRejectsInt32Overflow(t *testing.T) {
+	useUserCacheMiniRedis(t)
+	require.NoError(t, DB.AutoMigrate(&Redemption{}, &User{}))
+	const siteID = 6789
+
+	seed := func(quota int, codeQuota int) (User, Redemption) {
+		user := createReserveTestUser(t, quota)
+		require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("site_id", siteID).Error)
+		user.SiteId = siteID
+		require.NoError(t, populateUserCache(user))
+		redemption := Redemption{
+			SiteId:      siteID,
+			UserId:      user.Id,
+			Name:        "site-cache-credit",
+			Key:         common.GetUUID(),
+			Status:      common.RedemptionCodeStatusEnabled,
+			Quota:       codeQuota,
+			CreatedTime: common.GetTimestamp(),
+		}
+		require.NoError(t, DB.Create(&redemption).Error)
+		t.Cleanup(func() {
+			_ = DB.Unscoped().Delete(&redemption).Error
+			_ = DB.Unscoped().Delete(&user).Error
+		})
+		return user, redemption
+	}
+
+	t.Run("successful credit is immediately spendable from cache", func(t *testing.T) {
+		user, redemption := seed(100, 50)
+		quota, err := RedeemForSite(redemption.Key, user.Id, siteID)
+		require.NoError(t, err)
+		assert.Equal(t, 50, quota)
+		assert.Equal(t, 150, getUserQuotaFromDB(t, user.Id))
+		cached, cacheErr := cacheGetUserBase(user.Id)
+		require.NoError(t, cacheErr)
+		assert.Equal(t, 150, cached.Quota)
+	})
+
+	t.Run("overflow rolls back code consumption and user credit", func(t *testing.T) {
+		user, redemption := seed(common.MaxQuota-5, 10)
+		_, err := RedeemForSite(redemption.Key, user.Id, siteID)
+		assert.ErrorIs(t, err, ErrRedeemFailed)
+		assert.Equal(t, common.MaxQuota-5, getUserQuotaFromDB(t, user.Id))
+		var persisted Redemption
+		require.NoError(t, DB.First(&persisted, redemption.Id).Error)
+		assert.Equal(t, common.RedemptionCodeStatusEnabled, persisted.Status)
+	})
+
+	t.Run("main redemption path enforces the same overflow guard", func(t *testing.T) {
+		user, redemption := seed(common.MaxQuota-5, 10)
+		_, err := Redeem(redemption.Key, user.Id)
+		assert.ErrorIs(t, err, ErrRedeemFailed)
+		assert.Equal(t, common.MaxQuota-5, getUserQuotaFromDB(t, user.Id))
+		var persisted Redemption
+		require.NoError(t, DB.First(&persisted, redemption.Id).Error)
+		assert.Equal(t, common.RedemptionCodeStatusEnabled, persisted.Status)
+	})
 }
 
 // TestRedemptionWalletIntegration covers the phase-3 wallet↔redemption invariants:

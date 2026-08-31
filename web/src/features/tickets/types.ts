@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 /** Generic business response wrapper used across the API. */
 export interface ApiResponse<T = unknown> {
   success: boolean

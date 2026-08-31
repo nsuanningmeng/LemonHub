@@ -13,8 +13,10 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/go-redis/redis/v8"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,6 +84,46 @@ func createMiddlewarePATUser(t *testing.T, username, token string) *model.User {
 	}
 	require.NoError(t, model.DB.Create(user).Error)
 	return user
+}
+
+func TestTokenAuthSetsOperatorSiteFromAuthenticatedOwner(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+
+	user := createMiddlewarePATUser(t, "relay-site-owner", "unused-pat")
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", user.Id).
+		Updates(map[string]interface{}{"site_id": 17, "quota": 100}).Error)
+	token := &model.Token{
+		Id:             1,
+		UserId:         user.Id,
+		Key:            "relaysitekey",
+		Name:           "relay-site-token",
+		Status:         common.TokenStatusEnabled,
+		ExpiredTime:    -1,
+		UnlimitedQuota: true,
+	}
+	server := miniredis.RunT(t)
+	oldRDB, oldRedisEnabled := common.RDB, common.RedisEnabled
+	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr(), MaxRetries: -1})
+	common.RedisEnabled = true
+	t.Cleanup(func() {
+		_ = common.RDB.Close()
+		common.RDB, common.RedisEnabled = oldRDB, oldRedisEnabled
+	})
+	require.NoError(t, common.RedisHSetObj("token:"+common.GenerateHMAC(token.Key), token, time.Minute))
+
+	operatorSite := -1
+	router := gin.New()
+	router.POST("/v1/chat/completions", TokenAuth(), func(c *gin.Context) {
+		operatorSite = c.GetInt("operator_site_id")
+		c.Status(http.StatusNoContent)
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req.Header.Set("Authorization", "Bearer sk-"+token.Key)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	assert.Equal(t, http.StatusNoContent, resp.Code)
+	assert.Equal(t, 17, operatorSite)
 }
 
 func TestUserAuthAllowsOpaqueDottedPAT(t *testing.T) {

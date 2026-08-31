@@ -24,6 +24,11 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	if data == "" {
 		return nil
 	}
+	publicData, err := info.RewriteModelForPublicResponse(common.StringToByteSlice(data), "model")
+	if err != nil {
+		return err
+	}
+	data = string(publicData)
 
 	if !forceFormat && !thinkToContent {
 		return helper.StringData(c, data)
@@ -189,7 +194,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		info.CountBillableToolCall(dto.BuildInCallFunctionCall, name)
 	}
 
-	HandleFinalResponse(c, info, lastStreamData, responseId, createAt, model, systemFingerprint, usage, containStreamUsage)
+	HandleFinalResponse(c, info, lastStreamData, responseId, createAt, info.PublicResponseModelName(model), systemFingerprint, usage, containStreamUsage)
 
 	return usage, nil
 }
@@ -251,6 +256,11 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 
 	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
+	}
+	simpleResponse.Model = info.PublicResponseModelName(simpleResponse.Model)
+	responseBody, err = info.RewriteModelForPublicResponse(responseBody, "model")
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
 	for _, choice := range simpleResponse.Choices {

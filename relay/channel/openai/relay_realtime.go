@@ -203,6 +203,17 @@ func OpenaiRealtimeHandler(c *gin.Context, info *relaycommon.RelayInfo) (*types.
 						}
 					}
 				}
+				outMessage, err = info.RewriteModelForPublicResponse(
+					outMessage,
+					"model",
+					"session.model",
+					"response.model",
+					"item.model",
+				)
+				if err != nil {
+					errChan <- fmt.Errorf("rewrite realtime response model: %v", err)
+					return
+				}
 				err = helper.WssString(c, clientConn, string(outMessage))
 				if err != nil {
 					errChan <- fmt.Errorf("error writing to client: %v", err)

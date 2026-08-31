@@ -31,8 +31,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
-	"github.com/samber/lo"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -328,7 +326,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	isOModel := dto.IsOpenAIReasoningOModel(info.UpstreamModelName)
 	isGPT5Model := dto.IsOpenAIGPT5Model(info.UpstreamModelName)
 	if isOModel || isGPT5Model {
-		if lo.FromPtrOr(request.MaxCompletionTokens, uint(0)) == 0 && lo.FromPtrOr(request.MaxTokens, uint(0)) != 0 {
+		if request.MaxCompletionTokens == nil && request.MaxTokens != nil {
 			request.MaxCompletionTokens = request.MaxTokens
 			request.MaxTokens = nil
 		}
@@ -352,7 +350,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			request.Model = originModel
 		}
 
-		info.ReasoningEffort = request.ReasoningEffort
+		info.SetReasoningEffort(request.ReasoningEffort)
 
 		// o系列模型developer适配（o1-mini除外）
 		if !strings.HasPrefix(info.UpstreamModelName, "o1-mini") && !strings.HasPrefix(info.UpstreamModelName, "o1-preview") {
@@ -615,7 +613,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		request.Model = originModel
 	}
 	if info != nil && request.Reasoning != nil && request.Reasoning.Effort != "" {
-		info.ReasoningEffort = request.Reasoning.Effort
+		info.SetReasoningEffort(request.Reasoning.Effort)
 	}
 	return request, nil
 }

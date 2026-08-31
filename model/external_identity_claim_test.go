@@ -1,6 +1,9 @@
 package model
 
 import (
+	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -202,7 +205,7 @@ func TestPreflightExternalIdentityClaimsRejectsOnlySameSiteDuplicates(t *testing
 		SiteId:     1,
 		Username:   "preflight-sub-conflict",
 		Password:   "password",
-		TelegramId: "  shared-preflight  ",
+		TelegramId: "shared-preflight",
 		AffCode:    "preflight-sub-conflict",
 	}
 	require.NoError(t, db.Create(&conflict).Error)
@@ -210,7 +213,26 @@ func TestPreflightExternalIdentityClaimsRejectsOnlySameSiteDuplicates(t *testing
 	assert.False(t, db.Migrator().HasTable(&ExternalIdentityClaim{}))
 
 	require.NoError(t, db.Model(&conflict).Update("telegram_id", " \t ").Error)
-	require.ErrorContains(t, preflightExternalIdentityClaims(db), "invalid blank legacy Telegram ownership")
+	require.ErrorContains(t, preflightExternalIdentityClaims(db), "external identity subject is empty")
+	assert.False(t, db.Migrator().HasTable(&ExternalIdentityClaim{}))
+}
+
+func TestPreflightExternalIdentityClaimsRejectsNonCanonicalWhitespace(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&User{}))
+
+	user := User{
+		Username:    "preflight-whitespace",
+		Password:    "password",
+		GitHubId:    " github-subject ",
+		AffCode:     "preflight-whitespace",
+		AuthVersion: 1,
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	err = preflightExternalIdentityClaims(db)
+	require.ErrorContains(t, err, "non-canonical whitespace in legacy GitHub ownership")
 	assert.False(t, db.Migrator().HasTable(&ExternalIdentityClaim{}))
 }
 
@@ -272,4 +294,136 @@ func TestMigrateExternalIdentityClaimsSiteScopePreservesExistingClaims(t *testin
 	var count int64
 	require.NoError(t, db.Model(&ExternalIdentityClaim{}).Count(&count).Error)
 	assert.EqualValues(t, 2, count)
+}
+
+func TestExternalIdentityMigrationResumesBeforeUserSiteColumnExists(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.Exec("CREATE TABLE users (id integer primary key)").Error)
+	require.NoError(t, db.AutoMigrate(&legacyGlobalExternalIdentityClaim{}))
+	require.NoError(t, db.Exec("INSERT INTO users (id) VALUES (1)").Error)
+	require.NoError(t, db.Create(&legacyGlobalExternalIdentityClaim{
+		Provider: ExternalIdentityProviderGitHub,
+		Subject:  "interrupted-migration-subject",
+		UserId:   1,
+	}).Error)
+
+	assert.False(t, db.Migrator().HasColumn(&User{}, "site_id"))
+	require.NoError(t, preflightExternalIdentityClaims(db))
+	require.NoError(t, prepareExternalIdentityClaimsSiteScope(db))
+
+	var claim ExternalIdentityClaim
+	require.NoError(t, db.First(&claim).Error)
+	assert.Zero(t, claim.SiteId)
+	assert.True(t, db.Migrator().HasIndex(&ExternalIdentityClaim{}, externalIdentitySiteSubjectIndex))
+}
+
+func TestExternalIdentityMigrationPreservesUnrelatedUniqueIndexes(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&User{}, &legacyGlobalExternalIdentityClaim{}))
+	require.NoError(t, db.Exec(
+		"CREATE UNIQUE INDEX ux_external_identity_audit ON external_identity_claims (provider, subject, user_id)",
+	).Error)
+
+	user := User{Username: "index-owner", Password: "password", AffCode: "index-owner", AuthVersion: 1}
+	require.NoError(t, db.Create(&user).Error)
+	require.NoError(t, db.Create(&legacyGlobalExternalIdentityClaim{
+		Provider: ExternalIdentityProviderGitHub,
+		Subject:  "index-subject",
+		UserId:   user.Id,
+	}).Error)
+
+	require.NoError(t, prepareExternalIdentityClaimsSiteScope(db))
+	assert.True(t, db.Migrator().HasIndex(&ExternalIdentityClaim{}, "ux_external_identity_audit"))
+	assert.True(t, db.Migrator().HasIndex(&ExternalIdentityClaim{}, externalIdentitySiteSubjectIndex))
+	assert.False(t, db.Migrator().HasIndex(&ExternalIdentityClaim{}, legacyExternalIdentityGlobalSubjectIndex))
+}
+
+func TestExternalIdentityClaimSupportsLegacyCustomOAuthSubjectLength(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&User{}, &ExternalIdentityClaim{}))
+
+	user := User{Username: "long-subject-owner", Password: "password", AffCode: "long-subject-owner", AuthVersion: 1}
+	require.NoError(t, db.Create(&user).Error)
+	subject := strings.Repeat("s", 200)
+	require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
+		return ClaimExternalIdentityWithTx(tx, customOAuthExternalIdentityProvider(99), subject, user.Id)
+	}))
+
+	var claim ExternalIdentityClaim
+	require.NoError(t, db.First(&claim).Error)
+	assert.Equal(t, subject, claim.Subject)
+	assert.Error(t, db.Transaction(func(tx *gorm.DB) error {
+		return ClaimExternalIdentityWithTx(tx, customOAuthExternalIdentityProvider(100), strings.Repeat("s", 257), user.Id)
+	}))
+}
+
+func TestBuiltInIdentityBindingIsSiteScopedAndAtomic(t *testing.T) {
+	truncateTables(t)
+
+	mainUser := User{SiteId: 0, Username: "github-main", Password: "password", AffCode: "github-main"}
+	subUser := User{SiteId: 2, Username: "github-sub", Password: "password", AffCode: "github-sub"}
+	conflict := User{SiteId: 2, Username: "github-conflict", Password: "password", AffCode: "github-conflict"}
+	require.NoError(t, DB.Create(&mainUser).Error)
+	require.NoError(t, DB.Create(&subUser).Error)
+	require.NoError(t, DB.Create(&conflict).Error)
+
+	require.NoError(t, UpdateUserBindColumn(mainUser.Id, "github_id", "github-shared"))
+	require.NoError(t, UpdateUserBindColumn(subUser.Id, "github_id", "github-shared"))
+	err := UpdateUserBindColumn(conflict.Id, "github_id", "github-shared")
+	assert.ErrorIs(t, err, ErrExternalIdentityAlreadyClaimed)
+
+	var unchanged User
+	require.NoError(t, DB.First(&unchanged, conflict.Id).Error)
+	assert.Empty(t, unchanged.GitHubId, "a failed claim must roll back the users-table binding")
+}
+
+func TestConcurrentBuiltInIdentityBindingHasOneWinner(t *testing.T) {
+	truncateTables(t)
+
+	first := User{Username: "github-race-one", Password: "password", AffCode: "github-race-one"}
+	second := User{Username: "github-race-two", Password: "password", AffCode: "github-race-two"}
+	require.NoError(t, DB.Create(&first).Error)
+	require.NoError(t, DB.Create(&second).Error)
+
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var ready sync.WaitGroup
+	ready.Add(2)
+	for _, userId := range []int{first.Id, second.Id} {
+		go func(id int) {
+			ready.Done()
+			<-start
+			errs <- UpdateUserBindColumn(id, "discord_id", "discord-race")
+		}(userId)
+	}
+	ready.Wait()
+	close(start)
+	firstErr, secondErr := <-errs, <-errs
+
+	successes := 0
+	conflicts := 0
+	for _, bindErr := range []error{firstErr, secondErr} {
+		switch {
+		case bindErr == nil:
+			successes++
+		case errors.Is(bindErr, ErrExternalIdentityAlreadyClaimed):
+			conflicts++
+		default:
+			require.NoError(t, bindErr)
+		}
+	}
+	assert.Equal(t, 1, successes)
+	assert.Equal(t, 1, conflicts)
+
+	var claims int64
+	require.NoError(t, DB.Model(&ExternalIdentityClaim{}).
+		Where("provider = ? AND site_id = ? AND subject = ?", ExternalIdentityProviderDiscord, 0, "discord-race").
+		Count(&claims).Error)
+	assert.EqualValues(t, 1, claims)
+	var boundUsers int64
+	require.NoError(t, DB.Model(&User{}).Where("discord_id = ?", "discord-race").Count(&boundUsers).Error)
+	assert.EqualValues(t, 1, boundUsers)
 }

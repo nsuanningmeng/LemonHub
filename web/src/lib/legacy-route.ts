@@ -36,7 +36,10 @@ const legacyConsoleRoutes: Record<string, string> = {
 
 // Fork routes that still live under /console/ and must never be treated as
 // legacy paths by the catch-all redirect below.
-const liveConsoleRoutes = new Set(['/console/tickets', '/console/tickets-admin'])
+const liveConsoleRoutes = new Set([
+  '/console/tickets',
+  '/console/tickets-admin',
+])
 
 const legacySettingsTabs: Record<string, string> = {
   operation: '/system-settings/operations/behavior',

@@ -21,6 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type ThinkingContentInfo struct {
@@ -149,13 +150,6 @@ type RelayInfo struct {
 	UseRuntimeHeadersOverride             bool
 	ParamOverrideAudit                    []string
 
-	// UpstreamRequestBodySize is the byte size of the marshaled upstream request
-	// body. It is set when the body is wrapped in a BodyStorage (see
-	// relay/common/outbound_body.go), so that DoApiRequest can populate
-	// http.Request.ContentLength manually (net/http only auto-detects it for
-	// *bytes.Reader/Buffer/strings.Reader). 0 means "let net/http decide".
-	UpstreamRequestBodySize int64
-
 	PriceData hosttypes.PriceData
 
 	// QuotaClamp is set (non-nil) when a quota conversion saturated at the
@@ -241,6 +235,11 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	// Channel identity feeds the converter options snapshot (e.g.
 	// OpenRouterDialect); drop the cache so a cross-channel retry rebuilds it.
 	info.convOptions = nil
+	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || channelMeta.ChannelSetting.PassThroughBodyEnabled {
+		info.ReasoningEffort = ""
+	} else {
+		info.ReasoningEffort = reasoningEffortFromRequest(info.Request)
+	}
 
 	// reset some fields based on channel meta
 	// 重置某些字段，例如模型名称等
@@ -442,6 +441,36 @@ func GenRelayInfoOpenAI(c *gin.Context, request dto.Request) *RelayInfo {
 	return info
 }
 
+func reasoningEffortFromRequest(request dto.Request) string {
+	var effort string
+	switch req := request.(type) {
+	case *dto.GeneralOpenAIRequest:
+		if req == nil {
+			return ""
+		}
+		effort = req.ReasoningEffort
+		if strings.TrimSpace(effort) == "" && len(req.Reasoning) > 0 {
+			value := gjson.GetBytes(req.Reasoning, "effort")
+			if value.Type == gjson.String {
+				effort = value.String()
+			}
+		}
+	case *dto.OpenAIResponsesRequest:
+		if req != nil && req.Reasoning != nil {
+			effort = req.Reasoning.Effort
+		}
+	case *dto.ClaudeRequest:
+		if req != nil {
+			effort = req.GetEfforts()
+		}
+	case *dto.GeminiChatRequest:
+		if req != nil && req.GenerationConfig.ThinkingConfig != nil {
+			effort = req.GenerationConfig.ThinkingConfig.ThinkingLevel
+		}
+	}
+	return strings.TrimSpace(effort)
+}
+
 func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 	//channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
@@ -472,8 +501,10 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	if reqId == "" {
 		reqId = common.NewRequestId()
 	}
+	reasoningEffort := reasoningEffortFromRequest(request)
 	info := &RelayInfo{
-		Request: request,
+		Request:         request,
+		ReasoningEffort: reasoningEffort,
 
 		RequestId:  reqId,
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
@@ -716,6 +747,49 @@ func (info *RelayInfo) GetUpstreamModelName() string {
 	return info.UpstreamModelName
 }
 
+// PublicResponseModelName returns the model name that is safe to expose to the
+// client. Channel model mapping is an internal routing detail, so a mapped
+// response must keep the model name from the user's request. The upstream
+// response model remains available to billing and token-counting code through
+// UpstreamModelName.
+func (info *RelayInfo) PublicResponseModelName(upstreamResponseModel string) string {
+	if info == nil {
+		return upstreamResponseModel
+	}
+	if info.ChannelMeta != nil && info.IsModelMapped && info.OriginModelName != "" {
+		return info.OriginModelName
+	}
+	if upstreamResponseModel != "" {
+		return upstreamResponseModel
+	}
+	if info.ChannelMeta != nil && info.UpstreamModelName != "" {
+		return info.UpstreamModelName
+	}
+	return info.OriginModelName
+}
+
+// RewriteModelForPublicResponse replaces model fields that already exist in a
+// JSON response while preserving all other provider-specific fields verbatim.
+// It is intentionally a no-op unless channel model mapping was applied.
+func (info *RelayInfo) RewriteModelForPublicResponse(data []byte, paths ...string) ([]byte, error) {
+	if info == nil || info.ChannelMeta == nil || !info.IsModelMapped || info.OriginModelName == "" || len(data) == 0 {
+		return data, nil
+	}
+
+	result := data
+	for _, path := range paths {
+		if path == "" || !gjson.GetBytes(result, path).Exists() {
+			continue
+		}
+		var err error
+		result, err = sjson.SetBytes(result, path, info.OriginModelName)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return result, nil
+}
+
 func (info *RelayInfo) HasChannelMeta() bool { return info != nil && info.ChannelMeta != nil }
 
 func (info *RelayInfo) GetChannelID() int {
@@ -747,7 +821,7 @@ func (info *RelayInfo) SetReasoningEffort(effort string) {
 	if info == nil {
 		return
 	}
-	info.ReasoningEffort = effort
+	info.ReasoningEffort = strings.TrimSpace(effort)
 }
 
 func (info *RelayInfo) EnsureClaudeConvertInfo() *convmeta.ClaudeConvertInfo {

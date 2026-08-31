@@ -6,8 +6,6 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -39,24 +37,6 @@ func TestModelMappedHelperKeepsOriginModelForUsers(t *testing.T) {
 	assert.Equal(t, "gpt-5", info.OriginModelName)
 	assert.Equal(t, "gpt-5-mini", info.UpstreamModelName)
 	assert.Equal(t, "gpt-5-mini", c.GetString(string(constant.ContextKeyUpstreamModelName)))
-}
-
-// In ResponsesCompact mode the billing/log model must also be derived from the
-// REQUESTED model (+ compact suffix), never from the mapped upstream model.
-func TestModelMappedHelperCompactUsesRequestedModelForBilling(t *testing.T) {
-	compactModel := ratio_setting.WithCompactModelSuffix("gpt-5")
-	c := newMappingContext(t, `{"gpt-5":"gpt-5-mini"}`)
-	info := &relaycommon.RelayInfo{
-		RelayMode:       relayconstant.RelayModeResponsesCompact,
-		OriginModelName: compactModel,
-		ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: compactModel},
-	}
-
-	require.NoError(t, ModelMappedHelper(c, info, nil))
-
-	assert.True(t, info.IsModelMapped)
-	assert.Equal(t, compactModel, info.OriginModelName)
-	assert.Equal(t, "gpt-5-mini", info.UpstreamModelName)
 }
 
 func TestModelMappedHelperNoMappingClearsContextKey(t *testing.T) {

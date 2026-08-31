@@ -291,26 +291,13 @@ func (p *GenericOAuthProvider) GetUserInfo(ctx context.Context, token *OAuthToke
 }
 
 func (p *GenericOAuthProvider) IsUserIDTaken(providerUserID string, siteId int) bool {
-	// Custom-provider bindings live in user_oauth_bindings, which is globally unique on
-	// (provider_id, provider_user_id) and has no site_id column. Scope by the bound
-	// user's site so a binding that belongs to another sub-site is treated as "not taken"
-	// here (fail-closed: a later insert hits the unique index and is rejected rather than
-	// logging the visitor into a foreign-site account).
-	foundUser, err := model.GetUserByOAuthBinding(p.config.Id, providerUserID)
-	if err != nil {
-		return false
-	}
-	return foundUser.SiteId == siteId
+	return model.IsProviderUserIdTaken(p.config.Id, providerUserID, siteId)
 }
 
 func (p *GenericOAuthProvider) FillUserByProviderID(user *model.User, providerUserID string, siteId int) error {
-	foundUser, err := model.GetUserByOAuthBinding(p.config.Id, providerUserID)
+	foundUser, err := model.GetUserByOAuthBinding(p.config.Id, providerUserID, siteId)
 	if err != nil {
 		return err
-	}
-	// Defensive: never hand back a user that belongs to a different sub-site.
-	if foundUser.SiteId != siteId {
-		return errors.New("oauth binding belongs to a different site")
 	}
 	*user = *foundUser
 	return nil
@@ -323,6 +310,11 @@ func (p *GenericOAuthProvider) SetProviderUserID(user *model.User, providerUserI
 
 func (p *GenericOAuthProvider) GetProviderPrefix() string {
 	return p.config.Slug + "_"
+}
+
+// ProviderUserIDColumn returns the users-table column storing this provider's user ID.
+func (p *GenericOAuthProvider) ProviderUserIDColumn() string {
+	return ""
 }
 
 // GetProviderId returns the provider ID for binding purposes

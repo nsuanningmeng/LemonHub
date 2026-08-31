@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+
+	"gorm.io/gorm"
 )
 
 type accessPolicyPayload struct {
@@ -14,6 +16,8 @@ type accessPolicyPayload struct {
 	Conditions []accessConditionItem `json:"conditions"`
 	Groups     []accessPolicyPayload `json:"groups"`
 }
+
+var ErrCustomOAuthProviderHasBindings = errors.New("custom OAuth provider still has user bindings")
 
 type accessConditionItem struct {
 	Field string `json:"field"`
@@ -117,16 +121,54 @@ func UpdateCustomOAuthProvider(provider *CustomOAuthProvider) error {
 	if err := validateCustomOAuthProvider(provider); err != nil {
 		return err
 	}
-	return DB.Save(provider).Error
+	if provider.Id <= 0 {
+		return errors.New("invalid custom OAuth provider ID")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		// Save falls back to INSERT when UPDATE affects no row, so a stale admin
+		// request could recreate a provider that was concurrently deleted. Use
+		// the same provider-row lock as binding/deletion and an update-only write.
+		if err := lockCustomOAuthProviderForBinding(tx, provider.Id); err != nil {
+			return err
+		}
+		return tx.Model(&CustomOAuthProvider{}).Where("id = ?", provider.Id).
+			Select("*").Omit("id", "created_at").Updates(provider).Error
+	})
 }
 
 // DeleteCustomOAuthProvider deletes a custom OAuth provider by ID
 func DeleteCustomOAuthProvider(id int) error {
-	// First, delete all user bindings for this provider
-	if err := DB.Where("provider_id = ?", id).Delete(&UserOAuthBinding{}).Error; err != nil {
-		return err
+	if id <= 0 {
+		return errors.New("invalid custom OAuth provider ID")
 	}
-	return DB.Delete(&CustomOAuthProvider{}, id).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		// Binding creation takes the same provider-row lock before it claims an
+		// identity. Keeping the existence/count check under this lock closes the
+		// controller's former count-then-delete race on MySQL/PostgreSQL; SQLite
+		// serializes the subsequent writes.
+		if err := lockCustomOAuthProviderForBinding(tx, id); err != nil {
+			return err
+		}
+		var bindingCount int64
+		if err := tx.Model(&UserOAuthBinding{}).Where("provider_id = ?", id).Count(&bindingCount).Error; err != nil {
+			return err
+		}
+		if bindingCount != 0 {
+			return ErrCustomOAuthProviderHasBindings
+		}
+		if err := tx.Where("provider = ?", customOAuthExternalIdentityProvider(id)).
+			Delete(&ExternalIdentityClaim{}).Error; err != nil {
+			return err
+		}
+		result := tx.Delete(&CustomOAuthProvider{}, id)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
 }
 
 // IsSlugTaken checks if a slug is already taken by another provider

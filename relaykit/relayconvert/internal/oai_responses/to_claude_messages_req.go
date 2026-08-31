@@ -37,10 +37,10 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 		TopP:        req.TopP,
 		Stream:      req.Stream,
 	}
-	if req.MaxOutputTokens != nil && *req.MaxOutputTokens > 0 {
+	if req.MaxOutputTokens != nil {
 		claudeRequest.MaxTokens = kitutil.GetPointer(*req.MaxOutputTokens)
 	}
-	if claudeRequest.MaxTokens == nil || *claudeRequest.MaxTokens == 0 {
+	if claudeRequest.MaxTokens == nil {
 		if defaultMaxTokens, configured := convmeta.OptionsOf(info).Claude.DefaultMaxTokensFor(req.Model); configured {
 			value := uint(defaultMaxTokens)
 			claudeRequest.MaxTokens = &value
@@ -134,30 +134,10 @@ func responsesFunctionDeclarationsToClaudeTools(functions []dto.FunctionRequest)
 		tools = append(tools, &dto.Tool{
 			Name:        function.Name,
 			Description: function.Description,
-			InputSchema: responsesFunctionParametersToClaudeInputSchema(function.Parameters),
+			InputSchema: sharedclaude.FunctionParametersToInputSchema(function.Parameters),
 		})
 	}
 	return tools
-}
-
-func responsesFunctionParametersToClaudeInputSchema(parameters any) map[string]interface{} {
-	if params, ok := parameters.(map[string]any); ok {
-		schema := make(map[string]interface{}, len(params))
-		for key, value := range params {
-			schema[key] = value
-		}
-		if schema["type"] == nil {
-			schema["type"] = "object"
-		}
-		if schema["properties"] == nil {
-			schema["properties"] = map[string]interface{}{}
-		}
-		return schema
-	}
-	return map[string]interface{}{
-		"type":       "object",
-		"properties": map[string]interface{}{},
-	}
 }
 
 func applyResponsesReasoningToClaude(req *dto.OpenAIResponsesRequest, claudeRequest *dto.ClaudeRequest) {

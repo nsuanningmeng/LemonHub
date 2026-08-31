@@ -18,12 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Info } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 interface ReferralRulesProps {
   /** Effective recharge-commission rate (0-100). When > 0 the rule states the actual rate. */

@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -21,6 +22,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+func passwordResetVerificationKey(email string, siteId int) string {
+	return fmt.Sprintf("%d:%s", siteId, model.NormalizeEmail(email))
+}
+
+func passwordResetLink(c *gin.Context, email string, token string) string {
+	query := url.Values{}
+	query.Set("email", model.NormalizeEmail(email))
+	query.Set("token", token)
+	return strings.TrimRight(service.GetRequestBaseURL(c), "/") + "/user/reset?" + query.Encode()
+}
 
 func TestStatus(c *gin.Context) {
 	err := model.PingDB()
@@ -365,7 +377,7 @@ func SendEmailVerification(c *gin.Context) {
 }
 
 func SendPasswordResetEmail(c *gin.Context) {
-	email := c.Query("email")
+	email := model.NormalizeEmail(c.Query("email"))
 	if err := common.Validate.Var(email, "required,email"); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -376,10 +388,11 @@ func SendPasswordResetEmail(c *gin.Context) {
 	// Skip hard-bounced (known-invalid) addresses silently: the response must not
 	// reveal whether the account exists, and mailing a dead address only damages
 	// SMTP sender reputation.
-	if model.IsEmailAlreadyTaken(email, middleware.GetRequestSiteId(c)) && !model.IsEmailHardBounced(email) {
+	siteId := middleware.GetRequestSiteId(c)
+	if model.IsEmailAlreadyTaken(email, siteId) && !model.IsEmailHardBounced(email) {
 		code := common.GenerateVerificationCode(0)
-		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
-		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
+		common.RegisterVerificationCodeWithKey(passwordResetVerificationKey(email, siteId), code, common.PasswordResetPurpose)
+		link := passwordResetLink(c, email, code)
 		subject := fmt.Sprintf("%s密码重置", common.SystemName)
 		content := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
 			"<p>点击 <a href='%s'>此处</a> 进行密码重置。</p>"+
@@ -405,6 +418,7 @@ type PasswordResetRequest struct {
 func ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
 	err := common.DecodeJson(c.Request.Body, &req)
+	req.Email = model.NormalizeEmail(req.Email)
 	if req.Email == "" || req.Token == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -412,7 +426,9 @@ func ResetPassword(c *gin.Context) {
 		})
 		return
 	}
-	if !common.VerifyCodeWithKey(req.Email, req.Token, common.PasswordResetPurpose) {
+	siteId := middleware.GetRequestSiteId(c)
+	verificationKey := passwordResetVerificationKey(req.Email, siteId)
+	if !common.VerifyCodeWithKey(verificationKey, req.Token, common.PasswordResetPurpose) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "重置链接非法或已过期",
@@ -422,12 +438,12 @@ func ResetPassword(c *gin.Context) {
 	password := common.GenerateVerificationCode(12)
 	// Scope the reset to the requesting sub-site so it cannot overwrite a same-email
 	// account on another site (cross-site account takeover).
-	err = model.ResetUserPasswordByEmail(req.Email, password, middleware.GetRequestSiteId(c))
+	err = model.ResetUserPasswordByEmail(req.Email, password, siteId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.DeleteKey(req.Email, common.PasswordResetPurpose)
+	common.DeleteKey(verificationKey, common.PasswordResetPurpose)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

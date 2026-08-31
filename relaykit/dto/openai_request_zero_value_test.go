@@ -52,6 +52,20 @@ func TestGeneralOpenAIRequestPreserveExplicitZeroValues(t *testing.T) {
 	require.True(t, gjson.GetBytes(encoded, "return_related_questions").Exists())
 }
 
+func TestGeneralOpenAIRequestMaxCompletionTokensExplicitZeroTakesPrecedence(t *testing.T) {
+	legacyMaxTokens := uint(64)
+	explicitZero := uint(0)
+	req := GeneralOpenAIRequest{
+		MaxTokens:           &legacyMaxTokens,
+		MaxCompletionTokens: &explicitZero,
+	}
+
+	resolved := req.GetMaxTokensPointer()
+	require.NotNil(t, resolved)
+	assert.Zero(t, *resolved)
+	assert.Zero(t, req.GetMaxTokens())
+}
+
 func TestGeneralOpenAIRequestPreserveQwenThinkingBudget(t *testing.T) {
 	raw := []byte(`{
 		"model":"qwen-plus",
@@ -123,7 +137,9 @@ func TestOpenAIResponsesRequestPreserveExplicitZeroValues(t *testing.T) {
 		"max_output_tokens":0,
 		"max_tool_calls":0,
 		"stream":false,
-		"top_p":0
+		"top_p":0,
+		"frequency_penalty":0,
+		"presence_penalty":0
 	}`)
 
 	var req OpenAIResponsesRequest
@@ -137,6 +153,8 @@ func TestOpenAIResponsesRequestPreserveExplicitZeroValues(t *testing.T) {
 	require.True(t, gjson.GetBytes(encoded, "max_tool_calls").Exists())
 	require.True(t, gjson.GetBytes(encoded, "stream").Exists())
 	require.True(t, gjson.GetBytes(encoded, "top_p").Exists())
+	require.True(t, gjson.GetBytes(encoded, "frequency_penalty").Exists())
+	require.True(t, gjson.GetBytes(encoded, "presence_penalty").Exists())
 }
 
 func TestOpenAIResponsesRequestPreserveQwenThinkingBudget(t *testing.T) {

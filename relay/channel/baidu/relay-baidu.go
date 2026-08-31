@@ -17,8 +17,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/samber/lo"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,16 +27,16 @@ var baiduTokenStore sync.Map
 func requestOpenAI2Baidu(request dto.GeneralOpenAIRequest) *BaiduChatRequest {
 	baiduRequest := BaiduChatRequest{
 		Temperature:    request.Temperature,
-		TopP:           lo.FromPtrOr(request.TopP, 0),
-		PenaltyScore:   lo.FromPtrOr(request.FrequencyPenalty, 0),
-		Stream:         lo.FromPtrOr(request.Stream, false),
+		TopP:           request.TopP,
+		PenaltyScore:   request.FrequencyPenalty,
+		Stream:         request.Stream,
 		DisableSearch:  false,
 		EnableCitation: false,
 		UserId:         request.User,
 	}
-	if request.GetMaxTokens() != 0 {
-		maxTokens := int(request.GetMaxTokens())
-		if request.GetMaxTokens() == 1 {
+	if requestedMaxTokens := request.GetMaxTokensPointer(); requestedMaxTokens != nil {
+		maxTokens := int(*requestedMaxTokens)
+		if *requestedMaxTokens == 1 {
 			maxTokens = 2
 		}
 		baiduRequest.MaxOutputTokens = &maxTokens
@@ -129,6 +127,7 @@ func baiduStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 			usage.CompletionTokens = baiduResponse.Usage.TotalTokens - baiduResponse.Usage.PromptTokens
 		}
 		response := streamResponseBaidu2OpenAI(&baiduResponse)
+		response.Model = info.PublicResponseModelName(response.Model)
 		if err := helper.ObjectData(c, response); err != nil {
 			common.SysLog("error sending stream response: " + err.Error())
 			sr.Error(err)
@@ -153,6 +152,7 @@ func baiduHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respon
 		return types.NewError(fmt.Errorf("%s", baiduResponse.ErrorMsg), types.ErrorCodeBadResponseBody), nil
 	}
 	fullTextResponse := responseBaidu2OpenAI(&baiduResponse)
+	fullTextResponse.Model = info.PublicResponseModelName(fullTextResponse.Model)
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
@@ -178,6 +178,7 @@ func baiduEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *ht
 		return types.NewError(fmt.Errorf("%s", baiduResponse.ErrorMsg), types.ErrorCodeBadResponseBody), nil
 	}
 	fullTextResponse := embeddingResponseBaidu2OpenAI(&baiduResponse)
+	fullTextResponse.Model = info.PublicResponseModelName(fullTextResponse.Model)
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeBadResponseBody), nil

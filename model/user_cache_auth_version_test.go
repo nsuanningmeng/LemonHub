@@ -22,7 +22,7 @@ func useUserCacheMiniRedis(t *testing.T) *miniredis.Miniredis {
 	oldSyncFrequency := common.SyncFrequency
 	common.RedisEnabled = true
 	common.SyncFrequency = 2
-	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr()})
+	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr(), MaxRetries: -1})
 	t.Cleanup(func() {
 		_ = common.RDB.Close()
 		common.RedisEnabled = oldRedisEnabled
@@ -99,6 +99,25 @@ func TestUserAuthFieldUpdateRejectsVersionMismatch(t *testing.T) {
 	group, err := common.RDB.HGet(t.Context(), getUserCacheKey(userID), "Group").Result()
 	require.NoError(t, err)
 	assert.Equal(t, "current", group)
+}
+
+func TestUserAuthFieldUpdateDoesNotPromoteIncompleteOldSchema(t *testing.T) {
+	useUserCacheMiniRedis(t)
+	const userID = 4203
+	key := getUserCacheKey(userID)
+	require.NoError(t, common.RDB.HSet(t.Context(), key, map[string]interface{}{
+		"Id":          userID,
+		"Email":       "old@example.com",
+		"AuthVersion": 1,
+		"CacheSchema": userCacheSchemaVersion - 1,
+	}).Err())
+
+	require.NoError(t, updateUserCacheFieldAtVersion(userID, "Email", "new@example.com", 1))
+	schema, err := common.RDB.HGet(t.Context(), key, "CacheSchema").Int()
+	require.NoError(t, err)
+	assert.Equal(t, userCacheSchemaVersion-1, schema)
+	_, err = cacheGetUserBase(userID)
+	assert.Error(t, err, "an old hash without SiteId must be rehydrated, not marked current")
 }
 
 func TestRefreshUserGroupCacheRepairsDelayedSameVersionWrite(t *testing.T) {

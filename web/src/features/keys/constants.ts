@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type StatusBadgeProps } from '@/components/status-badge'
+import type { StatusBadgeProps } from '@/components/status-badge'
 
 // ============================================================================
 // API Key Status Configuration
@@ -71,6 +71,8 @@ export const API_KEY_STATUS_OPTIONS = Object.values(API_KEY_STATUSES).map(
 // ============================================================================
 
 export const DEFAULT_GROUP = '' as const
+// Keep in sync with controller/maxTokenGroups; the API rejects larger lists.
+export const MAX_API_KEY_GROUPS = 8
 
 // ============================================================================
 // Error Messages (i18n keys: use t(ERROR_MESSAGES.xxx) when displaying)

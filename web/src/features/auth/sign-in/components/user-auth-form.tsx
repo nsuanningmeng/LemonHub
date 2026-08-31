@@ -16,22 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
-import type { z } from 'zod'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link } from '@tanstack/react-router'
 import axios from 'axios'
 import { Loader2, LogIn, KeyRound } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import {
-  buildAssertionResult,
-  prepareCredentialRequestOptions,
-  isPasskeySupported as detectPasskeySupport,
-} from '@/lib/passkey'
-import { cn } from '@/lib/utils'
-import { useStatus } from '@/hooks/use-status'
+import type { z } from 'zod'
+
+import { CaptchaWidget } from '@/components/captcha'
+import { Dialog } from '@/components/dialog'
+import { PasswordInput } from '@/components/password-input'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -43,9 +40,6 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Dialog } from '@/components/dialog'
-import { PasswordInput } from '@/components/password-input'
-import { CaptchaWidget } from '@/components/captcha'
 import { login, wechatLoginByCode } from '@/features/auth/api'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
@@ -54,8 +48,15 @@ import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useCaptcha } from '@/features/auth/hooks/use-captcha'
 import { beginPasskeyLogin, finishPasskeyLogin } from '@/features/auth/passkey'
 import type { AuthFormProps } from '@/features/auth/types'
+import { useStatus } from '@/hooks/use-status'
 import { isAuthBundle } from '@/lib/api'
+import {
+  buildAssertionResult,
+  prepareCredentialRequestOptions,
+  isPasskeySupported as detectPasskeySupport,
+} from '@/lib/passkey'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
+import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 export function UserAuthForm({
@@ -145,13 +146,6 @@ export function UserAuthForm({
     )
   }, [status])
 
-  // Captcha tokens are single-use: the backend verifies one per guarded
-  // request, so a failed attempt must force a fresh challenge.
-  const resetCaptcha = () => {
-    setCaptchaToken('')
-    setCaptchaWidgetKey((current) => current + 1)
-  }
-
   async function onSubmit(data: z.infer<typeof loginFormSchema>) {
     if (requiresLegalConsent && !agreedToLegal) {
       toast.error(legalConsentErrorMessage)
@@ -160,12 +154,20 @@ export function UserAuthForm({
 
     if (!validateCaptcha()) return
 
+    // Captcha tokens are single-use. Preserve this request's value, then
+    // immediately remount the widget for any later attempt.
+    const submittedCaptchaToken = captchaToken
+    if (isCaptchaEnabled) {
+      setCaptchaToken('')
+      setCaptchaWidgetKey((current) => current + 1)
+    }
+
     setIsLoading(true)
     try {
       const res = await login({
         username: data.username,
         password: data.password,
-        turnstile: captchaToken,
+        turnstile: submittedCaptchaToken,
       })
 
       if (res.success) {
@@ -183,11 +185,8 @@ export function UserAuthForm({
         }
         await handleLoginSuccess(res.data, redirectTo)
         toast.success(t('Welcome back!'))
-      } else {
-        resetCaptcha()
       }
     } catch (error: unknown) {
-      resetCaptcha()
       if (axios.isAxiosError(error)) return
       toast.error(error instanceof Error ? error.message : loginFailedMessage)
     } finally {

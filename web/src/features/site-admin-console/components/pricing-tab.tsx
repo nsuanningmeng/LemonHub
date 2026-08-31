@@ -16,19 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
+
 import { getDashboard, updateModelPricing } from '../api'
 
 const DASHBOARD_QUERY_KEY = ['site-admin-dashboard'] as const
@@ -65,7 +62,9 @@ export function PricingTab() {
 
   const onSubmit = async () => {
     if (rate < RETAIL_BASE) {
-      toast.error(t('Markup cannot be below 10000 (the platform retail price).'))
+      toast.error(
+        t('Markup cannot be below 10000 (the platform retail price).')
+      )
       return
     }
     if (cap > 0 && rate > cap) {

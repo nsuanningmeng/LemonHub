@@ -16,10 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useBlocker, type ShouldBlockFn } from '@tanstack/react-router'
 import { Check, RotateCcw, Send, X } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CodeBlockEditor } from '@/components/ai-elements/code-block'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 
 import { getMessageEditorState } from '../../lib'
@@ -45,28 +48,71 @@ export function PlaygroundMessageEditor({
   originalText,
 }: PlaygroundMessageEditorProps) {
   const { t } = useTranslation()
+  const [showLeaveDialog, setShowLeaveDialog] = useState(false)
   const { canSave, hasChanged, showSaveAndSubmit } = getMessageEditorState(
     message,
     editText,
     originalText
   )
+  const shouldBlockNavigation = useCallback<ShouldBlockFn>(
+    ({ current, next }) => hasChanged && current.pathname !== next.pathname,
+    [hasChanged]
+  )
+  const navigationBlocker = useBlocker({
+    enableBeforeUnload: false,
+    shouldBlockFn: shouldBlockNavigation,
+    withResolver: true,
+  })
+  const isLeaveDialogOpen =
+    showLeaveDialog || navigationBlocker.status === 'blocked'
 
-  const handleCancel = () => {
-    if (
-      hasChanged &&
-      !window.confirm(
-        t('You have unsaved changes. Are you sure you want to leave?')
-      )
-    ) {
+  useEffect(() => {
+    if (!hasChanged) return
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+      return ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasChanged])
+
+  const leaveEdit = () => {
+    setShowLeaveDialog(false)
+    onCancelEdit?.(false)
+  }
+
+  const confirmLeave = () => {
+    setShowLeaveDialog(false)
+
+    if (navigationBlocker.status === 'blocked') {
+      navigationBlocker.proceed()
       return
     }
 
-    onCancelEdit?.(false)
+    leaveEdit()
+  }
+
+  const stayInEditor = () => {
+    setShowLeaveDialog(false)
+    if (navigationBlocker.status === 'blocked') navigationBlocker.reset()
+  }
+
+  const handleCancel = () => {
+    if (hasChanged) {
+      setShowLeaveDialog(true)
+      return
+    }
+
+    leaveEdit()
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       event.preventDefault()
+      if (isLeaveDialogOpen) return
       handleCancel()
       return
     }
@@ -133,23 +179,37 @@ export function PlaygroundMessageEditor({
   )
 
   return (
-    <CodeBlockEditor
-      actions={editorActions}
-      ariaLabel={t('Edit')}
-      className='my-0 group-[.is-assistant]:w-full group-[.is-assistant]:max-w-[78ch] group-[.is-user]:max-w-[85%] sm:group-[.is-user]:max-w-[62ch] md:group-[.is-user]:max-w-[68ch] lg:group-[.is-user]:max-w-[72ch]'
-      language='markdown'
-      onChange={onEditTextChange}
-      onKeyDown={handleKeyDown}
-      rows={8}
-      title={
-        <span className='inline-flex items-center gap-2'>
-          <span>{t('Edit')}</span>
-          <span className='text-muted-foreground/80 normal-case'>
-            {hasChanged ? t('Unsaved changes') : t('No changes')}
+    <>
+      <CodeBlockEditor
+        actions={editorActions}
+        ariaLabel={t('Edit')}
+        className='my-0 group-[.is-assistant]:w-full group-[.is-assistant]:max-w-[78ch] group-[.is-user]:max-w-[85%] sm:group-[.is-user]:max-w-[62ch] md:group-[.is-user]:max-w-[68ch] lg:group-[.is-user]:max-w-[72ch]'
+        language='markdown'
+        onChange={onEditTextChange}
+        onKeyDown={handleKeyDown}
+        rows={8}
+        title={
+          <span className='inline-flex items-center gap-2'>
+            <span>{t('Edit')}</span>
+            <span className='text-muted-foreground/80 normal-case'>
+              {hasChanged ? t('Unsaved changes') : t('No changes')}
+            </span>
           </span>
-        </span>
-      }
-      value={editText}
-    />
+        }
+        value={editText}
+      />
+      <ConfirmDialog
+        cancelBtnText={t('Stay')}
+        confirmText={t('Leave')}
+        desc={t('You have unsaved changes. Are you sure you want to leave?')}
+        destructive
+        handleConfirm={confirmLeave}
+        onOpenChange={(open) => {
+          if (!open) stayInEditor()
+        }}
+        open={isLeaveDialogOpen}
+        title={t('Unsaved changes')}
+      />
+    </>
   )
 }

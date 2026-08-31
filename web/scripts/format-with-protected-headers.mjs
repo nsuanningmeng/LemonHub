@@ -50,6 +50,23 @@ const headerExtensions = new Set([
 ])
 const protectedHeaderPattern =
   /^\/\*\nCopyright \(C\)[\s\S]*?QuantumNous[\s\S]*?\*\/\n+/
+const retryableWriteErrors = new Set(['EACCES', 'EBUSY', 'EPERM', 'UNKNOWN'])
+const writeRetrySignal = new Int32Array(new SharedArrayBuffer(4))
+
+function writeFileWithRetry(file, content) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      writeFileSync(file, content)
+      return
+    } catch (error) {
+      const isRetryable = retryableWriteErrors.has(error?.code)
+      if (!isRetryable || attempt === 7) {
+        throw error
+      }
+      Atomics.wait(writeRetrySignal, 0, 0, 25 * (attempt + 1))
+    }
+  }
+}
 
 function extensionOf(path) {
   const index = path.lastIndexOf('.')
@@ -82,14 +99,24 @@ function snapshotFiles(files) {
 }
 
 function restoreSnapshot(snapshot) {
+  const errors = []
   for (const [file, content] of snapshot) {
-    writeFileSync(file, content)
+    try {
+      writeFileWithRetry(file, content)
+    } catch (error) {
+      errors.push(
+        new Error(`Failed to restore ${relative(root, file)}`, {
+          cause: error,
+        })
+      )
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'Failed to restore formatter snapshot')
   }
 }
 
-function stripProtectedHeaders(files) {
-  const headers = new Map()
-
+function stripProtectedHeaders(files, headers) {
   for (const file of files) {
     if (!headerExtensions.has(extensionOf(file))) {
       continue
@@ -102,18 +129,30 @@ function stripProtectedHeaders(files) {
     }
 
     headers.set(file, match[0])
-    writeFileSync(file, content.slice(match[0].length))
+    writeFileWithRetry(file, content.slice(match[0].length))
   }
 
   return headers
 }
 
 function restoreProtectedHeaders(headers) {
+  const errors = []
   for (const [file, header] of headers) {
-    const content = readFileSync(file, 'utf8').replace(/^\n+/, '')
-    if (!content.startsWith(header)) {
-      writeFileSync(file, header + content)
+    try {
+      const content = readFileSync(file, 'utf8').replace(/^\n+/, '')
+      if (!content.startsWith(header)) {
+        writeFileWithRetry(file, header + content)
+      }
+    } catch (error) {
+      errors.push(
+        new Error(`Failed to restore header in ${relative(root, file)}`, {
+          cause: error,
+        })
+      )
     }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, 'Failed to restore protected headers')
   }
 }
 
@@ -135,11 +174,11 @@ const files = walk(root).filter(
   (file) => statSync(file).size < 10 * 1024 * 1024
 )
 const before = mode === '--check' ? snapshotFiles(files) : null
-let headers = new Map()
+const headers = new Map()
 let exitCode = 0
 
 try {
-  headers = stripProtectedHeaders(files)
+  stripProtectedHeaders(files, headers)
   const result = spawnSync(
     'oxfmt',
     ['-c', '.oxfmtrc.json', '--ignore-path', '.gitignore', '--write', '.'],

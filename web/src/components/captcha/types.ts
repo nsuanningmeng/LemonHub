@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 // Shared contract of every human-verification channel widget: the widget
 // calls onVerify with an opaque token string that the backend middleware
 // knows how to verify for the active provider, and onExpire when a

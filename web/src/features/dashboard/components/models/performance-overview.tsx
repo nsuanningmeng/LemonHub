@@ -145,7 +145,10 @@ export function PerformanceOverview() {
               icon={HeartPulse}
               label={t('Success rate')}
               value={formatSuccessRate(summary.successRate, srConfig)}
-              valueClassName={successRateTextClass(summary.successRate, srConfig)}
+              valueClassName={successRateTextClass(
+                summary.successRate,
+                srConfig
+              )}
               tone='success'
             />
             <InlineMetric

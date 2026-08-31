@@ -1,42 +1,35 @@
 package helper
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
+	rootcommon "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/relay/common"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
-func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Request) error {
+func ModelMappedHelper(c *gin.Context, info *relaycommon.RelayInfo, request dto.Request) error {
 	if info.ChannelMeta == nil {
-		info.ChannelMeta = &common.ChannelMeta{}
+		info.ChannelMeta = &relaycommon.ChannelMeta{}
 	}
-
-	isResponsesCompact := info.RelayMode == relayconstant.RelayModeResponsesCompact
-	originModelName := info.OriginModelName
-	mappingModelName := originModelName
-	if isResponsesCompact && strings.HasSuffix(originModelName, ratio_setting.CompactModelSuffix) {
-		mappingModelName = strings.TrimSuffix(originModelName, ratio_setting.CompactModelSuffix)
-	}
+	// Retries reuse the Gin context. Clear any mapped model left by the
+	// previous channel before this attempt can return on a no-op or error path.
+	c.Set(string(constant.ContextKeyUpstreamModelName), "")
 
 	// map model name
 	modelMapping := c.GetString("model_mapping")
 	if modelMapping != "" && modelMapping != "{}" {
 		modelMap := make(map[string]string)
-		err := json.Unmarshal([]byte(modelMapping), &modelMap)
+		err := rootcommon.UnmarshalJsonStr(modelMapping, &modelMap)
 		if err != nil {
 			return fmt.Errorf("unmarshal_model_mapping_failed")
 		}
 
 		// 支持链式模型重定向，最终使用链尾的模型
-		currentModel := mappingModelName
+		currentModel := info.OriginModelName
 		visitedModels := map[string]bool{
 			currentModel: true,
 		}
@@ -67,28 +60,11 @@ func ModelMappedHelper(c *gin.Context, info *common.RelayInfo, request dto.Reque
 		}
 	}
 
-	if isResponsesCompact {
-		finalUpstreamModelName := mappingModelName
-		if info.IsModelMapped && info.UpstreamModelName != "" {
-			finalUpstreamModelName = info.UpstreamModelName
-		}
-		info.UpstreamModelName = finalUpstreamModelName
-		// Bill and log by the model the user requested; the mapped upstream
-		// model must not surface in user-visible fields (log model column,
-		// rankings, metrics).
-		info.OriginModelName = ratio_setting.WithCompactModelSuffix(mappingModelName)
-	}
-	if c != nil {
-		// Expose the mapped model for the error path, so user-visible error
-		// text can be scrubbed (see controller.maskMappedModelName). Always
-		// overwrite: retries may land on a channel without mapping, and a
-		// stale value from a previous attempt must not scrub that channel's
-		// error text.
-		mappedName := ""
-		if info.IsModelMapped && info.UpstreamModelName != "" {
-			mappedName = info.UpstreamModelName
-		}
-		c.Set(string(constant.ContextKeyUpstreamModelName), mappedName)
+	// Expose the mapped model for the error path so user-visible error text can
+	// be scrubbed (see controller.maskMappedModelName). OriginModelName remains
+	// the client-requested model for billing, logs, rankings, and metrics.
+	if info.IsModelMapped && info.UpstreamModelName != "" {
+		c.Set(string(constant.ContextKeyUpstreamModelName), info.UpstreamModelName)
 	}
 	if request != nil {
 		request.SetModelName(info.UpstreamModelName)

@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import {
   ArrowRight,
   Globe,
@@ -36,9 +37,11 @@ import {
   Banknote,
   Info,
 } from 'lucide-react'
-import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
+
 import { AnimateInView } from '@/components/animate-in-view'
+import { PublicLayout } from '@/components/layout'
+import { Footer } from '@/components/layout/components/footer'
 import {
   Accordion,
   AccordionContent,
@@ -46,8 +49,6 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion'
 import { Button } from '@/components/ui/button'
-import { Footer } from '@/components/layout/components/footer'
-import { PublicLayout } from '@/components/layout'
 
 // "立即申请" 跳转到「联系我们」页（/contact）。如后续有专门的代理申请表单页，
 // 把下方两个 Button 的 `<Link to='/contact' />` 改成对应路由即可。
@@ -113,7 +114,7 @@ const ADVANTAGES = [
   {
     icon: Coins,
     title: 'Payments Go Straight to You',
-    desc: "Users pay into your own payment account and it arrives instantly — no platform split and nothing to withdraw.",
+    desc: 'Users pay into your own payment account and it arrives instantly — no platform split and nothing to withdraw.',
   },
   {
     icon: Headphones,
@@ -630,7 +631,9 @@ function ReferralProgramSection() {
                 key={label}
                 className='text-muted-foreground text-sm leading-relaxed'
               >
-                <span className='text-foreground font-semibold'>{t(label)}</span>
+                <span className='text-foreground font-semibold'>
+                  {t(label)}
+                </span>
                 <span className='mx-1.5'>·</span>
                 {t(desc)}
               </li>

@@ -578,9 +578,7 @@ export function PerformanceSection(props: Props) {
               name='performance_setting.request_body_record_max_size_mb'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>
-                    {t('Request Body Storage Limit (MB)')}
-                  </FormLabel>
+                  <FormLabel>{t('Request Body Storage Limit (MB)')}</FormLabel>
                   <FormControl>
                     <Input
                       type='number'
@@ -738,7 +736,8 @@ export function PerformanceSection(props: Props) {
                     {formatBytes(stats.request_body_record.max_size_bytes ?? 0)}
                   </span>
                   <span>
-                    {t('Records')}: {stats.request_body_record.record_count ?? 0}
+                    {t('Records')}:{' '}
+                    {stats.request_body_record.record_count ?? 0}
                   </span>
                 </div>
               </div>

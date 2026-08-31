@@ -18,10 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { SectionPageLayout } from '@/components/layout'
 import { TransferDialog } from '@/features/wallet/components/dialogs/transfer-dialog'
 import { useAffiliate } from '@/features/wallet/hooks'
 import { useIsAdmin } from '@/hooks/use-admin'
+
 import { ReferralAdminSection } from './components/referral-admin-section'
 import { ReferralLeaderboardTable } from './components/referral-leaderboard-table'
 import { ReferralRules } from './components/referral-rules'

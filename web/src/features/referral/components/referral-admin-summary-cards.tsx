@@ -26,10 +26,12 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatQuota } from '@/lib/format'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatQuota } from '@/lib/format'
+
 import { useReferralAdminSummary } from '../hooks/use-referral-admin-summary'
 
 interface SummaryTile {

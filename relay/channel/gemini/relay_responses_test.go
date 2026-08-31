@@ -28,6 +28,9 @@ func TestGeminiResponsesHandlerReturnsOpenAIResponsesJSON(t *testing.T) {
 	c.Set(common.RequestIdKey, "gemini-responses-test")
 
 	info := newGeminiResponsesRelayInfo(false)
+	info.OriginModelName = "client-model"
+	info.UpstreamModelName = "private-upstream-model"
+	info.IsModelMapped = true
 	payload := dto.GeminiChatResponse{
 		Candidates: []dto.GeminiChatCandidate{
 			{
@@ -63,6 +66,9 @@ func TestGeminiResponsesHandlerReturnsOpenAIResponsesJSON(t *testing.T) {
 	assert.Contains(t, got, `"text":"hello"`)
 	assert.Contains(t, got, `"input_tokens":2`)
 	assert.Contains(t, got, `"output_tokens":3`)
+	assert.Contains(t, got, `"model":"client-model"`)
+	assert.NotContains(t, got, "private-upstream-model")
+	assert.Equal(t, "private-upstream-model", info.UpstreamModelName)
 	assert.NotContains(t, got, `"choices"`)
 	assert.NotContains(t, got, `"candidates"`)
 }
@@ -94,6 +100,9 @@ func TestGeminiResponsesStreamHandlerReturnsOpenAIResponsesSSE(t *testing.T) {
 	t.Cleanup(func() { constant.StreamingTimeout = oldStreamingTimeout })
 
 	info := newGeminiResponsesRelayInfo(true)
+	info.OriginModelName = "client-model"
+	info.UpstreamModelName = "private-upstream-model"
+	info.IsModelMapped = true
 	first := dto.GeminiChatResponse{
 		Candidates: []dto.GeminiChatCandidate{
 			{
@@ -156,6 +165,9 @@ func TestGeminiResponsesStreamHandlerReturnsOpenAIResponsesSSE(t *testing.T) {
 	assert.Contains(t, got, `event: response.completed`)
 	assert.Contains(t, got, `"input_tokens":2`)
 	assert.Contains(t, got, `"output_tokens":3`)
+	assert.Contains(t, got, `"model":"client-model"`)
+	assert.NotContains(t, got, "private-upstream-model")
+	assert.Equal(t, "private-upstream-model", info.UpstreamModelName)
 	assert.NotContains(t, got, `"choices"`)
 	assert.NotContains(t, got, `"candidates"`)
 	requireOrderedGeminiResponsesSubstrings(t, got,

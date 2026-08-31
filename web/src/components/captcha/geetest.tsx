@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useId, useRef } from 'react'
 import i18next from 'i18next'
+import { useEffect, useId, useRef } from 'react'
+
 import type { CaptchaChannelProps } from './types'
 
 interface GeetestInstance {

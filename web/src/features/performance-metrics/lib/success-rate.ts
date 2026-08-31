@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 /*
  * Centralized success-rate display logic for model performance metrics.
  *
@@ -32,6 +31,7 @@ For commercial licensing, please contact support@quantumnous.com
  * `noDataAsFull` is enabled it is treated as 100% (green) instead of "no data".
  */
 import { useMemo } from 'react'
+
 import { useStatus } from '@/hooks/use-status'
 
 export type SuccessRateConfig = {

@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
@@ -174,11 +173,10 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 	// real quota inside the first-bonus transaction) and record the audit logs.
 	if firstBonusGranted {
 		if inviteeReward > 0 {
-			gopool.Go(func() {
-				if cerr := cacheIncrUserQuota(inviteeId, inviteeReward); cerr != nil {
-					common.SysLog("failed to refresh invitee quota cache after referral first bonus: " + cerr.Error())
-				}
-			})
+			inviteeRewardQuota, quotaErr := common.QuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
+			if quotaErr == nil {
+				syncCreditUserQuotaCache(inviteeId, inviteeRewardQuota, "referral first bonus")
+			}
 			RecordLog(inviteeId, LogTypeSystem, fmt.Sprintf("首次充值，使用邀请码赠送 %s", logger.LogQuota(int(inviteeReward))))
 		}
 		if inviterReward > 0 {
@@ -252,7 +250,6 @@ func reverseAffiliateRechargeCommission(tradeNo string, clawedBackTotal, credite
 		raceLost := false
 		var inviterId int
 		var delta int64
-		var cashSettled bool
 		err := DB.Transaction(func(tx *gorm.DB) error {
 			var row AffiliateCommission
 			if e := tx.Where("trade_no = ? AND kind = ?", tradeNo, AffiliateKindRechargeCommission).First(&row).Error; e != nil {
@@ -301,7 +298,7 @@ func reverseAffiliateRechargeCommission(tradeNo string, clawedBackTotal, credite
 					return e
 				}
 			}
-			inviterId, delta, cashSettled = row.InviterId, d, row.CashSettled
+			inviterId, delta = row.InviterId, d
 			return nil
 		})
 		if raceLost {
@@ -311,9 +308,6 @@ func reverseAffiliateRechargeCommission(tradeNo string, clawedBackTotal, credite
 			return err
 		}
 		if delta > 0 {
-			if !cashSettled {
-				_ = invalidateUserCache(inviterId)
-			}
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请返佣回扣 -%s（订单 %s 退款/拒付）", logger.LogQuota(int(delta)), tradeNo))
 		}
 		return nil
@@ -326,9 +320,46 @@ func reverseAffiliateRechargeCommission(tradeNo string, clawedBackTotal, credite
 // invitee's sign-up reward, guarded by an inserted first_bonus_reversal ledger row (the composite
 // unique index blocks a second reversal).
 func reverseAffiliateFirstBonus(inviteeId int) error {
+	// Preserve the idempotent fast path even while Redis is unavailable. A
+	// completed reversal has no balance mutation left to protect.
+	var existing int64
+	if err := DB.Model(&AffiliateCommission{}).
+		Where("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonusReversal).
+		Count(&existing).Error; err != nil {
+		return err
+	}
+	if existing > 0 {
+		return resolveUserQuotaCacheUncertainty(inviteeId)
+	}
+
+	// Hydrate the authoritative cache before opening the transaction. The
+	// transaction callback must not hydrate through a second DB connection
+	// (SQLite may only have one), and an outage must not permit a DB-only debit
+	// that leaves a surviving stale Redis balance spendable after recovery.
+	var observed AffiliateCommission
+	if err := DB.Select("recharge_quota").
+		Where("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonus).
+		First(&observed).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	if observed.RechargeQuota > 0 {
+		if _, err := common.QuotaFromDecimalStrict(decimal.NewFromInt(observed.RechargeQuota)); err != nil {
+			return err
+		}
+		if err := ensureUserQuotaCacheAvailable(inviteeId); err != nil {
+			return err
+		}
+	}
+
 	var inviterId int
 	var inviterReward, inviteeReward int64
 	granted, err := func() (bool, error) {
+		cacheApplied := false
+		var cacheDelta int64
+		callbackCompleted := false
 		txErr := DB.Transaction(func(tx *gorm.DB) error {
 			var fb AffiliateCommission
 			if e := tx.Where("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonus).First(&fb).Error; e != nil {
@@ -348,6 +379,18 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 			}
 
 			inviterReward = fb.CommissionQuota
+			if inviterReward < 0 {
+				inviterReward = 0
+			}
+			var inviterRewardQuota int
+			if inviterReward > 0 {
+				var quotaErr error
+				inviterRewardQuota, quotaErr = common.QuotaFromDecimalStrict(decimal.NewFromInt(inviterReward))
+				if quotaErr != nil {
+					return quotaErr
+				}
+				inviterReward = int64(inviterRewardQuota)
+			}
 			// Only reverse the invitee sign-up reward that was actually recorded at grant time.
 			// Legacy first_bonus rows (and intentionally-0 grants) carry RechargeQuota<=0, so we
 			// reverse nothing rather than guess with the current common.QuotaForInvitee (which may
@@ -355,6 +398,20 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 			inviteeReward = fb.RechargeQuota
 			if inviteeReward < 0 {
 				inviteeReward = 0
+			}
+			var inviteeRewardQuota int
+			if inviteeReward > 0 {
+				var quotaErr error
+				inviteeRewardQuota, quotaErr = common.QuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
+				if quotaErr != nil {
+					return quotaErr
+				}
+				applied, cacheErr := applyPreparedUserQuotaCacheDelta(inviteeId, -int64(inviteeRewardQuota))
+				if cacheErr != nil {
+					return cacheErr
+				}
+				cacheApplied = applied
+				cacheDelta = -int64(inviteeRewardQuota)
 			}
 
 			// The reversal marker's unique index (trade_no, kind) is the hard idempotency boundary
@@ -378,21 +435,59 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 				"aff_count": gorm.Expr("aff_count - ?", 1),
 			}
 			if inviterReward > 0 {
-				inviterUpdates["aff_quota"] = gorm.Expr("aff_quota - ?", inviterReward)
-				inviterUpdates["aff_history"] = gorm.Expr("aff_history - ?", inviterReward)
+				inviterUpdates["aff_quota"] = gorm.Expr("aff_quota - ?", inviterRewardQuota)
+				inviterUpdates["aff_history"] = gorm.Expr("aff_history - ?", inviterRewardQuota)
 			}
-			if e := tx.Model(&User{}).Where("id = ?", fb.InviterId).Updates(inviterUpdates).Error; e != nil {
-				return e
+			inviterUpdate := tx.Model(&User{}).Where("id = ?", fb.InviterId).Updates(inviterUpdates)
+			if inviterUpdate.Error != nil {
+				return inviterUpdate.Error
+			}
+			if inviterUpdate.RowsAffected != 1 {
+				return gorm.ErrRecordNotFound
 			}
 			if inviteeReward > 0 {
-				if e := tx.Model(&User{}).Where("id = ?", inviteeId).
-					Update("quota", gorm.Expr("quota - ?", inviteeReward)).Error; e != nil {
-					return e
+				inviteeUpdate := tx.Model(&User{}).Where("id = ?", inviteeId).
+					Update("quota", gorm.Expr("quota - ?", inviteeRewardQuota))
+				if inviteeUpdate.Error != nil {
+					return inviteeUpdate.Error
+				}
+				if inviteeUpdate.RowsAffected != 1 {
+					return gorm.ErrRecordNotFound
 				}
 			}
 			inviterId = fb.InviterId
+			callbackCompleted = true
 			return nil
 		})
+		if txErr != nil && cacheApplied {
+			if callbackCompleted {
+				// The callback completed, so only COMMIT can have failed. Re-read the
+				// durable idempotency marker before deciding whether to compensate.
+				var persisted int64
+				checkErr := DB.Model(&AffiliateCommission{}).
+					Where("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonusReversal).
+					Count(&persisted).Error
+				switch {
+				case checkErr == nil && persisted > 0:
+					common.SysError(fmt.Sprintf("affiliate first-bonus reversal commit returned an error but durable marker exists: invitee=%d error=%v", inviteeId, txErr))
+					fenceErr := fenceUserQuotaCacheUncertainty(inviteeId, "affiliate_first_bonus_commit_recheck")
+					if fenceErr != nil {
+						common.SysError(fmt.Sprintf("failed to fence affiliate first-bonus cache after uncertain commit: invitee=%d error=%v", inviteeId, fenceErr))
+					} else if reconcileErr := resolveUserQuotaCacheUncertainty(inviteeId); reconcileErr != nil {
+						common.SysError(fmt.Sprintf("failed to reconcile affiliate first-bonus cache after uncertain commit: invitee=%d error=%v", inviteeId, reconcileErr))
+					} else {
+						txErr = nil
+					}
+				case checkErr == nil:
+					compensatePreparedUserQuotaCacheDelta(inviteeId, cacheDelta, "affiliate first-bonus reversal rollback")
+				default:
+					common.SysError(fmt.Sprintf("affiliate first-bonus reversal commit outcome is ambiguous; retaining fail-closed cache debit: invitee=%d tx_error=%v check_error=%v", inviteeId, txErr, checkErr))
+					_ = fenceUserQuotaCacheUncertainty(inviteeId, "affiliate_first_bonus_reversal")
+				}
+			} else {
+				compensatePreparedUserQuotaCacheDelta(inviteeId, cacheDelta, "affiliate first-bonus reversal rollback")
+			}
+		}
 		return resolveAffiliateSettleResult(txErr, func() bool {
 			return affiliateLedgerExists("invitee_id = ? AND kind = ?", inviteeId, AffiliateKindFirstBonusReversal)
 		})
@@ -401,8 +496,6 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 		return err
 	}
 	if granted {
-		_ = invalidateUserCache(inviterId)
-		_ = invalidateUserCache(inviteeId)
 		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("邀请首充奖励回扣 -%s（被邀请用户激活充值已全额退款/拒付）", logger.LogQuota(int(inviterReward))))
 		if inviteeReward > 0 {
 			RecordLog(inviteeId, LogTypeSystem, fmt.Sprintf("首充邀请赠送回扣 -%s（激活充值已全额退款/拒付）", logger.LogQuota(int(inviteeReward))))
@@ -474,7 +567,23 @@ func affiliateCommissionQuota(creditedQuota int64, percent float64) int64 {
 // existence check) is the idempotency guard. Returns true only when THIS call performed
 // the grant (so the caller credits the cache / writes logs once).
 func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeReward int64) (bool, error) {
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	inviterRewardQuota := 0
+	inviteeRewardQuota := 0
+	var err error
+	if inviterReward > 0 {
+		inviterRewardQuota, err = common.QuotaFromDecimalStrict(decimal.NewFromInt(inviterReward))
+		if err != nil {
+			return false, err
+		}
+	}
+	if inviteeReward > 0 {
+		inviteeRewardQuota, err = common.QuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
+		if err != nil {
+			return false, err
+		}
+	}
+
+	err = DB.Transaction(func(tx *gorm.DB) error {
 		// If a prior activation was fully refunded, its first_bonus was reversed and a
 		// first_bonus_reversal marker written. A genuine re-activation (a fresh paid top-up)
 		// should re-earn the bonus, so clear the stale reversed cycle (both rows) first — the
@@ -521,16 +630,23 @@ func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeR
 		inviterUpdates := map[string]interface{}{
 			"aff_count": gorm.Expr("aff_count + ?", 1),
 		}
-		if inviterReward > 0 {
-			inviterUpdates["aff_quota"] = gorm.Expr("aff_quota + ?", inviterReward)
-			inviterUpdates["aff_history"] = gorm.Expr("aff_history + ?", inviterReward)
+		inviterQuery := tx.Model(&User{}).
+			Where("id = ? AND aff_count < ?", inviterId, common.MaxQuota)
+		if inviterRewardQuota > 0 {
+			maxCurrent := common.MaxQuota - 1 - inviterRewardQuota
+			inviterQuery = inviterQuery.Where("aff_quota <= ? AND aff_history <= ?", maxCurrent, maxCurrent)
+			inviterUpdates["aff_quota"] = gorm.Expr("aff_quota + ?", inviterRewardQuota)
+			inviterUpdates["aff_history"] = gorm.Expr("aff_history + ?", inviterRewardQuota)
 		}
-		if err := tx.Model(&User{}).Where("id = ?", inviterId).Updates(inviterUpdates).Error; err != nil {
-			return err
+		inviterUpdate := inviterQuery.Updates(inviterUpdates)
+		if inviterUpdate.Error != nil {
+			return inviterUpdate.Error
 		}
-		if inviteeReward > 0 {
-			if err := tx.Model(&User{}).Where("id = ?", inviteeId).
-				Update("quota", gorm.Expr("quota + ?", inviteeReward)).Error; err != nil {
+		if inviterUpdate.RowsAffected != 1 {
+			return ErrTopUpQuotaLimitExceeded
+		}
+		if inviteeRewardQuota > 0 {
+			if err := creditTopUpQuota(tx, inviteeId, inviteeRewardQuota, nil); err != nil {
 				return err
 			}
 		}
@@ -549,6 +665,10 @@ func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeR
 func settleAffiliateRechargeCommission(inviterId, inviteeId int, tradeNo string, creditedQuota, commission int64, creditPlatformQuota bool) (int64, error) {
 	if commission <= 0 {
 		return 0, nil
+	}
+	commissionQuota, err := common.QuotaFromDecimalStrict(decimal.NewFromInt(commission))
+	if err != nil {
+		return 0, err
 	}
 	granted, err := func() (bool, error) {
 		txErr := DB.Transaction(func(tx *gorm.DB) error {
@@ -580,10 +700,20 @@ func settleAffiliateRechargeCommission(inviterId, inviteeId int, tradeNo string,
 			if !creditPlatformQuota {
 				return nil
 			}
-			return tx.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
-				"aff_quota":   gorm.Expr("aff_quota + ?", commission),
-				"aff_history": gorm.Expr("aff_history + ?", commission),
-			}).Error
+			maxCurrent := common.MaxQuota - 1 - commissionQuota
+			result := tx.Model(&User{}).
+				Where("id = ? AND aff_quota <= ? AND aff_history <= ?", inviterId, maxCurrent, maxCurrent).
+				Updates(map[string]interface{}{
+					"aff_quota":   gorm.Expr("aff_quota + ?", commissionQuota),
+					"aff_history": gorm.Expr("aff_history + ?", commissionQuota),
+				})
+			if result.Error != nil {
+				return result.Error
+			}
+			if result.RowsAffected != 1 {
+				return ErrTopUpQuotaLimitExceeded
+			}
+			return nil
 		})
 		return resolveAffiliateSettleResult(txErr, func() bool {
 			return affiliateLedgerExists("trade_no = ? AND kind = ?", tradeNo, AffiliateKindRechargeCommission)

@@ -115,16 +115,31 @@ func usageFromOpenAIBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	}
-	// Responses-semantic usage carries cache/media splits only in input_tokens_details;
-	// settlement reads them from PromptTokensDetails, so mirror them the same way
-	// normalizeOpenAIUsage does or cached tokens get billed at the full model ratio.
-	if usage.InputTokensDetails != nil {
-		usage.PromptTokensDetails.CachedTokens = usage.InputTokensDetails.CachedTokens
-		usage.PromptTokensDetails.CachedCreationTokens = usage.InputTokensDetails.CachedCreationTokens
-		usage.PromptTokensDetails.CacheWriteTokens = usage.InputTokensDetails.CacheWriteTokens
-		usage.PromptTokensDetails.ImageTokens = usage.InputTokensDetails.ImageTokens
-		usage.PromptTokensDetails.TextTokens = usage.InputTokensDetails.TextTokens
-		usage.PromptTokensDetails.AudioTokens = usage.InputTokensDetails.AudioTokens
+	// Responses-semantic usage often carries cache/media splits only in
+	// input_tokens_details. Fill missing canonical prompt details without
+	// overwriting values already normalized by an adaptor.
+	if inputDetails := usage.InputTokensDetails; inputDetails != nil {
+		if usage.PromptTokensDetails.CachedTokens == 0 && inputDetails.CachedTokens > 0 {
+			usage.PromptTokensDetails.CachedTokens = inputDetails.CachedTokens
+		}
+		if usage.PromptTokensDetails.CachedCreationTokens == 0 && inputDetails.CachedCreationTokens > 0 {
+			usage.PromptTokensDetails.CachedCreationTokens = inputDetails.CachedCreationTokens
+		}
+		if usage.PromptTokensDetails.CacheWriteTokens == 0 && inputDetails.CacheWriteTokens > 0 {
+			usage.PromptTokensDetails.CacheWriteTokens = inputDetails.CacheWriteTokens
+		}
+		if usage.PromptTokensDetails.TextTokens == 0 && inputDetails.TextTokens > 0 {
+			usage.PromptTokensDetails.TextTokens = inputDetails.TextTokens
+		}
+		if usage.PromptTokensDetails.ImageTokens == 0 && inputDetails.ImageTokens > 0 {
+			usage.PromptTokensDetails.ImageTokens = inputDetails.ImageTokens
+		}
+		if usage.PromptTokensDetails.AudioTokens == 0 && inputDetails.AudioTokens > 0 {
+			usage.PromptTokensDetails.AudioTokens = inputDetails.AudioTokens
+		}
+	}
+	if usage.PromptTokensDetails.CachedTokens == 0 && usage.PromptCacheHitTokens > 0 {
+		usage.PromptTokensDetails.CachedTokens = usage.PromptCacheHitTokens
 	}
 	usage.UsageSemantic = dto.BillingUsageSemanticOpenAI
 	usage.UsageSource = billingUsage.Source

@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type wechatLoginResponse struct {
@@ -69,6 +70,11 @@ func WeChatAuth(c *gin.Context) {
 		})
 		return
 	}
+	wechatId, err = model.NormalizeExternalIdentitySubject(wechatId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	// Resolve the sub-site from the request Host (0 = main site); scope lookups/insert to it.
 	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{
@@ -77,6 +83,13 @@ func WeChatAuth(c *gin.Context) {
 	if model.IsWeChatIdAlreadyTaken(wechatId, siteId) {
 		err := user.FillUserByWeChatId(siteId)
 		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": "用户已注销",
+				})
+				return
+			}
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": err.Error(),
@@ -153,8 +166,23 @@ func WeChatBind(c *gin.Context) {
 		})
 		return
 	}
-	// Binding happens on the logged-in user's own sub-site domain → request site.
-	siteId := middleware.GetRequestSiteId(c)
+	wechatId, err = model.NormalizeExternalIdentitySubject(wechatId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	userId := c.GetInt("id")
+	if userId == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
+		return
+	}
+	// Scope the friendly precheck to the authenticated owner. The transactional
+	// claim derives the same site and remains the final concurrency guard.
+	siteId, err := model.GetUserSiteId(userId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if model.IsWeChatIdAlreadyTaken(wechatId, siteId) {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -162,21 +190,8 @@ func WeChatBind(c *gin.Context) {
 		})
 		return
 	}
-	user := model.User{
-		Id: c.GetInt("id"),
-	}
-	if user.Id == 0 {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": "未登录"})
-		return
-	}
-	err = user.FillUserById()
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	user.WeChatId = wechatId
-	err = user.Update(false)
-	if err != nil {
+	// 只更新绑定列，避免完整用户快照覆盖并发的封禁、降权或分组变更。
+	if err := model.UpdateUserBindColumn(userId, "wechat_id", wechatId); err != nil {
 		common.ApiError(c, err)
 		return
 	}

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -34,8 +35,9 @@ const (
 )
 
 var (
-	ErrSubscriptionOrderNotFound      = errors.New("subscription order not found")
-	ErrSubscriptionOrderStatusInvalid = errors.New("subscription order status invalid")
+	ErrSubscriptionOrderNotFound          = errors.New("subscription order not found")
+	ErrSubscriptionOrderStatusInvalid     = errors.New("subscription order status invalid")
+	ErrSubscriptionBalanceCommitUncertain = errors.New("subscription balance purchase commit outcome is uncertain")
 )
 
 const (
@@ -535,7 +537,7 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 			return nil, errors.New("已达到该套餐购买上限")
 		}
 	}
-	nowUnix := GetDBTimestamp()
+	nowUnix := GetDBTimestampTx(tx)
 	now := time.Unix(nowUnix, 0)
 	endUnix, err := calcPlanEndTime(now, plan)
 	if err != nil {
@@ -643,6 +645,12 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		}
 		if !plan.Enabled {
 			// still allow completion for already purchased orders
+		}
+		// 锁定用户行：并发完成同一用户的不同订单（包括多实例部署下）时，
+		// 使 CreateUserSubscriptionFromPlanTx 的 MaxPurchasePerUser 检查按用户串行。
+		var userRow User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", order.UserId).First(&userRow).Error; err != nil {
+			return err
 		}
 		subscription, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
 		if err != nil {
@@ -756,6 +764,11 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (string, e
 	}
 	groupChanged := false
 	err = DB.Transaction(func(tx *gorm.DB) error {
+		// 与 CompleteSubscriptionOrder 一致：先锁用户行，再做购买次数检查。
+		var userRow User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", userId).First(&userRow).Error; err != nil {
+			return err
+		}
 		subscription, err := CreateUserSubscriptionFromPlanTx(tx, userId, plan, "admin")
 		if err == nil {
 			groupChanged = subscription.PrevUserGroup != ""
@@ -779,12 +792,289 @@ func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
 	if common.QuotaPerUnit <= 0 {
 		return 0, errors.New("额度单位配置错误")
 	}
-	// Ceil first (charge at least the exact price), then saturate to the int32
-	// quota bound like every other billing conversion.
-	quota := common.QuotaFromDecimal(decimal.NewFromFloat(priceAmount).
+	// Ceil first (charge at least the exact price), then reject values outside
+	// the int32 quota domain before a balance purchase can mutate state.
+	quota := decimal.NewFromFloat(priceAmount).
 		Mul(decimal.NewFromFloat(common.QuotaPerUnit)).
-		Ceil())
-	return quota, nil
+		Ceil()
+	return common.QuotaFromDecimalStrict(quota)
+}
+
+var (
+	runSubscriptionBalanceTransaction = func(fn func(*gorm.DB) error) error {
+		return DB.Transaction(fn)
+	}
+	beforeSubscriptionBalanceTransactionCommit = func() error { return nil }
+	resolveSubscriptionBalancePurchaseCommitFn = resolveSubscriptionBalancePurchaseCommit
+)
+
+func resolveSubscriptionBalancePurchaseCommit(tradeNo string, userId int, planId int) (bool, error) {
+	var order SubscriptionOrder
+	result := DB.Where(
+		"trade_no = ? AND user_id = ? AND plan_id = ? AND payment_method = ? AND payment_provider = ? AND status = ?",
+		tradeNo, userId, planId, PaymentMethodBalance, PaymentProviderBalance, common.TopUpStatusSuccess,
+	).Limit(1).Find(&order)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
+func resolveSubscriptionBalancePurchaseCommitByTradeNo(tradeNo string, userId int) (bool, error) {
+	var order SubscriptionOrder
+	result := DB.Where(
+		"trade_no = ? AND user_id = ? AND payment_method = ? AND payment_provider = ? AND status = ?",
+		tradeNo, userId, PaymentMethodBalance, PaymentProviderBalance, common.TopUpStatusSuccess,
+	).Limit(1).Find(&order)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
+func subscriptionBalanceQuotaOperationKey(tradeNo string) string {
+	return "subscription_balance_quota:" + tradeNo
+}
+
+func subscriptionBalanceQuotaOperationTTLSeconds() int {
+	ttl := userCacheTTLSeconds() * 10
+	if ttl < 300 {
+		return 300
+	}
+	return ttl
+}
+
+func subscriptionBalanceQuotaFenceValue(tradeNo string) string {
+	return "inflight:" + tradeNo
+}
+
+const reserveSubscriptionBalanceQuotaScript = `
+local state = redis.call('HGET', KEYS[3], 'state')
+local fence = redis.call('GET', KEYS[2])
+if state then
+  if tonumber(redis.call('HGET', KEYS[3], 'user_id') or '0') ~= tonumber(ARGV[2])
+    or tonumber(redis.call('HGET', KEYS[3], 'quota') or '-1') ~= tonumber(ARGV[1]) then
+    return -3
+  end
+  if state ~= 'reserved' then
+    return -3
+  end
+  if fence and fence ~= ARGV[5] then
+    return -2
+  end
+  if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[2])
+    or tonumber(redis.call('HGET', KEYS[1], 'CacheSchema') or '0') ~= tonumber(ARGV[3])
+    or redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
+    return -1
+  end
+  redis.call('SET', KEYS[2], ARGV[5], 'EX', ARGV[4])
+  return 2
+end
+if fence then
+  return -2
+end
+if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[2])
+  or tonumber(redis.call('HGET', KEYS[1], 'CacheSchema') or '0') ~= tonumber(ARGV[3])
+  or redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
+  return -1
+end
+local quota = tonumber(redis.call('HGET', KEYS[1], 'Quota'))
+if quota == nil or quota < tonumber(ARGV[1]) then
+  return 0
+end
+redis.call('HINCRBY', KEYS[1], 'Quota', -tonumber(ARGV[1]))
+redis.call('HSET', KEYS[3], 'state', 'reserved', 'user_id', ARGV[2], 'quota', ARGV[1])
+redis.call('EXPIRE', KEYS[3], ARGV[4])
+redis.call('SET', KEYS[2], ARGV[5], 'EX', ARGV[4])
+return 1`
+
+const compensateSubscriptionBalanceQuotaScript = `
+local state = redis.call('HGET', KEYS[3], 'state')
+if not state then
+  return -1
+end
+if tonumber(redis.call('HGET', KEYS[3], 'user_id') or '0') ~= tonumber(ARGV[2])
+  or tonumber(redis.call('HGET', KEYS[3], 'quota') or '-1') ~= tonumber(ARGV[1]) then
+  return -3
+end
+if state == 'compensated' then
+  return 2
+end
+if state ~= 'reserved' then
+  return -3
+end
+if redis.call('GET', KEYS[2]) ~= ARGV[5] then
+  return -2
+end
+if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[2])
+  or tonumber(redis.call('HGET', KEYS[1], 'CacheSchema') or '0') ~= tonumber(ARGV[3])
+  or redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
+  redis.call('HSET', KEYS[3], 'state', 'compensated')
+  redis.call('EXPIRE', KEYS[3], ARGV[4])
+  redis.call('SET', KEYS[2], ARGV[6], 'EX', ARGV[4])
+  redis.call('DEL', KEYS[1])
+  return 3
+end
+redis.call('HINCRBY', KEYS[1], 'Quota', tonumber(ARGV[1]))
+redis.call('HSET', KEYS[3], 'state', 'compensated')
+redis.call('EXPIRE', KEYS[3], ARGV[4])
+redis.call('DEL', KEYS[2])
+return 1`
+
+const commitSubscriptionBalanceQuotaScript = `
+local state = redis.call('HGET', KEYS[3], 'state')
+if not state then
+  return -1
+end
+if tonumber(redis.call('HGET', KEYS[3], 'user_id') or '0') ~= tonumber(ARGV[2])
+  or tonumber(redis.call('HGET', KEYS[3], 'quota') or '-1') ~= tonumber(ARGV[1]) then
+  return -3
+end
+if state == 'committed' then
+  return 2
+end
+if state ~= 'reserved' then
+  return -3
+end
+local fence = redis.call('GET', KEYS[2])
+if fence == ARGV[4] then
+  redis.call('HSET', KEYS[3], 'state', 'committed')
+  redis.call('EXPIRE', KEYS[3], ARGV[3])
+  redis.call('DEL', KEYS[1])
+  redis.call('DEL', KEYS[2])
+  return 1
+end
+if not fence then
+  redis.call('HSET', KEYS[3], 'state', 'committed')
+  redis.call('EXPIRE', KEYS[3], ARGV[3])
+  redis.call('DEL', KEYS[1])
+  redis.call('SET', KEYS[2], ARGV[5], 'EX', ARGV[3])
+  return 3
+end
+redis.call('DEL', KEYS[1])
+return -2`
+
+const markSubscriptionBalanceQuotaUnknownScript = `
+local state = redis.call('HGET', KEYS[3], 'state')
+local fence = redis.call('GET', KEYS[2])
+if not state then
+  if fence and fence ~= ARGV[5] and fence ~= ARGV[4] then
+    redis.call('DEL', KEYS[1])
+    return -2
+  end
+  redis.call('HSET', KEYS[3], 'state', 'unknown', 'user_id', ARGV[2], 'quota', ARGV[1])
+  redis.call('EXPIRE', KEYS[3], ARGV[3])
+  redis.call('SET', KEYS[2], ARGV[4])
+  redis.call('DEL', KEYS[1])
+  return 1
+end
+if tonumber(redis.call('HGET', KEYS[3], 'user_id') or '0') ~= tonumber(ARGV[2])
+  or tonumber(redis.call('HGET', KEYS[3], 'quota') or '-1') ~= tonumber(ARGV[1]) then
+  return -3
+end
+if state == 'unknown' then
+  if fence == ARGV[4] then
+    redis.call('DEL', KEYS[1])
+    return 2
+  end
+  redis.call('DEL', KEYS[1])
+  return -2
+end
+if state ~= 'reserved' then
+  return -3
+end
+if fence and fence ~= ARGV[5] then
+  redis.call('DEL', KEYS[1])
+  return -2
+end
+redis.call('HSET', KEYS[3], 'state', 'unknown')
+redis.call('EXPIRE', KEYS[3], ARGV[3])
+redis.call('SET', KEYS[2], ARGV[4])
+redis.call('DEL', KEYS[1])
+return 1`
+
+func reserveSubscriptionBalanceCacheQuota(userId int, quota int, tradeNo string) (cacheQuotaResult, error) {
+	result, err := common.RDB.Eval(context.Background(), reserveSubscriptionBalanceQuotaScript,
+		[]string{getUserCacheKey(userId), getUserQuotaUncertaintyKey(userId), subscriptionBalanceQuotaOperationKey(tradeNo)},
+		quota, userId, userCacheSchemaVersion, subscriptionBalanceQuotaOperationTTLSeconds(),
+		subscriptionBalanceQuotaFenceValue(tradeNo)).Int()
+	if err != nil {
+		return cacheQuotaMiss, err
+	}
+	switch result {
+	case 1, 2:
+		return cacheQuotaOK, nil
+	case 0:
+		return cacheQuotaInsufficient, nil
+	case -1:
+		return cacheQuotaMiss, nil
+	case -2:
+		return cacheQuotaFenced, nil
+	default:
+		return cacheQuotaMiss, errors.New("subscription balance quota operation conflicts with its Redis journal")
+	}
+}
+
+func compensateSubscriptionBalanceCacheDebit(userId int, quota int, tradeNo string) error {
+	if !common.RedisEnabled || quota <= 0 {
+		return nil
+	}
+	result, err := common.RDB.Eval(context.Background(), compensateSubscriptionBalanceQuotaScript,
+		[]string{getUserCacheKey(userId), getUserQuotaUncertaintyKey(userId), subscriptionBalanceQuotaOperationKey(tradeNo)},
+		quota, userId, userCacheSchemaVersion, subscriptionBalanceQuotaOperationTTLSeconds(),
+		subscriptionBalanceQuotaFenceValue(tradeNo), "subscription_rollback:"+tradeNo).Int()
+	if err == nil && (result == 1 || result == 2 || result == 3) {
+		return nil
+	}
+
+	cacheErr := fmt.Errorf("restore subscription balance cache debit: user=%d quota=%d result=%d: %w",
+		userId, quota, result, errors.Join(ErrQuotaCacheUnavailable, err))
+	fenceErr := fenceUserQuotaCacheUncertainty(userId, "subscription_balance_rollback_cache_error",
+		subscriptionBalanceQuotaFenceValue(tradeNo))
+	return errors.Join(cacheErr, fenceErr)
+}
+
+func finalizeCommittedSubscriptionBalanceCacheDebit(userId int, quota int, tradeNo string) {
+	if !common.RedisEnabled || quota <= 0 {
+		return
+	}
+	ttl := subscriptionBalanceQuotaOperationTTLSeconds()
+	result, err := common.RDB.Eval(context.Background(), commitSubscriptionBalanceQuotaScript,
+		[]string{getUserCacheKey(userId), getUserQuotaUncertaintyKey(userId), subscriptionBalanceQuotaOperationKey(tradeNo)},
+		quota, userId, ttl, subscriptionBalanceQuotaFenceValue(tradeNo), "subscription_commit_reconcile:"+tradeNo).Int()
+	if err != nil || (result != 1 && result != 2 && result != 3) {
+		common.SysError(fmt.Sprintf("failed to finalize committed subscription balance cache debit: user=%d quota=%d order=%s result=%d error=%v",
+			userId, quota, tradeNo, result, err))
+		if fenceErr := fenceUserQuotaCacheUncertainty(userId, "subscription_balance_commit_finalize_unknown:"+tradeNo,
+			subscriptionBalanceQuotaFenceValue(tradeNo)); fenceErr != nil {
+			common.SysError(fmt.Sprintf("failed to fence subscription balance cache after finalize error: user=%d order=%s error=%v",
+				userId, tradeNo, fenceErr))
+		}
+	}
+	if hydrateErr := ensureUserQuotaCacheAvailable(userId); hydrateErr != nil {
+		// A surviving in-flight fence is stale-low and therefore safe. Keep the
+		// successful durable purchase while the next request retries reconciliation.
+		common.SysError(fmt.Sprintf("failed to hydrate committed subscription balance: user=%d order=%s error=%v",
+			userId, tradeNo, hydrateErr))
+	}
+}
+
+func markSubscriptionBalanceCacheCommitUnknown(userId int, quota int, tradeNo string) error {
+	if !common.RedisEnabled || quota <= 0 {
+		return nil
+	}
+	ttl := subscriptionBalanceQuotaOperationTTLSeconds()
+	result, err := common.RDB.Eval(context.Background(), markSubscriptionBalanceQuotaUnknownScript,
+		[]string{getUserCacheKey(userId), getUserQuotaUncertaintyKey(userId), subscriptionBalanceQuotaOperationKey(tradeNo)},
+		quota, userId, ttl, "subscription_commit_unknown:"+tradeNo, subscriptionBalanceQuotaFenceValue(tradeNo)).Int()
+	if err == nil && (result == 1 || result == 2) {
+		return nil
+	}
+	markErr := fmt.Errorf("mark subscription balance cache commit unknown: user=%d quota=%d order=%s result=%d: %w",
+		userId, quota, tradeNo, result, errors.Join(ErrQuotaCacheUnavailable, err))
+	fenceErr := fenceUserQuotaCacheUntilReconciled(userId, "subscription_commit_unknown:"+tradeNo,
+		subscriptionBalanceQuotaFenceValue(tradeNo))
+	return errors.Join(markErr, fenceErr)
 }
 
 // PurchaseSubscriptionWithBalance creates a subscription by deducting the user's wallet quota.
@@ -793,15 +1083,51 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		return errors.New("invalid userId or planId")
 	}
 
-	var logPlanTitle string
-	var logMoney float64
-	var chargedQuota int
-	var upgradeGroup string
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		plan, err := getSubscriptionPlanByIdTx(tx, planId)
-		if err != nil {
+	plan, err := GetSubscriptionPlanById(planId)
+	if err != nil {
+		return err
+	}
+	if !plan.Enabled {
+		return errors.New("套餐未启用")
+	}
+	if plan.PriceAmount < 0 {
+		return errors.New("套餐价格不能为负数")
+	}
+	if plan.AllowBalancePay != nil && !*plan.AllowBalancePay {
+		return errors.New("该套餐不允许使用余额兑换")
+	}
+	requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
+	if err != nil {
+		return err
+	}
+	expectedPriceAmount := plan.PriceAmount
+	expectedCurrency := plan.Currency
+	if requiredQuota > 0 && common.RedisEnabled {
+		// Hydrate and validate the authoritative hash before opening a database
+		// transaction. Once the transaction holds a row lock, a cache miss must
+		// fail closed instead of reading through a second database connection.
+		if err := ensureUserQuotaCacheAvailable(userId); err != nil {
 			return err
 		}
+	}
+
+	var logPlanTitle string
+	var logMoney float64
+	chargedQuota := requiredQuota
+	var upgradeGroup string
+	tradeNo := fmt.Sprintf("SUBBALUSR%dNO%s%d", userId, common.GetRandomString(6), time.Now().UnixNano())
+	cacheDebited := false
+	transactionCallbackCompleted := false
+	err = runSubscriptionBalanceTransaction(func(tx *gorm.DB) error {
+		// Re-read and lock the authoritative row. The first lookup may have come
+		// from the plan cache; charging from that stale snapshot could accept a
+		// disabled plan or an old price.
+		var currentPlan SubscriptionPlan
+		if err := lockForUpdate(tx).Where("id = ?", planId).First(&currentPlan).Error; err != nil {
+			return err
+		}
+		currentPlan.NormalizeDefaults()
+		plan := &currentPlan
 		if !plan.Enabled {
 			return errors.New("套餐未启用")
 		}
@@ -812,22 +1138,50 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			return errors.New("该套餐不允许使用余额兑换")
 		}
 
-		requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
+		currentRequiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
 		if err != nil {
 			return err
 		}
+		if !decimal.NewFromFloat(plan.PriceAmount).Equal(decimal.NewFromFloat(expectedPriceAmount)) ||
+			plan.Currency != expectedCurrency || currentRequiredQuota != requiredQuota {
+			return errors.New("套餐价格已变更，请重试")
+		}
 
-		var user User
-		if err := lockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
+		// Serialize the durable debit and MaxPurchasePerUser checks for this
+		// account. Redis is reserved only after this lock is held, and the matching
+		// database debit commits atomically with the order and subscription.
+		var userRow User
+		if err := lockForUpdate(tx).Select("id", "quota").Where("id = ?", userId).First(&userRow).Error; err != nil {
 			return err
 		}
-		if requiredQuota > 0 && user.Quota < requiredQuota {
-			return errors.New("余额不足")
-		}
 		if requiredQuota > 0 {
-			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("quota", gorm.Expr("quota - ?", requiredQuota)).Error; err != nil {
-				return err
+			if common.RedisEnabled {
+				result, reserveErr := reserveSubscriptionBalanceCacheQuota(userId, requiredQuota, tradeNo)
+				if reserveErr != nil {
+					fenceErr := fenceUserQuotaCacheUncertainty(userId, "subscription_balance_reserve_unknown:"+tradeNo,
+						subscriptionBalanceQuotaFenceValue(tradeNo))
+					return errors.Join(fmt.Errorf("%w: user %d", ErrQuotaCacheUnavailable, userId), reserveErr, fenceErr)
+				}
+				if result == cacheQuotaMiss || result == cacheQuotaFenced {
+					// A deterministic miss/fence means this reservation did not mutate
+					// Redis. In particular, never overwrite another operation's in-flight
+					// fence: its owner must retain the ability to finalize atomically.
+					return fmt.Errorf("%w: user %d", ErrQuotaCacheUnavailable, userId)
+				}
+				if result == cacheQuotaInsufficient {
+					return errors.New("余额不足")
+				}
+				cacheDebited = true
+			}
+
+			debit := tx.Model(&User{}).
+				Where("id = ? AND quota >= ?", userId, requiredQuota).
+				Update("quota", gorm.Expr("quota - ?", requiredQuota))
+			if debit.Error != nil {
+				return debit.Error
+			}
+			if debit.RowsAffected != 1 {
+				return errors.New("余额不足")
 			}
 		}
 
@@ -837,7 +1191,6 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		}
 
 		now := common.GetTimestamp()
-		tradeNo := fmt.Sprintf("SUBBALUSR%dNO%s%d", userId, common.GetRandomString(6), time.Now().UnixNano())
 		order := &SubscriptionOrder{
 			UserId:          userId,
 			PlanId:          plan.Id,
@@ -856,21 +1209,42 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 
 		logPlanTitle = plan.Title
 		logMoney = plan.PriceAmount
-		chargedQuota = requiredQuota
 		if subscription.PrevUserGroup != "" {
 			upgradeGroup = strings.TrimSpace(subscription.UpgradeGroup)
 		}
+		if err := beforeSubscriptionBalanceTransactionCommit(); err != nil {
+			return err
+		}
+		transactionCallbackCompleted = true
 		return nil
 	})
 	if err != nil {
-		return err
+		if !transactionCallbackCompleted {
+			if cacheDebited {
+				err = errors.Join(err, compensateSubscriptionBalanceCacheDebit(userId, chargedQuota, tradeNo))
+			}
+			return err
+		}
+
+		// The callback completed, so the driver error may have arrived after the
+		// server committed. The order is the durable journal for the same
+		// transaction as the debit and subscription.
+		committed, reconcileErr := resolveSubscriptionBalancePurchaseCommitFn(tradeNo, userId, planId)
+		if reconcileErr != nil || !committed {
+			var fenceErr error
+			if cacheDebited {
+				fenceErr = markSubscriptionBalanceCacheCommitUnknown(userId, chargedQuota, tradeNo)
+			}
+			common.SysError(fmt.Sprintf("subscription balance commit status is uncertain for user %d order %s: committed=%t error=%v",
+				userId, tradeNo, committed, reconcileErr))
+			return errors.Join(err, reconcileErr, fenceErr, ErrSubscriptionBalanceCommitUncertain)
+		}
+		common.SysLog(fmt.Sprintf("subscription balance order %s committed despite transaction result: %v", tradeNo, err))
+	}
+	if cacheDebited {
+		finalizeCommittedSubscriptionBalanceCacheDebit(userId, chargedQuota, tradeNo)
 	}
 
-	if chargedQuota > 0 {
-		if err := cacheDecrUserQuota(userId, int64(chargedQuota)); err != nil {
-			common.SysLog("failed to decrease user quota cache after subscription balance purchase: " + err.Error())
-		}
-	}
 	if upgradeGroup != "" {
 		refreshSubscriptionUserGroupCache(userId, "subscription balance purchase")
 	}

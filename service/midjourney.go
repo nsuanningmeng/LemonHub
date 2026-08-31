@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -13,6 +15,8 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting"
 
@@ -25,6 +29,285 @@ func CovertMjpActionToModelName(mjAction string) string {
 		modelName = "swap_face"
 	}
 	return modelName
+}
+
+// PrepareMidjourneyTaskBilling sets the durable refund marker before the task is inserted.
+func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.Midjourney, quota int, shouldBill bool) (bool, error) {
+	if task == nil {
+		return false, errors.New("Midjourney task is nil")
+	}
+	task.Quota = 0
+	task.TokenId = 0
+	task.BillingChannelId = 0
+	if !shouldBill {
+		return false, nil
+	}
+	if relayInfo == nil {
+		return false, errors.New("relay info is nil")
+	}
+	if quota < 0 || quota > common.MaxQuota {
+		return false, fmt.Errorf("quota out of range: %d", quota)
+	}
+	if relayInfo.BillingSource == BillingSourceSubscription {
+		return false, errors.New("legacy Midjourney billing does not support subscriptions")
+	}
+
+	task.Quota = quota
+	task.BillingChannelId = task.ChannelId
+	if relayInfo.ChannelMeta != nil && relayInfo.ChannelId > 0 {
+		task.BillingChannelId = relayInfo.ChannelId
+	}
+	return true, nil
+}
+
+// SettleMidjourneyTaskBilling charges a persisted legacy task and records the applied stages.
+func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.Midjourney, prepared bool) (bool, error) {
+	if !prepared {
+		return false, nil
+	}
+	if relayInfo == nil {
+		return false, errors.New("relay info is nil")
+	}
+	if task == nil || task.Id == 0 {
+		return false, errors.New("Midjourney task must be persisted before billing")
+	}
+
+	quota := task.Quota
+	baseStage := model.TaskBillingStageParams{
+		TaskType:          model.TaskBillingTypeMidjourney,
+		TaskRecordId:      int64(task.Id),
+		Operation:         "submit",
+		Delta:             quota,
+		TargetQuota:       quota,
+		RequestCountDelta: 1,
+		UserId:            task.UserId,
+		TokenId:           relayInfo.TokenId,
+		TokenKey:          relayInfo.TokenKey,
+		ChannelId:         task.GetBillingChannelId(),
+		BillingSource:     BillingSourceWallet,
+	}
+	fundingStage := baseStage
+	fundingStage.Stage = model.TaskBillingStageFunding
+	if _, err := model.ApplyTaskBillingStage(fundingStage); err != nil {
+		if errors.Is(err, model.ErrTaskBillingCommitUncertain) ||
+			errors.Is(err, model.ErrTaskBillingStageConflict) ||
+			errors.Is(err, model.ErrTaskBillingOperationPending) ||
+			!errors.Is(err, model.ErrTaskBillingStageNotCommitted) {
+			// A conflict, pending operation, or unknown COMMIT outcome can have a
+			// durable charge. Retain the marker for an idempotent retry/reconciliation.
+			return false, err
+		}
+		task.Quota = 0
+		task.TokenId = 0
+		task.BillingChannelId = 0
+		if updateErr := task.UpdateBillingState(); updateErr != nil {
+			return false, errors.Join(err, fmt.Errorf("clear Midjourney billing state: %w", updateErr))
+		}
+		return false, err
+	}
+
+	if !relayInfo.IsPlayground {
+		tokenStage := baseStage
+		tokenStage.Stage = model.TaskBillingStageToken
+		if _, err := model.ApplyTaskBillingStage(tokenStage); err != nil {
+			if errors.Is(err, model.ErrTaskBillingCommitUncertain) {
+				// A single missing journal read cannot prove that the token charge
+				// rolled back. Keep funding applied and let the same submit operation
+				// retry/reconcile the token attempt before any reverse compensation.
+				return false, err
+			}
+			rollbackErr := compensateMidjourneySubmit(task, fundingStage, nil)
+			return false, errors.Join(err, rollbackErr)
+		}
+	}
+
+	finalizeStage := baseStage
+	finalizeStage.Stage = model.TaskBillingStageFinalize
+	finalizeStage.TargetQuota = quota
+	if _, err := model.ApplyTaskBillingStage(finalizeStage); err != nil {
+		if errors.Is(err, model.ErrTaskBillingCommitUncertain) {
+			// Finalize may already be durable. Undoing token/funding against one
+			// stale journal snapshot could create a finalized free task.
+			return false, err
+		}
+		var tokenStage *model.TaskBillingStageParams
+		if !relayInfo.IsPlayground {
+			stage := baseStage
+			stage.Stage = model.TaskBillingStageToken
+			tokenStage = &stage
+		}
+		rollbackErr := compensateMidjourneySubmit(task, fundingStage, tokenStage)
+		return false, errors.Join(err, rollbackErr)
+	}
+
+	task.TokenId = 0
+	if !relayInfo.IsPlayground {
+		task.TokenId = relayInfo.TokenId
+	}
+	updateResult := model.DB.Model(&model.Midjourney{}).
+		Where("id = ? AND quota = ?", task.Id, quota).
+		Updates(map[string]interface{}{
+			"token_id":           task.TokenId,
+			"billing_channel_id": task.BillingChannelId,
+		})
+	if updateResult.Error != nil {
+		// The ledger, not these convenience columns, is the durable source of
+		// truth. The quota predicate also prevents a concurrent refund from being
+		// overwritten by this submit completion's stale in-memory marker.
+		return true, fmt.Errorf("update Midjourney billing state: %w", updateResult.Error)
+	}
+	return true, nil
+}
+
+func compensateMidjourneySubmit(task *model.Midjourney, fundingStage model.TaskBillingStageParams, tokenStage *model.TaskBillingStageParams) error {
+	if tokenStage != nil {
+		if _, err := model.UndoTaskBillingStage(*tokenStage); err != nil {
+			return fmt.Errorf("compensate Midjourney token stage: %w", err)
+		}
+	}
+	if _, err := model.UndoTaskBillingStage(fundingStage); err != nil {
+		return fmt.Errorf("compensate Midjourney funding stage: %w", err)
+	}
+	originalQuota := task.Quota
+	task.Quota = 0
+	if err := task.UpdateBillingState(); err != nil {
+		task.Quota = originalQuota
+		return fmt.Errorf("clear compensated Midjourney billing marker: %w", err)
+	}
+	return nil
+}
+
+// RefundMidjourneyQuota reverses every accounting element recorded for a billed legacy task.
+func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason string) bool {
+	quota := task.Quota
+	if quota < 0 {
+		logger.LogWarn(ctx, fmt.Sprintf("cannot refund Midjourney task %s with negative quota %d", task.MjId, quota))
+		return false
+	}
+	if quota == 0 {
+		return true
+	}
+	billingChannelId := task.GetBillingChannelId()
+	fundingQuota, tokenQuota, usageQuota, tokenId, err := midjourneyAppliedBilling(task)
+	if err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("读取 Midjourney 账本失败 task %s: %s", task.MjId, err.Error()))
+		return false
+	}
+	baseStage := model.TaskBillingStageParams{
+		TaskType: model.TaskBillingTypeMidjourney, TaskRecordId: int64(task.Id), Operation: "refund",
+		UserId: task.UserId, TokenId: tokenId, ChannelId: billingChannelId, BillingSource: BillingSourceWallet,
+		TargetQuota: 0,
+	}
+	if fundingQuota == 0 && tokenQuota == 0 && usageQuota == 0 {
+		task.Quota = 0
+		if err := task.UpdateBillingState(); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("清除已补偿 Midjourney 账单标记失败 task %s: %s", task.MjId, err.Error()))
+			return false
+		}
+		return true
+	}
+	if fundingQuota != 0 {
+		fundingStage := baseStage
+		fundingStage.Stage = model.TaskBillingStageFunding
+		fundingStage.Delta = -fundingQuota
+		if _, err := model.ApplyTaskBillingStage(fundingStage); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 用户额度失败 task %s: %s", task.MjId, err.Error()))
+			return false
+		}
+	}
+	if tokenQuota != 0 {
+		tokenKey := resolveTokenKey(ctx, tokenId, task.MjId)
+		if tokenKey == "" {
+			return false
+		}
+		tokenStage := baseStage
+		tokenStage.Stage = model.TaskBillingStageToken
+		tokenStage.Delta = -tokenQuota
+		tokenStage.TokenKey = tokenKey
+		if _, err := model.ApplyTaskBillingStage(tokenStage); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("退还 Midjourney 令牌额度失败 task %s: %s", task.MjId, err.Error()))
+			return false
+		}
+	}
+	finalizeStage := baseStage
+	finalizeStage.Stage = model.TaskBillingStageFinalize
+	finalizeStage.Delta = -usageQuota
+	finalizeStage.TargetQuota = 0
+	finalized, err := model.ApplyTaskBillingStage(finalizeStage)
+	if err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("完成 Midjourney 退款记账失败 task %s: %s", task.MjId, err.Error()))
+		return false
+	}
+	task.Quota = 0
+	if !finalized {
+		return true
+	}
+	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+		UserId:    task.UserId,
+		LogType:   model.LogTypeRefund,
+		Content:   "",
+		ChannelId: billingChannelId,
+		ModelName: CovertMjpActionToModelName(task.Action),
+		Quota:     quota,
+		TokenId:   tokenId,
+		Other: map[string]interface{}{
+			"task_id": task.MjId,
+			"reason":  reason,
+		},
+	})
+
+	return true
+}
+
+func midjourneyAppliedBilling(task *model.Midjourney) (fundingQuota, tokenQuota, usageQuota, tokenId int, err error) {
+	if task.Quota < 0 {
+		return 0, 0, 0, 0, fmt.Errorf("Midjourney task quota cannot be negative: %d", task.Quota)
+	}
+	// Read all submit stages in one statement. If finalize is visible, every
+	// preceding stage from that operation is visible in the same snapshot too.
+	records, err := model.GetTaskBillingOperationRecords(model.TaskBillingTypeMidjourney, int64(task.Id), "submit")
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	var submitFunding, submitToken, submitFinalize *model.TaskBillingLedger
+	for i := range records {
+		record := &records[i]
+		switch record.Stage {
+		case model.TaskBillingStageFunding:
+			submitFunding = record
+		case model.TaskBillingStageToken:
+			submitToken = record
+		case model.TaskBillingStageFinalize:
+			submitFinalize = record
+		}
+	}
+
+	// Legacy rows have no submit ledger; retain their original marker semantics.
+	if submitFunding == nil {
+		if task.BillingChannelId > 0 {
+			return 0, 0, 0, 0, fmt.Errorf("%w: Midjourney submit settlement has not started", model.ErrTaskBillingOperationPending)
+		}
+		legacyTokenQuota := 0
+		if task.TokenId > 0 {
+			legacyTokenQuota = task.Quota
+		}
+		return task.Quota, legacyTokenQuota, task.Quota, task.TokenId, nil
+	}
+	if submitFunding.Undone || submitFinalize == nil || submitFinalize.Undone {
+		return 0, 0, 0, 0, fmt.Errorf("%w: Midjourney submit settlement is incomplete", model.ErrTaskBillingOperationPending)
+	}
+	if !submitFunding.Undone {
+		fundingQuota = submitFunding.Delta
+	}
+	tokenId = task.TokenId
+	if submitToken != nil {
+		tokenId = submitToken.TokenId
+		if !submitToken.Undone {
+			tokenQuota = submitToken.Delta
+		}
+	}
+	usageQuota = submitFinalize.Delta
+	return fundingQuota, tokenQuota, usageQuota, tokenId, nil
 }
 
 func GetMjRequestModel(relayMode int, midjRequest *dto.MidjourneyRequest) (string, *dto.MidjourneyResponse, bool) {

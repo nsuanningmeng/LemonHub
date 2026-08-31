@@ -261,3 +261,124 @@ func TestReverseReferral_LegacyInviteeRewardNotGuessed(t *testing.T) {
 	assert.EqualValues(t, 0, affReload(t, 7531).AffQuota, "inviter exact bonus reversed")
 	assert.EqualValues(t, 5000, affReload(t, 7532).Quota, "legacy invitee reward NOT guessed/clawed")
 }
+
+func TestAffiliateSettlementRejectsInt32WalletOverflowAtomically(t *testing.T) {
+	affReversalEnv(t, []int{7541, 7542, 7551, 7552})
+
+	t.Run("first bonus", func(t *testing.T) {
+		affSeedPair(t, 7541, 7542)
+		require.NoError(t, DB.Model(&User{}).Where("id = ?", 7542).
+			Update("quota", common.MaxQuota-2).Error)
+
+		granted, err := settleAffiliateFirstBonus(7541, 7542, 10, 2)
+		assert.False(t, granted)
+		assert.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
+		assert.Equal(t, common.MaxQuota-2, affReload(t, 7542).Quota)
+		assert.Zero(t, affReload(t, 7541).AffQuota)
+		var count int64
+		require.NoError(t, DB.Model(&AffiliateCommission{}).
+			Where("invitee_id = ? AND kind = ?", 7542, AffiliateKindFirstBonus).
+			Count(&count).Error)
+		assert.Zero(t, count, "the idempotency ledger must roll back with the rejected grant")
+	})
+
+	t.Run("recharge commission", func(t *testing.T) {
+		affSeedPair(t, 7551, 7552)
+		require.NoError(t, DB.Model(&User{}).Where("id = ?", 7551).Updates(map[string]interface{}{
+			"aff_quota":   common.MaxQuota - 5,
+			"aff_history": common.MaxQuota - 5,
+		}).Error)
+
+		credited, err := settleAffiliateRechargeCommission(7551, 7552, "aff-overflow-commission", 100, 5, true)
+		assert.Zero(t, credited)
+		assert.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
+		inviter := affReload(t, 7551)
+		assert.Equal(t, common.MaxQuota-5, inviter.AffQuota)
+		assert.Equal(t, common.MaxQuota-5, inviter.AffHistoryQuota)
+		var count int64
+		require.NoError(t, DB.Model(&AffiliateCommission{}).
+			Where("trade_no = ? AND kind = ?", "aff-overflow-commission", AffiliateKindRechargeCommission).
+			Count(&count).Error)
+		assert.Zero(t, count, "the commission ledger must roll back with the rejected credit")
+	})
+}
+
+func seedCachedFirstBonusReversal(t *testing.T, inviteeQuota int, inviteeReward int64) (User, User) {
+	t.Helper()
+	inviter := createReserveTestUser(t, 0)
+	invitee := createReserveTestUser(t, inviteeQuota)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", inviter.Id).Updates(map[string]interface{}{
+		"aff_quota":   200,
+		"aff_history": 200,
+		"aff_count":   1,
+	}).Error)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", invitee.Id).Update("inviter_id", inviter.Id).Error)
+	require.NoError(t, DB.Create(&AffiliateCommission{
+		InviterId:       inviter.Id,
+		InviteeId:       invitee.Id,
+		TradeNo:         affiliateFirstBonusKey(invitee.Id),
+		Kind:            AffiliateKindFirstBonus,
+		RechargeQuota:   inviteeReward,
+		CommissionQuota: 200,
+		CreatedAt:       common.GetTimestamp(),
+	}).Error)
+	require.NoError(t, populateUserCache(invitee))
+	t.Cleanup(func() {
+		_ = DB.Where("invitee_id = ?", invitee.Id).Delete(&AffiliateCommission{}).Error
+		_ = DB.Unscoped().Delete(&invitee).Error
+		_ = DB.Unscoped().Delete(&inviter).Error
+	})
+	return inviter, invitee
+}
+
+func TestAffiliateFirstBonusReversalCacheAuthorityFailures(t *testing.T) {
+	t.Run("redis outage leaves both ledger and balances untouched", func(t *testing.T) {
+		server := useUserCacheMiniRedis(t)
+		inviter, invitee := seedCachedFirstBonusReversal(t, 100, 40)
+		server.Close()
+
+		err := reverseAffiliateFirstBonus(invitee.Id)
+		assert.ErrorIs(t, err, ErrQuotaCacheUnavailable)
+		assert.Equal(t, 100, getUserQuotaFromDB(t, invitee.Id))
+		assert.EqualValues(t, 200, affReload(t, inviter.Id).AffQuota)
+		var markerCount int64
+		require.NoError(t, DB.Model(&AffiliateCommission{}).
+			Where("invitee_id = ? AND kind = ?", invitee.Id, AffiliateKindFirstBonusReversal).
+			Count(&markerCount).Error)
+		assert.Zero(t, markerCount)
+
+		require.NoError(t, server.Restart())
+		require.NoError(t, reverseAffiliateFirstBonus(invitee.Id))
+		assert.Equal(t, 60, getUserQuotaFromDB(t, invitee.Id))
+		cached, cacheErr := cacheGetUserBase(invitee.Id)
+		require.NoError(t, cacheErr)
+		assert.Equal(t, 60, cached.Quota)
+	})
+
+	t.Run("database rollback compensates cache and rolls back marker", func(t *testing.T) {
+		useUserCacheMiniRedis(t)
+		inviter, invitee := seedCachedFirstBonusReversal(t, 100, 40)
+		trigger := "fail_first_bonus_reversal_quota"
+		require.NoError(t, DB.Exec("DROP TRIGGER IF EXISTS "+trigger).Error)
+		require.NoError(t, DB.Exec(`CREATE TRIGGER fail_first_bonus_reversal_quota
+BEFORE UPDATE OF quota ON users BEGIN SELECT RAISE(ABORT, 'forced first bonus reversal failure'); END`).Error)
+		t.Cleanup(func() { _ = DB.Exec("DROP TRIGGER IF EXISTS " + trigger).Error })
+
+		err := reverseAffiliateFirstBonus(invitee.Id)
+		require.Error(t, err)
+		assert.Equal(t, 100, getUserQuotaFromDB(t, invitee.Id))
+		assert.EqualValues(t, 200, affReload(t, inviter.Id).AffQuota)
+		cached, cacheErr := cacheGetUserBase(invitee.Id)
+		require.NoError(t, cacheErr)
+		assert.Equal(t, 100, cached.Quota)
+		var markerCount int64
+		require.NoError(t, DB.Model(&AffiliateCommission{}).
+			Where("invitee_id = ? AND kind = ?", invitee.Id, AffiliateKindFirstBonusReversal).
+			Count(&markerCount).Error)
+		assert.Zero(t, markerCount)
+
+		require.NoError(t, DB.Exec("DROP TRIGGER IF EXISTS "+trigger).Error)
+		require.NoError(t, reverseAffiliateFirstBonus(invitee.Id))
+		assert.Equal(t, 60, getUserQuotaFromDB(t, invitee.Id))
+	})
+}

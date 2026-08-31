@@ -46,6 +46,29 @@ func userAuthFenceTTLSeconds() int {
 }
 
 func writeUserCache(user *UserBase, includeQuota bool) error {
+	return writeUserCacheUnderQuotaFence(user, includeQuota, "")
+}
+
+func writeUserCacheUnderQuotaFence(user *UserBase, includeQuota bool, quotaFenceToken string) error {
+	return writeUserCacheWithTaskBillingFences(user, includeQuota, quotaFenceToken, nil)
+}
+
+func writeUserCacheUnderTaskBillingFences(
+	user *UserBase,
+	includeQuota bool,
+	fenceValues []string,
+	releaseTaskFences bool,
+) error {
+	return writeUserCacheWithTaskBillingFences(user, includeQuota, "", fenceValues, releaseTaskFences)
+}
+
+func writeUserCacheWithTaskBillingFences(
+	user *UserBase,
+	includeQuota bool,
+	quotaFenceToken string,
+	fenceValues []string,
+	releaseTaskFences ...bool,
+) error {
 	if user == nil || user.Id <= 0 || !common.RedisEnabled {
 		return nil
 	}
@@ -63,6 +86,25 @@ local incoming = tonumber(ARGV[1])
 local pending = tonumber(redis.call('GET', KEYS[2]) or '0')
 local committed = tonumber(redis.call('GET', KEYS[3]) or '0')
 local current = tonumber(redis.call('HGET', KEYS[1], 'AuthVersion') or '0')
+local quota_fence = redis.call('GET', KEYS[4])
+local task_fence_count = tonumber(ARGV[15])
+if ARGV[11] == '1' and quota_fence and quota_fence ~= ARGV[14] then
+  return -1
+end
+if task_fence_count == 0 then
+  if redis.call('EXISTS', KEYS[5]) == 1 then
+    return -1
+  end
+else
+  if redis.call('SCARD', KEYS[5]) ~= task_fence_count then
+    return -1
+  end
+  for i = 1, task_fence_count do
+    if redis.call('SISMEMBER', KEYS[5], ARGV[16 + i]) == 0 then
+      return -1
+    end
+  end
+end
 if pending > incoming or committed > incoming or current > incoming then
   return 0
 end
@@ -72,25 +114,45 @@ end
 if pending > 0 and pending <= incoming then
   redis.call('DEL', KEYS[2])
 end
-if ARGV[10] == '0' and redis.call('EXISTS', KEYS[1]) == 0 then
+if ARGV[11] == '0' and redis.call('EXISTS', KEYS[1]) == 0 then
   return 1
 end
 redis.call('HSET', KEYS[1],
   'Id', ARGV[2], 'Group', ARGV[3], 'Email', ARGV[4],
   'Status', ARGV[5], 'Role', ARGV[6], 'Username', ARGV[7],
-  'Setting', ARGV[8], 'AuthVersion', ARGV[1], 'CacheSchema', ARGV[9])
-if ARGV[10] == '1' and redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
-  redis.call('HSET', KEYS[1], 'Quota', ARGV[11])
+  'Setting', ARGV[8], 'SiteId', ARGV[9],
+  'AuthVersion', ARGV[1], 'CacheSchema', ARGV[10])
+if ARGV[11] == '1' and redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
+  redis.call('HSET', KEYS[1], 'Quota', ARGV[12])
 end
-redis.call('EXPIRE', KEYS[1], ARGV[12])
+redis.call('EXPIRE', KEYS[1], ARGV[13])
+if task_fence_count > 0 and ARGV[16] == '1' then
+  redis.call('DEL', KEYS[5])
+end
 return 1`
-	result, err := common.RDB.Eval(context.Background(), script,
-		[]string{getUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id)},
+	releaseTaskFencesArg := "0"
+	if len(releaseTaskFences) > 0 && releaseTaskFences[0] {
+		releaseTaskFencesArg = "1"
+	}
+	args := []interface{}{
 		user.AuthVersion, user.Id, user.Group, user.Email, user.Status, user.Role,
-		user.Username, user.Setting, user.CacheSchema, includeQuotaArg, user.Quota, ttl,
-	).Int()
+		user.Username, user.Setting, user.SiteId, user.CacheSchema, includeQuotaArg, user.Quota, ttl, quotaFenceToken,
+		len(fenceValues),
+		releaseTaskFencesArg,
+	}
+	for _, fenceValue := range fenceValues {
+		args = append(args, fenceValue)
+	}
+	result, err := common.RDB.Eval(context.Background(), script,
+		[]string{
+			getUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id),
+			getUserQuotaUncertaintyKey(user.Id), getTaskBillingUserQuotaFenceKey(user.Id),
+		}, args...).Int()
 	if err != nil {
 		return err
+	}
+	if result == -1 {
+		return fmt.Errorf("%w: user %d quota mutation in progress", ErrQuotaCacheUnavailable, user.Id)
 	}
 	if result == 0 {
 		return ErrUserAuthCachePending
@@ -267,7 +329,11 @@ end
 if current ~= incoming then
   return 1
 end
-redis.call('HSET', KEYS[1], ARGV[2], ARGV[3], 'CacheSchema', ARGV[4])
+local schema = tonumber(redis.call('HGET', KEYS[1], 'CacheSchema') or '0')
+if schema ~= tonumber(ARGV[4]) then
+  return 1
+end
+redis.call('HSET', KEYS[1], ARGV[2], ARGV[3])
 return 1`
 	result, err := common.RDB.Eval(context.Background(), script,
 		[]string{getUserCacheKey(userId), getUserAuthFenceKey(userId), getUserAuthVersionKey(userId)},

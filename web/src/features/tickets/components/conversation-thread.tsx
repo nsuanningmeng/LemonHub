@@ -51,7 +51,9 @@ export function ConversationThread({
             key={message.id}
             className={cn(
               'rounded-lg border p-3',
-              message.is_admin ? 'border-primary/20 bg-primary/5' : 'bg-muted/40'
+              message.is_admin
+                ? 'border-primary/20 bg-primary/5'
+                : 'bg-muted/40'
             )}
           >
             <div className='mb-1.5 flex items-center gap-2'>

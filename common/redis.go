@@ -20,6 +20,12 @@ func RedisKeyCacheSeconds() int {
 	return SyncFrequency
 }
 
+func disableRedisCommandRetries(opt *redis.Options) {
+	if opt != nil {
+		opt.MaxRetries = -1
+	}
+}
+
 // InitRedisClient This function is called after init()
 func InitRedisClient() (err error) {
 	if os.Getenv("REDIS_CONN_STRING") == "" {
@@ -37,6 +43,13 @@ func InitRedisClient() (err error) {
 		FatalLog("failed to parse Redis connection string: " + err.Error())
 	}
 	opt.PoolSize = GetEnvOrDefault("REDIS_POOL_SIZE", 10)
+	// Quota and billing mutations use read-modify-write Redis commands. When a
+	// reply is lost after Redis executed one of those commands, go-redis cannot
+	// know whether replay is safe. Its default retries can therefore apply a
+	// debit or, more critically, a compensating credit more than once. Disable
+	// transparent command replay globally; callers already fence or fail closed
+	// when a mutation result is uncertain.
+	disableRedisCommandRetries(opt)
 	RDB = redis.NewClient(opt)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -58,6 +71,7 @@ func ParseRedisOption() *redis.Options {
 	if err != nil {
 		FatalLog("failed to parse Redis connection string: " + err.Error())
 	}
+	disableRedisCommandRetries(opt)
 	return opt
 }
 

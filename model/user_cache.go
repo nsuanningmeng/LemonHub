@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -11,10 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const userCacheSchemaVersion = 2
+const userCacheSchemaVersion = 3
 
 type UserBase struct {
 	Id          int    `json:"id"`
+	SiteId      int    `json:"site_id"`
 	Group       string `json:"group"`
 	Email       string `json:"email"`
 	Quota       int    `json:"quota"`
@@ -67,8 +69,8 @@ func invalidateUserCache(userId int) error {
 	return common.RedisDelKey(getUserCacheKey(userId))
 }
 
-// InvalidateUserCache is the exported version of invalidateUserCache.
-// 供 controller 等上层包在用户状态变更（如禁用、删除、角色变更）后主动清理缓存。
+// InvalidateUserCache clears a user's cached authorization snapshot for callers
+// outside the model package.
 func InvalidateUserCache(userId int) error {
 	return invalidateUserCache(userId)
 }
@@ -78,6 +80,27 @@ func populateUserCache(user User) error {
 		return nil
 	}
 	return writeUserCache(user.ToBaseUser(), true)
+}
+
+func populateUserCacheUnderQuotaFence(user User, quotaFenceToken string) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	return writeUserCacheUnderQuotaFence(user.ToBaseUser(), true, quotaFenceToken)
+}
+
+func populateUserCacheAfterTaskBillingFences(user User, fenceValues []string) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	return writeUserCacheUnderTaskBillingFences(user.ToBaseUser(), true, fenceValues, true)
+}
+
+func populateUserCacheWhileTaskBillingFences(user User, fenceValues []string) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	return writeUserCacheUnderTaskBillingFences(user.ToBaseUser(), true, fenceValues, false)
 }
 
 // updateUserCache refreshes non-quota user cache fields.
@@ -97,6 +120,22 @@ func GetUserCache(userId int) (*UserBase, error) {
 	if err == nil {
 		return userCache, nil
 	}
+	if errors.Is(err, ErrQuotaCacheUnavailable) {
+		// A durable commit-unknown owner (for example, a task-billing journal
+		// attempt) can be reconciled on the next authenticated read even when no
+		// worker remains to retry the original operation. Generic/inflight owners
+		// whose outcome is not proven remain fail-closed in the resolver.
+		if resolveErr := resolveUserQuotaCacheUncertainty(userId); resolveErr != nil {
+			return nil, resolveErr
+		}
+		userCache, err = cacheGetUserBase(userId)
+		if err == nil {
+			return userCache, nil
+		}
+		if errors.Is(err, ErrQuotaCacheUnavailable) {
+			return nil, err
+		}
+	}
 
 	// Redis misses and read failures both fall back to the shared database. A
 	// version fence newer than the database is the one exception: allowing that
@@ -111,10 +150,13 @@ func GetUserCache(userId int) (*UserBase, error) {
 			return nil, ErrUserAuthCachePending
 		}
 		if err := populateUserCache(*user); err != nil {
-			if errors.Is(err, ErrUserAuthCachePending) {
+			if errors.Is(err, ErrUserAuthCachePending) || errors.Is(err, ErrQuotaCacheUnavailable) {
 				return nil, err
 			}
-			common.SysLog("failed to synchronously populate user cache: " + err.Error())
+			// Redis is authoritative for spendable quota. Returning the database
+			// snapshot after an unverified cache fill could expose a stale-high
+			// balance if a quota fence appeared after the database read.
+			return nil, fmt.Errorf("%w: failed to populate user %d cache: %v", ErrQuotaCacheUnavailable, userId, err)
 		}
 	}
 	return user.ToBaseUser(), nil
@@ -124,10 +166,16 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	if !common.RedisEnabled {
 		return nil, fmt.Errorf("redis is not enabled")
 	}
+	if err := failIfUserQuotaCacheFenced(userId); err != nil {
+		return nil, err
+	}
 	var userCache UserBase
 	// Try getting from Redis first
 	err := common.RedisHGetObj(getUserCacheKey(userId), &userCache)
 	if err != nil {
+		return nil, err
+	}
+	if err := failIfUserQuotaCacheFenced(userId); err != nil {
 		return nil, err
 	}
 	if userCache.Id != userId || userCache.CacheSchema != userCacheSchemaVersion || userCache.AuthVersion <= 0 {
@@ -143,16 +191,49 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	return &userCache, nil
 }
 
-// Add atomic quota operations using hash fields
+func failIfUserQuotaCacheFenced(userId int) error {
+	fenced, err := common.RDB.Exists(context.Background(),
+		getUserQuotaUncertaintyKey(userId), getTaskBillingUserQuotaFenceKey(userId)).Result()
+	if err != nil {
+		return fmt.Errorf("%w: user %d", ErrQuotaCacheUnavailable, userId)
+	}
+	if fenced != 0 {
+		return fmt.Errorf("%w: user %d quota mutation in progress", ErrQuotaCacheUnavailable, userId)
+	}
+	return nil
+}
+
+// Add atomic quota operations using hash fields.
+// 通过守卫式 Lua 脚本执行：哈希不存在时直接跳过（下次读取会从数据库水合），
+// 不会像裸 HINCRBY 那样创建只含 Quota 字段的残缺哈希。
 func cacheIncrUserQuota(userId int, delta int64) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return common.RedisHIncrBy(getUserCacheKey(userId), "Quota", delta)
+	result, err := cacheApplyUserQuotaDelta(userId, delta)
+	if err != nil {
+		return err
+	}
+	if result == cacheQuotaFenced {
+		return fmt.Errorf("%w: user %d", ErrQuotaCacheUnavailable, userId)
+	}
+	return nil
 }
 
 func cacheDecrUserQuota(userId int, delta int64) error {
 	return cacheIncrUserQuota(userId, -delta)
+}
+
+// syncCreditUserQuotaCache 在授信事务（充值/兑换等）提交后同步把增量补进缓存
+// 余额。预扣以缓存值为准（存在期间），授信不能绕过它，否则新到账的额度在
+// 缓存过期前不可用；缓存未命中无需处理，下次读取会从已提交的数据库余额水合。
+func syncCreditUserQuotaCache(userId int, quota int, operation string) {
+	if quota <= 0 {
+		return
+	}
+	if err := cacheIncrUserQuota(userId, int64(quota)); err != nil {
+		common.SysLog(fmt.Sprintf("failed to sync %s credit to user quota cache: %s", operation, err.Error()))
+	}
 }
 
 // Helper functions to get individual fields if needed
@@ -172,14 +253,6 @@ func getUserQuotaCache(userId int) (int, error) {
 	return cache.Quota, nil
 }
 
-func getUserStatusCache(userId int) (int, error) {
-	cache, err := GetUserCache(userId)
-	if err != nil {
-		return 0, err
-	}
-	return cache.Status, nil
-}
-
 func getUserNameCache(userId int) (string, error) {
 	cache, err := GetUserCache(userId)
 	if err != nil {
@@ -194,22 +267,6 @@ func getUserSettingCache(userId int) (dto.UserSetting, error) {
 		return dto.UserSetting{}, err
 	}
 	return cache.GetSetting(), nil
-}
-
-// New functions for individual field updates
-func updateUserStatusCache(userId int, status bool) error {
-	statusInt := common.UserStatusEnabled
-	if !status {
-		statusInt = common.UserStatusDisabled
-	}
-	return updateUserCacheField(userId, "Status", statusInt)
-}
-
-func updateUserQuotaCache(userId int, quota int) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-	return common.RedisHSetField(getUserCacheKey(userId), "Quota", fmt.Sprintf("%d", quota))
 }
 
 // RefreshUserGroupCache writes the database-authoritative group into an

@@ -63,7 +63,8 @@ const OPERATIONS_SECTIONS = [
             settings['perf_metrics_setting.success_rate_green_threshold'] ??
             99.9,
           'perf_metrics_setting.success_rate_yellow_threshold':
-            settings['perf_metrics_setting.success_rate_yellow_threshold'] ?? 99,
+            settings['perf_metrics_setting.success_rate_yellow_threshold'] ??
+            99,
           'perf_metrics_setting.error_code_whitelist':
             settings['perf_metrics_setting.error_code_whitelist'] ?? '',
           'perf_metrics_setting.no_data_as_full':

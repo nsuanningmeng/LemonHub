@@ -39,6 +39,7 @@ func handleClaudeFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 	if err := common.Unmarshal(common.StringToByteSlice(data), &streamResponse); err != nil {
 		return err
 	}
+	streamResponse.Model = info.PublicResponseModelName(streamResponse.Model)
 
 	if streamResponse.Usage != nil {
 		info.ClaudeConvertInfo.Usage = streamResponse.Usage
@@ -63,6 +64,7 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 		logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
 		return err
 	}
+	streamResponse.Model = info.PublicResponseModelName(streamResponse.Model)
 
 	result, err := relayconvert.ConvertStreamResponse(c, info, types.RelayFormatGemini, &streamResponse)
 	if err != nil {
@@ -178,6 +180,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 			common.SysLog("error unmarshalling stream response: " + err.Error())
 			return
 		}
+		streamResponse.Model = info.PublicResponseModelName(streamResponse.Model)
 
 		info.ClaudeConvertInfo.Usage = usage
 
@@ -202,6 +205,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 			common.SysLog("error unmarshalling stream response: " + err.Error())
 			return
 		}
+		streamResponse.Model = info.PublicResponseModelName(streamResponse.Model)
 
 		// 这里处理的是 openai 最后一个流响应，其 delta 为空，有 finish_reason 字段
 		// 因此相比较于 google 官方的流响应，由 openai 转换而来会多一个 parts 为空，finishReason 为 STOP 的响应

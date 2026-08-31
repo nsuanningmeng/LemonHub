@@ -74,7 +74,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		return toMap, nil
 	}
 	if strings.HasPrefix(request.Model, "grok-3-mini") {
-		if lo.FromPtrOr(request.MaxCompletionTokens, uint(0)) == 0 && lo.FromPtrOr(request.MaxTokens, uint(0)) != 0 {
+		if request.MaxCompletionTokens == nil && request.MaxTokens != nil {
 			request.MaxCompletionTokens = request.MaxTokens
 			request.MaxTokens = nil
 		}
@@ -85,7 +85,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			request.ReasoningEffort = "low"
 			request.Model = strings.TrimSuffix(request.Model, "-low")
 		}
-		info.ReasoningEffort = request.ReasoningEffort
+		info.SetReasoningEffort(request.ReasoningEffort)
 		info.UpstreamModelName = request.Model
 	}
 	return request, nil

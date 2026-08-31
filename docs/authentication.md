@@ -150,6 +150,10 @@ OAuth state、2FA pending、Passkey ceremony、Telegram bind 等临时状态存�
 
 标准 OAuth 绑定回调由 popup 通过同源 `postMessage` 交给 opener；只有 opener 使用自身内存中的 Bearer 调用后端绑定接口。Telegram 绑定先由已登录前端创建绑定 AuthFlow，再让 widget 回调携带路径中的 `flow_token`，回调时会重新确认原登录会话仍有效。Telegram 的已签名 widget assertion 也会登记为一次性凭据，重复回放会被拒绝。
 
+GitHub、Discord、OIDC、LinuxDO、WeChat、Telegram 以及自定义 OAuth 的 provider subject 都通过 `external_identity_claims` 原子认领。归属键为 `(provider, site_id, subject)`：同一站点内一个外部身份只能属于一个用户，不同站点可以复用相同 subject；一个用户在同一 provider 下只能有一个 subject。用户行中的内置 provider 列、`user_oauth_bindings` 中的自定义 provider 绑定和 claim 必须在同一个数据库事务中创建、换绑或解绑，因此控制器中的“是否已绑定”预检查只用于友好提示，数据库 claim 才是并发竞争的最终裁决。
+
+自定义 OAuth 的 `user_oauth_bindings` 同样保存 `site_id`，登录查询必须同时匹配 provider、site 和 provider user ID。创建子站并将主站代理账号迁入子站时，其现有 claim 和自定义 OAuth 绑定会随账号一并迁移，鉴权版本也会递增，避免旧的主站缓存继续授权。
+
 敏感操作使用有效期 5 分钟的 `X-Security-Proof`：
 
 - `channel.key.read`：查看渠道密钥；
@@ -164,7 +168,7 @@ Proof 同时绑定用户、登录会话、用户鉴权版本、会话版本和 s
 
 - 旧 `session` Cookie 不再使用；升级后现有面板登录会失效，用户需要重新登录。
 - 多节点部署必须先停止所有旧版本应用节点并暂停写入，再由一个 master 节点完成迁移；不要在旧版本与新版本之间执行混合版本滚动升级，因为旧节点不会维护新的外部身份归属表。
-- 数据库迁移会新增 `user_sessions`、`auth_flows`、`external_identity_claims` 和 `users.auth_version`，并为已有用户初始化鉴权版本、按 `site_id` 回填 Telegram 账号唯一归属。不同站点可继续使用相同 Telegram ID；只有同一站点内同一 Telegram ID 绑定多个用户时，迁移才会在变更外部身份表结构前拒绝启动，需先消除歧义。迁移会先建立新的站点级唯一索引，再删除旧全局索引，升级中断不会留下无唯一约束的窗口。
+- 数据库迁移会新增 `user_sessions`、`auth_flows`、`external_identity_claims` 和 `users.auth_version`，并为已有用户初始化鉴权版本。启动 preflight 会扫描全部内置 provider（GitHub、Discord、OIDC、LinuxDO、WeChat、Telegram）以及全部自定义 OAuth 绑定，按账号所属 `site_id` 回填 claim 和 `user_oauth_bindings.site_id`。不同站点可继续使用相同 provider subject；同一站点内存在重复归属、同一用户/provider 存在多条绑定、孤儿用户或 provider、空白、首尾空白或超过 256 个字符的 subject 时会在 DDL 前明确拒绝启动，不会按行顺序静默选择账号、裁剪 subject 或自动去重。迁移会先建立新的站点级唯一索引，再删除旧全局索引，升级中断不会留下无唯一约束的窗口。
 - 数据库迁移会为 Session 签发计数和分批清理新增索引；已有 `user_sessions` 很大时应为首次启动预留维护窗口。
 - `user_sessions.previous_refresh_hash` 会从定长 `char(64)` 迁移为 `varchar(64)`。应用会兼容读取历史定长字段留下的空格填充；迁移后的目标结构必须保持幂等，连续启动不应反复执行列类型变更。
 - 仅 master 节点定时清理过期登录会话、超过配置保留期的 revoked 会话和已过保留期的 AuthFlow。

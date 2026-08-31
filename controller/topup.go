@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -248,23 +249,85 @@ func getMinTopup() int64 {
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		dMinTopup := decimal.NewFromInt(int64(minTopup))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		minTopup = int(dMinTopup.Mul(dQuotaPerUnit).IntPart())
+		minTopup = common.QuotaFromDecimal(dMinTopup.Mul(dQuotaPerUnit))
 	}
 	return int64(minTopup)
 }
 
-// getMaxTopup is the per-order ceiling on the requested top-up amount, in the
-// same display unit the user enters (mirrors getMinTopup). The credited quota
-// is amount(USD) * QuotaPerUnit and must fit the int32 quota column, so orders
-// above this could never be credited in full and are rejected up front.
-func getMaxTopup() int64 {
+func getTopUpQuota(amount int64) (int, error) {
+	quota := decimal.NewFromInt(amount)
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		return int64(common.MaxQuota)
+		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+		quota = decimal.NewFromInt(quota.Div(quotaPerUnit).IntPart()).Mul(quotaPerUnit)
+	} else {
+		quota = quota.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
-	if common.QuotaPerUnit <= 1 {
-		return int64(common.MaxQuota)
+	return common.QuotaFromDecimalStrict(quota)
+}
+
+func getMaxTopUpAmount() int64 {
+	if common.QuotaPerUnit <= 0 {
+		return 0
 	}
-	return int64(float64(common.MaxQuota) / common.QuotaPerUnit)
+	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	maxStoredAmount := decimal.NewFromInt(common.MaxQuota - 1).
+		Div(quotaPerUnit).
+		Floor()
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		return maxStoredAmount.Add(decimal.NewFromInt(1)).
+			Mul(quotaPerUnit).
+			Ceil().
+			Sub(decimal.NewFromInt(1)).
+			IntPart()
+	}
+	return maxStoredAmount.IntPart()
+}
+
+func validateCreditedQuota(quota decimal.Decimal) (int, error) {
+	value, err := common.QuotaFromDecimalStrict(quota)
+	if err != nil {
+		return 0, errors.New("充值额度超出系统可表示范围")
+	}
+	if value <= 0 {
+		return 0, errors.New("充值额度必须大于 0")
+	}
+	return value, nil
+}
+
+func validateTopUpQuota(amount int64) (int, error) {
+	quota, err := getTopUpQuota(amount)
+	if err == nil && quota > 0 {
+		return quota, nil
+	}
+	maxAmount := getMaxTopUpAmount()
+	if maxAmount > 0 && amount > maxAmount {
+		return 0, fmt.Errorf("单笔充值数量不能大于 %d", maxAmount)
+	}
+	return 0, errors.New("充值数量无效")
+}
+
+func rejectInvalidCreditedQuota(c *gin.Context, userId int, quota decimal.Decimal) bool {
+	creditedQuota, err := validateCreditedQuota(quota)
+	if err == nil {
+		err = model.ValidateTopUpQuotaCapacity(userId, creditedQuota)
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return true
+	}
+	return false
+}
+
+func rejectInvalidTopUpQuota(c *gin.Context, userId int, amount int64) bool {
+	creditedQuota, err := validateTopUpQuota(amount)
+	if err == nil {
+		err = model.ValidateTopUpQuotaCapacity(userId, creditedQuota)
+	}
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return true
+	}
+	return false
 }
 
 func RequestEpay(c *gin.Context) {
@@ -278,12 +341,11 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
 		return
 	}
-	if req.Amount > getMaxTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("单笔充值数量不能大于 %d", getMaxTopup())})
+	id := c.GetInt("id")
+	if rejectInvalidTopUpQuota(c, id, req.Amount) {
 		return
 	}
 
-	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
@@ -547,19 +609,32 @@ func epayCallbackMoneyMatchesOrder(callbackMoney string, orderMoney float64) boo
 
 // settleEpayTopUp finishes a gateway-confirmed PAID top-up order exactly once and runs
 // the post-settlement bookkeeping shared by the async notify, the browser return and
-// the reconciliation sweep. Racing deliveries are safe: the order-level lock plus the
-// DB-level CAS inside CompleteEpayTopUp make duplicate settlement an idempotent no-op.
+// the reconciliation sweep. Main-site orders use RechargeEpay's row lock and atomic
+// quota-capacity check; sub-site orders use CompleteEpayTopUp's wallet debit + CAS.
 func settleEpayTopUp(ctx context.Context, topUp *model.TopUp, site *model.Site, callerIP string, source string) (string, error) {
+	return settleEpayTopUpWithPaymentMethod(ctx, topUp, site, "", callerIP, source)
+}
+
+func settleEpayTopUpWithPaymentMethod(ctx context.Context, topUp *model.TopUp, site *model.Site, actualPaymentMethod string, callerIP string, source string) (string, error) {
 	LockOrder(topUp.TradeNo)
 	defer UnlockOrder(topUp.TradeNo)
+
+	if site == nil {
+		alreadyDone, settleErr := model.RechargeEpay(topUp.TradeNo, actualPaymentMethod, callerIP)
+		if settleErr != nil {
+			logger.LogError(ctx, fmt.Sprintf("易支付 结算失败 source=%s trade_no=%s user_id=%d caller_ip=%s error=%q", source, topUp.TradeNo, topUp.UserId, callerIP, settleErr.Error()))
+			return "", settleErr
+		}
+		if alreadyDone {
+			logger.LogInfo(ctx, fmt.Sprintf("易支付 重复结算幂等忽略 source=%s trade_no=%s user_id=%d caller_ip=%s", source, topUp.TradeNo, topUp.UserId, callerIP))
+		}
+		return common.TopUpStatusSuccess, nil
+	}
 
 	// Settle: for a sub-site, debit the agent wallet (面值 × discount_rate) atomically with
 	// crediting the user; idempotent across duplicate callbacks; insufficient wallet parks
 	// the order for manual review (user is NOT credited until an admin resolves it).
-	var cost int64
-	if site != nil {
-		cost = siteTopupCostMilli(topUp.Money, site.DiscountRate)
-	}
+	cost := siteTopupCostMilli(topUp.Money, site.DiscountRate)
 	finalStatus, quotaAdded, settleErr := model.CompleteEpayTopUp(topUp.TradeNo, cost, 0)
 	if settleErr != nil {
 		// Transient settlement error: reject so the gateway retries / the reconciler
@@ -605,7 +680,7 @@ func EpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("success"))
 		return
 	}
-	if _, err := settleEpayTopUp(c.Request.Context(), v.topUp, v.site, c.ClientIP(), "notify"); err != nil {
+	if _, err := settleEpayTopUpWithPaymentMethod(c.Request.Context(), v.topUp, v.site, v.info.Type, c.ClientIP(), "notify"); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -635,7 +710,7 @@ func EpayReturn(c *gin.Context) {
 		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=pending"))
 		return
 	}
-	finalStatus, err := settleEpayTopUp(c.Request.Context(), v.topUp, v.site, c.ClientIP(), "return")
+	finalStatus, err := settleEpayTopUpWithPaymentMethod(c.Request.Context(), v.topUp, v.site, v.info.Type, c.ClientIP(), "return")
 	if err != nil {
 		// Paid, but settlement hit a transient error — the notify retry or the
 		// reconciliation sweep will finish it; show the user "processing".
@@ -662,11 +737,10 @@ func RequestAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", getMinTopup())})
 		return
 	}
-	if req.Amount > getMaxTopup() {
-		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("单笔充值数量不能大于 %d", getMaxTopup())})
+	id := c.GetInt("id")
+	if rejectInvalidTopUpQuota(c, id, req.Amount) {
 		return
 	}
-	id := c.GetInt("id")
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})

@@ -19,7 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { type ColumnDef } from '@tanstack/react-table'
 import { Ban, MoreHorizontal as DotsHorizontalIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatQuota, formatTimestampToDate } from '@/lib/format'
+
+import { MaskedValueDisplay } from '@/components/masked-value-display'
+import { StatusBadge } from '@/components/status-badge'
+import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -28,10 +31,9 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { MaskedValueDisplay } from '@/components/masked-value-display'
-import { StatusBadge } from '@/components/status-badge'
-import { TableId } from '@/components/table-id'
 import { formatMilliYuan } from '@/components/wallet-logs-table'
+import { formatQuota, formatTimestampToDate } from '@/lib/format'
+
 import {
   REDEMPTION_STATUS,
   REDEMPTION_STATUSES,

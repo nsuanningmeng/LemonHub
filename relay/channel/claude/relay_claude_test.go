@@ -1,18 +1,74 @@
 package claude
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func commonPointer[T any](value T) *T {
 	return &value
+}
+
+func mappedClaudeResponseInfo(relayFormat types.RelayFormat) *relaycommon.RelayInfo {
+	return &relaycommon.RelayInfo{
+		OriginModelName: "client-model",
+		RelayFormat:     relayFormat,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "private-upstream-model",
+			IsModelMapped:     true,
+		},
+	}
+}
+
+func TestClaudeModelMappingIsHiddenInStreamResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	data := `{"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"private-upstream-model","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}`
+
+	for _, relayFormat := range []types.RelayFormat{types.RelayFormatClaude, types.RelayFormatOpenAI} {
+		t.Run(string(relayFormat), func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			info := mappedClaudeResponseInfo(relayFormat)
+			claudeInfo := &ClaudeResponseInfo{Usage: &dto.Usage{}, ResponseText: strings.Builder{}}
+
+			err := HandleStreamResponseData(c, info, claudeInfo, data)
+
+			require.Nil(t, err)
+			assert.Contains(t, recorder.Body.String(), `"model":"client-model"`)
+			assert.NotContains(t, recorder.Body.String(), "private-upstream-model")
+			assert.Equal(t, "private-upstream-model", info.UpstreamModelName)
+		})
+	}
+}
+
+func TestClaudeModelMappingIsHiddenInNonStreamResponses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	data := []byte(`{"id":"msg_1","type":"message","role":"assistant","model":"private-upstream-model","content":[{"type":"text","text":"hello"}],"usage":{"input_tokens":1,"output_tokens":1}}`)
+
+	for _, relayFormat := range []types.RelayFormat{types.RelayFormatClaude, types.RelayFormatOpenAI} {
+		t.Run(string(relayFormat), func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			info := mappedClaudeResponseInfo(relayFormat)
+			claudeInfo := &ClaudeResponseInfo{Usage: &dto.Usage{}, ResponseText: strings.Builder{}}
+
+			err := HandleClaudeResponseData(c, info, claudeInfo, nil, data)
+
+			require.Nil(t, err)
+			assert.Contains(t, recorder.Body.String(), `"model":"client-model"`)
+			assert.NotContains(t, recorder.Body.String(), "private-upstream-model")
+			assert.Equal(t, "private-upstream-model", info.UpstreamModelName)
+		})
+	}
 }
 
 func TestResponseOpenAI2ClaudeToolUseInputIsObject(t *testing.T) {

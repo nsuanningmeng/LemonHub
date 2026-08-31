@@ -15,8 +15,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/samber/lo"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -41,7 +39,7 @@ func convertCozeChatRequest(c *gin.Context, request dto.GeneralOpenAIRequest) *C
 		BotId:              c.GetString("bot_id"),
 		UserId:             user,
 		AdditionalMessages: messages,
-		Stream:             lo.FromPtrOr(request.Stream, false),
+		Stream:             request.Stream,
 	}
 	return cozeRequest
 }
@@ -55,7 +53,7 @@ func cozeChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Res
 	// convert coze response to openai response
 	var response dto.TextResponse
 	var cozeResponse CozeChatDetailResponse
-	response.Model = info.UpstreamModelName
+	response.Model = info.PublicResponseModelName(info.UpstreamModelName)
 	err = json.Unmarshal(responseBody, &cozeResponse)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
@@ -165,7 +163,7 @@ func handleCozeEvent(c *gin.Context, event string, data string, responseText *st
 		usage.TotalTokens = chatData.Usage.TokenCount
 
 		finishReason := "stop"
-		stopResponse := helper.GenerateStopResponse(id, common.GetTimestamp(), info.UpstreamModelName, finishReason)
+		stopResponse := helper.GenerateStopResponse(id, common.GetTimestamp(), info.PublicResponseModelName(info.UpstreamModelName), finishReason)
 		helper.ObjectData(c, stopResponse)
 
 	case "conversation.message.delta":
@@ -190,7 +188,7 @@ func handleCozeEvent(c *gin.Context, event string, data string, responseText *st
 			Id:      id,
 			Object:  "chat.completion.chunk",
 			Created: common.GetTimestamp(),
-			Model:   info.UpstreamModelName,
+			Model:   info.PublicResponseModelName(info.UpstreamModelName),
 		}
 
 		choice := dto.ChatCompletionsStreamResponseChoice{

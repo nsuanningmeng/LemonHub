@@ -712,11 +712,6 @@ func RelayTask(c *gin.Context) {
 
 	// ── 成功：结算 + 日志 + 插入任务 ──
 	if taskErr == nil {
-		if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
-			common.SysError("settle task billing error: " + settleErr.Error())
-		}
-		service.LogTaskConsumption(c, relayInfo)
-
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
@@ -734,8 +729,13 @@ func RelayTask(c *gin.Context) {
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
-		if insertErr := task.Insert(); insertErr != nil {
-			common.SysError("insert task error: " + insertErr.Error())
+		if finalizeErr := service.PersistAndSettleTaskSubmission(c, relayInfo, task); finalizeErr != nil {
+			common.SysError("finalize task submission error: " + finalizeErr.Error())
+			taskErr = service.TaskErrorWrapperLocal(finalizeErr, "finalize_task_submission_failed", http.StatusInternalServerError)
+		} else {
+			if logErr := service.LogTaskConsumption(c, relayInfo, task); logErr != nil {
+				common.SysError("record task consumption error: " + logErr.Error())
+			}
 		}
 	}
 

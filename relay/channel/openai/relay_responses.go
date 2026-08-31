@@ -33,6 +33,11 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
+	responsesResponse.Model = info.PublicResponseModelName(responsesResponse.Model)
+	responseBody, err = info.RewriteModelForPublicResponse(responseBody, "model")
+	if err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
+	}
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
@@ -102,6 +107,12 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				data = maskResponsesErrorEvent(data, overrideText)
 			}
 		}
+		publicData, err := info.RewriteModelForPublicResponse(common.StringToByteSlice(data), "model", "response.model")
+		if err != nil {
+			sr.Error(err)
+			return
+		}
+		data = string(publicData)
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
