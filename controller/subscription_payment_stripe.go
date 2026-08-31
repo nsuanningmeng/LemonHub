@@ -81,7 +81,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 
 	payLink, err := genStripeSubscriptionLink(c, referenceId, user.StripeCustomer, user.Email, plan.StripePriceId)
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 订阅支付链接创建失败 trade_no=%s plan_id=%d error=%q", referenceId, plan.Id, err.Error()))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("Stripe 订阅支付链接创建失败 trade_no=%s plan_id=%d reason=sdk_error", referenceId, plan.Id))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "拉起支付失败"})
 		return
 	}
@@ -110,8 +110,6 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 }
 
 func genStripeSubscriptionLink(c *gin.Context, referenceId string, customerId string, email string, priceId string) (string, error) {
-	stripe.Key = setting.StripeApiSecret
-
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
 		SuccessURL:        stripe.String(paymentReturnPath(c, "/wallet")),
@@ -134,7 +132,7 @@ func genStripeSubscriptionLink(c *gin.Context, referenceId string, customerId st
 		params.Customer = stripe.String(customerId)
 	}
 
-	result, err := session.New(params)
+	result, err := (session.Client{B: stripeCheckoutBackend, Key: setting.StripeApiSecret}).New(params)
 	if err != nil {
 		return "", err
 	}

@@ -126,7 +126,7 @@ func queryEpayOrderPaid(payAddress, pid, key, tradeNo string) (bool, string, err
 		return false, "", fmt.Errorf("gateway response not JSON: %w", err)
 	}
 	if jsonScalarString(parsed.Code) != "1" {
-		return false, "", fmt.Errorf("gateway code=%s msg=%q", jsonScalarString(parsed.Code), parsed.Msg)
+		return false, "", errors.New("gateway rejected order query")
 	}
 	return jsonScalarString(parsed.Status) == "1", jsonScalarString(parsed.Money), nil
 }

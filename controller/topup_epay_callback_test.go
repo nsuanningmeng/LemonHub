@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 const epayTestMerchantKey = "epay-test-merchant-key"
@@ -33,7 +34,7 @@ func setupEpayCallbackTest(t *testing.T) {
 	common.RedisEnabled = false
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
@@ -291,6 +292,39 @@ func TestQueryEpayOrderPaidRedactsKeyInTransportError(t *testing.T) {
 	assert.NotContains(t, err.Error(), url.QueryEscape(secret), "URL-encoded merchant key must be redacted")
 }
 
+func TestQueryEpayOrderPaidRedactsKeyEchoedByGateway(t *testing.T) {
+	fs := system_setting.GetFetchSetting()
+	origSSRF, origPriv := fs.EnableSSRFProtection, fs.AllowPrivateIp
+	fs.EnableSSRFProtection, fs.AllowPrivateIp = false, true
+	t.Cleanup(func() { fs.EnableSSRFProtection, fs.AllowPrivateIp = origSSRF, origPriv })
+
+	const secret = "sk+echo/secret=key value"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"code":0,"msg":%q}`, "invalid key "+secret+" encoded "+url.QueryEscape(secret))
+	}))
+	t.Cleanup(server.Close)
+
+	_, _, err := queryEpayOrderPaid(server.URL, "1001", secret, "T1")
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), secret)
+	assert.NotContains(t, err.Error(), url.QueryEscape(secret))
+}
+
+func TestEpayUnknownOrderLogEscapesNewlines(t *testing.T) {
+	setupEpayCallbackTest(t)
+	const tradeNo = "missing-order\n[ERR] forged-log-entry"
+	values := url.Values{"out_trade_no": {tradeNo}}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/epay/notify?"+values.Encode(), nil)
+
+	logs := capturePaymentWebhookLogs(func() { EpayNotify(ctx) })
+
+	assert.Contains(t, logs, `trade_no="missing-order\n[ERR] forged-log-entry"`)
+	assert.NotContains(t, logs, "\n[ERR] forged-log-entry")
+}
+
 // epayCallbackMoneyMatchesOrder must accept a gateway amount echoed exactly as the
 // order was submitted (strconv.FormatFloat 'f',2), including x.xx5 amounts where a
 // decimal.Round comparand would wrongly reject — the regression that would re-strand
@@ -304,8 +338,8 @@ func TestEpayCallbackMoneyMatchesOrder(t *testing.T) {
 	}{
 		{"exact", "100.00", 100, true},
 		{"trailing-zeros", "100.000", 100, true},
-		{"half-even-x005", "1.00", 1.005, true},   // FormatFloat(1.005,'f',2)="1.00"
-		{"half-even-x675", "2.67", 2.675, true},   // FormatFloat(2.675,'f',2)="2.67"
+		{"half-even-x005", "1.00", 1.005, true}, // FormatFloat(1.005,'f',2)="1.00"
+		{"half-even-x675", "2.67", 2.675, true}, // FormatFloat(2.675,'f',2)="2.67"
 		{"empty-tolerated", "", 100, true},
 		{"mismatch-low", "1.00", 100, false},
 		{"mismatch-high", "999999.00", 100, false},

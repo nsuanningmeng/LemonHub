@@ -8,6 +8,7 @@ import (
 )
 
 const RouteTagKey = "route_tag"
+const accessLogPathKey = "access_log_path"
 
 func RouteTag(tag string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -17,7 +18,7 @@ func RouteTag(tag string) gin.HandlerFunc {
 }
 
 func SetUpLogger(server *gin.Engine) {
-	server.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+	logger := gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		var requestID string
 		if param.Keys != nil {
 			requestID, _ = param.Keys[common.RequestIdKey].(string)
@@ -25,6 +26,10 @@ func SetUpLogger(server *gin.Engine) {
 		tag, _ := param.Keys[RouteTagKey].(string)
 		if tag == "" {
 			tag = "web"
+		}
+		path, _ := param.Keys[accessLogPathKey].(string)
+		if path == "" {
+			path = "<unmatched>"
 		}
 		return fmt.Sprintf("[GIN] %s | %s | %s | %3d | %13v | %15s | %7s %s\n",
 			param.TimeStamp.Format("2006/01/02 - 15:04:05"),
@@ -34,7 +39,11 @@ func SetUpLogger(server *gin.Engine) {
 			param.Latency,
 			param.ClientIP,
 			param.Method,
-			param.Path,
+			path,
 		)
-	}))
+	})
+	server.Use(logger, func(c *gin.Context) {
+		c.Next()
+		c.Set(accessLogPathKey, c.FullPath())
+	})
 }

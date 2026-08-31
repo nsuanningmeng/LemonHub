@@ -440,7 +440,7 @@ func RequestEpay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值订单创建成功 user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f site_id=%d notify_url=%q request_host=%q trusted_host=%v uri=%q params=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, middleware.GetRequestSiteId(c), notifyUrl.String(), c.Request.Host, service.IsRequestHostTrusted(c), uri, common.GetJsonString(params)))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 充值订单创建成功 user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f site_id=%d notify_path=%q request_host=%q trusted_host=%v", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, middleware.GetRequestSiteId(c), notifyUrl.Path, c.Request.Host, service.IsRequestHostTrusted(c)))
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 
@@ -492,7 +492,7 @@ func UnlockOrder(tradeNo string) {
 func parseEpayCallbackParams(c *gin.Context) map[string]string {
 	if c.Request.Method == http.MethodPost {
 		if err := c.Request.ParseForm(); err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调 POST 表单解析失败 path=%q client_ip=%s error=%q", c.Request.RequestURI, c.ClientIP(), err.Error()))
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调 POST 表单解析失败 reason=form_parse_failed path=%q client_ip=%s", c.Request.URL.Path, c.ClientIP()))
 			return map[string]string{}
 		}
 		return lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
@@ -526,21 +526,21 @@ func verifyEpayTopUpCallback(c *gin.Context, params map[string]string, source st
 	// one). The order — not the request Host — is authoritative for which site owns it.
 	tradeNo := params["out_trade_no"]
 	if tradeNo == "" {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调缺少订单号 source=%s path=%q client_ip=%s", source, c.Request.RequestURI, c.ClientIP()))
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调缺少订单号 source=%s path=%q client_ip=%s", source, c.Request.URL.Path, c.ClientIP()))
 		return nil
 	}
 	topUp, err := model.FindTopUpByTradeNo(tradeNo)
 	if err != nil {
 		// Transient DB error — NOT "order missing". Rejecting lets the gateway retry.
-		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调订单查询失败 source=%s trade_no=%s client_ip=%s error=%q", source, tradeNo, c.ClientIP(), err.Error()))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调订单查询失败 reason=order_lookup_failed source=%s client_ip=%s", source, c.ClientIP()))
 		return nil
 	}
 	if topUp == nil {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调订单不存在 source=%s trade_no=%s client_ip=%s", source, tradeNo, c.ClientIP()))
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调订单不存在 source=%s trade_no=%q client_ip=%s", source, tradeNo, c.ClientIP()))
 		return nil
 	}
 	if topUp.PaymentProvider != model.PaymentProviderEpay {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 订单支付网关不匹配 source=%s trade_no=%s order_provider=%s client_ip=%s", source, tradeNo, topUp.PaymentProvider, c.ClientIP()))
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 订单支付网关不匹配 source=%s trade_no=%q order_provider=%q client_ip=%s", source, tradeNo, topUp.PaymentProvider, c.ClientIP()))
 		return nil
 	}
 
@@ -552,31 +552,31 @@ func verifyEpayTopUpCallback(c *gin.Context, params map[string]string, source st
 		if site == nil {
 			// Sub-site order but its site can't be loaded: fail (retry) rather than fall back
 			// to the global client / a zero cost, which would credit the user for free.
-			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 子站订单无法加载子站 source=%s trade_no=%s site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
+			logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 子站订单无法加载子站 source=%s trade_no=%q site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
 			return nil
 		}
 	}
 	client := getEpayClientForSite(site)
 	if client == nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 source=%s trade_no=%s site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 source=%s trade_no=%q site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
 		return nil
 	}
 	verifyInfo, err := client.Verify(params)
 	if err != nil || !verifyInfo.VerifyStatus {
 		if err != nil {
-			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调验签失败 source=%s trade_no=%s client_ip=%s verify_error=%q", source, tradeNo, c.ClientIP(), err.Error()))
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调验签失败 reason=invalid_signature source=%s trade_no=%q client_ip=%s", source, topUp.TradeNo, c.ClientIP()))
 		} else {
-			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调验签失败 source=%s trade_no=%s client_ip=%s verify_status=false", source, tradeNo, c.ClientIP()))
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调验签失败 source=%s trade_no=%q client_ip=%s verify_status=false", source, tradeNo, c.ClientIP()))
 		}
 		return nil
 	}
 	if !epayCallbackMoneyMatchesOrder(verifyInfo.Money, topUp.Money) {
 		// Defense in depth against a compromised/malicious gateway reporting success
 		// for a different amount than the order was created for.
-		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调金额与订单不符 source=%s trade_no=%s callback_money=%q order_money=%.2f client_ip=%s", source, tradeNo, verifyInfo.Money, topUp.Money, c.ClientIP()))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调金额与订单不符 source=%s trade_no=%q callback_money=%q order_money=%.2f client_ip=%s", source, tradeNo, verifyInfo.Money, topUp.Money, c.ClientIP()))
 		return nil
 	}
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 回调验签成功 source=%s trade_no=%s callback_type=%s trade_status=%s client_ip=%s", source, verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP()))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 回调验签成功 source=%s trade_no=%q callback_type=%q trade_status=%q client_ip=%s", source, verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP()))
 	return &epayCallbackVerification{topUp: topUp, site: site, info: verifyInfo}
 }
 
@@ -664,9 +664,9 @@ func EpayNotify(c *gin.Context) {
 	// per-order client resolution (getEpayClientForSite) gates each callback by the owning
 	// site's own config instead.
 	params := parseEpayCallbackParams(c)
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 收到请求 path=%q client_ip=%s method=%s params=%q", c.Request.RequestURI, c.ClientIP(), c.Request.Method, common.GetJsonString(params)))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 收到请求 path=%q client_ip=%s method=%s param_count=%d", c.Request.URL.Path, c.ClientIP(), c.Request.Method, len(params)))
 	if len(params) == 0 {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 参数为空 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 webhook 参数为空 path=%q client_ip=%s", c.Request.URL.Path, c.ClientIP()))
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
