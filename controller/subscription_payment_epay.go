@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -10,11 +11,11 @@ import (
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
-	"github.com/samber/lo"
 )
 
 type SubscriptionEpayPayRequest struct {
@@ -52,24 +53,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 
 	userId := c.GetInt("id")
-	if plan.MaxPurchasePerUser > 0 {
-		count, err := model.CountUserSubscriptionsByPlan(userId, plan.Id)
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		if count >= int64(plan.MaxPurchasePerUser) {
-			common.ApiErrorMsg(c, "已达到该套餐购买上限")
-			return
-		}
-	}
 
 	// Browser return stays per-domain (the user is already on that domain); the server-to-server
 	// notify must hit the STABLE, gateway-registered callback address — subscription epay always
 	// uses the global merchant (GetEpayClient below), so a per-request-host notify could target an
 	// unreachable/unregistered domain and strand a paid order.
-	callBackAddress := service.GetCallbackAddressForRequest(c)
-	returnUrl, err := url.Parse(callBackAddress + "/api/subscription/epay/return")
+	returnUrl, err := url.Parse(strings.TrimRight(service.GetRequestBaseURL(c), "/") + "/api/subscription/epay/return")
 	if err != nil {
 		common.ApiErrorMsg(c, "回调地址配置错误")
 		return
@@ -99,123 +88,195 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		CreateTime:      time.Now().Unix(),
 		Status:          common.TopUpStatusPending,
 	}
-	if err := order.Insert(); err != nil {
-		common.ApiErrorMsg(c, "创建订单失败")
-		return
+	createdOrder := true
+	if err := order.InsertWithPlanSnapshot(plan); err != nil {
+		if errors.Is(err, model.ErrSubscriptionPurchaseLimitReached) {
+			existing, lookupErr := model.GetReusablePendingSubscriptionOrder(
+				userId,
+				plan.Id,
+				model.PaymentProviderEpay,
+				req.PaymentMethod,
+			)
+			if lookupErr != nil {
+				common.ApiError(c, err)
+				return
+			}
+			order = existing
+			createdOrder = false
+		} else {
+			common.ApiErrorMsg(c, "创建订单失败")
+			return
+		}
 	}
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
-		Type:           req.PaymentMethod,
-		ServiceTradeNo: tradeNo,
+		Type:           order.PaymentMethod,
+		ServiceTradeNo: order.TradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          strconv.FormatFloat(order.Money, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
+		if createdOrder {
+			_ = model.ExpireSubscriptionOrder(order.TradeNo, model.PaymentProviderEpay)
+		}
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 
-func SubscriptionEpayNotify(c *gin.Context) {
-	var params map[string]string
+type subscriptionEpayCallbackVerification struct {
+	order    *model.SubscriptionOrder
+	info     *epay.VerifyRes
+	merchant epayMerchantConfig
+}
 
-	if c.Request.Method == "POST" {
-		// POST 请求：从 POST body 解析参数
-		if err := c.Request.ParseForm(); err != nil {
-			_, _ = c.Writer.Write([]byte("fail"))
-			return
-		}
-		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.PostForm.Get(t)
-			return r
-		}, map[string]string{})
-	} else {
-		// GET 请求：从 URL Query 解析参数
-		params = lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.URL.Query().Get(t)
-			return r
-		}, map[string]string{})
+// verifySubscriptionEpayCallback binds a signed callback to the global merchant and
+// the immutable local subscription order snapshot. The callback Host is deliberately
+// irrelevant: subscriptions currently always use the global epay merchant, even when
+// the browser entered through another trusted domain.
+func verifySubscriptionEpayCallback(c *gin.Context, params map[string]string, source string) *subscriptionEpayCallbackVerification {
+	tradeNo := params["out_trade_no"]
+	if tradeNo == "" {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付回调缺少订单号 source=%s path=%q client_ip=%s", source, c.Request.URL.Path, c.ClientIP()))
+		return nil
+	}
+	order := model.GetSubscriptionOrderByTradeNo(tradeNo)
+	if order == nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付回调订单不存在 source=%s trade_no=%q client_ip=%s", source, tradeNo, c.ClientIP()))
+		return nil
+	}
+	if order.PaymentProvider != model.PaymentProviderEpay {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付订单网关不匹配 source=%s trade_no=%q order_provider=%q client_ip=%s", source, tradeNo, order.PaymentProvider, c.ClientIP()))
+		return nil
+	}
+	merchant, ok := epayMerchantConfigForSite(nil)
+	if !ok {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("订阅易支付全局商户配置不完整 source=%s trade_no=%q client_ip=%s", source, tradeNo, c.ClientIP()))
+		return nil
+	}
+	client, err := epay.NewClient(&epay.Config{PartnerID: merchant.PartnerID, Key: merchant.Key}, merchant.Address)
+	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("订阅易支付 client 初始化失败 source=%s trade_no=%q client_ip=%s", source, tradeNo, c.ClientIP()))
+		return nil
+	}
+	verifyInfo, err := client.Verify(params)
+	if err != nil || !verifyInfo.VerifyStatus {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付回调验签失败 source=%s trade_no=%q client_ip=%s", source, tradeNo, c.ClientIP()))
+		return nil
+	}
+	if params["pid"] == "" || params["pid"] != merchant.PartnerID {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付回调商户不匹配 source=%s trade_no=%q client_ip=%s", source, tradeNo, c.ClientIP()))
+		return nil
+	}
+	if verifyInfo.ServiceTradeNo != tradeNo || strings.TrimSpace(verifyInfo.TradeNo) == "" {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付回调订单标识无效 source=%s trade_no=%q gateway_trade_no=%q client_ip=%s", source, tradeNo, verifyInfo.TradeNo, c.ClientIP()))
+		return nil
+	}
+	if strings.TrimSpace(verifyInfo.Type) == "" || verifyInfo.Type != order.PaymentMethod {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付回调支付方式不匹配 source=%s trade_no=%q callback_type=%q order_type=%q client_ip=%s", source, tradeNo, verifyInfo.Type, order.PaymentMethod, c.ClientIP()))
+		return nil
+	}
+	if !epayMoneyMatchesOrderStrict(verifyInfo.Money, order.Money) {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付回调金额不匹配 source=%s trade_no=%q callback_money=%q order_money=%.2f client_ip=%s", source, tradeNo, verifyInfo.Money, order.Money, c.ClientIP()))
+		return nil
+	}
+	return &subscriptionEpayCallbackVerification{order: order, info: verifyInfo, merchant: merchant}
+}
+
+// confirmAndCompleteSubscriptionEpay treats the callback as a trigger, not payment
+// proof. Network I/O happens before the process/DB order locks; CompleteSubscriptionOrder
+// rechecks provider and pending state under a database row lock for cross-instance safety.
+func confirmAndCompleteSubscriptionEpay(c *gin.Context, verified *subscriptionEpayCallbackVerification, source string) bool {
+	if verified.order.Status == common.TopUpStatusSuccess {
+		return true
+	}
+	if verified.order.Status != common.TopUpStatusPending {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付查单跳过非待支付订单 source=%s trade_no=%q status=%q client_ip=%s", source, verified.order.TradeNo, verified.order.Status, c.ClientIP()))
+		return false
+	}
+	now := common.GetTimestamp()
+	claimed, err := model.ClaimEpaySubscriptionOrderQueryAttempt(
+		verified.order.Id,
+		now,
+		now-epayCallbackQueryCooldownSeconds,
+	)
+	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("订阅易支付查单限流状态更新失败 source=%s trade_no=%q client_ip=%s error=%q", source, verified.order.TradeNo, c.ClientIP(), err.Error()))
+		return false
+	}
+	if !claimed {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付重复查单已抑制 source=%s trade_no=%q client_ip=%s", source, verified.order.TradeNo, c.ClientIP()))
+		return false
+	}
+	result, err := queryEpayOrderContext(c.Request.Context(), verified.merchant.Address, verified.merchant.PartnerID, verified.merchant.Key, verified.order.TradeNo)
+	if err != nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付主动查单失败 source=%s trade_no=%q client_ip=%s error=%q", source, verified.order.TradeNo, c.ClientIP(), err.Error()))
+		return false
+	}
+	err = validateEpayPaidOrder(result, epayOrderExpectation{
+		PartnerID:      verified.merchant.PartnerID,
+		TradeNo:        verified.info.TradeNo,
+		ServiceTradeNo: verified.order.TradeNo,
+		Type:           verified.info.Type,
+		Money:          verified.order.Money,
+	})
+	if err != nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("订阅易支付主动查单未确认付款 source=%s trade_no=%q client_ip=%s error=%q", source, verified.order.TradeNo, c.ClientIP(), err.Error()))
+		return false
 	}
 
+	LockOrder(verified.order.TradeNo)
+	defer UnlockOrder(verified.order.TradeNo)
+	if err := model.CompleteSubscriptionOrder(verified.order.TradeNo, common.GetJsonString(verified.info), model.PaymentProviderEpay, verified.info.Type); err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("订阅易支付结算失败 source=%s trade_no=%q client_ip=%s error=%q", source, verified.order.TradeNo, c.ClientIP(), err.Error()))
+		return false
+	}
+	return true
+}
+
+func SubscriptionEpayNotify(c *gin.Context) {
+	params := parseEpayCallbackParams(c)
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("订阅易支付 webhook 收到请求 path=%q client_ip=%s method=%s param_count=%d", c.Request.URL.Path, c.ClientIP(), c.Request.Method, len(params)))
 	if len(params) == 0 {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-
-	client := GetEpayClient()
-	if client == nil {
+	verified := verifySubscriptionEpayCallback(c, params, "notify")
+	if verified == nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-	verifyInfo, err := client.Verify(params)
-	if err != nil || !verifyInfo.VerifyStatus {
+	if verified.info.TradeStatus != epay.StatusTradeSuccess {
+		_, _ = c.Writer.Write([]byte("success"))
+		return
+	}
+	if !confirmAndCompleteSubscriptionEpay(c, verified, "notify") {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-
-	if verifyInfo.TradeStatus != epay.StatusTradeSuccess {
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
-	}
-
-	LockOrder(verifyInfo.ServiceTradeNo)
-	defer UnlockOrder(verifyInfo.ServiceTradeNo)
-
-	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
-		_, _ = c.Writer.Write([]byte("fail"))
-		return
-	}
-
 	_, _ = c.Writer.Write([]byte("success"))
 }
 
 // SubscriptionEpayReturn handles browser return after payment.
-// It verifies the payload and completes the order, then redirects to console.
+// The signed browser payload is only a trigger; an independent server-side order query
+// must confirm payment before settlement. Redirects stay on the trusted request domain.
 func SubscriptionEpayReturn(c *gin.Context) {
-	var params map[string]string
-
-	if c.Request.Method == "POST" {
-		// POST 请求：从 POST body 解析参数
-		if err := c.Request.ParseForm(); err != nil {
-			c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=fail"))
-			return
-		}
-		params = lo.Reduce(lo.Keys(c.Request.PostForm), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.PostForm.Get(t)
-			return r
-		}, map[string]string{})
-	} else {
-		// GET 请求：从 URL Query 解析参数
-		params = lo.Reduce(lo.Keys(c.Request.URL.Query()), func(r map[string]string, t string, i int) map[string]string {
-			r[t] = c.Request.URL.Query().Get(t)
-			return r
-		}, map[string]string{})
-	}
-
+	params := parseEpayCallbackParams(c)
 	if len(params) == 0 {
 		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=fail"))
 		return
 	}
-
-	client := GetEpayClient()
-	if client == nil {
+	verified := verifySubscriptionEpayCallback(c, params, "return")
+	if verified == nil {
 		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=fail"))
 		return
 	}
-	verifyInfo, err := client.Verify(params)
-	if err != nil || !verifyInfo.VerifyStatus {
-		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=fail"))
-		return
-	}
-	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
-		LockOrder(verifyInfo.ServiceTradeNo)
-		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
-			c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=fail"))
+	if verified.info.TradeStatus == epay.StatusTradeSuccess {
+		if !confirmAndCompleteSubscriptionEpay(c, verified, "return") {
+			c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=pending"))
 			return
 		}
 		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=success"))

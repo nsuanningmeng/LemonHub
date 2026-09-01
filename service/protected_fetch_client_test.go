@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"testing"
 
@@ -314,4 +315,80 @@ func TestProtectedFetchRoundTripperReusesTransportPerProxy(t *testing.T) {
 	require.NotSame(t, direct, proxied)
 	require.True(t, direct.ForceAttemptHTTP2)
 	require.False(t, direct.DisableKeepAlives)
+}
+
+func TestNewStrictSSRFProtectedHTTPClientIsDirectProtectedAndVerifiesTLS(t *testing.T) {
+	fetchSetting := system_setting.GetFetchSetting()
+	originalFetchSetting := *fetchSetting
+	originalSkipVerify := common.TLSInsecureSkipVerify
+	t.Cleanup(func() {
+		*fetchSetting = originalFetchSetting
+		common.TLSInsecureSkipVerify = originalSkipVerify
+	})
+
+	// The strict client must preserve these invariants even when the general relay
+	// and fetch settings explicitly weaken them.
+	fetchSetting.EnableSSRFProtection = false
+	fetchSetting.AllowPrivateIp = true
+	fetchSetting.IpFilterMode = false
+	fetchSetting.IpList = nil
+	fetchSetting.AllowedPorts = nil
+	fetchSetting.ApplyIPFilterForDomain = false
+	common.TLSInsecureSkipVerify = true
+
+	client := NewStrictSSRFProtectedHTTPClient()
+	roundTripper, ok := client.Transport.(*ssrfProtectedRoundTripper)
+	require.True(t, ok)
+	require.True(t, roundTripper.strictTLS)
+
+	req, err := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	require.NoError(t, err)
+	proxyURL, err := roundTripper.proxy(req)
+	require.NoError(t, err)
+	require.Nil(t, proxyURL, "strict client must ignore HTTP(S)_PROXY")
+
+	protection, enabled, err := roundTripper.getProtection()
+	require.NoError(t, err)
+	require.True(t, enabled, "strict client must not honor the global SSRF off switch")
+	require.True(t, protection.ApplyIPFilterForDomain, "domain DNS must be checked and pinned at dial time")
+
+	transport := roundTripper.transportFor(nil)
+	require.Nil(t, transport.Proxy)
+	if transport.TLSClientConfig != nil {
+		require.False(t, transport.TLSClientConfig.InsecureSkipVerify)
+	}
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+	resp, err := client.Get(server.URL)
+	require.Error(t, err, "self-signed certificates must remain rejected")
+	require.Nil(t, resp)
+	require.Contains(t, err.Error(), "certificate")
+}
+
+func TestValidateStrictSSRFProtectedFetchURLUsesAlwaysOnPaymentPolicy(t *testing.T) {
+	fetchSetting := system_setting.GetFetchSetting()
+	originalFetchSetting := *fetchSetting
+	t.Cleanup(func() { *fetchSetting = originalFetchSetting })
+
+	fetchSetting.EnableSSRFProtection = false
+	fetchSetting.AllowPrivateIp = false
+	fetchSetting.DomainFilterMode = false
+	fetchSetting.DomainList = nil
+	fetchSetting.IpFilterMode = false
+	fetchSetting.IpList = nil
+	fetchSetting.AllowedPorts = []string{"443"}
+
+	err := ValidateStrictSSRFProtectedFetchURL("https://127.0.0.1")
+	require.Error(t, err, "strict payment validation must ignore the global off switch")
+	require.Contains(t, err.Error(), "private IP address not allowed")
+
+	fetchSetting.AllowPrivateIp = true
+	err = ValidateStrictSSRFProtectedFetchURL("https://127.0.0.1:444")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "port 444 is not allowed")
+
+	require.NoError(t, ValidateStrictSSRFProtectedFetchURL("https://8.8.8.8"))
 }

@@ -51,8 +51,8 @@ func TestFindTopUpByTradeNoDiscriminatesErrors(t *testing.T) {
 }
 
 // GetPendingEpayTopUps / HasPendingEpayTopUps must select only pending epay orders inside
-// the [createdAfter, createdBefore] window, newest-first, and ignore other providers,
-// non-pending statuses, and out-of-window rows.
+// the [createdAfter, createdBefore] window, rotate fairly after attempts, and ignore
+// other providers, non-pending statuses, and out-of-window rows.
 func TestPendingEpayTopUpsWindowAndOrder(t *testing.T) {
 	require.NoError(t, DB.Where("trade_no LIKE ?", "PENDQ%").Delete(&TopUp{}).Error)
 	t.Cleanup(func() { DB.Where("trade_no LIKE ?", "PENDQ%").Delete(&TopUp{}) })
@@ -66,12 +66,12 @@ func TestPendingEpayTopUpsWindowAndOrder(t *testing.T) {
 	}
 	// Insert oldest first so the auto-increment id order matches creation-time order;
 	// the query returns newest-first (id desc), i.e. PENDQ_in_new (highest id) first.
-	mk("PENDQ_in_old", PaymentProviderEpay, common.TopUpStatusPending, now-1000)  // in window (older)
-	mk("PENDQ_in_new", PaymentProviderEpay, common.TopUpStatusPending, now-200)   // in window (newer)
-	mk("PENDQ_too_new", PaymentProviderEpay, common.TopUpStatusPending, now-10)   // inside grace: excluded
+	mk("PENDQ_in_old", PaymentProviderEpay, common.TopUpStatusPending, now-1000)   // in window (older)
+	mk("PENDQ_in_new", PaymentProviderEpay, common.TopUpStatusPending, now-200)    // in window (newer)
+	mk("PENDQ_too_new", PaymentProviderEpay, common.TopUpStatusPending, now-10)    // inside grace: excluded
 	mk("PENDQ_too_old", PaymentProviderEpay, common.TopUpStatusPending, now-99999) // past window: excluded
-	mk("PENDQ_stripe", PaymentProviderStripe, common.TopUpStatusPending, now-200) // wrong provider: excluded
-	mk("PENDQ_done", PaymentProviderEpay, common.TopUpStatusSuccess, now-200)     // not pending: excluded
+	mk("PENDQ_stripe", PaymentProviderStripe, common.TopUpStatusPending, now-200)  // wrong provider: excluded
+	mk("PENDQ_done", PaymentProviderEpay, common.TopUpStatusSuccess, now-200)      // not pending: excluded
 
 	after, before := now-5000, now-100
 	assert.True(t, HasPendingEpayTopUps(after, before))
@@ -84,10 +84,43 @@ func TestPendingEpayTopUpsWindowAndOrder(t *testing.T) {
 	}
 	// Only the two in-window pending epay orders, NEWEST first.
 	assert.Equal(t, []string{"PENDQ_in_new", "PENDQ_in_old"}, got)
+	require.NoError(t, MarkEpayTopUpQueryAttempts([]int{list[0].Id}, now))
+	next, err := GetPendingEpayTopUps(after, before, 1)
+	require.NoError(t, err)
+	require.Len(t, next, 1)
+	assert.Equal(t, "PENDQ_in_old", next[0].TradeNo, "an attempted first page must not starve the remaining backlog")
 
 	// Empty window → no rows, existence check false.
 	assert.False(t, HasPendingEpayTopUps(now+1000, now+2000))
 	empty, err := GetPendingEpayTopUps(now+1000, now+2000, 100)
 	require.NoError(t, err)
 	assert.Empty(t, empty)
+}
+
+func TestClaimEpayTopUpQueryAttemptEnforcesPersistentCooldown(t *testing.T) {
+	const tradeNo = "PENDQ_CLAIM"
+	require.NoError(t, DB.Where("trade_no = ?", tradeNo).Delete(&TopUp{}).Error)
+	t.Cleanup(func() { assert.NoError(t, DB.Where("trade_no = ?", tradeNo).Delete(&TopUp{}).Error) })
+
+	order := &TopUp{
+		UserId: 1, Amount: 10, Money: 100, TradeNo: tradeNo,
+		PaymentProvider: PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp(),
+	}
+	require.NoError(t, DB.Create(order).Error)
+
+	claimed, err := ClaimEpayTopUpQueryAttempt(order.Id, 100, 85)
+	require.NoError(t, err)
+	assert.True(t, claimed)
+	claimed, err = ClaimEpayTopUpQueryAttempt(order.Id, 101, 86)
+	require.NoError(t, err)
+	assert.False(t, claimed)
+	claimed, err = ClaimEpayTopUpQueryAttempt(order.Id, 116, 101)
+	require.NoError(t, err)
+	assert.True(t, claimed)
+
+	var reloaded TopUp
+	require.NoError(t, DB.First(&reloaded, order.Id).Error)
+	require.NotNil(t, reloaded.EpayCallbackQueryTime)
+	assert.EqualValues(t, 116, *reloaded.EpayCallbackQueryTime)
+	assert.Nil(t, reloaded.EpayQueryTime, "public callbacks must not change reconciliation fairness")
 }

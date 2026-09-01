@@ -3,11 +3,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
@@ -23,6 +26,39 @@ import (
 )
 
 const epayTestMerchantKey = "epay-test-merchant-key"
+
+type epayRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f epayRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+// newEpayQueryTLSServer keeps production TLS verification strict while giving a
+// test permission to trust only httptest's ephemeral certificate. queryEpayOrder
+// still owns the timeout and redirect policy; the seam supplies only the base
+// client's TLS-capable transport.
+func newEpayQueryTLSServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	server := httptest.NewTLSServer(handler)
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	fetchSetting := system_setting.GetFetchSetting()
+	originalFetchSetting := *fetchSetting
+	fetchSetting.AllowPrivateIp = true
+	fetchSetting.DomainFilterMode = false
+	fetchSetting.DomainList = nil
+	fetchSetting.IpFilterMode = false
+	fetchSetting.IpList = nil
+	fetchSetting.AllowedPorts = []string{serverURL.Port()}
+	originalClient := epayOrderQueryBaseClient
+	epayOrderQueryBaseClient = server.Client()
+	t.Cleanup(func() {
+		epayOrderQueryBaseClient = originalClient
+		*fetchSetting = originalFetchSetting
+		server.Close()
+	})
+	return server
+}
 
 // setupEpayCallbackTest wires an isolated in-memory DB plus a global epay merchant
 // config, so the notify / return / reconcile paths run end to end against real
@@ -45,20 +81,35 @@ func setupEpayCallbackTest(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	origAddr, origId, origKey := operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey
-	operation_setting.PayAddress = "https://pay.example.com"
 	operation_setting.EpayId = "1001"
 	operation_setting.EpayKey = epayTestMerchantKey
 	t.Cleanup(func() {
 		operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = origAddr, origId, origKey
 	})
 
-	// The reconcile happy-path test queries an httptest gateway on 127.0.0.1:<random>,
-	// which the default SSRF policy (private IP + non-standard port) would block. Disable
-	// SSRF for these fixtures; TestQueryEpayOrderPaidRejectsSSRF exercises it with SSRF on.
+	// The query fixture uses a private loopback address and an ephemeral port, so the
+	// shared preflight setting is disabled. The injected TLS transport is scoped to the
+	// test; production still uses the always-on protected dialer.
 	fs := system_setting.GetFetchSetting()
-	origSSRF, origPriv := fs.EnableSSRFProtection, fs.AllowPrivateIp
-	fs.EnableSSRFProtection, fs.AllowPrivateIp = false, true
-	t.Cleanup(func() { fs.EnableSSRFProtection, fs.AllowPrivateIp = origSSRF, origPriv })
+	originalFetchSetting := *fs
+	fs.EnableSSRFProtection = false
+	fs.AllowPrivateIp = true
+	fs.DomainFilterMode = false
+	fs.DomainList = nil
+	fs.IpFilterMode = false
+	fs.IpList = nil
+	fs.AllowedPorts = nil
+	t.Cleanup(func() { *fs = originalFetchSetting })
+
+	// Callback settlement now treats the signed payload only as a trigger and asks
+	// the gateway for authoritative paid state. This default fixture confirms any
+	// test order for the exact amount; query-specific tests replace PayAddress.
+	gateway := newEpayQueryTLSServer(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		tradeNo := r.URL.Query().Get("out_trade_no")
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(rw, `{"code":1,"status":1,"pid":"1001","trade_no":%q,"out_trade_no":%q,"type":"alipay","money":"100.00"}`, "GW"+tradeNo, tradeNo)
+	}))
+	operation_setting.PayAddress = gateway.URL
 }
 
 // createEpayTestOrder creates a user (no inviter) plus a pending main-site epay order
@@ -232,6 +283,67 @@ func TestEpayCallbackRejectsAmountMismatch(t *testing.T) {
 	assert.Equal(t, 0, epayUserQuota(t, uNtf.Id))
 }
 
+func TestEpayCallbackRejectsInvalidOrderBindings(t *testing.T) {
+	testCases := []struct {
+		name      string
+		overrides map[string]string
+	}{
+		{name: "missing pid", overrides: map[string]string{"pid": ""}},
+		{name: "wrong pid", overrides: map[string]string{"pid": "2002"}},
+		{name: "missing gateway trade number", overrides: map[string]string{"trade_no": ""}},
+		{name: "wrong payment type", overrides: map[string]string{"type": "wxpay"}},
+		{name: "missing amount", overrides: map[string]string{"money": ""}},
+		{name: "amount only rounds equal", overrides: map[string]string{"money": "99.999"}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupEpayCallbackTest(t)
+			const tradeNo = "BINDING1"
+			u := createEpayTestOrder(t, tradeNo, 300)
+
+			w := runEpayNotify(t, signedEpayValues(tradeNo, tc.overrides))
+
+			assert.Equal(t, "fail", w.Body.String())
+			assert.Equal(t, common.TopUpStatusPending, epayOrderStatus(t, tradeNo))
+			assert.Equal(t, 0, epayUserQuota(t, u.Id))
+		})
+	}
+}
+
+func TestEpayCallbackRequiresAuthoritativePaidOrder(t *testing.T) {
+	testCases := []struct {
+		name     string
+		response string
+	}{
+		{name: "gateway order missing", response: `{"code":-1,"msg":"order not found"}`},
+		{name: "gateway order unpaid", response: `{"code":1,"status":0,"money":"100.00"}`},
+		{name: "gateway amount missing", response: `{"code":1,"status":1}`},
+		{name: "gateway amount mismatch", response: `{"code":1,"status":1,"money":"1.00"}`},
+		{name: "gateway pid mismatch", response: `{"code":1,"status":1,"pid":"2002","money":"100.00"}`},
+		{name: "gateway merchant order mismatch", response: `{"code":1,"status":1,"out_trade_no":"OTHER","money":"100.00"}`},
+		{name: "gateway trade number mismatch", response: `{"code":1,"status":1,"trade_no":"GWOTHER","money":"100.00"}`},
+		{name: "gateway payment type mismatch", response: `{"code":1,"status":1,"type":"wxpay","money":"100.00"}`},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupEpayCallbackTest(t)
+			const tradeNo = "QUERYBIND1"
+			u := createEpayTestOrder(t, tradeNo, 300)
+			gateway := newEpayQueryTLSServer(t, http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
+				rw.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprint(rw, tc.response)
+			}))
+			operation_setting.PayAddress = gateway.URL
+
+			w := runEpayNotify(t, signedEpayValues(tradeNo, nil))
+
+			assert.Equal(t, "fail", w.Body.String())
+			assert.Equal(t, common.TopUpStatusPending, epayOrderStatus(t, tradeNo))
+			assert.Equal(t, 0, epayUserQuota(t, u.Id))
+		})
+	}
+}
+
 // Handler-level regression for the refactored notify path: a signed TRADE_SUCCESS
 // callback settles and acks the literal "success" body the gateway string-compares.
 func TestEpayNotifySettlesPaidOrder(t *testing.T) {
@@ -259,6 +371,123 @@ func TestEpayReturnNonSuccessStatusStaysPending(t *testing.T) {
 	assert.Equal(t, 0, epayUserQuota(t, u.Id))
 }
 
+func TestValidateEpayGatewayAddress(t *testing.T) {
+	testCases := []struct {
+		name    string
+		address string
+		wantErr string
+	}{
+		{name: "valid origin", address: "https://pay.example.com"},
+		{name: "valid base path", address: "https://pay.example.com/epay/"},
+		{name: "http rejected", address: "http://pay.example.com", wantErr: "absolute HTTPS"},
+		{name: "relative rejected", address: "pay.example.com", wantErr: "absolute HTTPS"},
+		{name: "missing host rejected", address: "https:///epay", wantErr: "valid host"},
+		{name: "userinfo rejected", address: "https://user:pass@pay.example.com", wantErr: "user information"},
+		{name: "query rejected", address: "https://pay.example.com?tenant=1", wantErr: "query string"},
+		{name: "fragment rejected", address: "https://pay.example.com/#gateway", wantErr: "fragment"},
+		{name: "empty fragment rejected", address: "https://pay.example.com/#", wantErr: "fragment"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			parsed, err := validateEpayGatewayAddress(tc.address)
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				require.NotNil(t, parsed)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantErr)
+		})
+	}
+}
+
+func TestQueryEpayOrderPaidRejectsHTTPGateway(t *testing.T) {
+	const testMerchantKey = "http-must-not-carry-this-key"
+	paid, money, err := queryEpayOrderPaid("http://pay.example.com", "1001", testMerchantKey, "T1")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "absolute HTTPS")
+	assert.NotContains(t, err.Error(), testMerchantKey)
+	assert.False(t, paid)
+	assert.Empty(t, money)
+}
+
+func TestQueryEpayOrderPaidSucceedsOverTLS(t *testing.T) {
+	fs := system_setting.GetFetchSetting()
+	original := *fs
+	fs.EnableSSRFProtection = false
+	fs.AllowPrivateIp = true
+	t.Cleanup(func() { *fs = original })
+
+	gateway := newEpayQueryTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/api.php", r.URL.Path)
+		assert.Equal(t, "order", r.URL.Query().Get("act"))
+		assert.Equal(t, "1001", r.URL.Query().Get("pid"))
+		assert.Equal(t, "tls-secret", r.URL.Query().Get("key"))
+		assert.Equal(t, "TLS1", r.URL.Query().Get("out_trade_no"))
+		assert.Empty(t, r.Referer())
+		_, _ = fmt.Fprint(w, `{"code":1,"status":1,"pid":"1001","trade_no":"GWTLS1","out_trade_no":"TLS1","type":"alipay","money":"100.00"}`)
+	}))
+
+	paid, money, err := queryEpayOrderPaid(gateway.URL, "1001", "tls-secret", "TLS1")
+	require.NoError(t, err)
+	assert.True(t, paid)
+	assert.Equal(t, "100.00", money)
+}
+
+func TestQueryEpayOrderContextHonorsCancellation(t *testing.T) {
+	setupEpayCallbackTest(t)
+	const testMerchantKey = "cancel+secret/key=value"
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := queryEpayOrderContext(ctx, operation_setting.PayAddress, "1001", testMerchantKey, "CANCELLED1")
+	require.ErrorIs(t, err, context.Canceled)
+	assert.NotContains(t, err.Error(), testMerchantKey)
+	assert.NotContains(t, err.Error(), url.QueryEscape(testMerchantKey))
+}
+
+func TestQueryEpayOrderContextRedactsDeadlineError(t *testing.T) {
+	setupEpayCallbackTest(t)
+	const testMerchantKey = "deadline+secret/key=value"
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	_, err := queryEpayOrderContext(ctx, operation_setting.PayAddress, "1001", testMerchantKey, "DEADLINE1")
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.NotContains(t, err.Error(), testMerchantKey)
+	assert.NotContains(t, err.Error(), url.QueryEscape(testMerchantKey))
+}
+
+func TestQueryEpayOrderPaidRejectsRedirectWithoutLeakingSecret(t *testing.T) {
+	fs := system_setting.GetFetchSetting()
+	original := *fs
+	fs.EnableSSRFProtection = false
+	fs.AllowPrivateIp = true
+	t.Cleanup(func() { *fs = original })
+
+	var redirectedRequests atomic.Int32
+	destination := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirectedRequests.Add(1)
+		assert.Empty(t, r.Referer())
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(destination.Close)
+
+	const testMerchantKey = "redirect-secret-key"
+	gateway := newEpayQueryTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Referer())
+		http.Redirect(w, r, destination.URL+"/collect", http.StatusFound)
+	}))
+
+	_, _, err := queryEpayOrderPaid(gateway.URL, "1001", testMerchantKey, "REDIRECT1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "redirects are not allowed")
+	assert.NotContains(t, err.Error(), testMerchantKey)
+	assert.NotContains(t, err.Error(), url.QueryEscape(testMerchantKey))
+	assert.Zero(t, redirectedRequests.Load(), "redirect target must never receive a request or Referer")
+}
+
 // queryEpayOrderPaid must refuse an SSRF target (private IP / metadata endpoint) when
 // SSRF protection is on, and must never leak the merchant key into the returned error.
 func TestQueryEpayOrderPaidRejectsSSRF(t *testing.T) {
@@ -267,12 +496,12 @@ func TestQueryEpayOrderPaidRejectsSSRF(t *testing.T) {
 	fs.EnableSSRFProtection, fs.AllowPrivateIp = true, false
 	t.Cleanup(func() { fs.EnableSSRFProtection, fs.AllowPrivateIp = origSSRF, origPriv })
 
-	const secret = "super-secret-merchant-key"
-	paid, money, err := queryEpayOrderPaid("http://169.254.169.254", "1001", secret, "T1")
+	const testMerchantKey = "super-secret-merchant-key"
+	paid, money, err := queryEpayOrderPaid("https://169.254.169.254", "1001", testMerchantKey, "T1")
 	require.Error(t, err, "private/metadata target must be rejected before any request")
 	assert.False(t, paid)
 	assert.Empty(t, money)
-	assert.NotContains(t, err.Error(), secret, "merchant key must never appear in errors/logs")
+	assert.NotContains(t, err.Error(), testMerchantKey, "merchant key must never appear in errors/logs")
 }
 
 // The merchant key must be redacted from the net/http TRANSPORT error (the actual leak
@@ -285,11 +514,15 @@ func TestQueryEpayOrderPaidRedactsKeyInTransportError(t *testing.T) {
 	fs.EnableSSRFProtection, fs.AllowPrivateIp = false, true // reach the HTTP request against loopback
 	t.Cleanup(func() { fs.EnableSSRFProtection, fs.AllowPrivateIp = origSSRF, origPriv })
 
-	const secret = "sk+top/secret=key value" // +,/,=,space → percent-encoded in the URL
-	_, _, err := queryEpayOrderPaid("http://127.0.0.1:1", "1001", secret, "T1")
+	const testMerchantKey = "sk+top/secret=key value" // +,/,=,space → percent-encoded in the URL
+	originalClient := epayOrderQueryBaseClient
+	epayOrderQueryBaseClient = &http.Client{Transport: http.DefaultTransport}
+	t.Cleanup(func() { epayOrderQueryBaseClient = originalClient })
+
+	_, _, err := queryEpayOrderPaid("https://127.0.0.1:1", "1001", testMerchantKey, "T1")
 	require.Error(t, err, "connection to a dead port must fail at transport level")
-	assert.NotContains(t, err.Error(), secret, "raw merchant key must be redacted")
-	assert.NotContains(t, err.Error(), url.QueryEscape(secret), "URL-encoded merchant key must be redacted")
+	assert.NotContains(t, err.Error(), testMerchantKey, "raw merchant key must be redacted")
+	assert.NotContains(t, err.Error(), url.QueryEscape(testMerchantKey), "URL-encoded merchant key must be redacted")
 }
 
 func TestQueryEpayOrderPaidRedactsKeyEchoedByGateway(t *testing.T) {
@@ -298,17 +531,105 @@ func TestQueryEpayOrderPaidRedactsKeyEchoedByGateway(t *testing.T) {
 	fs.EnableSSRFProtection, fs.AllowPrivateIp = false, true
 	t.Cleanup(func() { fs.EnableSSRFProtection, fs.AllowPrivateIp = origSSRF, origPriv })
 
-	const secret = "sk+echo/secret=key value"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	const testMerchantKey = "sk+echo/secret=key value"
+	server := newEpayQueryTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"code":0,"msg":%q}`, "invalid key "+secret+" encoded "+url.QueryEscape(secret))
+		_, _ = fmt.Fprintf(w, `{"code":0,"msg":%q}`, "invalid key "+testMerchantKey+" encoded "+url.QueryEscape(testMerchantKey))
 	}))
-	t.Cleanup(server.Close)
-
-	_, _, err := queryEpayOrderPaid(server.URL, "1001", secret, "T1")
+	_, _, err := queryEpayOrderPaid(server.URL, "1001", testMerchantKey, "T1")
 	require.Error(t, err)
-	assert.NotContains(t, err.Error(), secret)
-	assert.NotContains(t, err.Error(), url.QueryEscape(secret))
+	assert.NotContains(t, err.Error(), testMerchantKey)
+	assert.NotContains(t, err.Error(), url.QueryEscape(testMerchantKey))
+}
+
+func TestQueryEpayOrderCapsConcurrentOutboundRequests(t *testing.T) {
+	originalClient := epayOrderQueryBaseClient
+	originalSlots := epayOrderQuerySlots
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	epayOrderQuerySlots = make(chan struct{}, 1)
+	epayOrderQueryBaseClient = &http.Client{Transport: epayRoundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		close(started)
+		<-release
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body: io.NopCloser(strings.NewReader(
+				`{"code":1,"status":0,"pid":"1001","trade_no":"GW1","out_trade_no":"ORDER1","type":"alipay","money":"100.00"}`,
+			)),
+			Header: make(http.Header),
+		}, nil
+	})}
+	t.Cleanup(func() {
+		epayOrderQueryBaseClient = originalClient
+		epayOrderQuerySlots = originalSlots
+	})
+
+	firstResult := make(chan error, 1)
+	go func() {
+		_, err := queryEpayOrderContext(context.Background(), "https://8.8.8.8", "1001", "secret", "ORDER1")
+		firstResult <- err
+	}()
+	<-started
+
+	_, err := queryEpayOrderContext(context.Background(), "https://8.8.8.8", "1001", "secret", "ORDER2")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "capacity exhausted")
+	assert.EqualValues(t, 1, calls.Load())
+
+	close(release)
+	require.NoError(t, <-firstResult)
+}
+
+func TestEpayQueryCapacityIsAcquiredBeforeSSRFPreflight(t *testing.T) {
+	originalSlots := epayOrderQuerySlots
+	epayOrderQuerySlots = make(chan struct{}, 1)
+	epayOrderQuerySlots <- struct{}{}
+	t.Cleanup(func() { epayOrderQuerySlots = originalSlots })
+
+	_, err := queryEpayOrderContext(
+		context.Background(),
+		"https://127.0.0.1",
+		"1001",
+		"test-key",
+		"ORDER-PREFLIGHT",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "capacity exhausted")
+}
+
+func TestEpaySubsiteQueriesCannotConsumeReservedGlobalCapacity(t *testing.T) {
+	originalTotalSlots := epayOrderQuerySlots
+	originalSubsiteSlots := epaySubsiteOrderQuerySlots
+	epayOrderQuerySlots = make(chan struct{}, 3)
+	epaySubsiteOrderQuerySlots = make(chan struct{}, 2)
+	t.Cleanup(func() {
+		epayOrderQuerySlots = originalTotalSlots
+		epaySubsiteOrderQuerySlots = originalSubsiteSlots
+	})
+
+	releaseSiteFirst, err := acquireEpayOrderQueryCapacity(context.Background(), 42)
+	require.NoError(t, err)
+	defer releaseSiteFirst()
+	releaseSiteSecond, err := acquireEpayOrderQueryCapacity(context.Background(), 42)
+	require.NoError(t, err)
+	defer releaseSiteSecond()
+
+	_, err = acquireEpayOrderQueryCapacity(context.Background(), 42)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "capacity exhausted")
+	_, err = acquireEpayOrderQueryCapacity(context.Background(), 43)
+	require.Error(t, err, "all sub-sites together must stay within their shared pool")
+	assert.Contains(t, err.Error(), "capacity exhausted")
+
+	releaseGlobal, err := acquireEpayOrderQueryCapacity(context.Background(), 0)
+	require.NoError(t, err, "sub-sites must leave process capacity for the global merchant")
+	defer releaseGlobal()
+
+	epaySiteOrderQueryActivity.Lock()
+	defer epaySiteOrderQueryActivity.Unlock()
+	assert.Equal(t, 2, epaySiteOrderQueryActivity.active[42])
 }
 
 func TestEpayUnknownOrderLogEscapesNewlines(t *testing.T) {
@@ -325,11 +646,9 @@ func TestEpayUnknownOrderLogEscapesNewlines(t *testing.T) {
 	assert.NotContains(t, logs, "\n[ERR] forged-log-entry")
 }
 
-// epayCallbackMoneyMatchesOrder must accept a gateway amount echoed exactly as the
-// order was submitted (strconv.FormatFloat 'f',2), including x.xx5 amounts where a
-// decimal.Round comparand would wrongly reject — the regression that would re-strand
-// paid orders. Empty/null amounts are tolerated; a genuinely different amount is not.
-func TestEpayCallbackMoneyMatchesOrder(t *testing.T) {
+// Settlement requires a concrete amount equal to the exact two-decimal value that was
+// submitted. Missing values and values that only round to the order amount fail closed.
+func TestEpayMoneyMatchesOrderStrict(t *testing.T) {
 	cases := []struct {
 		name          string
 		callbackMoney string
@@ -340,14 +659,16 @@ func TestEpayCallbackMoneyMatchesOrder(t *testing.T) {
 		{"trailing-zeros", "100.000", 100, true},
 		{"half-even-x005", "1.00", 1.005, true}, // FormatFloat(1.005,'f',2)="1.00"
 		{"half-even-x675", "2.67", 2.675, true}, // FormatFloat(2.675,'f',2)="2.67"
-		{"empty-tolerated", "", 100, true},
+		{"empty-rejected", "", 100, false},
+		{"roundable-low-rejected", "99.999", 100, false},
+		{"roundable-high-rejected", "100.001", 100, false},
 		{"mismatch-low", "1.00", 100, false},
 		{"mismatch-high", "999999.00", 100, false},
 		{"garbage", "not-a-number", 100, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, epayCallbackMoneyMatchesOrder(tc.callbackMoney, tc.orderMoney))
+			assert.Equal(t, tc.want, epayMoneyMatchesOrderStrict(tc.callbackMoney, tc.orderMoney))
 		})
 	}
 }
@@ -358,7 +679,7 @@ func TestEpayCallbackMoneyMatchesOrder(t *testing.T) {
 func TestEpayNotifySubSiteSettlesWithOwnKeyAndDebitsWallet(t *testing.T) {
 	setupEpayCallbackTest(t)
 	const tradeNo, siteId = "SUBOK1", 7001
-	u := createEpaySubSiteOrder(t, tradeNo, siteId, 200000, "https://sub.example.com") // wallet 200000 厘 > cost 100000
+	u := createEpaySubSiteOrder(t, tradeNo, siteId, 200000, operation_setting.PayAddress) // wallet 200000 厘 > cost 100000
 	wantQuota := int(10 * int64(common.QuotaPerUnit))
 	wantCost := siteTopupCostMilli(100, model.DiscountRateBase) // 100000 厘
 
@@ -382,7 +703,7 @@ func TestEpayNotifySubSiteSettlesWithOwnKeyAndDebitsWallet(t *testing.T) {
 func TestEpayNotifySubSiteInsufficientWalletParksManualReview(t *testing.T) {
 	setupEpayCallbackTest(t)
 	const tradeNo, siteId = "SUBPARK", 7002
-	u := createEpaySubSiteOrder(t, tradeNo, siteId, 100, "https://sub.example.com") // wallet 100 厘 < cost 100000
+	u := createEpaySubSiteOrder(t, tradeNo, siteId, 100, operation_setting.PayAddress) // wallet 100 厘 < cost 100000
 
 	w := runEpayNotify(t, signedEpayValuesWithKey(tradeNo, nil, subSiteEpayKey))
 	assert.Equal(t, "success", w.Body.String(), "parked order still acks success so the gateway stops retrying")
@@ -419,13 +740,13 @@ func TestReconcileEpayPendingTopUps(t *testing.T) {
 
 	uPaid := createEpayTestOrder(t, "RECPAID", 300)     // gateway: paid (numeric code/status)
 	uPaidStr := createEpayTestOrder(t, "RECPSTR", 300)  // gateway: paid (string-typed code/status)
-	uPaidNull := createEpayTestOrder(t, "RECNULL", 300) // gateway: paid, money null (tolerated)
+	uPaidNull := createEpayTestOrder(t, "RECNULL", 300) // gateway: paid, money null (rejected)
 	uUnpaid := createEpayTestOrder(t, "RECWAIT", 300)   // gateway: unpaid
 	uBadAmt := createEpayTestOrder(t, "RECBAMT", 300)   // gateway: paid but wrong amount
 	uFresh := createEpayTestOrder(t, "RECNEW1", 10)     // inside grace window: not queried
 	wantQuota := int(10 * int64(common.QuotaPerUnit))
 
-	gateway := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	gateway := newEpayQueryTLSServer(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		require.Equal(t, "order", q.Get("act"))
 		require.Equal(t, "1001", q.Get("pid"))
@@ -433,35 +754,34 @@ func TestReconcileEpayPendingTopUps(t *testing.T) {
 		rw.Header().Set("Content-Type", "application/json")
 		switch q.Get("out_trade_no") {
 		case "RECPAID":
-			fmt.Fprint(rw, `{"code":1,"msg":"ok","out_trade_no":"RECPAID","money":"100.00","status":1}`)
+			fmt.Fprint(rw, `{"code":1,"msg":"ok","pid":"1001","trade_no":"GWRECPAID","out_trade_no":"RECPAID","type":"alipay","money":"100.00","status":1}`)
 		case "RECPSTR":
-			fmt.Fprint(rw, `{"code":"1","msg":"ok","out_trade_no":"RECPSTR","money":100.00,"status":"1"}`)
+			fmt.Fprint(rw, `{"code":"1","msg":"ok","pid":1001,"trade_no":"GWRECPSTR","out_trade_no":"RECPSTR","type":"alipay","money":100.00,"status":"1"}`)
 		case "RECNULL":
-			fmt.Fprint(rw, `{"code":1,"msg":"ok","out_trade_no":"RECNULL","money":null,"status":1}`)
+			fmt.Fprint(rw, `{"code":1,"msg":"ok","pid":"1001","trade_no":"GWRECNULL","out_trade_no":"RECNULL","type":"alipay","money":null,"status":1}`)
 		case "RECWAIT":
 			fmt.Fprint(rw, `{"code":1,"msg":"ok","out_trade_no":"RECWAIT","money":"100.00","status":0}`)
 		case "RECBAMT":
-			fmt.Fprint(rw, `{"code":1,"msg":"ok","out_trade_no":"RECBAMT","money":"1.00","status":1}`)
+			fmt.Fprint(rw, `{"code":1,"msg":"ok","pid":"1001","trade_no":"GWRECBAMT","out_trade_no":"RECBAMT","type":"alipay","money":"1.00","status":1}`)
 		default:
 			fmt.Fprint(rw, `{"code":-1,"msg":"order not found"}`)
 		}
 	}))
-	t.Cleanup(gateway.Close)
 	operation_setting.PayAddress = gateway.URL
 
 	summary, err := reconcileEpayPendingTopUpsOnce(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 5, summary.Scanned, "grace-window order must not be scanned")
-	assert.Equal(t, 3, summary.Settled)
+	assert.Equal(t, 2, summary.Settled)
 	assert.Equal(t, 1, summary.Unpaid)
-	assert.Equal(t, 1, summary.Failed, "amount mismatch counts as failed")
+	assert.Equal(t, 2, summary.Failed, "missing or mismatched amount counts as failed")
 
 	assert.Equal(t, common.TopUpStatusSuccess, epayOrderStatus(t, "RECPAID"))
 	assert.Equal(t, wantQuota, epayUserQuota(t, uPaid.Id))
 	assert.Equal(t, common.TopUpStatusSuccess, epayOrderStatus(t, "RECPSTR"))
 	assert.Equal(t, wantQuota, epayUserQuota(t, uPaidStr.Id))
-	assert.Equal(t, common.TopUpStatusSuccess, epayOrderStatus(t, "RECNULL"))
-	assert.Equal(t, wantQuota, epayUserQuota(t, uPaidNull.Id))
+	assert.Equal(t, common.TopUpStatusPending, epayOrderStatus(t, "RECNULL"))
+	assert.Equal(t, 0, epayUserQuota(t, uPaidNull.Id))
 	assert.Equal(t, common.TopUpStatusPending, epayOrderStatus(t, "RECWAIT"))
 	assert.Equal(t, 0, epayUserQuota(t, uUnpaid.Id))
 	assert.Equal(t, common.TopUpStatusPending, epayOrderStatus(t, "RECBAMT"))
@@ -479,7 +799,7 @@ func TestReconcileEpaySubSiteSettlesDebitsAndParks(t *testing.T) {
 	wantQuota := int(10 * int64(common.QuotaPerUnit))
 	wantCost := siteTopupCostMilli(100, model.DiscountRateBase) // 100000 厘
 
-	gateway := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	gateway := newEpayQueryTLSServer(t, http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		require.Equal(t, "order", q.Get("act"))
 		require.Equal(t, "1001", q.Get("pid"))
@@ -487,10 +807,8 @@ func TestReconcileEpaySubSiteSettlesDebitsAndParks(t *testing.T) {
 		require.Equal(t, subSiteEpayKey, q.Get("key"), "sub-site order must query with the sub-site key")
 		require.NotEqual(t, epayTestMerchantKey, q.Get("key"))
 		rw.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(rw, `{"code":1,"msg":"ok","out_trade_no":"`+q.Get("out_trade_no")+`","money":"100.00","status":1}`)
+		fmt.Fprint(rw, `{"code":1,"msg":"ok","pid":"1001","trade_no":"GW`+q.Get("out_trade_no")+`","out_trade_no":"`+q.Get("out_trade_no")+`","type":"alipay","money":"100.00","status":1}`)
 	}))
-	t.Cleanup(gateway.Close)
-
 	// Funded sub-site → settle + wallet debit.
 	uPaid := createEpaySubSiteOrder(t, "SUBREC_OK", 8001, 300000, gateway.URL)
 	// Drained sub-site → parked (manual_review), nothing credited.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +38,9 @@ const (
 var (
 	ErrSubscriptionOrderNotFound          = errors.New("subscription order not found")
 	ErrSubscriptionOrderStatusInvalid     = errors.New("subscription order status invalid")
+	ErrSubscriptionOrderPlanChanged       = errors.New("subscription order plan changed after checkout")
+	ErrSubscriptionOrderPlanSnapshot      = errors.New("subscription order plan snapshot is invalid")
+	ErrSubscriptionPurchaseLimitReached   = errors.New("已达到该套餐购买上限或存在待支付订单")
 	ErrSubscriptionBalanceCommitUncertain = errors.New("subscription balance purchase commit outcome is uncertain")
 )
 
@@ -219,17 +223,267 @@ type SubscriptionOrder struct {
 	PlanId int     `json:"plan_id" gorm:"index"`
 	Money  float64 `json:"money"`
 
-	TradeNo         string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	PaymentMethod   string `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	TradeNo       string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	PaymentMethod string `json:"payment_method" gorm:"type:varchar(50)"`
+	// The provider/time index bounds reconciliation scans without indexing Status,
+	// whose legacy database type may be TEXT on existing MySQL installations.
+	PaymentProvider string `json:"payment_provider" gorm:"type:varchar(50);default:'';index:idx_subscription_order_provider_time,priority:1"`
 	Status          string `json:"status"`
-	CreateTime      int64  `json:"create_time"`
+	CreateTime      int64  `json:"create_time" gorm:"index:idx_subscription_order_provider_time,priority:2"`
 	CompleteTime    int64  `json:"complete_time"`
+	// EpayQueryTime provides fair, persistent rotation through pending reconciliation
+	// batches, including across process restarts. It stays nullable so adding the column
+	// does not require backfilling every legacy order during migration.
+	EpayQueryTime *int64 `json:"-"`
+	// EpayCallbackQueryTime is deliberately independent from reconciliation
+	// fairness. An untrusted callback may consume its own cooldown lease, but it
+	// cannot push a genuinely paid order out of the scheduled recovery batch.
+	EpayCallbackQueryTime *int64 `json:"-"`
+
+	// PlanSnapshot is the immutable fulfillment contract captured before an
+	// external checkout can accept payment. It intentionally stays private in
+	// API responses and has no TEXT default for MySQL 5.7 compatibility.
+	PlanSnapshot string `json:"-" gorm:"type:text"`
+	// PurchaseLimitReserved records that this exact order already consumed a
+	// MaxPurchasePerUser slot before payment. It is durable settlement evidence,
+	// not inferred from provider or status, and remains private in API responses.
+	PurchaseLimitReserved bool `json:"-"`
 
 	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
 }
 
+const subscriptionOrderPlanSnapshotVersion = 1
+
+type subscriptionOrderPlanSnapshot struct {
+	Version                     int    `json:"version"`
+	PlanId                      int    `json:"plan_id"`
+	Title                       string `json:"title"`
+	PriceAmount                 string `json:"price_amount"`
+	Currency                    string `json:"currency"`
+	DurationUnit                string `json:"duration_unit"`
+	DurationValue               int    `json:"duration_value"`
+	CustomSeconds               int64  `json:"custom_seconds"`
+	TotalAmount                 int64  `json:"total_amount"`
+	QuotaResetPeriod            string `json:"quota_reset_period"`
+	QuotaResetCustomSeconds     int64  `json:"quota_reset_custom_seconds"`
+	UpgradeGroup                string `json:"upgrade_group"`
+	DowngradeGroup              string `json:"downgrade_group"`
+	AllowWalletOverflow         bool   `json:"allow_wallet_overflow"`
+	MaxPurchasePerUser          int    `json:"max_purchase_per_user"`
+	SourceSubscriptionUpdatedAt int64  `json:"source_subscription_updated_at"`
+}
+
+func (o *SubscriptionOrder) SetPlanSnapshot(plan *SubscriptionPlan) error {
+	if o == nil || plan == nil || plan.Id <= 0 || o.PlanId != plan.Id {
+		return fmt.Errorf("%w: plan id mismatch", ErrSubscriptionOrderPlanSnapshot)
+	}
+	if math.IsNaN(o.Money) || math.IsInf(o.Money, 0) || math.IsNaN(plan.PriceAmount) || math.IsInf(plan.PriceAmount, 0) {
+		return fmt.Errorf("%w: money must be finite", ErrSubscriptionOrderPlanSnapshot)
+	}
+	orderMoney := decimal.NewFromFloat(o.Money)
+	planMoney := decimal.NewFromFloat(plan.PriceAmount)
+	if orderMoney.IsNegative() || !orderMoney.Equal(planMoney) {
+		return fmt.Errorf("%w: order money does not match plan", ErrSubscriptionOrderPlanSnapshot)
+	}
+	if plan.TotalAmount < 0 || plan.MaxPurchasePerUser < 0 {
+		return fmt.Errorf("%w: negative plan limit", ErrSubscriptionOrderPlanSnapshot)
+	}
+	if _, err := calcPlanEndTime(time.Unix(0, 0), plan); err != nil {
+		return fmt.Errorf("%w: %v", ErrSubscriptionOrderPlanSnapshot, err)
+	}
+	resetPeriod := NormalizeResetPeriod(plan.QuotaResetPeriod)
+	if resetPeriod == SubscriptionResetCustom && plan.QuotaResetCustomSeconds <= 0 {
+		return fmt.Errorf("%w: invalid custom reset period", ErrSubscriptionOrderPlanSnapshot)
+	}
+	allowWalletOverflow := true
+	if plan.AllowWalletOverflow != nil {
+		allowWalletOverflow = *plan.AllowWalletOverflow
+	}
+	snapshot := subscriptionOrderPlanSnapshot{
+		Version:                     subscriptionOrderPlanSnapshotVersion,
+		PlanId:                      plan.Id,
+		Title:                       plan.Title,
+		PriceAmount:                 planMoney.StringFixed(6),
+		Currency:                    plan.Currency,
+		DurationUnit:                plan.DurationUnit,
+		DurationValue:               plan.DurationValue,
+		CustomSeconds:               plan.CustomSeconds,
+		TotalAmount:                 plan.TotalAmount,
+		QuotaResetPeriod:            resetPeriod,
+		QuotaResetCustomSeconds:     plan.QuotaResetCustomSeconds,
+		UpgradeGroup:                strings.TrimSpace(plan.UpgradeGroup),
+		DowngradeGroup:              strings.TrimSpace(plan.DowngradeGroup),
+		AllowWalletOverflow:         allowWalletOverflow,
+		MaxPurchasePerUser:          plan.MaxPurchasePerUser,
+		SourceSubscriptionUpdatedAt: plan.UpdatedAt,
+	}
+	encoded, err := common.Marshal(snapshot)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrSubscriptionOrderPlanSnapshot, err)
+	}
+	o.PlanSnapshot = string(encoded)
+	return nil
+}
+
+func subscriptionPlanFromOrderSnapshot(order *SubscriptionOrder) (*SubscriptionPlan, error) {
+	if order == nil || strings.TrimSpace(order.PlanSnapshot) == "" {
+		return nil, fmt.Errorf("%w: snapshot is missing", ErrSubscriptionOrderPlanSnapshot)
+	}
+	if math.IsNaN(order.Money) || math.IsInf(order.Money, 0) {
+		return nil, fmt.Errorf("%w: money must be finite", ErrSubscriptionOrderPlanSnapshot)
+	}
+	var snapshot subscriptionOrderPlanSnapshot
+	if err := common.UnmarshalJsonStr(order.PlanSnapshot, &snapshot); err != nil {
+		return nil, fmt.Errorf("%w: malformed snapshot", ErrSubscriptionOrderPlanSnapshot)
+	}
+	if snapshot.Version != subscriptionOrderPlanSnapshotVersion || snapshot.PlanId <= 0 || snapshot.PlanId != order.PlanId {
+		return nil, fmt.Errorf("%w: unsupported version or plan id", ErrSubscriptionOrderPlanSnapshot)
+	}
+	price, err := decimal.NewFromString(snapshot.PriceAmount)
+	if err != nil || price.IsNegative() || !price.Equal(decimal.NewFromFloat(order.Money)) {
+		return nil, fmt.Errorf("%w: price mismatch", ErrSubscriptionOrderPlanSnapshot)
+	}
+	if snapshot.TotalAmount < 0 || snapshot.MaxPurchasePerUser < 0 {
+		return nil, fmt.Errorf("%w: negative plan limit", ErrSubscriptionOrderPlanSnapshot)
+	}
+	allowWalletOverflow := snapshot.AllowWalletOverflow
+	plan := &SubscriptionPlan{
+		Id:                      snapshot.PlanId,
+		Title:                   snapshot.Title,
+		PriceAmount:             price.InexactFloat64(),
+		Currency:                snapshot.Currency,
+		DurationUnit:            snapshot.DurationUnit,
+		DurationValue:           snapshot.DurationValue,
+		CustomSeconds:           snapshot.CustomSeconds,
+		MaxPurchasePerUser:      snapshot.MaxPurchasePerUser,
+		UpgradeGroup:            snapshot.UpgradeGroup,
+		DowngradeGroup:          snapshot.DowngradeGroup,
+		TotalAmount:             snapshot.TotalAmount,
+		QuotaResetPeriod:        snapshot.QuotaResetPeriod,
+		QuotaResetCustomSeconds: snapshot.QuotaResetCustomSeconds,
+		AllowWalletOverflow:     &allowWalletOverflow,
+		UpdatedAt:               snapshot.SourceSubscriptionUpdatedAt,
+	}
+	if _, err := calcPlanEndTime(time.Unix(0, 0), plan); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrSubscriptionOrderPlanSnapshot, err)
+	}
+	if NormalizeResetPeriod(plan.QuotaResetPeriod) != plan.QuotaResetPeriod ||
+		(plan.QuotaResetPeriod == SubscriptionResetCustom && plan.QuotaResetCustomSeconds <= 0) {
+		return nil, fmt.Errorf("%w: invalid reset period", ErrSubscriptionOrderPlanSnapshot)
+	}
+	return plan, nil
+}
+
+func ensureSubscriptionPurchaseCapacityTx(tx *gorm.DB, userId, planId, maxPurchase int) error {
+	if maxPurchase <= 0 {
+		return nil
+	}
+	var purchased int64
+	if err := tx.Model(&UserSubscription{}).
+		Where("user_id = ? AND plan_id = ?", userId, planId).
+		Count(&purchased).Error; err != nil {
+		return err
+	}
+	var pendingReservations int64
+	if err := tx.Model(&SubscriptionOrder{}).
+		Where(
+			"user_id = ? AND plan_id = ? AND status = ? AND purchase_limit_reserved = ?",
+			userId,
+			planId,
+			common.TopUpStatusPending,
+			true,
+		).
+		Count(&pendingReservations).Error; err != nil {
+		return err
+	}
+	if purchased+pendingReservations >= int64(maxPurchase) {
+		return ErrSubscriptionPurchaseLimitReached
+	}
+	return nil
+}
+
+// InsertWithPlanSnapshot atomically snapshots the authoritative checkout contract
+// before an external gateway can accept payment. The caller may have obtained plan
+// from a stale process-local cache, so the transaction locks and reloads the plan row
+// before deciding whether the checkout is still allowed. On success plan is replaced
+// with that authoritative row so the controller sends matching product/price data to
+// the gateway. Epay additionally reserves a limited-plan slot because its signed
+// checkout can be regenerated from the same pending order.
+func (o *SubscriptionOrder) InsertWithPlanSnapshot(plan *SubscriptionPlan) error {
+	if o == nil {
+		return errors.New("subscription order is nil")
+	}
+	if plan == nil || plan.Id <= 0 || o.PlanId != plan.Id {
+		return fmt.Errorf("%w: plan id mismatch", ErrSubscriptionOrderPlanSnapshot)
+	}
+	if o.Status != common.TopUpStatusPending {
+		return errors.New("external subscription order must start pending")
+	}
+	o.PurchaseLimitReserved = false
+	if o.CreateTime == 0 {
+		o.CreateTime = common.GetTimestamp()
+	}
+	var authoritativePlan SubscriptionPlan
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var currentPlan SubscriptionPlan
+		if err := lockForUpdate(tx).Where("id = ?", o.PlanId).First(&currentPlan).Error; err != nil {
+			return err
+		}
+		currentPlan.NormalizeDefaults()
+		if !currentPlan.Enabled {
+			return fmt.Errorf("%w: plan is disabled", ErrSubscriptionOrderPlanChanged)
+		}
+		switch o.PaymentProvider {
+		case PaymentProviderEpay:
+			if currentPlan.PriceAmount < 0.01 {
+				return fmt.Errorf("%w: epay amount is below minimum", ErrSubscriptionOrderPlanChanged)
+			}
+		}
+
+		// The local order and the gateway request must use the same locked row.
+		o.Money = currentPlan.PriceAmount
+		if err := o.SetPlanSnapshot(&currentPlan); err != nil {
+			return err
+		}
+		if currentPlan.MaxPurchasePerUser <= 0 {
+			if err := tx.Create(o).Error; err != nil {
+				return err
+			}
+			authoritativePlan = currentPlan
+			return nil
+		}
+
+		var userRow User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", o.UserId).First(&userRow).Error; err != nil {
+			return err
+		}
+		if err := ensureSubscriptionPurchaseCapacityTx(tx, o.UserId, o.PlanId, currentPlan.MaxPurchasePerUser); err != nil {
+			return err
+		}
+		// Only Epay currently has a locally reproducible checkout. Reserving other
+		// gateways here could permanently block a user if their one-time session URL
+		// is lost. Their settlement therefore rechecks the limit instead.
+		o.PurchaseLimitReserved = o.PaymentProvider == PaymentProviderEpay
+		if err := tx.Create(o).Error; err != nil {
+			return err
+		}
+		authoritativePlan = currentPlan
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	*plan = authoritativePlan
+	return nil
+}
+
 func (o *SubscriptionOrder) Insert() error {
+	if o == nil {
+		return errors.New("subscription order is nil")
+	}
+	if o.Status == common.TopUpStatusPending {
+		return fmt.Errorf("%w: pending order must use InsertWithPlanSnapshot", ErrSubscriptionOrderPlanSnapshot)
+	}
 	if o.CreateTime == 0 {
 		o.CreateTime = common.GetTimestamp()
 	}
@@ -249,6 +503,93 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 		return nil
 	}
 	return &order
+}
+
+// GetReusablePendingSubscriptionOrder returns a previously reserved checkout for
+// the same gateway. It prefers the requested method, then falls back to another
+// method already bound to the order. Epay can regenerate that original signed form
+// without changing an order that the gateway may already have seen.
+func GetReusablePendingSubscriptionOrder(userId, planId int, paymentProvider, paymentMethod string) (*SubscriptionOrder, error) {
+	if userId <= 0 || planId <= 0 || paymentProvider == "" || paymentMethod == "" {
+		return nil, errors.New("invalid pending subscription order query")
+	}
+	var order SubscriptionOrder
+	result := DB.Where(
+		"user_id = ? AND plan_id = ? AND payment_provider = ? AND payment_method = ? AND status = ? AND plan_snapshot <> '' AND purchase_limit_reserved = ?",
+		userId, planId, paymentProvider, paymentMethod, common.TopUpStatusPending, true,
+	).Order("id desc").Limit(1).Find(&order)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected > 0 {
+		return &order, nil
+	}
+	result = DB.Where(
+		"user_id = ? AND plan_id = ? AND payment_provider = ? AND status = ? AND plan_snapshot <> '' AND purchase_limit_reserved = ?",
+		userId, planId, paymentProvider, common.TopUpStatusPending, true,
+	).Order("id desc").Limit(1).Find(&order)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &order, nil
+}
+
+// GetPendingEpaySubscriptionOrders lists recent pending epay subscription orders in
+// least-recently-queried order. The bounded batch therefore advances through a finite
+// abandoned-order backlog instead of repeatedly selecting the same newest page.
+func GetPendingEpaySubscriptionOrders(createdAfter, createdBefore int64, limit int) ([]*SubscriptionOrder, error) {
+	var orders []*SubscriptionOrder
+	err := DB.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+		PaymentProviderEpay, common.TopUpStatusPending, createdAfter, createdBefore).
+		Order("COALESCE(epay_query_time, 0) asc").Order("id desc").Limit(limit).Find(&orders).Error
+	if err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+func MarkEpaySubscriptionOrderQueryAttempts(ids []int, queryTime int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return DB.Model(&SubscriptionOrder{}).
+		Where("id IN ? AND payment_provider = ? AND status = ?", ids, PaymentProviderEpay, common.TopUpStatusPending).
+		Update("epay_query_time", queryTime).Error
+}
+
+// ClaimEpaySubscriptionOrderQueryAttempt atomically rate-limits authoritative
+// gateway queries for one pending order across application instances.
+func ClaimEpaySubscriptionOrderQueryAttempt(id int, queryTime, previousAllowedAt int64) (bool, error) {
+	if id <= 0 {
+		return false, errors.New("invalid subscription order id")
+	}
+	result := DB.Model(&SubscriptionOrder{}).
+		Where(
+			"id = ? AND payment_provider = ? AND status = ? AND (epay_callback_query_time IS NULL OR epay_callback_query_time <= ?)",
+			id,
+			PaymentProviderEpay,
+			common.TopUpStatusPending,
+			previousAllowedAt,
+		).
+		Update("epay_callback_query_time", queryTime)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
+// HasPendingEpaySubscriptionOrders reports whether the reconciliation window
+// contains any work, allowing the scheduler to stay idle when no order is stuck.
+func HasPendingEpaySubscriptionOrders(createdAfter, createdBefore int64) bool {
+	var ids []int
+	err := DB.Model(&SubscriptionOrder{}).
+		Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
+			PaymentProviderEpay, common.TopUpStatusPending, createdAfter, createdBefore).
+		Limit(1).Pluck("id", &ids).Error
+	return err == nil && len(ids) > 0
 }
 
 // User subscription instance
@@ -526,16 +867,8 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if userId <= 0 {
 		return nil, errors.New("invalid user id")
 	}
-	if plan.MaxPurchasePerUser > 0 {
-		var count int64
-		if err := tx.Model(&UserSubscription{}).
-			Where("user_id = ? AND plan_id = ?", userId, plan.Id).
-			Count(&count).Error; err != nil {
-			return nil, err
-		}
-		if count >= int64(plan.MaxPurchasePerUser) {
-			return nil, errors.New("已达到该套餐购买上限")
-		}
+	if err := ensureSubscriptionPurchaseCapacityTx(tx, userId, plan.Id, plan.MaxPurchasePerUser); err != nil {
+		return nil, err
 	}
 	nowUnix := GetDBTimestampTx(tx)
 	now := time.Unix(nowUnix, 0)
@@ -613,22 +946,71 @@ func refreshSubscriptionUserGroupCache(userId int, operation string) {
 // expectedPaymentProvider guards against cross-gateway callback attacks (empty skips the check).
 // actualPaymentMethod updates the order's PaymentMethod to reflect the real payment type used (empty skips update).
 func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) error {
+	_, err := CompleteSubscriptionOrderWithResult(tradeNo, providerPayload, expectedPaymentProvider, actualPaymentMethod)
+	return err
+}
+
+// CompleteSubscriptionOrderWithResult has the same idempotent contract and also
+// reports whether this call performed the pending-to-success transition. Callers that
+// expose reconciliation metrics use it to distinguish their work from a racing winner.
+func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) (bool, error) {
 	if tradeNo == "" {
-		return errors.New("tradeNo is empty")
+		return false, errors.New("tradeNo is empty")
 	}
 	refCol := "`trade_no`"
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		refCol = `"trade_no"`
 	}
+	// Read immutable routing fields without a lock first so every mutating path can
+	// acquire locks in the same user -> order order. The locked row is fully
+	// revalidated inside the transaction before any entitlement is granted.
+	var initialOrder SubscriptionOrder
+	if err := DB.Select("user_id", "plan_id", "payment_provider", "status", "plan_snapshot", "purchase_limit_reserved").
+		Where(refCol+" = ?", tradeNo).First(&initialOrder).Error; err != nil {
+		return false, ErrSubscriptionOrderNotFound
+	}
+	if expectedPaymentProvider != "" && initialOrder.PaymentProvider != expectedPaymentProvider {
+		return false, ErrPaymentMethodMismatch
+	}
+	if initialOrder.Status == common.TopUpStatusSuccess {
+		return false, nil
+	}
+	if initialOrder.Status != common.TopUpStatusPending {
+		return false, ErrSubscriptionOrderStatusInvalid
+	}
+
 	var logUserId int
 	var logPlanTitle string
 	var logMoney float64
 	var logPaymentMethod string
 	var upgradeGroup string
+	completed := false
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		var currentPlan SubscriptionPlan
+		legacyOrder := strings.TrimSpace(initialOrder.PlanSnapshot) == ""
+		if legacyOrder || !initialOrder.PurchaseLimitReserved {
+			// Lock the current plan before the user row, matching balance purchases.
+			// Legacy orders need it for compatibility validation; snapshot orders that
+			// did not reserve a slot use only its current purchase limit, so an old
+			// unlimited-plan form cannot bypass a limit added after checkout.
+			if err := lockForUpdate(tx).Where("id = ?", initialOrder.PlanId).First(&currentPlan).Error; err != nil {
+				return ErrSubscriptionOrderPlanChanged
+			}
+			currentPlan.NormalizeDefaults()
+		}
+
+		var userRow User
+		if err := lockForUpdate(tx).Select("id").Where("id = ?", initialOrder.UserId).First(&userRow).Error; err != nil {
+			return err
+		}
+
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
+		}
+		if order.UserId != initialOrder.UserId || order.PlanId != initialOrder.PlanId ||
+			order.PurchaseLimitReserved != initialOrder.PurchaseLimitReserved {
+			return ErrSubscriptionOrderStatusInvalid
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
@@ -639,20 +1021,73 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if order.Status != common.TopUpStatusPending {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		plan, err := GetSubscriptionPlanById(order.PlanId)
-		if err != nil {
-			return err
+
+		var plan *SubscriptionPlan
+		var err error
+		if strings.TrimSpace(order.PlanSnapshot) != "" {
+			plan, err = subscriptionPlanFromOrderSnapshot(&order)
+			if err != nil {
+				return err
+			}
+		} else {
+			if !legacyOrder || currentPlan.Id != order.PlanId || currentPlan.UpdatedAt >= order.CreateTime ||
+				math.IsNaN(order.Money) || math.IsInf(order.Money, 0) ||
+				math.IsNaN(currentPlan.PriceAmount) || math.IsInf(currentPlan.PriceAmount, 0) ||
+				!decimal.NewFromFloat(currentPlan.PriceAmount).Equal(decimal.NewFromFloat(order.Money)) {
+				return ErrSubscriptionOrderPlanChanged
+			}
+			plan = &currentPlan
 		}
-		if !plan.Enabled {
-			// still allow completion for already purchased orders
+
+		// Only an order carrying a durable reservation may skip the purchase-limit
+		// check at settlement. Unreserved gateways keep the legacy settlement check;
+		// treating every external pending row as reserved would both bypass limits and
+		// let abandoned one-time checkout rows block the account forever.
+		fulfillmentPlan := *plan
+		if order.PurchaseLimitReserved {
+			fulfillmentPlan.MaxPurchasePerUser = 0
+		} else if !legacyOrder {
+			fulfillmentPlan.MaxPurchasePerUser = currentPlan.MaxPurchasePerUser
 		}
-		// 锁定用户行：并发完成同一用户的不同订单（包括多实例部署下）时，
-		// 使 CreateUserSubscriptionFromPlanTx 的 MaxPurchasePerUser 检查按用户串行。
-		var userRow User
-		if err := lockForUpdate(tx).Select("id").Where("id = ?", order.UserId).First(&userRow).Error; err != nil {
-			return err
+		if !order.PurchaseLimitReserved && fulfillmentPlan.MaxPurchasePerUser > 0 {
+			capacityErr := ensureSubscriptionPurchaseCapacityTx(
+				tx,
+				order.UserId,
+				order.PlanId,
+				fulfillmentPlan.MaxPurchasePerUser,
+			)
+			if capacityErr != nil && !errors.Is(capacityErr, ErrSubscriptionPurchaseLimitReached) {
+				return capacityErr
+			}
+			if errors.Is(capacityErr, ErrSubscriptionPurchaseLimitReached) {
+				// A reproducible Epay reservation may have been created after this older,
+				// one-time checkout. Once the older order is authoritatively paid, let it
+				// take one slot from the newest later reservation. No reservation is
+				// disturbed while spare capacity exists. The user row lock serializes this
+				// transfer with every checkout/settlement for the account.
+				var laterReservation SubscriptionOrder
+				if err := lockForUpdate(tx).
+					Select("id").
+					Where(
+						"user_id = ? AND plan_id = ? AND id > ? AND status = ? AND purchase_limit_reserved = ?",
+						order.UserId,
+						order.PlanId,
+						order.Id,
+						common.TopUpStatusPending,
+						true,
+					).
+					Order("id desc").
+					First(&laterReservation).Error; err != nil {
+					return capacityErr
+				}
+				if err := tx.Model(&SubscriptionOrder{}).
+					Where("id = ? AND status = ? AND purchase_limit_reserved = ?", laterReservation.Id, common.TopUpStatusPending, true).
+					Update("purchase_limit_reserved", false).Error; err != nil {
+					return err
+				}
+			}
 		}
-		subscription, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "order")
+		subscription, err := CreateUserSubscriptionFromPlanTx(tx, order.UserId, &fulfillmentPlan, "order")
 		if err != nil {
 			return err
 		}
@@ -677,10 +1112,11 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		logPlanTitle = plan.Title
 		logMoney = order.Money
 		logPaymentMethod = order.PaymentMethod
+		completed = true
 		return nil
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 	if upgradeGroup != "" && logUserId > 0 {
 		refreshSubscriptionUserGroupCache(logUserId, "subscription payment completion")
@@ -689,7 +1125,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		msg := fmt.Sprintf("订阅购买成功，套餐: %s，支付金额: %.2f，支付方式: %s", logPlanTitle, logMoney, logPaymentMethod)
 		RecordLog(logUserId, LogTypeTopup, msg)
 	}
-	return nil
+	return completed, nil
 }
 
 func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
@@ -1202,6 +1638,9 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			CreateTime:      now,
 			CompleteTime:    now,
 			ProviderPayload: fmt.Sprintf("charged_quota=%d", requiredQuota),
+		}
+		if err := order.SetPlanSnapshot(plan); err != nil {
+			return err
 		}
 		if err := tx.Create(order).Error; err != nil {
 			return err

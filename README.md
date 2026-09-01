@@ -103,6 +103,8 @@ Upstream ships a one-off invite bonus. LemonHub replaces it with a full commissi
 
 - EasyPay callbacks are exempted from gzip handling and the global rate-limiter and get a dedicated, lenient backstop limiter; `notify_url` is pinned to a stable domain.
 - Payment callback/return URLs and the first-paint page `<title>` follow the visited (trusted) domain, with Host-spoofing protection; a title-flicker bug is fixed.
+  - EasyPay settlement treats signed callbacks as triggers and independently queries the owning merchant gateway; merchant/order identity and the exact stored amount must match before quota or subscriptions are issued.
+  - Subscription checkouts snapshot fulfillment terms; Epay limited-plan orders atomically reserve and safely reuse their pending checkout, preventing plan-edit races and duplicate payable Epay orders.
 - Concurrency/idempotency tests for EasyPay settlement.
 - Relay retries honor configured 504/524 status codes; non-streaming `BadResponseBody` responses become retryable; when all channels are exhausted the real upstream error is returned instead of a generic one.
 - Subscription fix: an expired subscription correctly returns the user to their original group (`prev_user_group` is preserved across renewal).

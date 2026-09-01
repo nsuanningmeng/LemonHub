@@ -34,6 +34,17 @@ type TopUp struct {
 	ClawedBackQuota int64 `json:"clawed_back_quota" gorm:"default:0"`
 	CreateTime      int64 `json:"create_time" gorm:"index:idx_topup_provider_status_time,priority:3"`
 	CompleteTime    int64 `json:"complete_time"`
+	// EpayQueryTime is the nullable last scheduled reconciliation attempt. Keeping the
+	// column nullable avoids a default-value table rewrite when upgrading large legacy
+	// databases. Ordering by the
+	// oldest attempt prevents a fixed batch of abandoned orders from starving paid
+	// orders deeper in the pending queue.
+	EpayQueryTime *int64 `json:"-"`
+	// EpayCallbackQueryTime is a separate cross-instance callback cooldown lease.
+	// Public callback traffic must not influence the reconciliation worker's fair
+	// ordering, otherwise a forged signed callback could keep a paid order out of
+	// the automatic recovery batch.
+	EpayCallbackQueryTime *int64 `json:"-"`
 	// Explicit varchar type (not GORM's default longtext for an untyped string): the
 	// composite index below indexes this column, and MySQL cannot index a TEXT/LONGTEXT
 	// column without a prefix length. varchar(32) fits every status value.
@@ -278,22 +289,50 @@ func FindTopUpByTradeNo(tradeNo string) (*TopUp, error) {
 }
 
 // GetPendingEpayTopUps lists pending epay top-up orders created inside
-// [createdAfter, createdBefore], NEWEST first — the reconciliation sweep's work list.
-// Newest-first matters because epay orders never expire on their own: abandoned
-// (never-paid) orders accumulate indefinitely inside the window, and an oldest-first
-// batch would re-query that dead head every sweep and starve a genuinely-paid order
-// whose notify+return were both lost. A lost-callback order is settled seconds after
-// payment, i.e. close to its creation time, so newest-first reaches it on the next
-// sweep regardless of how many stale orders pile up behind it.
+// [createdAfter, createdBefore]. Least-recently queried orders come first, with newest
+// IDs breaking ties for never-queried rows. The worker stamps each selected batch
+// before network I/O, so a finite backlog is drained fairly instead of querying the
+// same abandoned first page forever.
 func GetPendingEpayTopUps(createdAfter, createdBefore int64, limit int) ([]*TopUp, error) {
 	var topups []*TopUp
 	err := DB.Where("payment_provider = ? AND status = ? AND create_time >= ? AND create_time <= ?",
 		PaymentProviderEpay, common.TopUpStatusPending, createdAfter, createdBefore).
-		Order("id desc").Limit(limit).Find(&topups).Error
+		Order("COALESCE(epay_query_time, 0) asc").Order("id desc").Limit(limit).Find(&topups).Error
 	if err != nil {
 		return nil, err
 	}
 	return topups, nil
+}
+
+func MarkEpayTopUpQueryAttempts(ids []int, queryTime int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return DB.Model(&TopUp{}).
+		Where("id IN ? AND payment_provider = ? AND status = ?", ids, PaymentProviderEpay, common.TopUpStatusPending).
+		Update("epay_query_time", queryTime).Error
+}
+
+// ClaimEpayTopUpQueryAttempt atomically rate-limits authoritative gateway queries
+// for one pending order across application instances. A signed callback is public
+// input and must not be able to fan out duplicate outbound requests.
+func ClaimEpayTopUpQueryAttempt(id int, queryTime, previousAllowedAt int64) (bool, error) {
+	if id <= 0 {
+		return false, errors.New("invalid top-up order id")
+	}
+	result := DB.Model(&TopUp{}).
+		Where(
+			"id = ? AND payment_provider = ? AND status = ? AND (epay_callback_query_time IS NULL OR epay_callback_query_time <= ?)",
+			id,
+			PaymentProviderEpay,
+			common.TopUpStatusPending,
+			previousAllowedAt,
+		).
+		Update("epay_callback_query_time", queryTime)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 // HasPendingEpayTopUps reports whether at least one pending epay top-up exists in the

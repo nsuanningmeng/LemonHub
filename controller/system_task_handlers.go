@@ -153,12 +153,15 @@ func (asyncTaskPollHandler) Run(ctx context.Context, task *model.SystemTask, run
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
 }
 
-// epayTopupReconcileHandler periodically settles paid-but-stuck epay top-up orders by
-// querying the gateway's order API (the safety net for lost notify + missed return).
-// Enabled() folds in the pending-order existence check so an idle system schedules no
-// rows (mirrors midjourneyPollHandler); the window/grace bounds live next to the sweep
-// in topup_epay_reconcile.go.
+// epayTopupReconcileHandler retains the existing task type and environment settings,
+// but now reconciles both wallet top-ups and subscription purchases. This preserves
+// deployed scheduler configuration while covering lost subscription callbacks too.
 type epayTopupReconcileHandler struct{}
+
+type epayReconcileTaskSummary struct {
+	TopUps        epayReconcileSummary             `json:"topups"`
+	Subscriptions subscriptionEpayReconcileSummary `json:"subscriptions"`
+}
 
 func (epayTopupReconcileHandler) Type() string { return model.SystemTaskTypeEpayTopupReconcile }
 
@@ -167,7 +170,10 @@ func (epayTopupReconcileHandler) Enabled() bool {
 		return false
 	}
 	now := common.GetTimestamp()
-	return model.HasPendingEpayTopUps(now-epayReconcileWindowSeconds, now-epayReconcileGraceSeconds)
+	createdAfter := now - epayReconcileWindowSeconds
+	createdBefore := now - epayReconcileGraceSeconds
+	return model.HasPendingEpayTopUps(createdAfter, createdBefore) ||
+		model.HasPendingEpaySubscriptionOrders(createdAfter, createdBefore)
 }
 
 func (epayTopupReconcileHandler) Interval() time.Duration {
@@ -180,10 +186,39 @@ func (epayTopupReconcileHandler) Interval() time.Duration {
 
 func (epayTopupReconcileHandler) NewPayload() any { return nil }
 
+func reconcileEpayPendingOrdersOnce(ctx context.Context) (epayReconcileTaskSummary, error) {
+	topupSummary, topupErr := reconcileEpayPendingTopUpsOnce(ctx)
+	subscriptionSummary, subscriptionErr := reconcileEpayPendingSubscriptionsOnce(ctx)
+	summary := epayReconcileTaskSummary{
+		TopUps:        topupSummary,
+		Subscriptions: subscriptionSummary,
+	}
+	if topupErr != nil || subscriptionErr != nil {
+		var runErr error
+		switch {
+		case topupErr != nil && subscriptionErr != nil:
+			runErr = fmt.Errorf("top-up reconciliation failed: %v; subscription reconciliation failed: %v", topupErr, subscriptionErr)
+		case topupErr != nil:
+			runErr = fmt.Errorf("top-up reconciliation failed: %w", topupErr)
+		default:
+			runErr = fmt.Errorf("subscription reconciliation failed: %w", subscriptionErr)
+		}
+		return summary, runErr
+	}
+	if topupSummary.Failed > 0 || subscriptionSummary.Failed > 0 {
+		return summary, fmt.Errorf(
+			"epay reconciliation incomplete: top-up failures=%d, subscription failures=%d",
+			topupSummary.Failed,
+			subscriptionSummary.Failed,
+		)
+	}
+	return summary, nil
+}
+
 func (epayTopupReconcileHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
-	summary, err := reconcileEpayPendingTopUpsOnce(ctx)
+	summary, err := reconcileEpayPendingOrdersOnce(ctx)
 	if err != nil {
-		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, summary, err)
 		return
 	}
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)

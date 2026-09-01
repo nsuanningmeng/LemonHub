@@ -4,6 +4,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
@@ -219,6 +221,38 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	operation_setting.EpayKey = "epay_key"
 	require.True(t, isEpayWebhookEnabled())
 
+	operation_setting.PayAddress = "http://pay.example.com"
+	require.False(t, isEpayWebhookEnabled(), "insecure gateways must be hidden before a user can start payment")
+	operation_setting.PayAddress = "https://pay.example.com"
+
 	operation_setting.PayMethods = nil
 	require.False(t, isEpayWebhookEnabled())
+}
+
+func TestEpayPayMethodsForSiteUsesOnlyItsOwnMerchantAllowlist(t *testing.T) {
+	originalPayMethods := operation_setting.PayMethods
+	t.Cleanup(func() { operation_setting.PayMethods = originalPayMethods })
+	operation_setting.PayMethods = []map[string]string{
+		{"name": "Alipay", "icon": "SiAlipay", "type": "alipay"},
+		{"name": "WeChat", "icon": "SiWechat", "type": "wxpay"},
+	}
+
+	payload, err := common.Marshal(sitePayConfig{
+		EpayId:     "site-merchant",
+		EpayKey:    "site-secret",
+		PayAddress: "https://pay.site.example",
+		PayMethods: []string{" wxpay ", "custom-site", "wxpay", ""},
+	})
+	require.NoError(t, err)
+
+	methods := epayPayMethodsForSite(&model.Site{PayConfig: string(payload)})
+	require.Len(t, methods, 2)
+	assert.Equal(t, "wxpay", methods[0]["type"])
+	assert.Equal(t, "WeChat", methods[0]["name"])
+	assert.Equal(t, "custom-site", methods[1]["type"])
+	assert.Equal(t, "custom-site", methods[1]["name"])
+	assert.NotEqual(t, "alipay", methods[0]["type"], "a sub-site must not inherit the main merchant's methods")
+
+	methods[0]["name"] = "mutated"
+	assert.Equal(t, "WeChat", operation_setting.PayMethods[1]["name"], "response maps must not mutate global settings")
 }

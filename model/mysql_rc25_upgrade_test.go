@@ -184,6 +184,27 @@ type mysqlRC25LegacyTopUp struct {
 
 func (mysqlRC25LegacyTopUp) TableName() string { return "top_ups" }
 
+// mysqlRC25LegacySubscriptionOrder is the subscription order schema written by
+// LemonHub v0.4.30, before authoritative Epay reconciliation added nullable query
+// leases and immutable checkout snapshots. Keeping a populated legacy table in the
+// full MySQL migration test protects existing payment records from accidental table
+// recreation, truncation, or backfill during upgrades.
+type mysqlRC25LegacySubscriptionOrder struct {
+	Id              int `gorm:"primaryKey"`
+	UserId          int `gorm:"index"`
+	PlanId          int `gorm:"index"`
+	Money           float64
+	TradeNo         string `gorm:"unique;type:varchar(255);index"`
+	PaymentMethod   string `gorm:"type:varchar(50)"`
+	PaymentProvider string `gorm:"type:varchar(50);default:''"`
+	Status          string
+	CreateTime      int64
+	CompleteTime    int64
+	ProviderPayload string `gorm:"type:text"`
+}
+
+func (mysqlRC25LegacySubscriptionOrder) TableName() string { return "subscription_orders" }
+
 type mysqlRC25LegacySubscriptionPlan struct {
 	Id                      int     `gorm:"primaryKey"`
 	Title                   string  `gorm:"type:varchar(128);not null"`
@@ -308,6 +329,7 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 		&mysqlRC25LegacyTask{},
 		&mysqlRC25LegacyMidjourney{},
 		&mysqlRC25LegacyTopUp{},
+		&mysqlRC25LegacySubscriptionOrder{},
 		&mysqlRC25LegacySubscriptionPlan{},
 		&mysqlRC25LegacyToken{},
 		&mysqlRC25LegacyUserSession{},
@@ -425,6 +447,13 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 		PaymentIntent: "pi_rc25_sentinel", ClawedBackQuota: 1234, CreateTime: 1_700_030_000,
 		CompleteTime: 1_700_030_100, Status: common.TopUpStatusSuccess,
 	}
+	legacySubscriptionOrder := mysqlRC25LegacySubscriptionOrder{
+		Id: 602, UserId: legacyUser.Id, PlanId: 701, Money: 19.875,
+		TradeNo: "RC25-SUBSCRIPTION-ORDER-SENTINEL", PaymentMethod: "alipay",
+		PaymentProvider: PaymentProviderEpay, Status: common.TopUpStatusPending,
+		CreateTime: 1_700_035_000, CompleteTime: 0,
+		ProviderPayload: `{"legacy_callback":"must survive migration"}`,
+	}
 	legacyPlan := mysqlRC25LegacySubscriptionPlan{
 		Id: 701, Title: "RC25 Plan", Subtitle: "legacy plan sentinel", PriceAmount: 19.875,
 		Currency: "USD", DurationUnit: "month", DurationValue: 3, CustomSeconds: 0,
@@ -451,7 +480,7 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 
 	for _, row := range []interface{}{
 		&legacyUser, &provider, &claim, &binding, &legacyTask, &legacyMidjourney,
-		&legacyTopUp, &legacyPlan, &legacyToken, &legacySession,
+		&legacyTopUp, &legacySubscriptionOrder, &legacyPlan, &legacyToken, &legacySession,
 	} {
 		require.NoError(t, mdb.Create(row).Error)
 	}
@@ -469,7 +498,7 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 
 	targetTables := []string{
 		"users", "external_identity_claims", "custom_oauth_providers", "user_oauth_bindings",
-		"tasks", "task_billing_ledgers", "midjourneys", "top_ups", "subscription_plans", "tokens", "user_sessions",
+		"tasks", "task_billing_ledgers", "midjourneys", "top_ups", "subscription_orders", "subscription_plans", "tokens", "user_sessions",
 	}
 	beforeSecondMigrationDDL := rc25MySQLTableDefinitions(t, mdb, targetTables)
 	beforeSecondMigrationCounts := rc25MySQLTableCounts(t, mdb, targetTables)
@@ -609,6 +638,28 @@ func rc25AssertUpgradedSentinels(t *testing.T, db *gorm.DB, legacySubject, bindi
 	assert.Equal(t, "pi_rc25_sentinel", topUp.PaymentIntent)
 	assert.Equal(t, int64(1234), topUp.ClawedBackQuota)
 	assert.Equal(t, common.TopUpStatusSuccess, topUp.Status)
+	assert.Nil(t, topUp.EpayQueryTime)
+	assert.Nil(t, topUp.EpayCallbackQueryTime)
+
+	var subscriptionOrder SubscriptionOrder
+	require.NoError(t, db.First(&subscriptionOrder, 602).Error)
+	assert.Equal(t, 101, subscriptionOrder.UserId)
+	assert.Equal(t, 701, subscriptionOrder.PlanId)
+	assert.InDelta(t, 19.875, subscriptionOrder.Money, 0.0000001)
+	assert.Equal(t, "RC25-SUBSCRIPTION-ORDER-SENTINEL", subscriptionOrder.TradeNo)
+	assert.Equal(t, "alipay", subscriptionOrder.PaymentMethod)
+	assert.Equal(t, PaymentProviderEpay, subscriptionOrder.PaymentProvider)
+	assert.Equal(t, common.TopUpStatusPending, subscriptionOrder.Status)
+	assert.Equal(t, int64(1_700_035_000), subscriptionOrder.CreateTime)
+	assert.Zero(t, subscriptionOrder.CompleteTime)
+	assert.Equal(t, `{"legacy_callback":"must survive migration"}`, subscriptionOrder.ProviderPayload)
+	assert.Nil(t, subscriptionOrder.EpayQueryTime)
+	assert.Nil(t, subscriptionOrder.EpayCallbackQueryTime)
+	assert.Empty(t, subscriptionOrder.PlanSnapshot)
+	assert.False(t, subscriptionOrder.PurchaseLimitReserved)
+	assert.True(t, rc25MySQLIndexExists(t, db, "subscription_orders", "idx_subscription_order_provider_time"))
+	assert.Equal(t, []string{"payment_provider", "create_time"},
+		rc25MySQLIndexColumns(t, db, "subscription_orders", "idx_subscription_order_provider_time"))
 
 	var plan SubscriptionPlan
 	require.NoError(t, db.First(&plan, 701).Error)

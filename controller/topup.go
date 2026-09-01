@@ -27,9 +27,10 @@ import (
 
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
+	site := middleware.GetRequestSite(c)
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := epayPayMethodsForSite(site)
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}
@@ -129,10 +130,10 @@ func GetTopUpInfo(c *gin.Context) {
 	// configured their own 收款 (pay_config) AND has procurement-wallet balance. When the
 	// wallet is drained (or unconfigured), the recharge entry disappears for this site —
 	// without affecting already-issued quota or other gateways.
-	if site := middleware.GetRequestSite(c); site != nil {
+	if site != nil {
 		_, payOk := parseSitePayConfig(site.PayConfig)
 		bal, _ := model.GetSiteWalletBalance(site.Id)
-		available := payOk && bal > 0
+		available := payOk && len(epayPayMethodsForSite(site)) > 0 && bal > 0
 		data["enable_online_topup"] = available
 		data["site_topup_available"] = available
 	}
@@ -150,13 +151,17 @@ type AmountRequest struct {
 }
 
 func GetEpayClient() *epay.Client {
-	if operation_setting.PayAddress == "" || operation_setting.EpayId == "" || operation_setting.EpayKey == "" {
+	cfg, ok := epayMerchantConfigForSite(nil)
+	if !ok {
+		return nil
+	}
+	if err := service.ValidateStrictSSRFProtectedFetchURL(cfg.Address); err != nil {
 		return nil
 	}
 	withUrl, err := epay.NewClient(&epay.Config{
-		PartnerID: operation_setting.EpayId,
-		Key:       operation_setting.EpayKey,
-	}, operation_setting.PayAddress)
+		PartnerID: cfg.PartnerID,
+		Key:       cfg.Key,
+	}, cfg.Address)
 	if err != nil {
 		return nil
 	}
@@ -172,7 +177,14 @@ type sitePayConfig struct {
 	PayMethods []string `json:"pay_methods"`
 }
 
-// parseSitePayConfig parses Site.PayConfig JSON; ok is true only when the epay triple is complete.
+type epayMerchantConfig struct {
+	PartnerID string
+	Key       string
+	Address   string
+}
+
+// parseSitePayConfig parses Site.PayConfig JSON; ok is true only when the epay
+// credential triple is complete and its gateway is a secure HTTPS origin.
 func parseSitePayConfig(s string) (sitePayConfig, bool) {
 	var cfg sitePayConfig
 	if strings.TrimSpace(s) == "" {
@@ -181,20 +193,114 @@ func parseSitePayConfig(s string) (sitePayConfig, bool) {
 	if err := common.UnmarshalJsonStr(s, &cfg); err != nil {
 		return cfg, false
 	}
-	return cfg, cfg.EpayId != "" && cfg.EpayKey != "" && cfg.PayAddress != ""
+	cfg.EpayId = strings.TrimSpace(cfg.EpayId)
+	cfg.EpayKey = strings.TrimSpace(cfg.EpayKey)
+	cfg.PayAddress = strings.TrimSpace(cfg.PayAddress)
+	normalizedMethods := make([]string, 0, len(cfg.PayMethods))
+	seenMethods := make(map[string]struct{}, len(cfg.PayMethods))
+	for _, method := range cfg.PayMethods {
+		method = strings.TrimSpace(method)
+		if method == "" {
+			continue
+		}
+		if _, exists := seenMethods[method]; exists {
+			continue
+		}
+		seenMethods[method] = struct{}{}
+		normalizedMethods = append(normalizedMethods, method)
+	}
+	cfg.PayMethods = normalizedMethods
+	if cfg.EpayId == "" || cfg.EpayKey == "" || cfg.PayAddress == "" {
+		return cfg, false
+	}
+	if _, err := validateEpayGatewayAddress(cfg.PayAddress); err != nil {
+		return cfg, false
+	}
+	return cfg, true
+}
+
+// epayPayMethodsForSite returns fresh maps so appending provider methods cannot
+// mutate the global payment setting's backing slice. A sub-site's allowlist belongs
+// to its own merchant and never inherits Epay methods from the main-site merchant.
+func epayPayMethodsForSite(site *model.Site) []map[string]string {
+	configured := operation_setting.PayMethods
+	if site == nil {
+		methods := make([]map[string]string, 0, len(configured))
+		for _, method := range configured {
+			clone := make(map[string]string, len(method))
+			for key, value := range method {
+				clone[key] = value
+			}
+			methods = append(methods, clone)
+		}
+		return methods
+	}
+
+	siteConfig, ok := parseSitePayConfig(site.PayConfig)
+	if !ok {
+		return []map[string]string{}
+	}
+	methods := make([]map[string]string, 0, len(siteConfig.PayMethods))
+	for _, allowedType := range siteConfig.PayMethods {
+		method := map[string]string{
+			"name": allowedType,
+			"icon": "LuCreditCard",
+			"type": allowedType,
+		}
+		for _, globalMethod := range configured {
+			if globalMethod["type"] != allowedType {
+				continue
+			}
+			method = make(map[string]string, len(globalMethod))
+			for key, value := range globalMethod {
+				method[key] = value
+			}
+			break
+		}
+		methods = append(methods, method)
+	}
+	return methods
+}
+
+// epayMerchantConfigForSite resolves payment credentials from the order owner, never
+// from callback Host headers. A nil site means the global/main-site merchant.
+func epayMerchantConfigForSite(site *model.Site) (epayMerchantConfig, bool) {
+	if site == nil {
+		cfg := epayMerchantConfig{
+			PartnerID: strings.TrimSpace(operation_setting.EpayId),
+			Key:       strings.TrimSpace(operation_setting.EpayKey),
+			Address:   strings.TrimSpace(operation_setting.PayAddress),
+		}
+		if cfg.PartnerID == "" || cfg.Key == "" || cfg.Address == "" {
+			return epayMerchantConfig{}, false
+		}
+		if _, err := validateEpayGatewayAddress(cfg.Address); err != nil {
+			return epayMerchantConfig{}, false
+		}
+		return cfg, true
+	}
+	siteConfig, ok := parseSitePayConfig(site.PayConfig)
+	if !ok {
+		return epayMerchantConfig{}, false
+	}
+	return epayMerchantConfig{
+		PartnerID: siteConfig.EpayId,
+		Key:       siteConfig.EpayKey,
+		Address:   siteConfig.PayAddress,
+	}, true
 }
 
 // getEpayClientForSite returns the epay client for a request's site: the sub-site's own
 // pay_config when present, otherwise the global (main-site) config. nil if incomplete.
 func getEpayClientForSite(site *model.Site) *epay.Client {
-	if site == nil {
-		return GetEpayClient()
-	}
-	cfg, ok := parseSitePayConfig(site.PayConfig)
+	cfg, ok := epayMerchantConfigForSite(site)
 	if !ok {
 		return nil
 	}
-	client, err := epay.NewClient(&epay.Config{PartnerID: cfg.EpayId, Key: cfg.EpayKey}, cfg.PayAddress)
+	if err := service.ValidateStrictSSRFProtectedFetchURL(cfg.Address); err != nil {
+		return nil
+	}
+	client, err := epay.NewClient(&epay.Config{PartnerID: cfg.PartnerID, Key: cfg.Key}, cfg.Address)
 	if err != nil {
 		return nil
 	}
@@ -357,7 +463,15 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 
-	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	site := middleware.GetRequestSite(c)
+	paymentMethodAllowed := false
+	for _, method := range epayPayMethodsForSite(site) {
+		if method["type"] == req.PaymentMethod {
+			paymentMethodAllowed = true
+			break
+		}
+	}
+	if !paymentMethodAllowed {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
@@ -365,7 +479,6 @@ func RequestEpay(c *gin.Context) {
 	// Sub-site pre-order check: the agent must have enough procurement-wallet balance to
 	// cover this recharge's wholesale cost (面值 × discount_rate). If not, reject up front
 	// so the user never pays into an order the platform can't settle (auto-degradation).
-	site := middleware.GetRequestSite(c)
 	if site != nil {
 		cost := siteTopupCostMilli(payMoney, site.DiscountRate)
 		bal, balErr := model.GetSiteWalletBalance(site.Id)
@@ -510,9 +623,10 @@ func parseEpayCallbackParams(c *gin.Context) map[string]string {
 // the order it names, the owning sub-site (nil for a main-site order) and the
 // gateway-verified payload.
 type epayCallbackVerification struct {
-	topUp *model.TopUp
-	site  *model.Site
-	info  *epay.VerifyRes
+	topUp    *model.TopUp
+	site     *model.Site
+	info     *epay.VerifyRes
+	merchant epayMerchantConfig
 }
 
 // verifyEpayTopUpCallback locates the top-up order named by an epay callback (async
@@ -556,9 +670,14 @@ func verifyEpayTopUpCallback(c *gin.Context, params map[string]string, source st
 			return nil
 		}
 	}
-	client := getEpayClientForSite(site)
-	if client == nil {
+	merchant, ok := epayMerchantConfigForSite(site)
+	if !ok {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 source=%s trade_no=%q site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
+		return nil
+	}
+	client, err := epay.NewClient(&epay.Config{PartnerID: merchant.PartnerID, Key: merchant.Key}, merchant.Address)
+	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 初始化失败 source=%s trade_no=%q site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
 		return nil
 	}
 	verifyInfo, err := client.Verify(params)
@@ -570,41 +689,96 @@ func verifyEpayTopUpCallback(c *gin.Context, params map[string]string, source st
 		}
 		return nil
 	}
-	if !epayCallbackMoneyMatchesOrder(verifyInfo.Money, topUp.Money) {
+	if params["pid"] == "" || params["pid"] != merchant.PartnerID {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调商户不匹配 source=%s trade_no=%q site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
+		return nil
+	}
+	if strings.TrimSpace(verifyInfo.TradeNo) == "" {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调缺少网关订单号 source=%s trade_no=%q site_id=%d client_ip=%s", source, tradeNo, topUp.SiteId, c.ClientIP()))
+		return nil
+	}
+	if strings.TrimSpace(verifyInfo.Type) == "" || verifyInfo.Type != topUp.PaymentMethod {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 回调支付方式不匹配 source=%s trade_no=%q callback_type=%q order_type=%q site_id=%d client_ip=%s", source, tradeNo, verifyInfo.Type, topUp.PaymentMethod, topUp.SiteId, c.ClientIP()))
+		return nil
+	}
+	if !epayMoneyMatchesOrderStrict(verifyInfo.Money, topUp.Money) {
 		// Defense in depth against a compromised/malicious gateway reporting success
 		// for a different amount than the order was created for.
 		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 回调金额与订单不符 source=%s trade_no=%q callback_money=%q order_money=%.2f client_ip=%s", source, tradeNo, verifyInfo.Money, topUp.Money, c.ClientIP()))
 		return nil
 	}
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 回调验签成功 source=%s trade_no=%q callback_type=%q trade_status=%q client_ip=%s", source, verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP()))
-	return &epayCallbackVerification{topUp: topUp, site: site, info: verifyInfo}
+	return &epayCallbackVerification{topUp: topUp, site: site, info: verifyInfo, merchant: merchant}
 }
 
-// epayCallbackMoneyMatchesOrder compares a gateway-reported amount with the order's
-// amount at 2 decimal places (the precision sent at purchase). An absent amount is
-// tolerated — the MD5 signature already covers whatever the gateway did send, and some
-// forks omit money on some channels; failing those would strand genuinely paid orders.
-//
-// The order-side comparand is derived with strconv.FormatFloat(...'f',2,64), the EXACT
-// formatting RequestEpay used to send Money to the gateway. This must not be replaced
-// with decimal.NewFromFloat(orderMoney).Round(2): FormatFloat rounds the binary float64
-// half-to-even while decimal.Round rounds half-away-from-zero, so for x.xx5 amounts (e.g.
-// 1.005 from amount×price×ratio) the two disagree and a gateway that honestly echoes the
-// submitted amount would be rejected — permanently stranding a paid order.
-func epayCallbackMoneyMatchesOrder(callbackMoney string, orderMoney float64) bool {
-	callbackMoney = strings.TrimSpace(callbackMoney)
-	if callbackMoney == "" {
+// epayMoneyMatchesOrderStrict requires the gateway to return a concrete amount that
+// exactly equals the two-decimal value submitted at order creation. It deliberately
+// rejects missing values and values that merely round to the expected amount.
+func epayMoneyMatchesOrderStrict(gatewayMoney string, orderMoney float64) bool {
+	gatewayMoney = strings.TrimSpace(gatewayMoney)
+	if gatewayMoney == "" {
+		return false
+	}
+	got, err := decimal.NewFromString(gatewayMoney)
+	if err != nil {
+		return false
+	}
+	want, err := decimal.NewFromString(strconv.FormatFloat(orderMoney, 'f', 2, 64))
+	if err != nil {
+		return false
+	}
+	return got.Equal(want)
+}
+
+// confirmEpayTopUpPayment treats the signed callback only as a trigger. A pending
+// order is eligible for settlement only after the owning gateway independently
+// reports that the same merchant order is paid for the exact stored amount.
+func confirmEpayTopUpPayment(c *gin.Context, verified *epayCallbackVerification, source string) bool {
+	if verified.topUp.Status == common.TopUpStatusSuccess || verified.topUp.Status == model.TopUpStatusManualReview {
 		return true
 	}
-	cb, err := decimal.NewFromString(callbackMoney)
-	if err != nil {
+	if verified.topUp.Status != common.TopUpStatusPending {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 查单跳过非待支付订单 source=%s trade_no=%q status=%q site_id=%d client_ip=%s", source, verified.topUp.TradeNo, verified.topUp.Status, verified.topUp.SiteId, c.ClientIP()))
 		return false
 	}
-	orderSide, err := decimal.NewFromString(strconv.FormatFloat(orderMoney, 'f', 2, 64))
+	now := common.GetTimestamp()
+	claimed, err := model.ClaimEpayTopUpQueryAttempt(
+		verified.topUp.Id,
+		now,
+		now-epayCallbackQueryCooldownSeconds,
+	)
 	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 查单限流状态更新失败 source=%s trade_no=%q site_id=%d client_ip=%s error=%q", source, verified.topUp.TradeNo, verified.topUp.SiteId, c.ClientIP(), err.Error()))
 		return false
 	}
-	return cb.Round(2).Equal(orderSide)
+	if !claimed {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 重复查单已抑制 source=%s trade_no=%q site_id=%d client_ip=%s", source, verified.topUp.TradeNo, verified.topUp.SiteId, c.ClientIP()))
+		return false
+	}
+	result, err := queryEpayOrderContextForSite(
+		c.Request.Context(),
+		verified.merchant.Address,
+		verified.merchant.PartnerID,
+		verified.merchant.Key,
+		verified.topUp.TradeNo,
+		verified.topUp.SiteId,
+	)
+	if err != nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 主动查单失败 source=%s trade_no=%q site_id=%d client_ip=%s error=%q", source, verified.topUp.TradeNo, verified.topUp.SiteId, c.ClientIP(), err.Error()))
+		return false
+	}
+	err = validateEpayPaidOrder(result, epayOrderExpectation{
+		PartnerID:      verified.merchant.PartnerID,
+		TradeNo:        verified.info.TradeNo,
+		ServiceTradeNo: verified.topUp.TradeNo,
+		Type:           verified.info.Type,
+		Money:          verified.topUp.Money,
+	})
+	if err != nil {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("易支付 主动查单未确认付款 source=%s trade_no=%q site_id=%d client_ip=%s error=%q", source, verified.topUp.TradeNo, verified.topUp.SiteId, c.ClientIP(), err.Error()))
+		return false
+	}
+	return true
 }
 
 // settleEpayTopUp finishes a gateway-confirmed PAID top-up order exactly once and runs
@@ -680,6 +854,10 @@ func EpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("success"))
 		return
 	}
+	if !confirmEpayTopUpPayment(c, v, "notify") {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
 	if _, err := settleEpayTopUpWithPaymentMethod(c.Request.Context(), v.topUp, v.site, v.info.Type, c.ClientIP(), "notify"); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
@@ -687,13 +865,10 @@ func EpayNotify(c *gin.Context) {
 	_, _ = c.Writer.Write([]byte("success"))
 }
 
-// EpayReturn handles the browser return after an epay top-up payment. The gateway
-// appends the SAME MD5-signed parameter set it sends to the async notify, so this
-// endpoint doubles as a settlement fallback for lost notifies (several popular epay
-// implementations deliver the notify only once, or give up after a few retries).
-// Verification and amount checks are identical to the notify path, so this grants
-// nothing a forged notify couldn't already attempt; settlement is idempotent, so
-// racing the async notify is safe. The user always ends up on the wallet page.
+// EpayReturn handles the browser return after an epay top-up payment. The signed
+// browser payload is only a trigger: the owning gateway must independently confirm
+// the exact paid order before settlement. This safely recovers a lost async notify;
+// settlement remains idempotent when both paths race. The user ends on the wallet page.
 func EpayReturn(c *gin.Context) {
 	params := parseEpayCallbackParams(c)
 	if len(params) == 0 {
@@ -707,6 +882,10 @@ func EpayReturn(c *gin.Context) {
 		return
 	}
 	if v.info.TradeStatus != epay.StatusTradeSuccess {
+		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=pending"))
+		return
+	}
+	if !confirmEpayTopUpPayment(c, v, "return") {
 		c.Redirect(http.StatusFound, paymentReturnPath(c, "/wallet?pay=pending"))
 		return
 	}

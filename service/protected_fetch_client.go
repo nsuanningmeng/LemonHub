@@ -29,6 +29,7 @@ type ssrfProtectedRoundTripper struct {
 	dialContext   func(ctx context.Context, network, address string) (net.Conn, error)
 	getProtection func() (*common.SSRFProtection, bool, error)
 	proxy         func(*http.Request) (*url.URL, error)
+	strictTLS     bool
 
 	mutex      sync.Mutex
 	transports map[string]*http.Transport
@@ -55,6 +56,27 @@ func currentFetchProtection() (*common.SSRFProtection, bool, error) {
 	return protection, true, nil
 }
 
+// requiredFetchProtection is used for security-sensitive direct integrations.
+// Unlike the general fetch client, protection remains enabled even if the global
+// SSRF toggle is off, and domain targets are always resolved, checked, and dialed
+// by validated IP to prevent DNS rebinding between validation and connection.
+func requiredFetchProtection() (*common.SSRFProtection, bool, error) {
+	fetchSetting := system_setting.GetFetchSetting()
+	protection, err := common.NewSSRFProtectionFromFetchSetting(
+		fetchSetting.AllowPrivateIp,
+		fetchSetting.DomainFilterMode,
+		fetchSetting.IpFilterMode,
+		fetchSetting.DomainList,
+		fetchSetting.IpList,
+		fetchSetting.AllowedPorts,
+		true,
+	)
+	if err != nil {
+		return nil, true, err
+	}
+	return protection, true, nil
+}
+
 func newProtectedFetchHTTPClient() *http.Client {
 	return newProtectedFetchHTTPClientWithDialer(nil, nil, nil)
 }
@@ -64,6 +86,10 @@ func newProtectedFetchHTTPClientWithDialer(resolver ssrfResolver, dialContext fu
 }
 
 func newProtectedFetchHTTPClientWithProxy(resolver ssrfResolver, dialContext func(ctx context.Context, network, address string) (net.Conn, error), getProtection func() (*common.SSRFProtection, bool, error), proxy func(*http.Request) (*url.URL, error)) *http.Client {
+	return newProtectedFetchHTTPClientWithOptions(resolver, dialContext, getProtection, proxy, false)
+}
+
+func newProtectedFetchHTTPClientWithOptions(resolver ssrfResolver, dialContext func(ctx context.Context, network, address string) (net.Conn, error), getProtection func() (*common.SSRFProtection, bool, error), proxy func(*http.Request) (*url.URL, error), strictTLS bool) *http.Client {
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
@@ -87,6 +113,7 @@ func newProtectedFetchHTTPClientWithProxy(resolver ssrfResolver, dialContext fun
 			dialContext:   dialContext,
 			getProtection: getProtection,
 			proxy:         proxy,
+			strictTLS:     strictTLS,
 			transports:    make(map[string]*http.Transport),
 		},
 		CheckRedirect: checkProtectedFetchRedirect,
@@ -95,6 +122,34 @@ func newProtectedFetchHTTPClientWithProxy(resolver ssrfResolver, dialContext fun
 		client.Timeout = time.Duration(common.RelayTimeout) * time.Second
 	}
 	return client
+}
+
+// NewStrictSSRFProtectedHTTPClient creates a direct-only client for outbound
+// requests that carry credentials or establish an authoritative security result.
+// It deliberately ignores environment proxy variables, keeps SSRF checks enabled
+// at dial time, and always performs normal TLS certificate verification even when
+// relay traffic is configured with TLSInsecureSkipVerify.
+func NewStrictSSRFProtectedHTTPClient() *http.Client {
+	return newProtectedFetchHTTPClientWithOptions(
+		nil,
+		nil,
+		requiredFetchProtection,
+		func(*http.Request) (*url.URL, error) { return nil, nil },
+		true,
+	)
+}
+
+// ValidateStrictSSRFProtectedFetchURL applies the same always-on target policy used
+// by NewStrictSSRFProtectedHTTPClient before a caller exposes an external action to
+// a user. The client's dial-time check remains authoritative and closes DNS-rebinding
+// races; this earlier check prevents a known-blocked payment gateway from accepting
+// money for an order that the server can never query afterward.
+func ValidateStrictSSRFProtectedFetchURL(urlStr string) error {
+	protection, _, err := requiredFetchProtection()
+	if err != nil {
+		return err
+	}
+	return protection.ValidateURL(urlStr)
 }
 
 func (t *ssrfProtectedRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -161,7 +216,7 @@ func (t *ssrfProtectedRoundTripper) newTransport(proxyURL *url.URL) *http.Transp
 		Proxy:               proxyFunc,
 		DialContext:         dialContext,
 	}
-	if common.TLSInsecureSkipVerify {
+	if common.TLSInsecureSkipVerify && !t.strictTLS {
 		transport.TLSClientConfig = common.InsecureTLSConfig
 	}
 	return transport
