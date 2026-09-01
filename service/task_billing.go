@@ -748,35 +748,43 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		return
 	}
 
-	modelName := taskModelName(task)
-
-	// 获取模型价格和倍率
-	modelRatio, hasRatioSetting, _ := ratio_setting.GetModelRatio(modelName)
-	// 只有配置了倍率(非固定价格)时才按 token 重新计费
-	if !hasRatioSetting || modelRatio <= 0 {
-		return
-	}
-
-	// 获取用户和组的倍率信息
-	group := task.Group
-	if group == "" {
-		user, err := model.GetUserById(task.UserId, false)
-		if err == nil {
-			group = user.Group
+	var modelRatio, finalGroupRatio float64
+	if billingContext := task.PrivateData.BillingContext; billingContext != nil {
+		// New tasks persist the exact submission-time pricing context. Reuse it so
+		// polling cannot reprice a task after a configuration change, and so the
+		// selected group's special ratio survives multi-group failover.
+		modelRatio = billingContext.ModelRatio
+		finalGroupRatio = billingContext.GroupRatio
+		if modelRatio <= 0 {
+			return
 		}
-	}
-	if group == "" {
-		return
-	}
-
-	groupRatio := ratio_setting.GetGroupRatio(group)
-	userGroupRatio, hasUserGroupRatio := ratio_setting.GetGroupGroupRatio(group, group)
-
-	var finalGroupRatio float64
-	if hasUserGroupRatio {
-		finalGroupRatio = userGroupRatio
 	} else {
-		finalGroupRatio = groupRatio
+		// Legacy tasks have no billing snapshot and must fall back to current
+		// settings. Keep the user's group distinct from the actual routing group
+		// when resolving a group-specific override.
+		modelName := taskModelName(task)
+		var hasRatioSetting bool
+		modelRatio, hasRatioSetting, _ = ratio_setting.GetModelRatio(modelName)
+		if !hasRatioSetting || modelRatio <= 0 {
+			return
+		}
+
+		usingGroup := task.Group
+		userGroup := ""
+		if user, err := model.GetUserById(task.UserId, false); err == nil {
+			userGroup = user.Group
+		}
+		if usingGroup == "" {
+			usingGroup = userGroup
+		}
+		if usingGroup == "" {
+			return
+		}
+
+		finalGroupRatio = ratio_setting.GetGroupRatio(usingGroup)
+		if userGroupRatio, ok := ratio_setting.GetGroupGroupRatio(userGroup, usingGroup); ok {
+			finalGroupRatio = userGroupRatio
+		}
 	}
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）

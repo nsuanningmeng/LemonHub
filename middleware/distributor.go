@@ -139,8 +139,8 @@ func Distribute() func(c *gin.Context) {
 						if len(affinityGroups) == 0 {
 							affinityGroups = []string{usingGroup}
 						}
-						// 仅在多分组 / auto 展开场景写 ContextKeyAutoGroup（用于按实际分组计费），
-						// 单一具体分组保持原行为不写该键。
+						// 多分组 / auto 展开场景同时记录实际分组：AutoGroup 供计费刷新，
+						// UsingGroup 供 RelayInfo、日志和其他下游消费者使用。
 						trackSelectedGroup := len(rawGroups) > 1 || slices.Contains(rawGroups, "auto")
 						for _, g := range affinityGroups {
 							if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
@@ -149,6 +149,7 @@ func Distribute() func(c *gin.Context) {
 								affinityUsable = true
 								if trackSelectedGroup {
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
+									common.SetContextKey(c, constant.ContextKeyUsingGroup, g)
 								}
 								service.MarkChannelAffinityUsed(c, g, preferred.Id)
 								break

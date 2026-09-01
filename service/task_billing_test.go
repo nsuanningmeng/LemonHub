@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
@@ -1475,6 +1476,112 @@ func TestRecalculate_ActualQuotaZero(t *testing.T) {
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 	assert.Equal(t, preConsumed, log.Quota)
+}
+
+func TestRecalculateTaskQuotaByTokensPricingRatios(t *testing.T) {
+	previousModelRatios := ratio_setting.ModelRatio2JSONString()
+	previousGroupRatios := ratio_setting.GroupRatio2JSONString()
+	previousGroupGroupRatios := ratio_setting.GroupGroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousModelRatios))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatios))
+		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(previousGroupGroupRatios))
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"test-model":9}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"routed":3}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(
+		`{"default":{"routed":13},"account":{"routed":4},"routed":{"routed":7}}`,
+	))
+
+	t.Run("uses the submission pricing snapshot", func(t *testing.T) {
+		truncate(t)
+		const userID, channelID = 80, 80
+		const initialQuota, preConsumed, totalTokens, actualQuota = 10_000, 100, 100, 600
+
+		seedUser(t, userID, initialQuota)
+		seedChannel(t, channelID)
+		seedChargedAccounting(t, userID, channelID, 0, preConsumed, 1)
+		task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0)
+		task.Group = "routed"
+		task.PrivateData.BillingContext.ModelRatio = 2
+		task.PrivateData.BillingContext.GroupRatio = 3
+		require.NoError(t, model.DB.Create(task).Error)
+
+		RecalculateTaskQuotaByTokens(context.Background(), task, totalTokens)
+
+		assert.Equal(t, actualQuota, task.Quota)
+		assert.Equal(t, actualQuota, getTaskQuota(t, task.ID))
+		assert.Equal(t, initialQuota-(actualQuota-preConsumed), getUserQuota(t, userID))
+		usedQuota, requestCount := getUserUsageAccounting(t, userID)
+		assert.Equal(t, actualQuota, usedQuota)
+		assert.Equal(t, 1, requestCount)
+		assert.Equal(t, int64(actualQuota), getChannelUsedQuota(t, channelID))
+		log := getLastLog(t)
+		require.NotNil(t, log)
+		assert.Equal(t, model.LogTypeConsume, log.Type)
+		assert.Equal(t, actualQuota-preConsumed, log.Quota)
+	})
+
+	t.Run("keeps an explicit zero group ratio", func(t *testing.T) {
+		truncate(t)
+		const userID, channelID = 81, 81
+		const initialQuota, preConsumed, totalTokens = 10_000, 400, 100
+
+		seedUser(t, userID, initialQuota)
+		seedChannel(t, channelID)
+		seedChargedAccounting(t, userID, channelID, 0, preConsumed, 1)
+		task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0)
+		task.Group = "routed"
+		task.PrivateData.BillingContext.ModelRatio = 2
+		task.PrivateData.BillingContext.GroupRatio = 0
+		require.NoError(t, model.DB.Create(task).Error)
+
+		RecalculateTaskQuotaByTokens(context.Background(), task, totalTokens)
+
+		assert.Zero(t, task.Quota)
+		assert.Zero(t, getTaskQuota(t, task.ID))
+		assert.Equal(t, initialQuota+preConsumed, getUserQuota(t, userID))
+		usedQuota, requestCount := getUserUsageAccounting(t, userID)
+		assert.Zero(t, usedQuota)
+		assert.Equal(t, 1, requestCount)
+		assert.Zero(t, getChannelUsedQuota(t, channelID))
+		log := getLastLog(t)
+		require.NotNil(t, log)
+		assert.Equal(t, model.LogTypeRefund, log.Type)
+		assert.Equal(t, preConsumed, log.Quota)
+	})
+
+	t.Run("legacy task uses user group to routed group override", func(t *testing.T) {
+		truncate(t)
+		const userID, channelID = 82, 82
+		const initialQuota, preConsumed, totalTokens, actualQuota = 10_000, 1_000, 100, 3_600
+
+		user := &model.User{
+			Id: userID, Username: "legacy_group_user", Quota: initialQuota,
+			Status: common.UserStatusEnabled, Group: "account",
+		}
+		require.NoError(t, model.DB.Create(user).Error)
+		seedChannel(t, channelID)
+		seedChargedAccounting(t, userID, channelID, 0, preConsumed, 1)
+		task := makeTask(userID, channelID, preConsumed, 0, BillingSourceWallet, 0)
+		task.Group = "routed"
+		task.PrivateData.BillingContext = nil
+		require.NoError(t, model.DB.Create(task).Error)
+
+		RecalculateTaskQuotaByTokens(context.Background(), task, totalTokens)
+
+		assert.Equal(t, actualQuota, task.Quota)
+		assert.Equal(t, actualQuota, getTaskQuota(t, task.ID))
+		assert.Equal(t, initialQuota-(actualQuota-preConsumed), getUserQuota(t, userID))
+		usedQuota, requestCount := getUserUsageAccounting(t, userID)
+		assert.Equal(t, actualQuota, usedQuota)
+		assert.Equal(t, 1, requestCount)
+		assert.Equal(t, int64(actualQuota), getChannelUsedQuota(t, channelID))
+		log := getLastLog(t)
+		require.NotNil(t, log)
+		assert.Equal(t, actualQuota-preConsumed, log.Quota)
+	})
 }
 
 func TestLegacyUnknownTaskNeverMutatesSharedUsageAggregates(t *testing.T) {

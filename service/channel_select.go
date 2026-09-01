@@ -169,7 +169,10 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			param.SetRetry(0)
 			continue
 		}
+		// AutoGroup drives billing refreshes; UsingGroup is the canonical selected
+		// group exposed to RelayInfo, logs, metrics, and other downstream consumers.
 		common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroup, group)
+		common.SetContextKey(param.Ctx, constant.ContextKeyUsingGroup, group)
 		selectGroup = group
 		logger.LogDebug(param.Ctx, "Priority selected group: %s", group)
 

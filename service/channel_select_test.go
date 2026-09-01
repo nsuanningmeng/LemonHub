@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -100,6 +101,8 @@ func TestCacheGetRandomSatisfiedChannel_MultiGroupSkipsEmptyGroup(t *testing.T) 
 	addChannelWithAbility(t, 2, "groupB", "m", 0)
 
 	c := newCtxWithGroups("groupA", []string{"groupA", "groupB"})
+	// 模拟 auth：初始 UsingGroup 是用户/首选分组，渠道选择后应刷新为实际命中分组。
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "groupA")
 	param := &RetryParam{Ctx: c, TokenGroup: "groupA", ModelName: "m", Retry: common.GetPointer(0)}
 
 	ch, selectGroup, err := CacheGetRandomSatisfiedChannel(param)
@@ -108,10 +111,11 @@ func TestCacheGetRandomSatisfiedChannel_MultiGroupSkipsEmptyGroup(t *testing.T) 
 	require.Equal(t, 2, ch.Id)
 	require.Equal(t, "groupB", selectGroup)
 
-	// 失败转移命中后，应把实际分组写入 ContextKeyAutoGroup（计费按实际命中分组）。
+	// 失败转移命中后，计费和日志上下文都应使用实际命中分组。
 	autoGroup, ok := common.GetContextKey(c, constant.ContextKeyAutoGroup)
 	require.True(t, ok)
 	require.Equal(t, "groupB", autoGroup)
+	assert.Equal(t, "groupB", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 }
 
 // 多分组：首选分组本次命中后，下一次重试应按优先级失败转移到下一个分组。
@@ -123,6 +127,7 @@ func TestCacheGetRandomSatisfiedChannel_FailoverAdvancesToNextGroupOnRetry(t *te
 	addChannelWithAbility(t, 2, "groupB", "m", 0)
 
 	c := newCtxWithGroups("groupA", []string{"groupA", "groupB"})
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "groupA")
 	param := &RetryParam{Ctx: c, TokenGroup: "groupA", ModelName: "m", Retry: common.GetPointer(0)}
 
 	// 第 1 次尝试：命中最高优先级分组 groupA。
@@ -131,6 +136,7 @@ func TestCacheGetRandomSatisfiedChannel_FailoverAdvancesToNextGroupOnRetry(t *te
 	require.NotNil(t, ch1)
 	require.Equal(t, 1, ch1.Id)
 	require.Equal(t, "groupA", g1)
+	assert.Equal(t, "groupA", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 
 	// 模拟外层 relay 重试循环推进一次（controller/relay.go 的 IncreaseRetry）。
 	param.IncreaseRetry()
@@ -141,6 +147,7 @@ func TestCacheGetRandomSatisfiedChannel_FailoverAdvancesToNextGroupOnRetry(t *te
 	require.NotNil(t, ch2)
 	require.Equal(t, 2, ch2.Id)
 	require.Equal(t, "groupB", g2)
+	assert.Equal(t, "groupB", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 
 	autoGroup, ok := common.GetContextKey(c, constant.ContextKeyAutoGroup)
 	require.True(t, ok)
@@ -153,6 +160,7 @@ func TestCacheGetRandomSatisfiedChannel_SingleGroupUnchanged(t *testing.T) {
 	addChannelWithAbility(t, 1, "vip", "m", 0)
 
 	c := newCtxWithGroups("vip", []string{"vip"})
+	common.SetContextKey(c, constant.ContextKeyUsingGroup, "vip")
 	param := &RetryParam{Ctx: c, TokenGroup: "vip", ModelName: "m", Retry: common.GetPointer(0)}
 
 	ch, g, err := CacheGetRandomSatisfiedChannel(param)
@@ -163,6 +171,7 @@ func TestCacheGetRandomSatisfiedChannel_SingleGroupUnchanged(t *testing.T) {
 
 	_, ok := common.GetContextKey(c, constant.ContextKeyAutoGroup)
 	require.False(t, ok, "单一具体分组路径不应写 ContextKeyAutoGroup")
+	assert.Equal(t, "vip", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 }
 
 // 多分组：所有优先级分组均无可用渠道时，返回 nil 渠道（由上层呈现「无可用渠道」）。
@@ -202,6 +211,7 @@ func TestCacheGetRandomSatisfiedChannel_AutoGroupCrossRetryGating(t *testing.T) 
 
 	newAutoCtx := func(crossGroupRetry bool) *gin.Context {
 		c := newCtxWithGroups("default", []string{"auto"})
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, "auto")
 		common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, crossGroupRetry)
 		return c
 	}
@@ -214,12 +224,14 @@ func TestCacheGetRandomSatisfiedChannel_AutoGroupCrossRetryGating(t *testing.T) 
 		require.NoError(t, err)
 		require.Equal(t, 1, ch1.Id)
 		require.Equal(t, "ga", g1)
+		assert.Equal(t, "ga", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 
 		param.IncreaseRetry()
 		ch2, g2, err := CacheGetRandomSatisfiedChannel(param)
 		require.NoError(t, err)
 		require.Equal(t, 1, ch2.Id, "未开启跨分组重试时不应失败转移到下一个 auto 分组")
 		require.Equal(t, "ga", g2)
+		assert.Equal(t, "ga", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 	})
 
 	t.Run("auto with cross_group_retry fails over to next auto group", func(t *testing.T) {
@@ -230,12 +242,14 @@ func TestCacheGetRandomSatisfiedChannel_AutoGroupCrossRetryGating(t *testing.T) 
 		require.NoError(t, err)
 		require.Equal(t, 1, ch1.Id)
 		require.Equal(t, "ga", g1)
+		assert.Equal(t, "ga", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 
 		param.IncreaseRetry()
 		ch2, g2, err := CacheGetRandomSatisfiedChannel(param)
 		require.NoError(t, err)
 		require.Equal(t, 2, ch2.Id, "开启跨分组重试时应失败转移到下一个 auto 分组")
 		require.Equal(t, "gb", g2)
+		assert.Equal(t, "gb", common.GetContextKeyString(c, constant.ContextKeyUsingGroup))
 	})
 }
 
