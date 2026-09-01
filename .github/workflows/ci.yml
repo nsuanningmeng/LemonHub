@@ -3,6 +3,7 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, closed]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -86,3 +87,44 @@ jobs:
 
       - name: Test
         run: bun run test
+
+  mysql-token-migration:
+    name: MySQL ${{ matrix.mysql-version }} token migration
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql-version: ['5.7', '8.0']
+    services:
+      mysql:
+        image: mysql:${{ matrix.mysql-version }}
+        env:
+          MYSQL_ROOT_PASSWORD: lemonhub-migration-test
+          MYSQL_DATABASE: lemonhub_token_quota_migration_test_ci
+          MYSQL_USER: lemonhub
+          MYSQL_PASSWORD: lemonhub-migration-test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -plemonhub-migration-test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      GOWORK: 'off'
+      MYSQL_TOKEN_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_token_quota_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Verify token quota migration
+        run: go test ./model -run '^TestMySQLTokenQuotaMigrationPreservesData$' -count=1

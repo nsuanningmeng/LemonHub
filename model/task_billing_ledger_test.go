@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -205,6 +206,55 @@ func TestTokenTaskBillingCommitUnknownInvalidatesAuthoritativeHash(t *testing.T)
 	require.NoError(t, err)
 	assert.Equal(t, 450, cachedToken.RemainQuota)
 	assert.Equal(t, 50, cachedToken.UsedQuota)
+}
+
+func TestTaskBillingTokenStageSupportsLargeBalances(t *testing.T) {
+	if strconv.IntSize < 64 {
+		t.Skip("large token quotas require a 64-bit server build")
+	}
+
+	truncateTables(t)
+	user := createReserveTestUser(t, 1_000)
+	largeQuota := int64(5_000_000_000)
+	token := createReserveTestToken(t, int(largeQuota))
+	require.NoError(t, DB.Model(&Token{}).Where("id = ?", token.Id).Update("user_id", user.Id).Error)
+	task := &Task{
+		TaskID:       "ledger-large-token-balance",
+		UserId:       user.Id,
+		Quota:        100,
+		TokenCharged: common.GetPointer(true),
+		PrivateData: TaskPrivateData{
+			TokenId: token.Id, AggregateUsageState: TaskAggregateUsageAccounted,
+		},
+	}
+	insertTask(t, task)
+
+	base := TaskBillingStageParams{
+		TaskType: TaskBillingTypeTask, TaskRecordId: task.ID,
+		Operation: "settle:150", Delta: 50, TargetQuota: 150,
+		UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, BillingSource: "wallet",
+	}
+	funding := base
+	funding.Stage = TaskBillingStageFunding
+	applied, err := ApplyTaskBillingStage(funding)
+	require.NoError(t, err)
+	require.True(t, applied)
+
+	tokenStage := base
+	tokenStage.Stage = TaskBillingStageToken
+	applied, err = ApplyTaskBillingStage(tokenStage)
+	require.NoError(t, err)
+	require.True(t, applied)
+	reloaded := getTokenFromDB(t, token.Id)
+	assert.Equal(t, int(largeQuota)-50, reloaded.RemainQuota)
+	assert.Equal(t, 50, reloaded.UsedQuota)
+
+	undone, err := UndoTaskBillingStage(tokenStage)
+	require.NoError(t, err)
+	require.True(t, undone)
+	reloaded = getTokenFromDB(t, token.Id)
+	assert.Equal(t, int(largeQuota), reloaded.RemainQuota)
+	assert.Zero(t, reloaded.UsedQuota)
 }
 
 func TestTaskBillingDelayedVisibleWalletApplyAndUndoStayFailClosedUntilJournalRetry(t *testing.T) {

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 )
 
 type tokenAutoGroupsInput struct {
@@ -262,9 +264,45 @@ func GetTokenUsage(c *gin.Context) {
 	})
 }
 
-// maxTokenGroups 限制单个令牌可绑定的分组数量上限。
-// 多分组失败转移会让总尝试次数变为 分组数 × (RetryTimes+1)，需有界以避免请求放大。
-const maxTokenGroups = 8
+const (
+	// maxTokenGroups 限制单个令牌可绑定的分组数量上限。
+	// 多分组失败转移会让总尝试次数变为 分组数 × (RetryTimes+1)，需有界以避免请求放大。
+	maxTokenGroups = 8
+
+	// maxTokenQuotaAmount is the historical business limit expressed in the
+	// base currency before it is converted into internal quota units.
+	maxTokenQuotaAmount = 1_000_000_000
+)
+
+func validateTokenQuota(c *gin.Context, token *model.Token) bool {
+	if token.UnlimitedQuota {
+		return true
+	}
+	if token.RemainQuota < 0 {
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
+		return false
+	}
+
+	maxQuotaValue := decimal.NewFromInt(int64(^uint(0) >> 1))
+	switch {
+	case math.IsNaN(common.QuotaPerUnit), math.IsInf(common.QuotaPerUnit, -1), common.QuotaPerUnit <= 0:
+		maxQuotaValue = decimal.Zero
+	case !math.IsInf(common.QuotaPerUnit, 1):
+		configuredLimit := decimal.NewFromInt(maxTokenQuotaAmount).
+			Mul(decimal.NewFromFloat(common.QuotaPerUnit)).Truncate(0)
+		if configuredLimit.LessThan(maxQuotaValue) {
+			maxQuotaValue = configuredLimit
+		}
+	}
+
+	if decimal.NewFromInt(int64(token.RemainQuota)).GreaterThan(maxQuotaValue) {
+		common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{
+			"Max": maxQuotaValue.String(),
+		})
+		return false
+	}
+	return true
+}
 
 // validateTokenGroupCount 校验令牌分组数量未超过上限；超过则直接响应错误并返回 false。
 func validateTokenGroupCount(c *gin.Context, token *model.Token) bool {
@@ -290,17 +328,8 @@ func AddToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
-	// 非无限额度时，检查额度值是否超出有效范围
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
-		}
-		maxQuotaValue := common.QuotaFromFloat(1000000000 * common.QuotaPerUnit)
-		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
-		}
+	if !validateTokenQuota(c, &token) {
+		return
 	}
 	if !validateTokenGroupCount(c, &token) {
 		return
@@ -389,16 +418,8 @@ func UpdateToken(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
 	}
-	if !token.UnlimitedQuota {
-		if token.RemainQuota < 0 {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaNegative)
-			return
-		}
-		maxQuotaValue := common.QuotaFromFloat(1000000000 * common.QuotaPerUnit)
-		if token.RemainQuota > maxQuotaValue {
-			common.ApiErrorI18n(c, i18n.MsgTokenQuotaExceedMax, map[string]any{"Max": maxQuotaValue})
-			return
-		}
+	if !validateTokenQuota(c, &token) {
+		return
 	}
 	cleanToken, err := model.GetTokenByIds(token.Id, userId)
 	if err != nil {

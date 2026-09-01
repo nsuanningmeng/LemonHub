@@ -1541,9 +1541,24 @@ func applyTaskTokenDelta(tx *gorm.DB, p TaskBillingStageParams, usedDeltaOverrid
 			usedDelta = 0
 		}
 	}
-	newRemain := int64(token.RemainQuota) - int64(p.Delta)
-	newUsed := int64(token.UsedQuota) + usedDelta
-	if newRemain < int64(common.MinQuota) || newRemain > int64(common.MaxQuota) || newUsed < 0 || newUsed > int64(common.MaxQuota) {
+	minTokenQuota := int64(common.MinQuota)
+	maxTokenQuota := int64(^uint(0) >> 1)
+	remainQuota := int64(token.RemainQuota)
+	usedQuota := int64(token.UsedQuota)
+	delta := int64(p.Delta)
+	if remainQuota < minTokenQuota || remainQuota > maxTokenQuota ||
+		usedQuota < 0 || usedQuota > maxTokenQuota ||
+		delta < int64(common.MinQuota) || delta > int64(common.MaxQuota) ||
+		usedDelta < int64(common.MinQuota) || usedDelta > int64(common.MaxQuota) ||
+		(delta > 0 && remainQuota < minTokenQuota+delta) ||
+		(delta < 0 && remainQuota > maxTokenQuota+delta) ||
+		(usedDelta > 0 && usedQuota > maxTokenQuota-usedDelta) ||
+		(usedDelta < 0 && usedQuota < -usedDelta) {
+		return 0, fmt.Errorf("token quota delta out of range: remain=%d used=%d delta=%d used_delta=%d", token.RemainQuota, token.UsedQuota, p.Delta, usedDelta)
+	}
+	newRemain := remainQuota - delta
+	newUsed := usedQuota + usedDelta
+	if newRemain < minTokenQuota || newRemain > maxTokenQuota || newUsed < 0 || newUsed > maxTokenQuota {
 		return 0, fmt.Errorf("token quota delta out of range: remain=%d used=%d delta=%d used_delta=%d", token.RemainQuota, token.UsedQuota, p.Delta, usedDelta)
 	}
 	if err := tx.Model(&Token{}).Where("id = ?", token.Id).Updates(map[string]interface{}{
