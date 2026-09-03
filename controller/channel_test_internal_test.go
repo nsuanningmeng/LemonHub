@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
@@ -401,6 +402,29 @@ func TestChannelHealthCheckCountsUnsupportedLocalErrorWithoutAutoDisablePanic(t 
 	})
 
 	assert.Equal(t, channelTestSummary{Tested: 1, Failed: 1}, summary)
+}
+
+func TestBuildChannelTestPerfSamplesTargetsEveryConfiguredModel(t *testing.T) {
+	const (
+		firstModel  = "zz-channel-test-health-model-a"
+		secondModel = "zz-channel-test-health-model-b"
+		probeModel  = "zz-channel-test-health-probe"
+		group       = "zz-channel-test-health-group"
+	)
+	channel := &model.Channel{Models: firstModel + ", " + secondModel + ", " + secondModel + ", "}
+	for _, success := range []bool{true, false} {
+		t.Run(fmt.Sprintf("success=%t", success), func(t *testing.T) {
+			samples := buildChannelTestPerfSamples(channel, testResult{
+				perfModel: probeModel,
+				perfGroup: group,
+			}, 240, success)
+
+			require.Equal(t, []perfmetrics.Sample{
+				{Model: firstModel, Group: group, LatencyMs: 240, Success: success},
+				{Model: secondModel, Group: group, LatencyMs: 240, Success: success},
+			}, samples)
+		})
+	}
 }
 
 func TestRunChannelTestWorkersHonorsConfiguredConcurrency(t *testing.T) {

@@ -41,9 +41,9 @@ type testResult struct {
 	localErr    error
 	newAPIError *types.NewAPIError
 	// perfModel/perfGroup expose the resolved client-facing model and group of
-	// the test relay (empty until the relay info is built). performChannelTests
-	// uses them to feed the scheduled test outcome into the model performance
-	// health success-rate buckets, under the same identity live traffic records.
+	// the test relay (empty until the relay info is built). The model is retained
+	// as a fallback for legacy channels without a configured model list; normal
+	// scheduled tests apply the result to every model configured on the channel.
 	perfModel string
 	perfGroup string
 }
@@ -82,9 +82,9 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 	tik := time.Now()
 	// perfInfo is set once the relay info is built; the deferred read happens
-	// after any model mapping so the reported model/group match what the consume
-	// log and live relay metrics record (the success/record decision itself is
-	// made by performChannelTests once the final outcome is known).
+	// after model mapping so the fallback model and group keep the probe's
+	// client-facing identity. testChannelForHealthCheck decides whether the final
+	// outcome is eligible for performance metrics.
 	var perfInfo *relaycommon.RelayInfo
 	defer func() {
 		if perfInfo != nil {
@@ -952,6 +952,36 @@ type channelTestSummary struct {
 	Enabled   int `json:"enabled"`
 }
 
+// buildChannelTestPerfSamples projects a channel-level health-check result
+// onto every client-facing model served by that channel. A channel test sends
+// only one probe request, but its routing-health result applies to all of the
+// channel's configured models. The resolved probe model remains a fallback for
+// legacy channels whose model list is empty.
+func buildChannelTestPerfSamples(channel *model.Channel, result testResult, latencyMs int64, success bool) []perfmetrics.Sample {
+	if channel == nil {
+		return nil
+	}
+	probeModel := strings.TrimSpace(result.perfModel)
+	if probeModel == "" {
+		return nil
+	}
+
+	modelNames := normalizeModelNames(channel.GetModels())
+	if len(modelNames) == 0 {
+		modelNames = []string{probeModel}
+	}
+	samples := make([]perfmetrics.Sample, 0, len(modelNames))
+	for _, modelName := range modelNames {
+		samples = append(samples, perfmetrics.Sample{
+			Model:     modelName,
+			Group:     result.perfGroup,
+			LatencyMs: latencyMs,
+			Success:   success,
+		})
+	}
+	return samples
+}
+
 func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, testUserID int, allowDisable bool, disableThreshold int64) channelTestSummary {
 	if ctx == nil {
 		ctx = context.Background()
@@ -994,16 +1024,13 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 		summary.Failed++
 	}
 
-	// Feed the final health-check outcome into the same client-facing model
-	// performance bucket as live traffic. Disabled-channel recovery probes are
-	// deliberately excluded so they cannot depress an enabled route's score.
-	if isChannelEnabled && result.perfModel != "" {
-		perfmetrics.Record(perfmetrics.Sample{
-			Model:     result.perfModel,
-			Group:     result.perfGroup,
-			LatencyMs: milliseconds,
-			Success:   newAPIError == nil,
-		})
+	// Feed the final health-check outcome into every configured client-facing
+	// model bucket. Disabled-channel recovery probes are deliberately excluded
+	// so they cannot depress an enabled route's score.
+	if isChannelEnabled {
+		for _, sample := range buildChannelTestPerfSamples(channel, result, milliseconds, newAPIError == nil) {
+			perfmetrics.Record(sample)
+		}
 	}
 
 	if allowDisable && isChannelEnabled && shouldBanChannel && channel.GetAutoBan() && result.context != nil {
