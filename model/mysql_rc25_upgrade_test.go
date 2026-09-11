@@ -343,7 +343,10 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 		&AffiliateCommission{},
 		&AffiliateCashPayout{},
 	}
-	require.NoError(t, mdb.AutoMigrate(legacyModels...))
+	// This fixture exercises widening a utf8mb4 identity index beyond COMPACT's
+	// 767-byte limit. A connection charset does not set table defaults; pin the
+	// legacy schema so MySQL 5.7's latin1 default cannot skip that migration.
+	require.NoError(t, mdb.Set("gorm:table_options", "ENGINE=InnoDB DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci").AutoMigrate(legacyModels...))
 	require.NoError(t, mdb.Exec("ALTER TABLE `external_identity_claims` ROW_FORMAT=COMPACT").Error)
 	require.Equal(t, "compact", rc25MySQLRowFormat(t, mdb, "external_identity_claims"))
 
