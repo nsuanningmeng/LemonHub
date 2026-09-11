@@ -228,6 +228,7 @@ For gateway/API details, refer to the upstream [new-api documentation](https://d
 | `PAYMENT_WEBHOOK_RATE_LIMIT` | Generous per-IP backstop for payment notify webhooks (requests / window) | `1800` |
 | `PAYMENT_WEBHOOK_RATE_LIMIT_DURATION` | Window for the above (seconds) | `60` |
 | `STREAMING_TIMEOUT` | Streaming no-response timeout (seconds) | `300` |
+| `RELAY_RESPONSE_HEADER_TIMEOUT` | Upstream response-header timeout (seconds); `0` disables it. Streaming after headers is unaffected; allow enough time for non-streaming generation | `1800` |
 | `MAX_REQUEST_BODY_MB` | Max request body (MB, after decompression) | `32` |
 
 Rate-limit and most tuning variables fall back to sensible code defaults, so they are not required in `.env`/compose. See `.env.example` for the documented optional knobs.

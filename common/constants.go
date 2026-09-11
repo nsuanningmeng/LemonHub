@@ -209,6 +209,10 @@ var BatchUpdateInterval int
 var RelayTimeout int // unit is second
 
 var RelayIdleConnTimeout int // unit is second
+
+// RelayResponseHeaderTimeout bounds the wait for upstream response headers,
+// without limiting streaming after the headers arrive. Zero disables it.
+var RelayResponseHeaderTimeout int // unit is second
 var RelayMaxIdleConns int
 var RelayMaxIdleConnsPerHost int
 
@@ -223,7 +227,7 @@ const (
 )
 
 const (
-	RoleGuestUser = 0
+	RoleGuestUser  = 0
 	RoleCommonUser = 1
 	// RoleSubSiteAdmin is the sub-site (white-label tenant) administrator role. It sits
 	// between common users and platform admins: a sub-site admin manages only their own

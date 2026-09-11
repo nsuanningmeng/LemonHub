@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -102,6 +103,18 @@ func newRelayHTTPTransport() *http.Transport {
 	transport.MaxIdleConns = common.RelayMaxIdleConns
 	transport.MaxIdleConnsPerHost = common.RelayMaxIdleConnsPerHost
 	transport.IdleConnTimeout = time.Duration(common.RelayIdleConnTimeout) * time.Second
+	// Limit stalled header waits without imposing a deadline on the response
+	// body. Non-streaming providers may send headers only after generation ends.
+	transport.ResponseHeaderTimeout = 0
+	if seconds := common.RelayResponseHeaderTimeout; seconds > 0 {
+		// Clamp before converting so an oversized setting cannot wrap into a
+		// short positive timeout and interrupt otherwise healthy requests.
+		const maxTimeoutSeconds = int(math.MaxInt64 / int64(time.Second))
+		if seconds > maxTimeoutSeconds {
+			seconds = maxTimeoutSeconds
+		}
+		transport.ResponseHeaderTimeout = time.Duration(seconds) * time.Second
+	}
 	transport.ForceAttemptHTTP2 = true
 	if common.TLSInsecureSkipVerify {
 		transport.TLSClientConfig = common.InsecureTLSConfig
