@@ -1,12 +1,14 @@
 package model
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 type testSystemTaskPayload struct {
@@ -349,4 +351,58 @@ func TestSystemTaskUpdatesRequireUnexpiredLock(t *testing.T) {
 	require.NotNil(t, reloaded)
 	assert.Equal(t, SystemTaskStatusRunning, reloaded.Status)
 	assert.Empty(t, reloaded.State)
+}
+
+func TestUpdateSystemTaskStateIdenticalPayloadKeepsLease(t *testing.T) {
+	truncateTables(t)
+	task, err := CreateSystemTask(SystemTaskTypeLogCleanup, nil, nil)
+	require.NoError(t, err)
+	_, claimed, err := ClaimSystemTask(task.ID, task.Type, "runner-a", common.GetTimestamp()+600)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	state := testSystemTaskState{Total: 10, Processed: 10, Progress: 100}
+	require.NoError(t, UpdateSystemTaskState(task.TaskID, "runner-a", state))
+
+	// SQLite reports matched rows. Reproduce MySQL's zero changed rows for
+	// an identical state write deterministically, without depending on clock ticks.
+	const callbackName = "test:system_task_noop_write"
+	require.NoError(t, DB.Callback().Update().After("gorm:commit_or_rollback_transaction").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "system_tasks" && tx.Error == nil {
+			tx.RowsAffected = 0
+		}
+	}))
+	t.Cleanup(func() { _ = DB.Callback().Update().Remove(callbackName) })
+	require.NoError(t, UpdateSystemTaskState(task.TaskID, "runner-a", state))
+	require.NoError(t, DB.Callback().Update().Remove(callbackName))
+
+	reloaded, err := GetSystemTaskByTaskID(task.TaskID)
+	require.NoError(t, err)
+	require.NotNil(t, reloaded)
+	var persisted testSystemTaskState
+	require.NoError(t, reloaded.DecodeState(&persisted))
+	assert.Equal(t, state, persisted)
+	require.NoError(t, FinishSystemTask(task.TaskID, "runner-a", SystemTaskStatusSucceeded, nil, ""))
+	finished, err := GetSystemTaskByTaskID(task.TaskID)
+	require.NoError(t, err)
+	require.NotNil(t, finished)
+	assert.Equal(t, SystemTaskStatusSucceeded, finished.Status)
+	assert.ErrorIs(t, UpdateSystemTaskState(task.TaskID, "runner-a", state), ErrSystemTaskLockLost)
+}
+
+func TestUpdateSystemTaskStatePropagatesLeaseCheckError(t *testing.T) {
+	truncateTables(t)
+	// A missing task produces zero affected rows and requires lease verification.
+	queryErr := errors.New("lease database unavailable")
+	const callbackName = "test:system_task_lease_query_error"
+	require.NoError(t, DB.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "system_tasks" {
+			tx.AddError(queryErr)
+		}
+	}))
+	t.Cleanup(func() { _ = DB.Callback().Query().Remove(callbackName) })
+
+	err := UpdateSystemTaskState("missing-task", "runner-a", testSystemTaskState{})
+	assert.ErrorIs(t, err, queryErr)
+	assert.NotErrorIs(t, err, ErrSystemTaskLockLost)
 }
