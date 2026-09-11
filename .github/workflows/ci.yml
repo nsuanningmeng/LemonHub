@@ -89,7 +89,7 @@ jobs:
         run: bun run test
 
   mysql-token-migration:
-    name: MySQL ${{ matrix.mysql-version }} token migration
+    name: MySQL ${{ matrix.mysql-version }} migration data preservation
     if: github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -115,6 +115,8 @@ jobs:
     env:
       GOWORK: 'off'
       MYSQL_TOKEN_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_token_quota_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      MYSQL_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_topup_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      TEST_MYSQL_RC25_UPGRADE_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_rc25_upgrade_test_ci?charset=utf8mb4&parseTime=True&loc=Local
 
     steps:
       - name: Checkout
@@ -126,5 +128,14 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Verify token quota migration
-        run: go test ./model -run '^TestMySQLTokenQuotaMigrationPreservesData$' -count=1
+      - name: Create isolated migration databases
+        run: |
+          docker exec -e MYSQL_PWD=lemonhub-migration-test "${{ job.services.mysql.id }}" mysql -uroot -e "
+            CREATE DATABASE lemonhub_topup_migration_test_ci;
+            CREATE DATABASE lemonhub_rc25_upgrade_test_ci;
+            GRANT ALL PRIVILEGES ON lemonhub_topup_migration_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_rc25_upgrade_test_ci.* TO 'lemonhub'@'%';
+          "
+
+      - name: Verify legacy data, top-up, and token quota migrations
+        run: go test ./model -run '^TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData)$' -count=1 -v

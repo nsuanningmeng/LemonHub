@@ -293,6 +293,7 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 	require.Regexpf(t, mysqlRC25UpgradeDatabaseName, strings.ToLower(dsnConfig.DBName),
 		"refusing destructive migration test against database %q: its name must match lemonhub_rc25_upgrade_test_*", dsnConfig.DBName)
 	dsnConfig.ParseTime = true
+	dsnConfig.ClientFoundRows = false
 
 	mdb, err := gorm.Open(gormmysql.Open(dsnConfig.FormatDSN()), newGormConfig(true))
 	require.NoError(t, err)
@@ -333,6 +334,14 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 		&mysqlRC25LegacySubscriptionPlan{},
 		&mysqlRC25LegacyToken{},
 		&mysqlRC25LegacyUserSession{},
+		// These local financial schemas are unchanged by the upstream patches.
+		// Seed them before the full startup migration to guard against accidental
+		// replacement, balance changes, or lost accounting history during upgrades.
+		&Site{},
+		&SiteDomain{},
+		&SiteWalletLog{},
+		&AffiliateCommission{},
+		&AffiliateCashPayout{},
 	}
 	require.NoError(t, mdb.AutoMigrate(legacyModels...))
 	require.NoError(t, mdb.Exec("ALTER TABLE `external_identity_claims` ROW_FORMAT=COMPACT").Error)
@@ -481,6 +490,33 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 	for _, row := range []interface{}{
 		&legacyUser, &provider, &claim, &binding, &legacyTask, &legacyMidjourney,
 		&legacyTopUp, &legacySubscriptionOrder, &legacyPlan, &legacyToken, &legacySession,
+		&Site{
+			Id: 7, Name: "Legacy sub-site", OwnerUserId: legacyUser.Id, Status: SiteStatusNormal,
+			WalletBalance: 4_294_967_321, DiscountRate: 7300, WalletWarnThreshold: 12345,
+			ModelPriceRate: 13000, ModelPriceRateMax: 18000,
+			PayConfig:   `{"merchant_id":"legacy-site-merchant","enabled":true}`,
+			CreatedTime: 1_700_000_000, UpdatedTime: 1_700_030_100,
+		},
+		&SiteDomain{Id: 801, SiteId: 7, Domain: "legacy-site.example.test"},
+		&SiteWalletLog{
+			Id: 802, SiteId: 7, Type: WalletLogTypeRecharge, Amount: 4_295_000_000,
+			BalanceAfter: 4_295_000_000, RelatedId: "legacy-wallet-recharge",
+			Remark: "legacy procurement wallet credit", OperatorUserId: 1, CreatedTime: 1_700_000_000,
+		},
+		&SiteWalletLog{
+			Id: 803, SiteId: 7, Type: WalletLogTypeTopupDeduct, Amount: -32679,
+			BalanceAfter: 4_294_967_321, RelatedId: legacyTopUp.TradeNo,
+			Remark: "legacy procurement wallet debit", OperatorUserId: legacyUser.Id, CreatedTime: 1_700_030_100,
+		},
+		&AffiliateCommission{
+			Id: 804, InviterId: 55, InviteeId: legacyUser.Id, TradeNo: legacyTopUp.TradeNo,
+			Kind: AffiliateKindRechargeCommission, RechargeQuota: 44000000,
+			CommissionQuota: 7654, ReversedQuota: 321, CashSettled: true, CreatedAt: 1_700_030_100,
+		},
+		&AffiliateCashPayout{
+			Id: 805, InviterId: 55, Amount: 4567, Note: "legacy cash settlement",
+			OperatorId: 1, CreatedAt: 1_700_030_200,
+		},
 	} {
 		require.NoError(t, mdb.Create(row).Error)
 	}
@@ -493,13 +529,22 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 	require.False(t, mdb.Migrator().HasColumn(&mysqlRC25LegacyMidjourney{}, "token_id"))
 	require.False(t, mdb.Migrator().HasColumn(&mysqlRC25LegacyMidjourney{}, "billing_channel_id"))
 
+	siteFinancialTables := []string{"sites", "site_domains", "site_wallet_logs", "affiliate_commissions", "affiliate_cash_payouts"}
+	beforeMigrationFinancialRows := rc25MySQLTableRows(t, mdb, siteFinancialTables)
+	beforeMigrationFinancialDDL := rc25MySQLTableDefinitions(t, mdb, siteFinancialTables)
+
 	require.NoError(t, migrateDB(), "production rc25 migration sequence must upgrade the seeded legacy schema")
 	rc25AssertUpgradedSentinels(t, mdb, legacySubject, bindingSubject)
+	assert.Equal(t, beforeMigrationFinancialRows, rc25MySQLTableRows(t, mdb, siteFinancialTables),
+		"upgrade must preserve every sub-site, wallet, and referral accounting field")
+	assert.Equal(t, beforeMigrationFinancialDDL, rc25MySQLTableDefinitions(t, mdb, siteFinancialTables),
+		"upgrade must leave the unchanged local financial schemas intact")
 
 	targetTables := []string{
 		"users", "external_identity_claims", "custom_oauth_providers", "user_oauth_bindings",
 		"tasks", "task_billing_ledgers", "midjourneys", "top_ups", "subscription_orders", "subscription_plans", "tokens", "user_sessions",
 	}
+	targetTables = append(targetTables, siteFinancialTables...)
 	beforeSecondMigrationDDL := rc25MySQLTableDefinitions(t, mdb, targetTables)
 	beforeSecondMigrationCounts := rc25MySQLTableCounts(t, mdb, targetTables)
 
@@ -510,6 +555,47 @@ func TestMySQLRC25UpgradePreservesLegacyData(t *testing.T) {
 	assert.Equal(t, beforeSecondMigrationDDL, afterSecondMigrationDDL, "second migration must leave target schemas unchanged")
 	assert.Equal(t, beforeSecondMigrationCounts, afterSecondMigrationCounts, "second migration must not add, remove, or merge persisted rows")
 	rc25AssertUpgradedSentinels(t, mdb, legacySubject, bindingSubject)
+	assert.Equal(t, beforeMigrationFinancialRows, rc25MySQLTableRows(t, mdb, siteFinancialTables),
+		"repeated startup must preserve sub-site balances and accounting history")
+
+	t.Run("identical task state retains its MySQL lease after upgrade", func(t *testing.T) {
+		state := testSystemTaskState{Total: 10, Processed: 10, Progress: 100}
+		task, err := CreateSystemTask(SystemTaskTypeLogCleanup, nil, state)
+		require.NoError(t, err)
+		_, claimed, err := ClaimSystemTask(task.ID, task.Type, "migration-runner", common.GetTimestamp()+600)
+		require.NoError(t, err)
+		require.True(t, claimed)
+
+		persisted, err := GetSystemTaskByTaskID(task.TaskID)
+		require.NoError(t, err)
+		require.NotNil(t, persisted)
+		// Freeze only the outgoing update timestamp to reproduce a same-second
+		// persist deterministically. MySQL itself must report zero changed rows.
+		const callbackName = "test:mysql_system_task_same_second"
+		require.NoError(t, mdb.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+			if tx.Statement.Table == "system_tasks" {
+				tx.Statement.SetColumn("updated_at", persisted.UpdatedAt)
+			}
+		}))
+		t.Cleanup(func() { _ = mdb.Callback().Update().Remove(callbackName) })
+		var affectedRows []int64
+		const resultCallbackName = "test:mysql_system_task_changed_rows"
+		require.NoError(t, mdb.Callback().Update().After("gorm:update").Register(resultCallbackName, func(tx *gorm.DB) {
+			if tx.Statement.Table == "system_tasks" {
+				affectedRows = append(affectedRows, tx.RowsAffected)
+			}
+		}))
+		t.Cleanup(func() { _ = mdb.Callback().Update().Remove(resultCallbackName) })
+
+		require.NoError(t, UpdateSystemTaskState(task.TaskID, "migration-runner", state))
+		assert.Equal(t, []int64{0}, affectedRows, "real MySQL must exercise the zero-changed-row lease check")
+		require.NoError(t, mdb.Callback().Update().Remove(callbackName))
+		require.NoError(t, mdb.Callback().Update().Remove(resultCallbackName))
+
+		require.NoError(t, mdb.Model(&SystemTaskLock{}).Where("task_id = ?", task.TaskID).
+			Update("locked_by", "other-runner").Error)
+		assert.ErrorIs(t, UpdateSystemTaskState(task.TaskID, "migration-runner", state), ErrSystemTaskLockLost)
+	})
 }
 
 func rc25AssertUpgradedSentinels(t *testing.T, db *gorm.DB, legacySubject, bindingSubject string) {
@@ -527,6 +613,14 @@ func rc25AssertUpgradedSentinels(t *testing.T, db *gorm.DB, legacySubject, bindi
 	assert.Equal(t, 321, user.RequestCount)
 	assert.Equal(t, "legacy-premium", user.Group)
 	assert.Equal(t, int64(9), user.AuthVersion)
+	assert.Equal(t, "RC25AFF", user.AffCode)
+	assert.Equal(t, 8, user.AffCount)
+	assert.Equal(t, 7654, user.AffQuota)
+	assert.Equal(t, 8765, user.AffHistoryQuota)
+	assert.Equal(t, 55, user.InviterId)
+	require.NotNil(t, user.AffCommissionPercent)
+	assert.Equal(t, 12.5, *user.AffCommissionPercent)
+	assert.True(t, user.AffCashSettled)
 	assert.Equal(t, int64(4567), user.AffCashPaid)
 
 	var provider CustomOAuthProvider
@@ -820,4 +914,15 @@ func rc25MySQLTableCounts(t *testing.T, db *gorm.DB, tables []string) map[string
 		counts[table] = count
 	}
 	return counts
+}
+
+func rc25MySQLTableRows(t *testing.T, db *gorm.DB, tables []string) map[string][]map[string]interface{} {
+	t.Helper()
+	rowsByTable := make(map[string][]map[string]interface{}, len(tables))
+	for _, table := range tables {
+		var rows []map[string]interface{}
+		require.NoError(t, db.Table(table).Order("id").Find(&rows).Error)
+		rowsByTable[table] = rows
+	}
+	return rowsByTable
 }
