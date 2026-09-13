@@ -196,6 +196,62 @@ func TestFetchOrdinaryOpenAIModelsKeepsExistingEmptyDataBehavior(t *testing.T) {
 	require.Empty(t, models)
 }
 
+func TestFetchVolcEngineModelsUsesProviderEndpoint(t *testing.T) {
+	tests := []struct {
+		name       string
+		baseURL    string
+		wantPath   string
+		codingPlan bool
+	}{
+		{name: "default base", wantPath: "/api/v3/models"},
+		{name: "custom base", baseURL: "/gateway", wantPath: "/gateway/api/v3/models"},
+		{name: "coding plan", wantPath: "/api/coding/v3/v1/models", codingPlan: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			received := make(chan *http.Request, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				received <- r
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path != tt.wantPath {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				_, _ = w.Write([]byte(`{"data":[{"id":" doubao-model "},{"id":"doubao-model"}]}`))
+			}))
+			t.Cleanup(server.Close)
+
+			channel := &model.Channel{Type: constant.ChannelTypeVolcEngine, Key: "test-key"}
+			if tt.codingPlan {
+				const planName = "doubao-coding-plan"
+				originalPlan := constant.ChannelSpecialBases[planName]
+				constant.ChannelSpecialBases[planName] = constant.ChannelSpecialBase{
+					OpenAIBaseURL: server.URL + "/api/coding/v3",
+				}
+				t.Cleanup(func() { constant.ChannelSpecialBases[planName] = originalPlan })
+				baseURL := planName
+				channel.BaseURL = &baseURL
+			} else if tt.baseURL != "" {
+				baseURL := server.URL + tt.baseURL
+				channel.BaseURL = &baseURL
+			} else {
+				originalBase := constant.ChannelBaseURLs[constant.ChannelTypeVolcEngine]
+				constant.ChannelBaseURLs[constant.ChannelTypeVolcEngine] = server.URL
+				t.Cleanup(func() { constant.ChannelBaseURLs[constant.ChannelTypeVolcEngine] = originalBase })
+			}
+
+			models, err := fetchChannelUpstreamModelIDs(channel)
+			require.NoError(t, err)
+			assert.Equal(t, []string{"doubao-model"}, models)
+			request := <-received
+			assert.Equal(t, http.MethodGet, request.Method)
+			assert.Equal(t, tt.wantPath, request.URL.Path)
+			assert.Equal(t, "Bearer test-key", request.Header.Get("Authorization"))
+		})
+	}
+}
+
 func TestFetchModelsAdvancedCustomCreatePreview(t *testing.T) {
 	receivedAuthorization := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
