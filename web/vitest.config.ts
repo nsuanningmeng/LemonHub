@@ -12,6 +12,12 @@ export default defineConfig({
     },
   },
   test: {
+    server: {
+      deps: {
+        // These packages publish directory ESM imports that require Vite resolution.
+        inline: ['@lobehub/icons', '@lobehub/ui', '@lobehub/fluent-emoji'],
+      },
+    },
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
     clearMocks: true,
