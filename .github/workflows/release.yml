@@ -272,7 +272,16 @@ jobs:
       - name: Stage Electron release artifacts
         run: |
           mkdir release-electron
-          cp electron/dist/*.exe release-electron/
+          for artifact in electron/dist/*.exe; do
+            filename="${artifact##*/}"
+            # Match GitHub's downloadable filenames before checksums and attestation.
+            release_name="${filename// /.}"
+            if [ -e "release-electron/$release_name" ]; then
+              echo "::error::Duplicate Electron release filename: $release_name"
+              exit 1
+            fi
+            cp "$artifact" "release-electron/$release_name"
+          done
           cd release-electron
           sha256sum *.exe > checksums-electron-windows.txt
 
