@@ -3827,6 +3827,7 @@
     "Pre-Consume for Free Models": "Предварительное потребление для бесплатных моделей",
     "Pre-consumed": "Предоплата",
     "Pre-Consumed Quota": "Предварительно потребленная квота",
+    "Preference saved as {{pref}}, but no active subscription. Requests will be rejected.": "Сохранён режим «{{pref}}», но активной подписки нет. Запросы будут отклонены.",
     "Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.": "Настройка сохранена как {{pref}}, но нет активной подписки. Кошелёк будет использоваться автоматически.",
     "Preferences": "Настройки",
     "Prefill Group Management": "Управление группами автозаполнения",
