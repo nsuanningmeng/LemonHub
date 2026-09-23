@@ -21,6 +21,7 @@ import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 
 import { requestCreemPayment, isApiSuccess } from '../api'
+import { getPaymentErrorMessage, getSafePaymentRedirectUrl } from '../lib'
 
 /**
  * Hook for handling Creem payment processing
@@ -36,15 +37,22 @@ export function useCreemPayment() {
         payment_method: 'creem',
       })
 
-      if (isApiSuccess(response) && response.data?.checkout_url) {
-        window.open(response.data.checkout_url, '_blank')
+      if (isApiSuccess(response)) {
+        const checkoutUrl = getSafePaymentRedirectUrl(
+          response.data?.checkout_url
+        )
+        if (!checkoutUrl) {
+          toast.error(i18next.t('Payment request failed'))
+          return false
+        }
+        window.open(checkoutUrl, '_blank', 'noopener,noreferrer')
         toast.success(i18next.t('Redirecting to Creem checkout...'))
         return true
       }
 
-      toast.error(response.message || i18next.t('Payment request failed'))
+      toast.error(getPaymentErrorMessage(response))
       return false
-    } catch (_error) {
+    } catch {
       toast.error(i18next.t('Payment request failed'))
       return false
     } finally {

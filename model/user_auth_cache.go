@@ -124,6 +124,7 @@ redis.call('HSET', KEYS[1],
   'AuthVersion', ARGV[1], 'CacheSchema', ARGV[10])
 if ARGV[11] == '1' and redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
   redis.call('HSET', KEYS[1], 'Quota', ARGV[12])
+  redis.call('HSET', KEYS[1], 'QuotaGeneration', ARGV[17 + task_fence_count])
 end
 redis.call('EXPIRE', KEYS[1], ARGV[13])
 if task_fence_count > 0 and ARGV[16] == '1' then
@@ -143,6 +144,7 @@ return 1`
 	for _, fenceValue := range fenceValues {
 		args = append(args, fenceValue)
 	}
+	args = append(args, common.GetUUID())
 	result, err := common.RDB.Eval(context.Background(), script,
 		[]string{
 			getUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id),

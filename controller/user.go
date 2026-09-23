@@ -1322,6 +1322,10 @@ func ManageUser(c *gin.Context) {
 		}
 		user.Role = common.RoleCommonUser
 	case "add_quota":
+		if req.Value > common.MaxWalletQuota || req.Value < -common.MaxWalletQuota {
+			common.ApiError(c, common.ErrWalletQuotaOutOfRange)
+			return
+		}
 		switch req.Mode {
 		case "add":
 			if req.Value <= 0 {

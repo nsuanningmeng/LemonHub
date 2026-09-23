@@ -16,17 +16,67 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import i18next from 'i18next'
+
 import {
   PAYMENT_TYPES,
   DEFAULT_PRESET_MULTIPLIERS,
   DEFAULT_PAYMENT_TYPE,
   DEFAULT_MIN_TOPUP,
 } from '../constants'
-import type { PaymentMethod, PresetAmount, TopupInfo } from '../types'
+import type {
+  ApiResponse,
+  PaymentMethod,
+  PresetAmount,
+  TopupInfo,
+} from '../types'
 
 // ============================================================================
 // Payment Processing Functions
 // ============================================================================
+
+export function getPaymentErrorMessage(response: ApiResponse): string {
+  if (response.data === 'top-up quota limit exceeded') {
+    return i18next.t(
+      'This top-up exceeds the wallet balance limit. Reduce the amount or contact the administrator.'
+    )
+  }
+  // Legacy payment endpoints put the error reason in data and only "error" in message.
+  if (typeof response.data === 'string' && response.data.trim()) {
+    return response.data
+  }
+  if (
+    response.message &&
+    response.message !== 'error' &&
+    response.message !== 'success'
+  ) {
+    return response.message
+  }
+  return i18next.t('Payment request failed')
+}
+
+export function getSafePaymentRedirectUrl(
+  value: unknown,
+  httpsOnly = false
+): string | null {
+  if (typeof value !== 'string') return null
+  const target = value.trim()
+  if (!/^https?:\/\//i.test(target)) return null
+  try {
+    const url = new URL(target)
+    if (
+      (url.protocol !== 'https:' && (httpsOnly || url.protocol !== 'http:')) ||
+      !url.hostname ||
+      url.username ||
+      url.password
+    ) {
+      return null
+    }
+    return target
+  } catch {
+    return null
+  }
+}
 
 /**
  * Check if browser is Safari
@@ -45,9 +95,12 @@ export function submitPaymentForm(
   url: string,
   params: Record<string, unknown>
 ): void {
+  const paymentUrl = getSafePaymentRedirectUrl(url, true)
+  if (!paymentUrl) throw new Error(i18next.t('Payment request failed'))
   const form = document.createElement('form')
-  form.action = url
+  form.action = paymentUrl
   form.method = 'POST'
+  form.setAttribute('rel', 'noopener noreferrer')
 
   // Don't open in new tab for Safari
   if (!isSafariBrowser()) {
@@ -64,8 +117,11 @@ export function submitPaymentForm(
   })
 
   document.body.appendChild(form)
-  form.submit()
-  document.body.removeChild(form)
+  try {
+    form.submit()
+  } finally {
+    form.remove()
+  }
 }
 
 /**

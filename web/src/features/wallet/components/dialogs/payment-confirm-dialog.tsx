@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +43,7 @@ interface PaymentConfirmDialogProps {
   onConfirm: () => void
   topupAmount: number
   paymentAmount: number
+  paymentError?: string | null
   paymentMethod: PaymentMethod | undefined
   calculating: boolean
   processing: boolean
@@ -55,6 +57,7 @@ export function PaymentConfirmDialog({
   onConfirm,
   topupAmount,
   paymentAmount,
+  paymentError,
   paymentMethod,
   calculating,
   processing,
@@ -62,7 +65,9 @@ export function PaymentConfirmDialog({
   usdExchangeRate = 1,
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
-  const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
+  const hasValidQuote =
+    Number.isFinite(paymentAmount) && paymentAmount > 0 && paymentError == null
+  const hasDiscount = discountRate > 0 && discountRate < 1 && hasValidQuote
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
 
@@ -96,9 +101,8 @@ export function PaymentConfirmDialog({
             <span className='text-muted-foreground text-sm'>
               {t('You Pay')}
             </span>
-            {calculating ? (
-              <Skeleton className='h-6 w-24' />
-            ) : (
+            {calculating && <Skeleton className='h-6 w-24' />}
+            {!calculating && hasValidQuote && (
               <div className='flex items-baseline gap-2'>
                 <span className='text-2xl font-semibold'>
                   {formatCurrency(paymentAmount)}
@@ -110,7 +114,18 @@ export function PaymentConfirmDialog({
                 )}
               </div>
             )}
+            {!calculating && !hasValidQuote && (
+              <span className='text-muted-foreground text-2xl'>—</span>
+            )}
           </div>
+
+          {!calculating && !hasValidQuote && (
+            <Alert variant='destructive'>
+              <AlertDescription>
+                {paymentError || t('Payment request failed')}
+              </AlertDescription>
+            </Alert>
+          )}
 
           {hasDiscount && !calculating && (
             <div className='bg-muted/50 rounded-lg p-3'>
@@ -145,7 +160,10 @@ export function PaymentConfirmDialog({
           <AlertDialogCancel disabled={processing}>
             {t('Cancel')}
           </AlertDialogCancel>
-          <AlertDialogAction onClick={onConfirm} disabled={processing}>
+          <AlertDialogAction
+            onClick={onConfirm}
+            disabled={processing || calculating || !hasValidQuote}
+          >
             {processing && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {t('Confirm Payment')}
           </AlertDialogAction>

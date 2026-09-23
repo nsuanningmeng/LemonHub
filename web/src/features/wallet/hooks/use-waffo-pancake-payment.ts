@@ -21,6 +21,7 @@ import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 
 import { requestWaffoPancakePayment, isApiSuccess } from '../api'
+import { getPaymentErrorMessage, getSafePaymentRedirectUrl } from '../lib'
 
 function getCheckoutUrl(data: unknown): string | null {
   if (!data || typeof data !== 'object') {
@@ -32,31 +33,6 @@ function getCheckoutUrl(data: unknown): string | null {
   }
 
   return null
-}
-
-/**
- * Reject non-navigable schemes (e.g. javascript:, data:) and relative URLs.
- * Only http/https are allowed for backend-provided redirect targets.
- */
-function isSafeHttpCheckoutUrl(value: string): boolean {
-  const trimmed = value.trim()
-  if (!trimmed) {
-    return false
-  }
-  try {
-    const u = new URL(trimmed)
-    return u.protocol === 'http:' || u.protocol === 'https:'
-  } catch {
-    return false
-  }
-}
-
-function getErrorMessage(message: string | undefined, data: unknown): string {
-  if (typeof data === 'string' && data.trim()) {
-    return data
-  }
-
-  return message || i18next.t('Payment request failed')
 }
 
 /**
@@ -78,22 +54,21 @@ export function useWaffoPancakePayment() {
         })
 
         if (isApiSuccess(response)) {
-          const checkoutUrl = getCheckoutUrl(response.data)
-
-          if (checkoutUrl) {
-            if (!isSafeHttpCheckoutUrl(checkoutUrl)) {
-              toast.error(i18next.t('Invalid payment redirect URL'))
-              return false
-            }
-            toast.success(i18next.t('Redirecting to payment page...'))
-            window.location.href = checkoutUrl
-            return true
+          const checkoutUrl = getSafePaymentRedirectUrl(
+            getCheckoutUrl(response.data)
+          )
+          if (!checkoutUrl) {
+            toast.error(i18next.t('Payment request failed'))
+            return false
           }
+          toast.success(i18next.t('Redirecting to payment page...'))
+          window.location.href = checkoutUrl
+          return true
         }
 
-        toast.error(getErrorMessage(response.message, response.data))
+        toast.error(getPaymentErrorMessage(response))
         return false
-      } catch (_error) {
+      } catch {
         toast.error(i18next.t('Payment request failed'))
         return false
       } finally {

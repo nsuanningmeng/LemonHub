@@ -97,15 +97,16 @@ type User struct {
 	TelegramId       string  `json:"telegram_id" gorm:"column:telegram_id;index"`
 	VerificationCode string  `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
 	AccessToken      *string `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int     `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int     `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int     `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string  `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string  `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int     `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int     `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int     `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int     `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	// Wallet balances and cumulative usage outgrow the int32 per-request charge limit.
+	Quota           int    `json:"quota" gorm:"type:bigint;default:0"`
+	UsedQuota       int    `json:"used_quota" gorm:"type:bigint;default:0;column:used_quota"` // used quota
+	RequestCount    int    `json:"request_count" gorm:"type:int;default:0;"`                  // request number
+	Group           string `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode         string `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount        int    `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota        int    `json:"aff_quota" gorm:"type:bigint;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota int    `json:"aff_history_quota" gorm:"type:bigint;default:0;column:aff_history"` // 邀请历史额度
+	InviterId       int    `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	// AffCommissionPercent is an optional per-inviter override (0-100) for the recharge
 	// commission rate. nil inherits the global common.AffRechargeCommissionPercent; a non-nil
 	// value (including 0) takes precedence for this inviter's referral commission payouts.
@@ -685,6 +686,7 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 	if err != nil {
 		return err
 	}
+	cacheGeneration := captureUserQuotaCacheGeneration(user.Id)
 	result := DB.Model(&User{}).
 		Where("id = ? AND aff_quota >= ? AND quota <= ?", user.Id, quota, maxCurrentQuota).
 		Updates(map[string]interface{}{
@@ -704,7 +706,7 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		}
 		return ErrTopUpQuotaLimitExceeded
 	}
-	syncCreditUserQuotaCache(user.Id, quota, "affiliate quota transfer")
+	syncCreditUserQuotaCache(user.Id, quota, "affiliate quota transfer", cacheGeneration)
 	return nil
 }
 

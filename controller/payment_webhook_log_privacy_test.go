@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	waffoutils "github.com/waffo-com/waffo-go/utils"
@@ -184,8 +186,12 @@ func TestStripeCheckoutFailuresDoNotLogProviderErrorOrCustomerPII(t *testing.T) 
 
 	const customerEmail = "private-stripe-checkout@example.test"
 	const providerError = "private-stripe-provider-error customer=private-stripe-checkout@example.test"
-	providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	providerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/prices/price_wallet" {
+			_, _ = fmt.Fprintf(w, `{"id":"price_wallet","active":true,"type":"one_time","billing_scheme":"per_unit","currency":"usd","unit_amount_decimal":"%s"}`, decimal.NewFromFloat(setting.StripeUnitPrice).Mul(decimal.NewFromInt(100)).String())
+			return
+		}
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = io.WriteString(w, `{"error":{"type":"invalid_request_error","message":"`+providerError+`","param":"customer_email"}}`)
 	}))

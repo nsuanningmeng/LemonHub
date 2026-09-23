@@ -154,6 +154,7 @@ jobs:
       MYSQL_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_topup_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       TEST_MYSQL_RC25_UPGRADE_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_rc25_upgrade_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       MYSQL_TOKEN_GROUP_UPGRADE_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_token_group_upgrade_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      MYSQL_WALLET_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_wallet_quota_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
 
     steps:
       - name: Checkout
@@ -171,13 +172,15 @@ jobs:
             CREATE DATABASE lemonhub_topup_migration_test_ci;
             CREATE DATABASE lemonhub_rc25_upgrade_test_ci;
             CREATE DATABASE lemonhub_token_group_upgrade_test_ci;
+            CREATE DATABASE lemonhub_wallet_quota_migration_test_ci;
             GRANT ALL PRIVILEGES ON lemonhub_topup_migration_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_rc25_upgrade_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_token_group_upgrade_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_wallet_quota_migration_test_ci.* TO 'lemonhub'@'%';
           "
 
       - name: Verify legacy data, top-up, token quota, and unassigned key migrations
-        run: go test ./model -run '^TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData|TokenGroupUpgradePreservesExistingKeys)$' -count=1 -v
+        run: go test ./model -run '^TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData|TokenGroupUpgradePreservesExistingKeys|WalletQuotaMigrationPreservesData)$' -count=1 -v
 
       - name: Verify MySQL container recreation preserves named-volume data
         env:
@@ -237,3 +240,39 @@ jobs:
           test "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$container")" = "$volume"
           docker exec -e MYSQL_PWD=lemonhub-persistence-test "$container" mysql -uroot --batch -e 'SELECT VERSION() AS tested_version;'
           echo 'Named-volume sentinel rows survived MySQL container removal and recreation.'
+
+  postgres-wallet-migration:
+    name: PostgreSQL ${{ matrix.postgres-version }} wallet migration
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: ['9.6', '17']
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres-version }}
+        env:
+          POSTGRES_PASSWORD: lemonhub-migration-test
+          POSTGRES_DB: lemonhub_wallet_quota_migration_test_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d lemonhub_wallet_quota_migration_test_ci"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      GOWORK: 'off'
+      POSTGRES_WALLET_MIGRATION_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_wallet_quota_migration_test_ci?sslmode=disable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Verify legacy wallet data and repeatable BIGINT migration
+        run: go test ./model -run '^TestPostgresWalletQuotaMigrationPreservesData$' -count=1 -v

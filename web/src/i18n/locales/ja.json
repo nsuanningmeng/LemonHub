@@ -5097,6 +5097,7 @@
     "This ticket is closed.": "このチケットは閉じられています。",
     "This tier catches any request that did not match earlier tiers.": "この段階は、前の段階に一致しなかったすべてのリクエストを受け取ります。",
     "this token group": "このトークングループ",
+    "This top-up exceeds the wallet balance limit. Reduce the amount or contact the administrator.": "このチャージはウォレット残高の上限を超えます。金額を減らすか、管理者にお問い合わせください。",
     "This Uptime Kuma group will be removed from the list.": "この Uptime Kuma グループはリストから削除されます。",
     "This user account is disabled.": "このユーザーアカウントは無効です。",
     "This user account no longer exists.": "このユーザーアカウントは存在しません。",

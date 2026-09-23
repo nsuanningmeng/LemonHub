@@ -73,6 +73,51 @@ DNS/TLS/outbound-request fan-out or starving main-site settlement.
   from that sub-site merchant's `pay_config.pay_methods`, not the global merchant list.
 - Callback `Host`, `Origin`, and submitted gateway addresses never select credentials.
 
+## Large top-ups and wallet storage
+
+- Wallet credits are independent of the int32 limit for individual API charges.
+  `common.WalletQuotaFromDecimalStrict` rounds decimal credits without float64
+  conversion and rejects invalid values instead of saturating purchased quota.
+- A credit and the resulting balance may reach `common.MaxWalletQuota` (2^53-1).
+  This fits signed 64-bit database storage and remains exact in browser JavaScript
+  and Redis Lua. Refund debt may reach the corresponding negative bound. Quote
+  checks are advisory; settlement atomically checks capacity again, so concurrent
+  paid orders cannot overflow the wallet. A failed settlement stays pending.
+- Existing 5000, 10000 and 30000 recharge presets and previously created large
+  wallets are accepted within this domain. Gateway-specific payment restrictions
+  still apply. A failed quote is displayed as an error, never as a zero-price
+  payment, and cannot open or submit the payment confirmation.
+- Startup AutoMigrate widens `users.quota`, `used_quota`, `aff_quota`, and
+  `aff_history` to BIGINT on MySQL/PostgreSQL. SQLite retains its integer storage
+  and existing values. Deploy backend migrations before directing traffic to the
+  updated payment UI; do not roll back these columns to INT after large credits.
+- Per-request billing conversions, saturation audit markers, gateway verification,
+  and callback idempotency retain their existing protections. Recharge, referral
+  credits and proportional refunds use the wider wallet domain.
+- DB-first credits capture the current Redis balance generation before committing.
+  The subsequent cache increment applies only to that generation. If the hash was
+  rebuilt from the committed balance, it already contains the credit and must not
+  receive it twice. Wallet and token refunds, task credits, and rollback compensation
+  use the same rule. A missing or changed generation may leave a conservative
+  stale-low balance until refresh; it cannot authorize an unproven extra credit.
+
+## Stripe recharge price contract
+
+- New orders normalize the requested amount into whole recharge units. Group
+  multipliers and preset discounts change the fixed Price checkout quantity, while
+  the purchased wallet credit remains the requested recharge units. A fractional
+  quantity that cannot be represented by the configured fixed Price is rejected.
+- Quote and checkout verify the configured Stripe Price using its original decimal
+  amount, currency precision, active state, and one-time per-unit billing scheme.
+  The verified Price ID and API key are retained for checkout, including when an
+  administrator changes payment configuration during the request.
+- Legacy orders retain their recorded settlement/refund amounts. New validation
+  does not rewrite pending orders. Payment providers can impose lower amount limits
+  than the application's wallet storage limit.
+- Browser checkout URLs must be absolute HTTP(S) URLs without embedded credentials;
+  Epay form URLs require HTTPS. External windows isolate their opener. Signed form
+  fields are assigned as input values rather than parsed as HTML.
+
 ## Known operational constraints
 
 - The classic Epay query API sends the merchant key as a query parameter. `PayAddress`

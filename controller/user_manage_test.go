@@ -61,6 +61,31 @@ func performManageUserRequest(t *testing.T, body string) *httptest.ResponseRecor
 	return recorder
 }
 
+func TestManageUserQuotaOverridePreservesWalletRange(t *testing.T) {
+	for _, value := range []int{15_000_000_000, common.MaxWalletQuota, -common.MaxWalletQuota, common.MaxWalletQuota + 1, -common.MaxWalletQuota - 1} {
+		t.Run(fmt.Sprint(value), func(t *testing.T) {
+			db := setupManageUserTestDB(t)
+			user := model.User{Username: "wallet-range", Role: common.RoleCommonUser, Quota: 50, AffCode: "wallet-range"}
+			require.NoError(t, db.Create(&user).Error)
+			recorder := performManageUserRequest(t, fmt.Sprintf(`{"id":%d,"action":"add_quota","mode":"override","value":%d}`, user.Id, value))
+			require.Equal(t, http.StatusOK, recorder.Code)
+			var response struct {
+				Success bool `json:"success"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			var persisted model.User
+			require.NoError(t, db.First(&persisted, user.Id).Error)
+			if value > common.MaxWalletQuota || value < -common.MaxWalletQuota {
+				assert.False(t, response.Success)
+				assert.Equal(t, 50, persisted.Quota)
+			} else {
+				assert.True(t, response.Success)
+				assert.Equal(t, value, persisted.Quota)
+			}
+		})
+	}
+}
+
 func TestManageUserDisableAdvancesAuthVersionOnceAndRevokesSession(t *testing.T) {
 	db := setupManageUserTestDB(t)
 	now := time.Now().Unix()

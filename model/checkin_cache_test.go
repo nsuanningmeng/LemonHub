@@ -32,11 +32,11 @@ func TestTransactionalCheckinCreditIsSynchronouslyVisibleInCache(t *testing.T) {
 	assert.Equal(t, 125, cached.Quota)
 }
 
-func TestCheckinCreditRejectsInt32OverflowAtomically(t *testing.T) {
+func TestCheckinCreditRejectsWalletOverflowAtomically(t *testing.T) {
 	require.NoError(t, DB.AutoMigrate(&Checkin{}, &User{}))
 
 	t.Run("transactional path", func(t *testing.T) {
-		user := createReserveTestUser(t, common.MaxQuota-5)
+		user := createReserveTestUser(t, common.MaxWalletQuota-5)
 		checkin := &Checkin{UserId: user.Id, CheckinDate: "2099-12-30", QuotaAwarded: 10, CreatedAt: common.GetTimestamp()}
 		t.Cleanup(func() {
 			_ = DB.Where("user_id = ?", user.Id).Delete(&Checkin{}).Error
@@ -45,14 +45,14 @@ func TestCheckinCreditRejectsInt32OverflowAtomically(t *testing.T) {
 
 		_, err := userCheckinWithTransaction(checkin, user.Id, checkin.QuotaAwarded)
 		require.Error(t, err)
-		assert.Equal(t, common.MaxQuota-5, getUserQuotaFromDB(t, user.Id))
+		assert.Equal(t, common.MaxWalletQuota-5, getUserQuotaFromDB(t, user.Id))
 		var count int64
 		require.NoError(t, DB.Model(&Checkin{}).Where("user_id = ?", user.Id).Count(&count).Error)
 		assert.Zero(t, count)
 	})
 
 	t.Run("sqlite sequential fallback", func(t *testing.T) {
-		user := createReserveTestUser(t, common.MaxQuota-5)
+		user := createReserveTestUser(t, common.MaxWalletQuota-5)
 		checkin := &Checkin{UserId: user.Id, CheckinDate: "2099-12-29", QuotaAwarded: 10, CreatedAt: common.GetTimestamp()}
 		t.Cleanup(func() {
 			_ = DB.Where("user_id = ?", user.Id).Delete(&Checkin{}).Error
@@ -61,7 +61,7 @@ func TestCheckinCreditRejectsInt32OverflowAtomically(t *testing.T) {
 
 		_, err := userCheckinWithoutTransaction(checkin, user.Id, checkin.QuotaAwarded)
 		require.Error(t, err)
-		assert.Equal(t, common.MaxQuota-5, getUserQuotaFromDB(t, user.Id))
+		assert.Equal(t, common.MaxWalletQuota-5, getUserQuotaFromDB(t, user.Id))
 		var count int64
 		require.NoError(t, DB.Model(&Checkin{}).Where("user_id = ?", user.Id).Count(&count).Error)
 		assert.Zero(t, count)

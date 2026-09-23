@@ -227,13 +227,50 @@ func cacheDecrUserQuota(userId int, delta int64) error {
 // syncCreditUserQuotaCache 在授信事务（充值/兑换等）提交后同步把增量补进缓存
 // 余额。预扣以缓存值为准（存在期间），授信不能绕过它，否则新到账的额度在
 // 缓存过期前不可用；缓存未命中无需处理，下次读取会从已提交的数据库余额水合。
-func syncCreditUserQuotaCache(userId int, quota int, operation string) {
+func syncCreditUserQuotaCache(userId int, quota int, operation string, generation string) {
 	if quota <= 0 {
 		return
 	}
-	if err := cacheIncrUserQuota(userId, int64(quota)); err != nil {
+	if _, err := cacheApplyUserQuotaDeltaForGeneration(userId, int64(quota), generation); err != nil {
 		common.SysLog(fmt.Sprintf("failed to sync %s credit to user quota cache: %s", operation, err.Error()))
 	}
+}
+
+// captureUserQuotaCacheGeneration identifies the live balance before a DB-first
+// credit. A hash hydrated after the commit already includes that credit, so only
+// this generation may receive the subsequent delta. Missing/unavailable caches
+// may temporarily stay stale-low; they must never receive an unproven credit.
+func captureUserQuotaCacheGeneration(userId int) string {
+	return captureQuotaCacheGeneration(getUserCacheKey(userId), "Quota", userId)
+}
+
+func captureQuotaCacheGeneration(cacheKey string, quotaField string, id int) string {
+	if !common.RedisEnabled {
+		return ""
+	}
+	const script = `
+if redis.call('HGET', KEYS[1], 'Id') ~= ARGV[1]
+  or redis.call('HEXISTS', KEYS[1], ARGV[3]) == 0 then
+  return ''
+end
+redis.call('HSETNX', KEYS[1], 'QuotaGeneration', ARGV[2])
+return redis.call('HGET', KEYS[1], 'QuotaGeneration')`
+	generation, err := common.RDB.Eval(context.Background(), script,
+		[]string{cacheKey}, id, common.GetUUID(), quotaField).Text()
+	if err != nil {
+		return ""
+	}
+	return generation
+}
+
+func cacheApplyUserQuotaDeltaForGeneration(userId int, quota int64, generation string) (cacheQuotaResult, error) {
+	if !common.RedisEnabled || generation == "" {
+		return cacheQuotaMiss, nil
+	}
+	result, err := common.RDB.Eval(context.Background(), userQuotaDeltaScript,
+		[]string{getUserCacheKey(userId), getUserQuotaUncertaintyKey(userId), getTaskBillingUserQuotaFenceKey(userId)},
+		quota, userId, userCacheSchemaVersion, common.MaxWalletQuota, generation).Int()
+	return quotaResultFromLua(result, err)
 }
 
 // Helper functions to get individual fields if needed

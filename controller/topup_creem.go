@@ -65,6 +65,10 @@ type CreemAdaptor struct {
 }
 
 func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
+	if !isCreemWebhookEnabled() {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Creem 支付未启用或回调配置不完整"})
+		return
+	}
 	if req.PaymentMethod != model.PaymentMethodCreem {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "不支持的支付渠道"})
 		return
@@ -97,10 +101,9 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品不存在"})
 		return
 	}
-	// Settlement credits Amount directly into the int32 quota column; a
-	// misconfigured product outside that range would clamp at settlement and
-	// credit less than the user paid for, so refuse it before checkout.
-	if selectedProduct.Quota <= 0 || selectedProduct.Quota > int64(common.MaxQuota) {
+	// Settlement credits Amount directly into the wallet. Refuse a product that
+	// cannot be credited exactly before sending the customer to checkout.
+	if selectedProduct.Quota <= 0 || selectedProduct.Quota > int64(common.MaxWalletQuota) {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Creem 产品额度配置非法 product_id=%q quota=%d", selectedProduct.ProductId, selectedProduct.Quota))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "产品配置错误"})
 		return

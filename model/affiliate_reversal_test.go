@@ -262,18 +262,18 @@ func TestReverseReferral_LegacyInviteeRewardNotGuessed(t *testing.T) {
 	assert.EqualValues(t, 5000, affReload(t, 7532).Quota, "legacy invitee reward NOT guessed/clawed")
 }
 
-func TestAffiliateSettlementRejectsInt32WalletOverflowAtomically(t *testing.T) {
+func TestAffiliateSettlementRejectsWalletOverflowAtomically(t *testing.T) {
 	affReversalEnv(t, []int{7541, 7542, 7551, 7552})
 
 	t.Run("first bonus", func(t *testing.T) {
 		affSeedPair(t, 7541, 7542)
 		require.NoError(t, DB.Model(&User{}).Where("id = ?", 7542).
-			Update("quota", common.MaxQuota-2).Error)
+			Update("quota", common.MaxWalletQuota-1).Error)
 
 		granted, err := settleAffiliateFirstBonus(7541, 7542, 10, 2)
 		assert.False(t, granted)
 		assert.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
-		assert.Equal(t, common.MaxQuota-2, affReload(t, 7542).Quota)
+		assert.Equal(t, common.MaxWalletQuota-1, affReload(t, 7542).Quota)
 		assert.Zero(t, affReload(t, 7541).AffQuota)
 		var count int64
 		require.NoError(t, DB.Model(&AffiliateCommission{}).
@@ -285,22 +285,41 @@ func TestAffiliateSettlementRejectsInt32WalletOverflowAtomically(t *testing.T) {
 	t.Run("recharge commission", func(t *testing.T) {
 		affSeedPair(t, 7551, 7552)
 		require.NoError(t, DB.Model(&User{}).Where("id = ?", 7551).Updates(map[string]interface{}{
-			"aff_quota":   common.MaxQuota - 5,
-			"aff_history": common.MaxQuota - 5,
+			"aff_quota":   common.MaxWalletQuota - 4,
+			"aff_history": common.MaxWalletQuota - 4,
 		}).Error)
 
 		credited, err := settleAffiliateRechargeCommission(7551, 7552, "aff-overflow-commission", 100, 5, true)
 		assert.Zero(t, credited)
 		assert.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
 		inviter := affReload(t, 7551)
-		assert.Equal(t, common.MaxQuota-5, inviter.AffQuota)
-		assert.Equal(t, common.MaxQuota-5, inviter.AffHistoryQuota)
+		assert.Equal(t, common.MaxWalletQuota-4, inviter.AffQuota)
+		assert.Equal(t, common.MaxWalletQuota-4, inviter.AffHistoryQuota)
 		var count int64
 		require.NoError(t, DB.Model(&AffiliateCommission{}).
 			Where("trade_no = ? AND kind = ?", "aff-overflow-commission", AffiliateKindRechargeCommission).
 			Count(&count).Error)
 		assert.Zero(t, count, "the commission ledger must roll back with the rejected credit")
 	})
+}
+
+func TestLargeTopUpReferralCommissionAndRefund(t *testing.T) {
+	affReversalEnv(t, []int{7561, 7562})
+	affSeedPair(t, 7561, 7562)
+	const creditedQuota = int64(30_000_000_000)
+	const commission = int64(3_000_000_000)
+	granted, err := settleAffiliateRechargeCommission(7561, 7562, "large-referral-topup", creditedQuota, commission, true)
+	require.NoError(t, err)
+	assert.Equal(t, commission, granted)
+	assert.EqualValues(t, commission, affReload(t, 7561).AffQuota)
+	assert.EqualValues(t, commission, affReload(t, 7561).AffHistoryQuota)
+
+	require.NoError(t, reverseAffiliateRechargeCommission("large-referral-topup", creditedQuota/2, creditedQuota))
+	require.NoError(t, reverseAffiliateRechargeCommission("large-referral-topup", creditedQuota/2, creditedQuota))
+	assert.EqualValues(t, commission/2, affReload(t, 7561).AffQuota)
+	require.NoError(t, reverseAffiliateRechargeCommission("large-referral-topup", creditedQuota, creditedQuota))
+	assert.Zero(t, affReload(t, 7561).AffQuota)
+	assert.Zero(t, affReload(t, 7561).AffHistoryQuota)
 }
 
 func seedCachedFirstBonusReversal(t *testing.T, inviteeQuota int, inviteeReward int64) (User, User) {

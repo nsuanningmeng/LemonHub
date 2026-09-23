@@ -149,6 +149,7 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 		inviterReward = 0
 	}
 
+	cacheGeneration := captureUserQuotaCacheGeneration(inviteeId)
 	firstBonusGranted, err := settleAffiliateFirstBonus(inviterId, inviteeId, inviterReward, inviteeReward)
 	if err != nil {
 		return err
@@ -173,9 +174,9 @@ func SettleReferralOnTopUp(inviteeId int, tradeNo string, creditedQuota int64, p
 	// real quota inside the first-bonus transaction) and record the audit logs.
 	if firstBonusGranted {
 		if inviteeReward > 0 {
-			inviteeRewardQuota, quotaErr := common.QuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
+			inviteeRewardQuota, quotaErr := common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
 			if quotaErr == nil {
-				syncCreditUserQuotaCache(inviteeId, inviteeRewardQuota, "referral first bonus")
+				syncCreditUserQuotaCache(inviteeId, inviteeRewardQuota, "referral first bonus", cacheGeneration)
 			}
 			RecordLog(inviteeId, LogTypeSystem, fmt.Sprintf("首次充值，使用邀请码赠送 %s", logger.LogQuota(int(inviteeReward))))
 		}
@@ -277,6 +278,9 @@ func reverseAffiliateRechargeCommission(tradeNo string, clawedBackTotal, credite
 			if d <= 0 {
 				return nil
 			}
+			if d > common.MaxWalletQuota {
+				return common.ErrWalletQuotaOutOfRange
+			}
 			claim := tx.Model(&AffiliateCommission{}).
 				Where("id = ? AND reversed_quota = ?", row.Id, row.ReversedQuota).
 				Updates(map[string]interface{}{
@@ -291,11 +295,17 @@ func reverseAffiliateRechargeCommission(tradeNo string, clawedBackTotal, credite
 				return errAffiliateReversalRaceLost
 			}
 			if !row.CashSettled {
-				if e := tx.Model(&User{}).Where("id = ?", row.InviterId).Updates(map[string]interface{}{
-					"aff_quota":   gorm.Expr("aff_quota - ?", d),
-					"aff_history": gorm.Expr("aff_history - ?", d),
-				}).Error; e != nil {
-					return e
+				result := tx.Model(&User{}).
+					Where("id = ? AND aff_quota >= ? AND aff_history >= ?", row.InviterId, -common.MaxWalletQuota+d, -common.MaxWalletQuota+d).
+					Updates(map[string]interface{}{
+						"aff_quota":   gorm.Expr("aff_quota - ?", d),
+						"aff_history": gorm.Expr("aff_history - ?", d),
+					})
+				if result.Error != nil {
+					return result.Error
+				}
+				if result.RowsAffected != 1 {
+					return common.ErrWalletQuotaOutOfRange
 				}
 			}
 			inviterId, delta = row.InviterId, d
@@ -346,7 +356,7 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 		return err
 	}
 	if observed.RechargeQuota > 0 {
-		if _, err := common.QuotaFromDecimalStrict(decimal.NewFromInt(observed.RechargeQuota)); err != nil {
+		if _, err := common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(observed.RechargeQuota)); err != nil {
 			return err
 		}
 		if err := ensureUserQuotaCacheAvailable(inviteeId); err != nil {
@@ -359,6 +369,7 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 	granted, err := func() (bool, error) {
 		cacheApplied := false
 		var cacheDelta int64
+		var cacheGeneration string
 		callbackCompleted := false
 		txErr := DB.Transaction(func(tx *gorm.DB) error {
 			var fb AffiliateCommission
@@ -385,7 +396,7 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 			var inviterRewardQuota int
 			if inviterReward > 0 {
 				var quotaErr error
-				inviterRewardQuota, quotaErr = common.QuotaFromDecimalStrict(decimal.NewFromInt(inviterReward))
+				inviterRewardQuota, quotaErr = common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(inviterReward))
 				if quotaErr != nil {
 					return quotaErr
 				}
@@ -402,11 +413,11 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 			var inviteeRewardQuota int
 			if inviteeReward > 0 {
 				var quotaErr error
-				inviteeRewardQuota, quotaErr = common.QuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
+				inviteeRewardQuota, quotaErr = common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
 				if quotaErr != nil {
 					return quotaErr
 				}
-				applied, cacheErr := applyPreparedUserQuotaCacheDelta(inviteeId, -int64(inviteeRewardQuota))
+				applied, cacheErr := applyPreparedUserQuotaCacheDelta(inviteeId, -int64(inviteeRewardQuota), &cacheGeneration)
 				if cacheErr != nil {
 					return cacheErr
 				}
@@ -438,21 +449,25 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 				inviterUpdates["aff_quota"] = gorm.Expr("aff_quota - ?", inviterRewardQuota)
 				inviterUpdates["aff_history"] = gorm.Expr("aff_history - ?", inviterRewardQuota)
 			}
-			inviterUpdate := tx.Model(&User{}).Where("id = ?", fb.InviterId).Updates(inviterUpdates)
+			inviterQuery := tx.Model(&User{}).Where("id = ?", fb.InviterId)
+			if inviterReward > 0 {
+				inviterQuery = inviterQuery.Where("aff_quota >= ? AND aff_history >= ?", -common.MaxWalletQuota+inviterRewardQuota, -common.MaxWalletQuota+inviterRewardQuota)
+			}
+			inviterUpdate := inviterQuery.Updates(inviterUpdates)
 			if inviterUpdate.Error != nil {
 				return inviterUpdate.Error
 			}
 			if inviterUpdate.RowsAffected != 1 {
-				return gorm.ErrRecordNotFound
+				return common.ErrWalletQuotaOutOfRange
 			}
 			if inviteeReward > 0 {
-				inviteeUpdate := tx.Model(&User{}).Where("id = ?", inviteeId).
+				inviteeUpdate := tx.Model(&User{}).Where("id = ? AND quota >= ?", inviteeId, -common.MaxWalletQuota+inviteeRewardQuota).
 					Update("quota", gorm.Expr("quota - ?", inviteeRewardQuota))
 				if inviteeUpdate.Error != nil {
 					return inviteeUpdate.Error
 				}
 				if inviteeUpdate.RowsAffected != 1 {
-					return gorm.ErrRecordNotFound
+					return common.ErrWalletQuotaOutOfRange
 				}
 			}
 			inviterId = fb.InviterId
@@ -479,13 +494,13 @@ func reverseAffiliateFirstBonus(inviteeId int) error {
 						txErr = nil
 					}
 				case checkErr == nil:
-					compensatePreparedUserQuotaCacheDelta(inviteeId, cacheDelta, "affiliate first-bonus reversal rollback")
+					compensatePreparedUserQuotaCacheDelta(inviteeId, cacheDelta, "affiliate first-bonus reversal rollback", cacheGeneration)
 				default:
 					common.SysError(fmt.Sprintf("affiliate first-bonus reversal commit outcome is ambiguous; retaining fail-closed cache debit: invitee=%d tx_error=%v check_error=%v", inviteeId, txErr, checkErr))
 					_ = fenceUserQuotaCacheUncertainty(inviteeId, "affiliate_first_bonus_reversal")
 				}
 			} else {
-				compensatePreparedUserQuotaCacheDelta(inviteeId, cacheDelta, "affiliate first-bonus reversal rollback")
+				compensatePreparedUserQuotaCacheDelta(inviteeId, cacheDelta, "affiliate first-bonus reversal rollback", cacheGeneration)
 			}
 		}
 		return resolveAffiliateSettleResult(txErr, func() bool {
@@ -571,13 +586,13 @@ func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeR
 	inviteeRewardQuota := 0
 	var err error
 	if inviterReward > 0 {
-		inviterRewardQuota, err = common.QuotaFromDecimalStrict(decimal.NewFromInt(inviterReward))
+		inviterRewardQuota, err = common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(inviterReward))
 		if err != nil {
 			return false, err
 		}
 	}
 	if inviteeReward > 0 {
-		inviteeRewardQuota, err = common.QuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
+		inviteeRewardQuota, err = common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(inviteeReward))
 		if err != nil {
 			return false, err
 		}
@@ -633,7 +648,7 @@ func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeR
 		inviterQuery := tx.Model(&User{}).
 			Where("id = ? AND aff_count < ?", inviterId, common.MaxQuota)
 		if inviterRewardQuota > 0 {
-			maxCurrent := common.MaxQuota - 1 - inviterRewardQuota
+			maxCurrent := common.MaxWalletQuota - inviterRewardQuota
 			inviterQuery = inviterQuery.Where("aff_quota <= ? AND aff_history <= ?", maxCurrent, maxCurrent)
 			inviterUpdates["aff_quota"] = gorm.Expr("aff_quota + ?", inviterRewardQuota)
 			inviterUpdates["aff_history"] = gorm.Expr("aff_history + ?", inviterRewardQuota)
@@ -646,7 +661,8 @@ func settleAffiliateFirstBonus(inviterId, inviteeId int, inviterReward, inviteeR
 			return ErrTopUpQuotaLimitExceeded
 		}
 		if inviteeRewardQuota > 0 {
-			if err := creditTopUpQuota(tx, inviteeId, inviteeRewardQuota, nil); err != nil {
+			var cacheGeneration string
+			if err := creditTopUpQuota(tx, inviteeId, inviteeRewardQuota, nil, &cacheGeneration); err != nil {
 				return err
 			}
 		}
@@ -666,7 +682,7 @@ func settleAffiliateRechargeCommission(inviterId, inviteeId int, tradeNo string,
 	if commission <= 0 {
 		return 0, nil
 	}
-	commissionQuota, err := common.QuotaFromDecimalStrict(decimal.NewFromInt(commission))
+	commissionQuota, err := common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(commission))
 	if err != nil {
 		return 0, err
 	}
@@ -700,7 +716,7 @@ func settleAffiliateRechargeCommission(inviterId, inviteeId int, tradeNo string,
 			if !creditPlatformQuota {
 				return nil
 			}
-			maxCurrent := common.MaxQuota - 1 - commissionQuota
+			maxCurrent := common.MaxWalletQuota - commissionQuota
 			result := tx.Model(&User{}).
 				Where("id = ? AND aff_quota <= ? AND aff_history <= ?", inviterId, maxCurrent, maxCurrent).
 				Updates(map[string]interface{}{

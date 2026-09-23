@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import i18next from 'i18next'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -34,6 +34,8 @@ import {
   isWaffoPayment,
   isWaffoPancakePayment,
   submitPaymentForm,
+  getPaymentErrorMessage,
+  getSafePaymentRedirectUrl,
 } from '../lib'
 import type { AmountRequest, AmountResponse } from '../types'
 
@@ -72,34 +74,54 @@ export async function requestPaymentAmount(
   }
 
   const response = await calculator({ amount: topupAmount })
-  if (!isApiSuccess(response) || !response.data) {
-    return 0
+  if (!isApiSuccess(response)) {
+    throw new Error(getPaymentErrorMessage(response))
   }
 
-  return Number.parseFloat(response.data)
+  const amount = Number(response.data)
+  if (
+    typeof response.data !== 'string' ||
+    !Number.isFinite(amount) ||
+    amount <= 0
+  ) {
+    throw new Error(i18next.t('Payment request failed'))
+  }
+  return amount
 }
 
 export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
+  const [error, setError] = useState<string | null>(null)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const quoteRequestId = useRef(0)
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
     async (topupAmount: number, paymentType: string) => {
+      const requestId = ++quoteRequestId.current
+      setCalculating(true)
+      setAmount(0)
+      setError(null)
       try {
-        setCalculating(true)
         const calculatedAmount = await requestPaymentAmount(
           topupAmount,
           paymentType
         )
+        if (requestId !== quoteRequestId.current) return null
         setAmount(calculatedAmount)
         return calculatedAmount
-      } catch {
+      } catch (error) {
+        if (requestId !== quoteRequestId.current) return null
         setAmount(0)
-        return 0
+        setError(
+          error instanceof Error
+            ? error.message
+            : i18next.t('Payment request failed')
+        )
+        return null
       } finally {
-        setCalculating(false)
+        if (requestId === quoteRequestId.current) setCalculating(false)
       }
     },
     []
@@ -125,13 +147,18 @@ export function usePayment() {
             })
 
         if (!isApiSuccess(response)) {
-          toast.error(response.message || i18next.t('Payment request failed'))
+          toast.error(getPaymentErrorMessage(response))
           return false
         }
 
         // Handle Stripe payment
-        if (isStripe && response.data?.pay_link) {
-          window.open(response.data.pay_link as string, '_blank')
+        if (isStripe) {
+          const paymentUrl = getSafePaymentRedirectUrl(response.data?.pay_link)
+          if (!paymentUrl) {
+            toast.error(i18next.t('Payment request failed'))
+            return false
+          }
+          window.open(paymentUrl, '_blank', 'noopener,noreferrer')
           toast.success(i18next.t('Redirecting to payment page...'))
           return true
         }
@@ -146,6 +173,7 @@ export function usePayment() {
           }
         }
 
+        toast.error(i18next.t('Payment request failed'))
         return false
       } catch {
         toast.error(i18next.t('Payment request failed'))
@@ -159,6 +187,7 @@ export function usePayment() {
 
   return {
     amount,
+    error,
     calculating,
     processing,
     calculatePaymentAmount,

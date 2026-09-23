@@ -92,6 +92,7 @@ export function Wallet(props: WalletProps) {
   }, [currency?.quotaDisplayType, currency?.usdExchangeRate])
   const {
     amount: paymentAmount,
+    error: paymentError,
     calculating,
     processing,
     calculatePaymentAmount,
@@ -183,7 +184,11 @@ export function Wallet(props: WalletProps) {
       }
 
       // Calculate payment amount and show confirmation dialog
-      await calculatePaymentAmount(topupAmount, method.type)
+      const quotedAmount = await calculatePaymentAmount(
+        topupAmount,
+        method.type
+      )
+      if (quotedAmount === null) return
       setConfirmDialogOpen(true)
     } finally {
       setPaymentLoading(null)
@@ -192,7 +197,18 @@ export function Wallet(props: WalletProps) {
 
   // Handle payment confirmation
   const handlePaymentConfirm = async () => {
-    if (!selectedPaymentMethod) return
+    if (
+      !selectedPaymentMethod ||
+      calculating ||
+      paymentError ||
+      !Number.isFinite(paymentAmount) ||
+      paymentAmount <= 0 ||
+      processing ||
+      waffoProcessing ||
+      pancakeProcessing
+    ) {
+      return
+    }
 
     const success = await dispatchSelectedPayment(
       selectedPaymentMethod,
@@ -263,7 +279,11 @@ export function Wallet(props: WalletProps) {
     setPaymentLoading(loadingKey)
 
     try {
-      await calculatePaymentAmount(topupAmount, PAYMENT_TYPES.WAFFO)
+      const quotedAmount = await calculatePaymentAmount(
+        topupAmount,
+        PAYMENT_TYPES.WAFFO
+      )
+      if (quotedAmount === null) return
       setConfirmDialogOpen(true)
     } finally {
       setPaymentLoading(null)
@@ -306,6 +326,7 @@ export function Wallet(props: WalletProps) {
                   topupAmount={topupAmount}
                   onTopupAmountChange={handleTopupAmountChange}
                   paymentAmount={paymentAmount}
+                  paymentError={paymentError}
                   calculating={calculating}
                   onPaymentMethodSelect={handlePaymentMethodSelect}
                   paymentLoading={paymentLoading}
@@ -358,6 +379,7 @@ export function Wallet(props: WalletProps) {
         onConfirm={handlePaymentConfirm}
         topupAmount={topupAmount}
         paymentAmount={paymentAmount}
+        paymentError={paymentError}
         paymentMethod={selectedPaymentMethod}
         calculating={calculating}
         processing={processing || waffoProcessing || pancakeProcessing}

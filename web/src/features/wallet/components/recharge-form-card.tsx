@@ -61,6 +61,7 @@ interface RechargeFormCardProps {
   topupAmount: number
   onTopupAmountChange: (amount: number) => void
   paymentAmount: number
+  paymentError?: string | null
   calculating: boolean
   onPaymentMethodSelect: (method: PaymentMethod) => void
   paymentLoading: string | null
@@ -91,6 +92,7 @@ export function RechargeFormCard({
   topupAmount,
   onTopupAmountChange,
   paymentAmount,
+  paymentError,
   calculating,
   onPaymentMethodSelect,
   paymentLoading,
@@ -306,11 +308,20 @@ export function RechargeFormCard({
                       <Skeleton className='h-5 w-16' />
                     ) : (
                       <span className='text-sm font-semibold'>
-                        {formatCurrency(paymentAmount)}
+                        {Number.isFinite(paymentAmount) &&
+                        paymentAmount > 0 &&
+                        !paymentError
+                          ? formatCurrency(paymentAmount)
+                          : '—'}
                       </span>
                     )}
                   </div>
                 </div>
+                {paymentError && !calculating && (
+                  <Alert variant='destructive'>
+                    <AlertDescription>{paymentError}</AlertDescription>
+                  </Alert>
+                )}
               </div>
 
               <div className='space-y-2.5 sm:space-y-3'>

@@ -47,7 +47,18 @@ if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[2])
   or redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
   return -1
 end
-redis.call('HINCRBY', KEYS[1], 'Quota', tonumber(ARGV[1]))
+if ARGV[5] and redis.call('HGET', KEYS[1], 'QuotaGeneration') ~= ARGV[5] then
+  return -1
+end
+local quota = tonumber(redis.call('HGET', KEYS[1], 'Quota'))
+local delta = tonumber(ARGV[1])
+local maxQuota = tonumber(ARGV[4])
+if quota == nil or delta == nil or math.abs(delta) > maxQuota
+  or (delta > 0 and quota > maxQuota - delta)
+  or (delta < 0 and quota < -maxQuota - delta) then
+  return -1
+end
+redis.call('HINCRBY', KEYS[1], 'Quota', ARGV[1])
 return 1`
 
 const tokenQuotaReserveScript = `
@@ -77,8 +88,11 @@ if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[2])
   or redis.call('HEXISTS', KEYS[1], 'UsedQuota') == 0 then
   return -1
 end
-redis.call('HINCRBY', KEYS[1], 'RemainQuota', tonumber(ARGV[1]))
-redis.call('HINCRBY', KEYS[1], 'UsedQuota', -tonumber(ARGV[1]))
+if ARGV[5] ~= '' and redis.call('HGET', KEYS[1], 'QuotaGeneration') ~= ARGV[5] then
+  return -1
+end
+redis.call('HINCRBY', KEYS[1], 'RemainQuota', ARGV[1])
+redis.call('HINCRBY', KEYS[1], 'UsedQuota', ARGV[4])
 redis.call('HSET', KEYS[1], 'AccessedTime', ARGV[3])
 return 1`
 
@@ -108,7 +122,7 @@ func cacheTryReserveUserQuota(userID int, amount int64) (cacheQuotaResult, error
 func cacheApplyUserQuotaDelta(userID int, delta int64) (cacheQuotaResult, error) {
 	result, err := common.RDB.Eval(context.Background(), userQuotaDeltaScript,
 		[]string{getUserCacheKey(userID), getUserQuotaUncertaintyKey(userID), getTaskBillingUserQuotaFenceKey(userID)},
-		delta, userID, userCacheSchemaVersion).Int()
+		delta, userID, userCacheSchemaVersion, common.MaxWalletQuota).Int()
 	return quotaResultFromLua(result, err)
 }
 
@@ -287,9 +301,13 @@ func cacheTryReserveTokenQuota(id int, key string, amount int64) (cacheQuotaResu
 }
 
 func cacheApplyTokenQuotaDelta(id int, key string, delta int64) (cacheQuotaResult, error) {
+	return cacheApplyTokenQuotaDeltaForGeneration(id, key, delta, "")
+}
+
+func cacheApplyTokenQuotaDeltaForGeneration(id int, key string, delta int64, generation string) (cacheQuotaResult, error) {
 	result, err := common.RDB.Eval(context.Background(), tokenQuotaDeltaScript,
 		[]string{getTokenCacheKey(key), getTaskBillingTokenQuotaFenceKey(key)},
-		delta, id, common.GetTimestamp()).Int()
+		delta, id, common.GetTimestamp(), -delta, generation).Int()
 	return quotaResultFromLua(result, err)
 }
 
@@ -326,23 +344,24 @@ func ensureUserQuotaCacheAvailable(id int) error {
 // applyPreparedUserQuotaCacheDelta mutates an already-hydrated authoritative
 // hash without falling back to the database. The boolean tells transaction
 // callers whether a Redis compensation is required on rollback.
-func applyPreparedUserQuotaCacheDelta(id int, delta int64) (bool, error) {
+func applyPreparedUserQuotaCacheDelta(id int, delta int64, generation *string) (bool, error) {
 	if !common.RedisEnabled || delta == 0 {
 		return false, nil
 	}
-	result, err := cacheApplyUserQuotaDelta(id, delta)
+	*generation = captureUserQuotaCacheGeneration(id)
+	result, err := cacheApplyUserQuotaDeltaForGeneration(id, delta, *generation)
 	if err != nil || result != cacheQuotaOK {
 		return false, fmt.Errorf("%w: user %d", ErrQuotaCacheUnavailable, id)
 	}
 	return true, nil
 }
 
-func compensatePreparedUserQuotaCacheDelta(id int, delta int64, operation string) {
+func compensatePreparedUserQuotaCacheDelta(id int, delta int64, operation string, generation string) {
 	if !common.RedisEnabled || delta == 0 {
 		return
 	}
-	result, err := cacheApplyUserQuotaDelta(id, -delta)
-	if err != nil || result != cacheQuotaOK {
+	result, err := cacheApplyUserQuotaDeltaForGeneration(id, -delta, generation)
+	if err != nil || (result != cacheQuotaOK && result != cacheQuotaMiss) {
 		common.SysError(fmt.Sprintf("failed to compensate %s user quota cache delta: user=%d delta=%d result=%d error=%v",
 			operation, id, delta, result, err))
 	}
@@ -357,12 +376,25 @@ func persistUserQuotaDelta(id int, delta int) error {
 }
 
 func persistUserQuotaDeltaDirect(id int, delta int) error {
-	result := DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota + ?", delta))
+	if delta > common.MaxWalletQuota || delta < -common.MaxWalletQuota {
+		return common.ErrWalletQuotaOutOfRange
+	}
+	query := DB.Model(&User{}).Where("id = ?", id)
+	if delta > 0 {
+		query = query.Where("quota <= ?", common.MaxWalletQuota-delta)
+	} else if delta < 0 {
+		query = query.Where("quota >= ?", -common.MaxWalletQuota-delta)
+	}
+	result := query.Update("quota", gorm.Expr("quota + ?", delta))
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected != 1 {
-		return gorm.ErrRecordNotFound
+		var user User
+		if err := DB.Select("id").First(&user, id).Error; err != nil {
+			return err
+		}
+		return common.ErrWalletQuotaOutOfRange
 	}
 	return nil
 }
@@ -392,6 +424,9 @@ func persistTokenQuotaDeltaDirect(id int, delta int) error {
 // the same delta before returning. A failed database write synchronously
 // compensates Redis.
 func applyUserQuotaDelta(id int, delta int, forceDB bool) error {
+	if delta > common.MaxWalletQuota || delta < -common.MaxWalletQuota {
+		return common.ErrWalletQuotaOutOfRange
+	}
 	if delta == 0 {
 		return nil
 	}
@@ -404,14 +439,15 @@ func applyUserQuotaDelta(id int, delta int, forceDB bool) error {
 		// durable write would allow spend from money that may never commit. Once
 		// the DB succeeds, cache sync is only an availability optimization: failure
 		// leaves a stale-low balance and must not make callers retry the credit.
+		generation := captureUserQuotaCacheGeneration(id)
 		if err := persist(id, delta); err != nil {
 			return err
 		}
 		if !common.RedisEnabled {
 			return nil
 		}
-		result, cacheErr := cacheApplyUserQuotaDelta(id, int64(delta))
-		if cacheErr == nil && result == cacheQuotaOK {
+		result, cacheErr := cacheApplyUserQuotaDeltaForGeneration(id, int64(delta), generation)
+		if cacheErr == nil && (result == cacheQuotaOK || result == cacheQuotaMiss) {
 			return nil
 		}
 		common.SysLog(fmt.Sprintf("failed to sync committed user quota credit: user=%d delta=%d result=%d error=%v", id, delta, result, cacheErr))
@@ -463,14 +499,15 @@ func applyTokenQuotaDelta(id int, key string, delta int) error {
 		return nil
 	}
 	if delta > 0 {
+		generation := captureQuotaCacheGeneration(getTokenCacheKey(key), "RemainQuota", id)
 		if err := persistTokenQuotaDeltaDirect(id, delta); err != nil {
 			return err
 		}
-		if !common.RedisEnabled {
+		if !common.RedisEnabled || generation == "" {
 			return nil
 		}
-		result, cacheErr := cacheApplyTokenQuotaDelta(id, key, int64(delta))
-		if cacheErr == nil && result == cacheQuotaOK {
+		result, cacheErr := cacheApplyTokenQuotaDeltaForGeneration(id, key, int64(delta), generation)
+		if cacheErr == nil && (result == cacheQuotaOK || result == cacheQuotaMiss) {
 			return nil
 		}
 		common.SysLog(fmt.Sprintf("failed to sync committed token quota credit: token=%d delta=%d result=%d error=%v", id, delta, result, cacheErr))

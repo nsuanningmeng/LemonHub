@@ -35,9 +35,10 @@ var errTopUpRaceLost = errors.New("topup already settled concurrently")
 // concurrent or duplicate callback either reads a non-pending status up front, or loses the
 // claim and rolls back (no double-credit, no double-debit) — this does NOT rely on
 // SELECT ... FOR UPDATE (which GORM v2 does not emit via gorm:query_option, and which SQLite
-// rejects). For a sub-site order, costMilli must be > 0 or settlement fails closed.
+// rejects). A sub-site cost must be positive and fit the exact-integer wallet domain.
 func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (finalStatus string, quotaAdded int, err error) {
 	var settledUserId int
+	var cacheGeneration string
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		var topUp TopUp
 		if e := tx.Where("trade_no = ?", tradeNo).First(&topUp).Error; e != nil {
@@ -51,7 +52,7 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 			return nil
 		}
 
-		quota, quotaErr := common.QuotaFromDecimalStrict(
+		quota, quotaErr := common.WalletQuotaFromDecimalStrict(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 		if quotaErr != nil || quota <= 0 {
@@ -62,7 +63,7 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 		if topUp.SiteId > 0 {
 			// Fail closed: a sub-site order with no resolvable wholesale cost must NEVER be
 			// credited for free (e.g. site cache miss yielding costMilli=0).
-			if costMilli <= 0 {
+			if costMilli <= 0 || costMilli > common.MaxWalletQuota {
 				return ErrSiteTopUpUnresolved
 			}
 			if e := DeductSiteWallet(tx, topUp.SiteId, costMilli, WalletLogTypeTopupDeduct, tradeNo, "用户在线充值扣货款", operatorUserId); e != nil {
@@ -87,7 +88,7 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 		}
 
 		if target == common.TopUpStatusSuccess {
-			if e := creditTopUpQuota(tx, topUp.UserId, quota, nil); e != nil {
+			if e := creditTopUpQuota(tx, topUp.UserId, quota, nil, &cacheGeneration); e != nil {
 				return e
 			}
 			quotaAdded = quota
@@ -108,7 +109,7 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 		return "", 0, err
 	}
 	if quotaAdded > 0 && settledUserId > 0 {
-		syncCreditUserQuotaCache(settledUserId, quotaAdded, "sub-site epay topup")
+		syncCreditUserQuotaCache(settledUserId, quotaAdded, "sub-site epay topup", cacheGeneration)
 	}
 	return finalStatus, quotaAdded, err
 }
@@ -117,6 +118,9 @@ func CompleteEpayTopUp(tradeNo string, costMilli int64, operatorUserId int) (fin
 // after the agent has topped up their wallet: it atomically returns the order to pending
 // and re-runs CompleteEpayTopUp. If the wallet is still insufficient it parks again.
 func RetryManualReviewTopUp(tradeNo string, costMilli int64, operatorUserId int) (finalStatus string, quotaAdded int, err error) {
+	if costMilli <= 0 || costMilli > common.MaxWalletQuota {
+		return "", 0, ErrSiteTopUpUnresolved
+	}
 	res := DB.Model(&TopUp{}).
 		Where("trade_no = ? AND status = ?", tradeNo, TopUpStatusManualReview).
 		Update("status", common.TopUpStatusPending)

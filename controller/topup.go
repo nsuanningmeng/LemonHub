@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -310,17 +311,32 @@ func getEpayClientForSite(site *model.Site) *epay.Client {
 // siteTopupCostMilli is the agent's procurement cost in 厘 for a recharge of `money` CNY at
 // the sub-site discount rate: money × 1000(厘/元) × discountRate / 10000.
 func siteTopupCostMilli(money float64, discountRate int) int64 {
-	if money <= 0 || discountRate <= 0 {
+	if money <= 0 || math.IsNaN(money) || math.IsInf(money, 0) || discountRate <= 0 {
 		return 0
 	}
 	cost := decimal.NewFromFloat(money).
 		Mul(decimal.NewFromInt(1000)).
 		Mul(decimal.NewFromInt(int64(discountRate))).
 		Div(decimal.NewFromInt(int64(model.DiscountRateBase)))
-	return cost.Round(0).IntPart()
+	value, err := common.WalletQuotaFromDecimalStrict(cost)
+	if err != nil {
+		return 0
+	}
+	return int64(value)
 }
 
 func getPayMoney(amount int64, group string) float64 {
+	return calculateTopUpPayMoney(amount, operation_setting.Price, group)
+}
+
+// calculateTopUpPayMoney keeps all configurable multipliers finite and positive
+// before decimal conversion. Invalid configuration must never produce a checkout.
+func calculateTopUpPayMoney(amount int64, unitPrice float64, group string) float64 {
+	if amount <= 0 || amount > common.MaxWalletQuota || common.QuotaPerUnit <= 0 ||
+		math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) ||
+		unitPrice <= 0 || math.IsNaN(unitPrice) || math.IsInf(unitPrice, 0) {
+		return math.NaN()
+	}
 	dAmount := decimal.NewFromInt(amount)
 	// 充值金额以“展示类型”为准：
 	// - USD/CNY: 前端传 amount 为金额单位；TOKENS: 前端传 tokens，需要换成 USD 金额
@@ -334,15 +350,23 @@ func getPayMoney(amount int64, group string) float64 {
 		topupGroupRatio = 1
 	}
 
-	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
-	dPrice := decimal.NewFromFloat(operation_setting.Price)
 	// apply optional preset discount by the original request amount (if configured), default 1.0
 	discount := 1.0
 	if ds, ok := operation_setting.GetPaymentSetting().AmountDiscount[int(amount)]; ok {
+		if math.IsNaN(ds) || math.IsInf(ds, 0) {
+			return math.NaN()
+		}
+		// A finite non-positive entry has historically meant no preset discount.
 		if ds > 0 {
 			discount = ds
 		}
 	}
+	if topupGroupRatio <= 0 || math.IsNaN(topupGroupRatio) || math.IsInf(topupGroupRatio, 0) ||
+		discount <= 0 || math.IsNaN(discount) || math.IsInf(discount, 0) {
+		return math.NaN()
+	}
+	dTopupGroupRatio := decimal.NewFromFloat(topupGroupRatio)
+	dPrice := decimal.NewFromFloat(unitPrice)
 	dDiscount := decimal.NewFromFloat(discount)
 
 	payMoney := dAmount.Mul(dPrice).Mul(dTopupGroupRatio).Mul(dDiscount)
@@ -350,17 +374,39 @@ func getPayMoney(amount int64, group string) float64 {
 	return payMoney.InexactFloat64()
 }
 
-func getMinTopup() int64 {
-	minTopup := operation_setting.MinTopUp
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dMinTopup := decimal.NewFromInt(int64(minTopup))
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		minTopup = common.QuotaFromDecimal(dMinTopup.Mul(dQuotaPerUnit))
+func rejectInvalidTopUpPayMoney(c *gin.Context, amount float64) bool {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付金额配置无效"})
+		return true
 	}
-	return int64(minTopup)
+	return false
+}
+
+func getMinTopup() int64 {
+	return getMinimumTopUpAmount(operation_setting.MinTopUp)
+}
+
+func getMinimumTopUpAmount(minTopup int) int64 {
+	if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+		return common.MaxWalletQuota + 1
+	}
+	amount := decimal.NewFromInt(int64(minTopup))
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		amount = amount.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	}
+	minimum, err := common.WalletQuotaFromDecimalStrict(amount)
+	if err != nil {
+		// An unrepresentable configured minimum must not lower the payment gate.
+		return common.MaxWalletQuota + 1
+	}
+	return int64(minimum)
 }
 
 func getTopUpQuota(amount int64) (int, error) {
+	if amount < 0 || amount > common.MaxWalletQuota || common.QuotaPerUnit <= 0 ||
+		math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+		return 0, common.ErrWalletQuotaOutOfRange
+	}
 	quota := decimal.NewFromInt(amount)
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
@@ -368,29 +414,31 @@ func getTopUpQuota(amount int64) (int, error) {
 	} else {
 		quota = quota.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
-	return common.QuotaFromDecimalStrict(quota)
+	return common.WalletQuotaFromDecimalStrict(quota)
 }
 
 func getMaxTopUpAmount() int64 {
-	if common.QuotaPerUnit <= 0 {
+	if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
 		return 0
 	}
 	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-	maxStoredAmount := decimal.NewFromInt(common.MaxQuota - 1).
+	maxStoredAmount := decimal.NewFromInt(common.MaxWalletQuota).
 		Div(quotaPerUnit).
 		Floor()
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		return maxStoredAmount.Add(decimal.NewFromInt(1)).
+		maxStoredAmount = maxStoredAmount.Add(decimal.NewFromInt(1)).
 			Mul(quotaPerUnit).
 			Ceil().
-			Sub(decimal.NewFromInt(1)).
-			IntPart()
+			Sub(decimal.NewFromInt(1))
+	}
+	if maxStoredAmount.GreaterThan(decimal.NewFromInt(common.MaxWalletQuota)) {
+		return common.MaxWalletQuota
 	}
 	return maxStoredAmount.IntPart()
 }
 
 func validateCreditedQuota(quota decimal.Decimal) (int, error) {
-	value, err := common.QuotaFromDecimalStrict(quota)
+	value, err := common.WalletQuotaFromDecimalStrict(quota)
 	if err != nil {
 		return 0, errors.New("充值额度超出系统可表示范围")
 	}
@@ -458,6 +506,9 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group)
+	if rejectInvalidTopUpPayMoney(c, payMoney) {
+		return
+	}
 	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
@@ -482,7 +533,7 @@ func RequestEpay(c *gin.Context) {
 	if site != nil {
 		cost := siteTopupCostMilli(payMoney, site.DiscountRate)
 		bal, balErr := model.GetSiteWalletBalance(site.Id)
-		if balErr != nil || bal < cost {
+		if cost <= 0 || balErr != nil || bal < cost {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "本站充值暂时不可用"})
 			return
 		}
@@ -926,6 +977,9 @@ func RequestAmount(c *gin.Context) {
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group)
+	if rejectInvalidTopUpPayMoney(c, payMoney) {
+		return
+	}
 	if payMoney <= 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return

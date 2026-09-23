@@ -5097,6 +5097,7 @@
     "This ticket is closed.": "该工单已关闭。",
     "This tier catches any request that did not match earlier tiers.": "此阶梯会兜底处理未匹配前面阶梯的请求。",
     "this token group": "此令牌分组",
+    "This top-up exceeds the wallet balance limit. Reduce the amount or contact the administrator.": "本次充值会超出钱包余额上限，请减少充值金额或联系管理员。",
     "This Uptime Kuma group will be removed from the list.": "此 Uptime Kuma 分组将从列表中移除。",
     "This user account is disabled.": "此用户账户已被禁用。",
     "This user account no longer exists.": "此用户账户已不存在。",

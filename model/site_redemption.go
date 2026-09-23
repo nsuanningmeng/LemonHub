@@ -111,6 +111,7 @@ func VoidRedemption(id int, siteScope int, operatorUserId int) error {
 // deliberately the same "invalid code" message so existence does not leak across sites.
 // It otherwise mirrors model.Redeem (credits the user's quota and marks the code used).
 func RedeemForSite(key string, userId int, siteId int) (quota int, err error) {
+	var cacheGeneration string
 	if key == "" {
 		return 0, errors.New("未提供兑换码")
 	}
@@ -153,7 +154,7 @@ func RedeemForSite(key string, userId int, siteId int) (quota int, err error) {
 		if result.RowsAffected == 0 {
 			return errors.New("该兑换码已被使用")
 		}
-		return creditTopUpQuota(tx, userId, redemption.Quota, nil)
+		return creditTopUpQuota(tx, userId, redemption.Quota, nil, &cacheGeneration)
 	})
 	if err != nil {
 		// Mirror model.Redeem: log the specific cause, return a generic error so the
@@ -161,7 +162,7 @@ func RedeemForSite(key string, userId int, siteId int) (quota int, err error) {
 		common.SysError("redemption failed: " + err.Error())
 		return 0, ErrRedeemFailed
 	}
-	syncCreditUserQuotaCache(userId, redemption.Quota, "site redemption")
+	syncCreditUserQuotaCache(userId, redemption.Quota, "site redemption", cacheGeneration)
 	RecordLog(userId, LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(redemption.Quota), redemption.Id))
 	return redemption.Quota, nil
 }

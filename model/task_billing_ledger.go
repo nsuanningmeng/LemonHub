@@ -93,6 +93,9 @@ func validateTaskBillingStageParams(p TaskBillingStageParams) error {
 	if p.TargetQuota < 0 || p.TargetQuota > common.MaxQuota {
 		return fmt.Errorf("task billing target quota out of range: %d", p.TargetQuota)
 	}
+	if p.Delta < common.MinQuota || p.Delta > common.MaxQuota {
+		return fmt.Errorf("task billing quota delta out of range: %d", p.Delta)
+	}
 	if p.RequestCountDelta < 0 {
 		return fmt.Errorf("task billing request count delta cannot be negative: %d", p.RequestCountDelta)
 	}
@@ -307,7 +310,7 @@ func UndoTaskBillingStage(p TaskBillingStageParams) (bool, error) {
 	}
 	cacheTarget := billingCacheTargetForStage(p)
 	cacheTarget.delta = -cacheTarget.delta
-	if cacheTarget.delta < 0 || cacheTarget.operationFence != "" {
+	if cacheTarget.delta != 0 || cacheTarget.operationFence != "" {
 		preparedTarget, prepareErr := prepareTaskBillingCacheDebitWithTarget(cacheTarget)
 		if prepareErr != nil && cacheTarget.kind != "" {
 			ledger, ledgerErr := getTaskBillingStage(DB, p.TaskType, p.TaskRecordId, p.Operation, p.Stage)
@@ -463,13 +466,14 @@ var (
 )
 
 type taskBillingCacheMutation struct {
-	kind           string
-	userId         int
-	tokenId        int
-	tokenKey       string
-	delta          int64
-	tokenUsedDelta int64
-	operationFence string
+	kind             string
+	userId           int
+	tokenId          int
+	tokenKey         string
+	delta            int64
+	tokenUsedDelta   int64
+	operationFence   string
+	creditGeneration string
 }
 
 const (
@@ -744,15 +748,18 @@ func prepareTaskBillingCacheDebitWithTarget(target taskBillingCacheMutation) (ta
 		if err := ensureTaskBillingOperationCacheAvailable(target); err != nil {
 			return target, err
 		}
+		captureTaskBillingCacheGeneration(&target)
 		return target, nil
 	}
 	if target.delta >= 0 {
+		captureTaskBillingCacheGeneration(&target)
 		return target, nil
 	}
 	if target.kind == taskBillingCacheUser {
 		if err := ensureUserQuotaCacheAvailable(target.userId); err != nil {
 			return target, err
 		}
+		captureTaskBillingCacheGeneration(&target)
 		return target, nil
 	}
 	if target.kind == taskBillingCacheToken {
@@ -777,7 +784,16 @@ func prepareTaskBillingCacheDebitWithTarget(target taskBillingCacheMutation) (ta
 	if err != nil || result != cacheQuotaOK {
 		return target, fmt.Errorf("%w: prepare %s quota cache", ErrQuotaCacheUnavailable, target.kind)
 	}
+	captureTaskBillingCacheGeneration(&target)
 	return target, nil
+}
+
+func captureTaskBillingCacheGeneration(target *taskBillingCacheMutation) {
+	if target.kind == taskBillingCacheUser {
+		target.creditGeneration = captureUserQuotaCacheGeneration(target.userId)
+	} else if target.kind == taskBillingCacheToken {
+		target.creditGeneration = captureQuotaCacheGeneration(getTokenCacheKey(target.tokenKey), "RemainQuota", target.tokenId)
+	}
 }
 
 func ensureTaskBillingOperationCacheAvailable(target taskBillingCacheMutation) error {
@@ -872,7 +888,18 @@ if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[2])
   or redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
   return -1
 end
-redis.call('HINCRBY', KEYS[1], 'Quota', tonumber(ARGV[1]))
+if ARGV[6] ~= '' and redis.call('HGET', KEYS[1], 'QuotaGeneration') ~= ARGV[6] then
+  return -1
+end
+local quota = tonumber(redis.call('HGET', KEYS[1], 'Quota'))
+local delta = tonumber(ARGV[1])
+local maxQuota = tonumber(ARGV[7])
+if quota == nil or delta == nil or math.abs(delta) > maxQuota
+  or (delta > 0 and quota > maxQuota - delta)
+  or (delta < 0 and quota < -maxQuota - delta) then
+  return -1
+end
+redis.call('HINCRBY', KEYS[1], 'Quota', ARGV[1])
 return 1`
 
 func cacheApplyTaskUserQuotaDelta(target taskBillingCacheMutation) (cacheQuotaResult, error) {
@@ -881,7 +908,7 @@ func cacheApplyTaskUserQuotaDelta(target taskBillingCacheMutation) (cacheQuotaRe
 			getUserCacheKey(target.userId), getUserQuotaUncertaintyKey(target.userId),
 			getTaskBillingUserQuotaFenceKey(target.userId),
 		}, target.delta, target.userId, userCacheSchemaVersion, target.operationFence,
-		"inflight:task-billing-operation|").Int()
+		"inflight:task-billing-operation|", target.creditGeneration, common.MaxWalletQuota).Int()
 	return quotaResultFromLua(result, err)
 }
 
@@ -903,8 +930,11 @@ if tonumber(redis.call('HGET', KEYS[1], 'Id') or '0') ~= tonumber(ARGV[3])
   or redis.call('HEXISTS', KEYS[1], 'UsedQuota') == 0 then
   return -1
 end
-redis.call('HINCRBY', KEYS[1], 'RemainQuota', tonumber(ARGV[1]))
-redis.call('HINCRBY', KEYS[1], 'UsedQuota', tonumber(ARGV[2]))
+if ARGV[7] ~= '' and redis.call('HGET', KEYS[1], 'QuotaGeneration') ~= ARGV[7] then
+  return -1
+end
+redis.call('HINCRBY', KEYS[1], 'RemainQuota', ARGV[1])
+redis.call('HINCRBY', KEYS[1], 'UsedQuota', ARGV[2])
 redis.call('HSET', KEYS[1], 'AccessedTime', ARGV[4])
 return 1`
 
@@ -916,7 +946,7 @@ func cacheApplyTaskTokenQuotaDelta(target taskBillingCacheMutation) (cacheQuotaR
 		[]string{getTokenCacheKey(target.tokenKey), getTaskBillingTokenQuotaFenceKey(target.tokenKey)},
 		target.delta, target.tokenUsedDelta,
 		target.tokenId, common.GetTimestamp(), target.operationFence,
-		"inflight:task-billing-operation|").Int()
+		"inflight:task-billing-operation|", target.creditGeneration).Int()
 	return quotaResultFromLua(result, err)
 }
 
@@ -941,25 +971,30 @@ func applyTaskBillingCacheDelta(target taskBillingCacheMutation) error {
 func compensateTaskBillingCacheDebit(target taskBillingCacheMutation) {
 	target.delta = -target.delta
 	target.tokenUsedDelta = -target.tokenUsedDelta
-	if err := applyTaskBillingCacheDelta(target); err == nil {
-		return
-	}
-	common.SysError("failed to compensate task billing quota cache debit")
-	invalidateTaskBillingCacheTarget(target)
+	syncTaskBillingCacheCredit(target)
 }
 
 func syncTaskBillingCacheCredit(target taskBillingCacheMutation) {
 	if target.delta <= 0 || target.kind == "" || !common.RedisEnabled {
 		return
 	}
-	if err := applyTaskBillingCacheDelta(target); err == nil {
+	if target.creditGeneration == "" {
+		return
+	}
+	var result cacheQuotaResult
+	var err error
+	if target.kind == taskBillingCacheUser {
+		result, err = cacheApplyTaskUserQuotaDelta(target)
+	} else {
+		result, err = cacheApplyTaskTokenQuotaDelta(target)
+	}
+	if err == nil && (result == cacheQuotaOK || result == cacheQuotaMiss) {
 		return
 	}
 	// A credit is safe to leave absent or stale-low, but must never be retried as
-	// an accounting stage. Drop/fence the mirror best-effort so its next valid
-	// read hydrates the committed database balance.
+	// an accounting stage. Preserve concurrent cache debits; replacing a live
+	// hash here could discard a debit that has not yet reached the database.
 	common.SysLog("failed to sync committed task billing quota credit to cache")
-	invalidateTaskBillingCacheTarget(target)
 }
 
 func taskBillingUncertaintyFenceValue(p TaskBillingStageParams, mode, attemptId string) string {
@@ -1434,7 +1469,7 @@ func applyTaskAggregateBaseline(tx *gorm.DB, p TaskBillingStageParams) (int, err
 		}
 		newUsed := int64(user.UsedQuota) + int64(p.Delta)
 		newRequestCount := int64(user.RequestCount) + int64(p.RequestCountDelta)
-		if newUsed < 0 || newUsed > int64(common.MaxQuota) ||
+		if newUsed < 0 || newUsed > int64(common.MaxWalletQuota) ||
 			newRequestCount < 0 || newRequestCount > int64(common.MaxQuota) {
 			return 0, fmt.Errorf("task aggregate baseline out of range: used=%d quota=%d requests=%d",
 				user.UsedQuota, p.Delta, user.RequestCount)
@@ -1504,7 +1539,7 @@ func applyTaskFundingDelta(tx *gorm.DB, p TaskBillingStageParams) error {
 		return err
 	}
 	newQuota := int64(user.Quota) - int64(p.Delta)
-	if newQuota < int64(common.MinQuota) || newQuota > int64(common.MaxQuota) {
+	if newQuota < -int64(common.MaxWalletQuota) || newQuota > int64(common.MaxWalletQuota) {
 		return fmt.Errorf("user quota delta out of range: quota=%d delta=%d", user.Quota, p.Delta)
 	}
 	return tx.Model(&User{}).Where("id = ?", user.Id).Update("quota", int(newQuota)).Error
@@ -1588,7 +1623,7 @@ func applyTaskFinalize(tx *gorm.DB, p TaskBillingStageParams) error {
 			return err
 		}
 		newUsed := int64(user.UsedQuota) + usageDelta
-		if newUsed < 0 || newUsed > int64(common.MaxQuota) {
+		if newUsed < 0 || newUsed > int64(common.MaxWalletQuota) {
 			return fmt.Errorf("user used quota delta out of range: used=%d delta=%d applied_delta=%d", user.UsedQuota, p.Delta, usageDelta)
 		}
 		newRequestCount := int64(user.RequestCount) + int64(p.RequestCountDelta)

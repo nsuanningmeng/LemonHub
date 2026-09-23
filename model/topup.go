@@ -186,10 +186,10 @@ func (topUp *TopUp) Insert() error {
 }
 
 func topUpQuotaMaxCurrent(creditedQuota int) (int, error) {
-	if creditedQuota <= 0 || creditedQuota >= common.MaxQuota {
+	if creditedQuota <= 0 || creditedQuota > common.MaxWalletQuota {
 		return 0, ErrInvalidTopUpQuota
 	}
-	return common.MaxQuota - 1 - creditedQuota, nil
+	return common.MaxWalletQuota - creditedQuota, nil
 }
 
 // ValidateTopUpQuotaCapacity performs the user-facing pre-payment check. The
@@ -211,10 +211,10 @@ func ValidateTopUpQuotaCapacity(userId int, creditedQuota int) error {
 	return nil
 }
 
-// creditTopUpQuota atomically enforces the int32 wallet ceiling while adding
+// creditTopUpQuota atomically enforces the exact-integer wallet ceiling while adding
 // quota. Keeping the predicate and increment in one UPDATE prevents two
 // concurrent callbacks from both passing a separate read/check.
-func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]interface{}) error {
+func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[string]interface{}, cacheGeneration *string) error {
 	maxCurrentQuota, err := topUpQuotaMaxCurrent(creditedQuota)
 	if err != nil {
 		return err
@@ -225,6 +225,7 @@ func creditTopUpQuota(tx *gorm.DB, userId int, creditedQuota int, updates map[st
 		updateFields[key] = value
 	}
 	updateFields["quota"] = gorm.Expr("quota + ?", creditedQuota)
+	*cacheGeneration = captureUserQuotaCacheGeneration(userId)
 
 	result := tx.Model(&User{}).
 		Where("id = ? AND quota <= ?", userId, maxCurrentQuota).
@@ -387,6 +388,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	}
 
 	var quotaToAdd int
+	var cacheGeneration string
 	topUp := &TopUp{}
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
@@ -406,7 +408,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 			topUp.PaymentMethod = actualPaymentMethod
 		}
 		var quotaErr error
-		quotaToAdd, quotaErr = common.QuotaFromDecimalStrict(
+		quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 		if quotaErr != nil || quotaToAdd <= 0 {
@@ -417,7 +419,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheGeneration)
 	})
 	if err != nil {
 		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
@@ -428,7 +430,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	if alreadyDone {
 		return true, nil
 	}
-	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "epay topup")
+	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "epay topup", cacheGeneration)
 
 	common.SysLog(fmt.Sprintf("易支付充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f", topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money))
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentProviderEpay)
@@ -439,6 +441,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 }
 
 func Recharge(referenceId string, customerId string, paymentIntent string, callerIp string) (err error) {
+	var cacheGeneration string
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -477,7 +480,7 @@ func Recharge(referenceId string, customerId string, paymentIntent string, calle
 			return err
 		}
 
-		quota, err = common.QuotaFromDecimalStrict(
+		quota, err = common.WalletQuotaFromDecimalStrict(
 			decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 		if err != nil || quota <= 0 {
@@ -485,14 +488,14 @@ func Recharge(referenceId string, customerId string, paymentIntent string, calle
 		}
 		return creditTopUpQuota(tx, topUp.UserId, quota, map[string]interface{}{
 			"stripe_customer": customerId,
-		})
+		}, &cacheGeneration)
 	})
 
 	if err != nil {
 		common.SysError("topup failed: " + err.Error())
 		return errors.New("充值失败，请稍后重试")
 	}
-	syncCreditUserQuotaCache(topUp.UserId, quota, "stripe topup")
+	syncCreditUserQuotaCache(topUp.UserId, quota, "stripe topup", cacheGeneration)
 
 	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%d", logger.FormatQuota(quota), topUp.Amount), callerIp, topUp.PaymentMethod, PaymentMethodStripe)
 
@@ -566,6 +569,7 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 		raceLost := false
 		cacheApplied := false
 		var cacheDelta int64
+		var cacheGeneration string
 		var cacheUserId int
 		var expectedClawed int64
 		callbackCompleted := false
@@ -611,7 +615,7 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 				return nil // duplicate/idempotent: nothing to change
 			}
 			if delta > 0 {
-				applied, err := applyPreparedUserQuotaCacheDelta(topUp.UserId, -delta)
+				applied, err := applyPreparedUserQuotaCacheDelta(topUp.UserId, -delta, &cacheGeneration)
 				if err != nil {
 					return err
 				}
@@ -634,13 +638,18 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 				return errTopUpRaceLost
 			}
 			if delta > 0 {
-				userUpdate := tx.Model(&User{}).Where("id = ?", topUp.UserId).
+				userUpdate := tx.Model(&User{}).
+					Where("id = ? AND quota >= ?", topUp.UserId, -int64(common.MaxWalletQuota)+delta).
 					Update("quota", gorm.Expr("quota - ?", delta))
 				if userUpdate.Error != nil {
 					return userUpdate.Error
 				}
 				if userUpdate.RowsAffected != 1 {
-					return gorm.ErrRecordNotFound
+					var user User
+					if err := tx.Select("id").First(&user, topUp.UserId).Error; err != nil {
+						return err
+					}
+					return ErrTopUpQuotaLimitExceeded
 				}
 			}
 			clawedDelta = delta
@@ -668,13 +677,13 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 						err = nil
 					}
 				case checkErr == nil:
-					compensatePreparedUserQuotaCacheDelta(cacheUserId, cacheDelta, "Stripe clawback rollback")
+					compensatePreparedUserQuotaCacheDelta(cacheUserId, cacheDelta, "Stripe clawback rollback", cacheGeneration)
 				default:
 					common.SysError(fmt.Sprintf("Stripe clawback commit outcome is ambiguous; retaining fail-closed cache debit: payment_intent=%s desired=%d tx_error=%v check_error=%v", paymentIntent, expectedClawed, err, checkErr))
 					_ = fenceUserQuotaCacheUncertainty(cacheUserId, "stripe_clawback")
 				}
 			} else {
-				compensatePreparedUserQuotaCacheDelta(cacheUserId, cacheDelta, "Stripe clawback rollback")
+				compensatePreparedUserQuotaCacheDelta(cacheUserId, cacheDelta, "Stripe clawback rollback", cacheGeneration)
 			}
 		}
 		if raceLost {
@@ -716,13 +725,16 @@ func stripeDesiredClawback(topUp *TopUp, refundedMinor, chargeMinor int64, isDis
 	default:
 		return 0, 0, ErrTopUpStatusInvalid
 	}
-	credited, err := common.QuotaFromDecimalStrict(decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	credited, err := common.WalletQuotaFromDecimalStrict(decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
 	if err != nil {
 		return 0, 0, err
 	}
 	creditedQuota := int64(credited)
 	if creditedQuota <= 0 {
 		return 0, 0, ErrTopUpStatusInvalid
+	}
+	if topUp.ClawedBackQuota < 0 || topUp.ClawedBackQuota > creditedQuota {
+		return 0, 0, ErrTopUpAmountInvalid
 	}
 
 	var desired int64
@@ -912,6 +924,7 @@ func SearchAllTopUps(keyword string, pageInfo *common.PageInfo, siteScope int) (
 
 // ManualCompleteTopUp 管理员手动完成订单并给用户充值
 func ManualCompleteTopUp(tradeNo string, callerIp string) error {
+	var cacheGeneration string
 	if tradeNo == "" {
 		return errors.New("未提供订单号")
 	}
@@ -943,15 +956,19 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		}
 
 		// 计算应充值额度：
-		// - Stripe 订单：Money 代表经分组倍率换算后的美元数量，直接 * QuotaPerUnit
+		// - Stripe 订单：Money 是下单时记录的到账单位，直接 * QuotaPerUnit（保留旧单语义）
+		// - Creem 订单：Amount 已经是原始额度，和回调保持一致，不再乘 QuotaPerUnit
 		// - 其他订单（如易支付）：Amount 为美元数量，* QuotaPerUnit
 		var quotaErr error
-		if topUp.PaymentProvider == PaymentProviderStripe {
-			quotaToAdd, quotaErr = common.QuotaFromDecimalStrict(
+		switch topUp.PaymentProvider {
+		case PaymentProviderStripe:
+			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
 				decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 			)
-		} else {
-			quotaToAdd, quotaErr = common.QuotaFromDecimalStrict(
+		case PaymentProviderCreem:
+			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(topUp.Amount))
+		default:
+			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
 				decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 			)
 		}
@@ -967,7 +984,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		}
 
 		// 增加用户额度（立即写库，保持一致性）
-		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil); err != nil {
+		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheGeneration); err != nil {
 			return err
 		}
 
@@ -982,11 +999,12 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	}
 
 	// 事务外记录日志，避免阻塞
-	syncCreditUserQuotaCache(userId, quotaToAdd, "manual topup")
+	syncCreditUserQuotaCache(userId, quotaToAdd, "manual topup", cacheGeneration)
 	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
+	var cacheGeneration string
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -1021,19 +1039,19 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		}
 
 		// Creem 直接使用 Amount 作为充值额度（整数）
-		quota, err = common.QuotaFromDecimalStrict(decimal.NewFromInt(topUp.Amount))
+		quota, err = common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(topUp.Amount))
 		if err != nil || quota <= 0 {
 			return ErrInvalidTopUpQuota
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quota, nil)
+		return creditTopUpQuota(tx, topUp.UserId, quota, nil, &cacheGeneration)
 	})
 
 	if err != nil {
 		common.SysError("creem topup failed: " + err.Error())
 		return errors.New("充值失败，请稍后重试")
 	}
-	syncCreditUserQuotaCache(topUp.UserId, quota, "creem topup")
+	syncCreditUserQuotaCache(topUp.UserId, quota, "creem topup", cacheGeneration)
 	// Customer profile data is optional and must never roll back an already
 	// verified payment. Bind only a normalized, same-site-unique email and only
 	// while the account still has no email; otherwise leave the profile intact.
@@ -1051,6 +1069,7 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 }
 
 func RechargeWaffo(tradeNo string, callerIp string) (err error) {
+	var cacheGeneration string
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -1081,7 +1100,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd, err = common.QuotaFromDecimalStrict(
+		quotaToAdd, err = common.WalletQuotaFromDecimalStrict(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 		if err != nil || quotaToAdd <= 0 {
@@ -1094,14 +1113,14 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheGeneration)
 	})
 
 	if err != nil {
 		common.SysError("waffo topup failed: " + err.Error())
 		return errors.New("充值失败，请稍后重试")
 	}
-	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "waffo topup")
+	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "waffo topup", cacheGeneration)
 
 	if quotaToAdd > 0 {
 		RecordTopupLog(topUp.UserId, fmt.Sprintf("Waffo充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentMethodWaffo)
@@ -1114,6 +1133,7 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 }
 
 func RechargeWaffoPancake(tradeNo string) (err error) {
+	var cacheGeneration string
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -1144,7 +1164,7 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		quotaToAdd, err = common.QuotaFromDecimalStrict(
+		quotaToAdd, err = common.WalletQuotaFromDecimalStrict(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 		if err != nil || quotaToAdd <= 0 {
@@ -1157,14 +1177,14 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 			return err
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheGeneration)
 	})
 
 	if err != nil {
 		common.SysError("waffo pancake topup failed: " + err.Error())
 		return errors.New("充值失败，请稍后重试")
 	}
-	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "waffo pancake topup")
+	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "waffo pancake topup", cacheGeneration)
 
 	if quotaToAdd > 0 {
 		RecordLog(topUp.UserId, LogTypeTopup, fmt.Sprintf("Waffo Pancake充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money))

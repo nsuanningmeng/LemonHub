@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -272,4 +273,106 @@ func TestCompleteEpayTopUpConcurrentIdempotent(t *testing.T) {
 	var order TopUp
 	require.NoError(t, DB.Where("trade_no = ?", tradeNo).First(&order).Error)
 	assert.Equal(t, common.TopUpStatusSuccess, order.Status, "order must end success")
+}
+
+func TestLargeSiteTopUpSettlementPreservesWalletsAndRollsBackOverLimit(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Site{}, &SiteWalletLog{}))
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+	for _, testCase := range []struct {
+		name      string
+		balance   int
+		wantError bool
+	}{
+		{"existing large balance", 5_000_000_000, false},
+		{"wallet ceiling exceeded", common.MaxWalletQuota - 15_000_000_000 + 1, true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncateTables(t)
+			user := createReserveTestUser(t, testCase.balance)
+			site := Site{Name: "large-topup-site", Status: SiteStatusNormal, WalletBalance: 200_000_000, DiscountRate: DiscountRateBase}
+			require.NoError(t, DB.Create(&site).Error)
+			t.Cleanup(func() {
+				DB.Where("site_id = ?", site.Id).Delete(&SiteWalletLog{})
+				DB.Delete(&site)
+			})
+			order := TopUp{SiteId: site.Id, UserId: user.Id, Amount: 30000, Money: 30000,
+				TradeNo: "large-site-topup", PaymentProvider: PaymentProviderEpay,
+				PaymentMethod: "alipay", Status: common.TopUpStatusPending}
+			require.NoError(t, DB.Create(&order).Error)
+
+			status, added, err := CompleteEpayTopUp(order.TradeNo, 30_000_000, 1)
+			if testCase.wantError {
+				require.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
+				assert.Empty(t, status)
+				assert.Zero(t, added)
+				assert.Equal(t, testCase.balance, getUserQuotaFromDB(t, user.Id))
+				assert.Equal(t, common.TopUpStatusPending, getTopUpStatusForPaymentGuardTest(t, order.TradeNo))
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, common.TopUpStatusSuccess, status)
+				assert.Equal(t, 15_000_000_000, added)
+				assert.Equal(t, 20_000_000_000, getUserQuotaFromDB(t, user.Id))
+				status, added, err = CompleteEpayTopUp(order.TradeNo, 30_000_000, 1)
+				require.NoError(t, err)
+				assert.Equal(t, common.TopUpStatusSuccess, status)
+				assert.Zero(t, added)
+			}
+			wallet, err := GetSiteWalletBalance(site.Id)
+			require.NoError(t, err)
+			var flows int64
+			require.NoError(t, DB.Model(&SiteWalletLog{}).Where("site_id = ?", site.Id).Count(&flows).Error)
+			if testCase.wantError {
+				assert.EqualValues(t, 200_000_000, wallet)
+				assert.Zero(t, flows)
+			} else {
+				assert.EqualValues(t, 170_000_000, wallet)
+				assert.EqualValues(t, 1, flows)
+			}
+		})
+	}
+}
+
+func TestSiteTopUpRejectsInvalidProcurementCostWithoutChangingOrder(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Site{}, &SiteWalletLog{}))
+	for _, status := range []string{common.TopUpStatusPending, TopUpStatusManualReview} {
+		for _, costMilli := range []int64{0, common.MaxWalletQuota + 1} {
+			t.Run(fmt.Sprintf("%s_cost_%d", status, costMilli), func(t *testing.T) {
+				truncateTables(t)
+				user := createReserveTestUser(t, 0)
+				site := Site{Name: "cost-boundary-site", Status: SiteStatusNormal,
+					WalletBalance: common.MaxWalletQuota, DiscountRate: DiscountRateBase}
+				require.NoError(t, DB.Create(&site).Error)
+				t.Cleanup(func() {
+					DB.Where("site_id = ?", site.Id).Delete(&SiteWalletLog{})
+					DB.Delete(&site)
+				})
+				order := TopUp{SiteId: site.Id, UserId: user.Id, Amount: 10, Money: 10,
+					TradeNo: "site-cost-boundary", PaymentProvider: PaymentProviderEpay,
+					PaymentMethod: "alipay", Status: status}
+				require.NoError(t, DB.Create(&order).Error)
+
+				settle := CompleteEpayTopUp
+				if status == TopUpStatusManualReview {
+					settle = RetryManualReviewTopUp
+				}
+				finalStatus, added, err := settle(order.TradeNo, costMilli, 1)
+				require.ErrorIs(t, err, ErrSiteTopUpUnresolved)
+				assert.Empty(t, finalStatus)
+				assert.Zero(t, added)
+				assert.Zero(t, getUserQuotaFromDB(t, user.Id))
+				wallet, err := GetSiteWalletBalance(site.Id)
+				require.NoError(t, err)
+				assert.EqualValues(t, common.MaxWalletQuota, wallet)
+				var persisted TopUp
+				require.NoError(t, DB.First(&persisted, order.Id).Error)
+				assert.Equal(t, status, persisted.Status)
+				assert.Zero(t, persisted.CompleteTime)
+				var flows int64
+				require.NoError(t, DB.Model(&SiteWalletLog{}).Where("site_id = ?", site.Id).Count(&flows).Error)
+				assert.Zero(t, flows)
+			})
+		}
+	}
 }

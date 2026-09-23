@@ -183,26 +183,26 @@ func TestStripeClawbackCacheAuthorityFailures(t *testing.T) {
 
 	t.Run("database rollback compensates the authoritative cache", func(t *testing.T) {
 		useUserCacheMiniRedis(t)
-		user, topUp := seedCachedStripeClawback(t, 100, 100)
+		user, topUp := seedCachedStripeClawback(t, 6_000_000_000, 5_000_000_000)
 		trigger := "fail_stripe_clawback_quota"
 		require.NoError(t, DB.Exec("DROP TRIGGER IF EXISTS "+trigger).Error)
 		require.NoError(t, DB.Exec(`CREATE TRIGGER fail_stripe_clawback_quota
 BEFORE UPDATE OF quota ON users BEGIN SELECT RAISE(ABORT, 'forced stripe clawback failure'); END`).Error)
 		t.Cleanup(func() { _ = DB.Exec("DROP TRIGGER IF EXISTS " + trigger).Error })
 
-		err := ReverseStripeTopUp(topUp.PaymentIntent, 30, 100, false, "test")
+		err := ReverseStripeTopUp(topUp.PaymentIntent, 70, 100, false, "test")
 		require.Error(t, err)
-		assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
+		assert.Equal(t, 6_000_000_000, getUserQuotaFromDB(t, user.Id))
 		cached, cacheErr := cacheGetUserBase(user.Id)
 		require.NoError(t, cacheErr)
-		assert.Equal(t, 100, cached.Quota)
+		assert.Equal(t, 6_000_000_000, cached.Quota)
 		var persisted TopUp
 		require.NoError(t, DB.First(&persisted, topUp.Id).Error)
 		assert.Zero(t, persisted.ClawedBackQuota)
 
 		require.NoError(t, DB.Exec("DROP TRIGGER IF EXISTS "+trigger).Error)
-		require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 30, 100, false, "test"))
-		assert.Equal(t, 70, getUserQuotaFromDB(t, user.Id))
+		require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 70, 100, false, "test"))
+		assert.Equal(t, 2_500_000_000, getUserQuotaFromDB(t, user.Id))
 	})
 
 	t.Run("uncertain rollback fence rehydrates before retry instead of double debit", func(t *testing.T) {
@@ -223,15 +223,85 @@ BEFORE UPDATE OF quota ON users BEGIN SELECT RAISE(ABORT, 'forced stripe clawbac
 		assert.False(t, server.Exists(getUserQuotaUncertaintyKey(user.Id)))
 	})
 
-	t.Run("saturated credited amount is rejected instead of becoming a clawback", func(t *testing.T) {
+	t.Run("credit beyond the wallet domain is rejected instead of becoming a clawback", func(t *testing.T) {
 		oldRedisEnabled := common.RedisEnabled
 		common.RedisEnabled = false
 		t.Cleanup(func() { common.RedisEnabled = oldRedisEnabled })
-		user, topUp := seedCachedStripeClawback(t, 100, float64(common.MaxQuota)*2)
+		user, topUp := seedCachedStripeClawback(t, 100, float64(common.MaxWalletQuota)+1)
 
 		err := ReverseStripeTopUp(topUp.PaymentIntent, 1, 1, false, "test")
-		var clamp *common.QuotaClamp
-		assert.ErrorAs(t, err, &clamp)
+		require.Error(t, err)
 		assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
 	})
+}
+
+func TestLargeStripeTopUpRefundPreservesExactQuotaAndIdempotency(t *testing.T) {
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+	for _, testCase := range []struct {
+		money    float64
+		credited int
+		partial  int
+	}{
+		{5000, 2_500_000_000, 833_333_333},
+		{10000, 5_000_000_000, 1_666_666_667},
+		{30000, 15_000_000_000, 5_000_000_000},
+	} {
+		t.Run(fmt.Sprintf("money_%.0f", testCase.money), func(t *testing.T) {
+			useUserCacheMiniRedis(t)
+			const remainingQuota = 1_000_000_000
+			user, topUp := seedCachedStripeClawback(t, remainingQuota, testCase.money)
+
+			require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 1, 3, false, "test"))
+			assert.Equal(t, remainingQuota-testCase.partial, getUserQuotaFromDB(t, user.Id))
+			require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 1, 3, false, "test"))
+			assert.Equal(t, remainingQuota-testCase.partial, getUserQuotaFromDB(t, user.Id))
+			require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 3, 3, false, "test"))
+			assert.Equal(t, remainingQuota-testCase.credited, getUserQuotaFromDB(t, user.Id))
+			cached, err := cacheGetUserBase(user.Id)
+			require.NoError(t, err)
+			assert.Equal(t, remainingQuota-testCase.credited, cached.Quota)
+			var persisted TopUp
+			require.NoError(t, DB.First(&persisted, topUp.Id).Error)
+			assert.EqualValues(t, testCase.credited, persisted.ClawedBackQuota)
+			assert.Equal(t, common.TopUpStatusRefunded, persisted.Status)
+		})
+	}
+}
+
+func TestStripeClawbackRejectsWalletUnderflowWithoutAdvancingOrder(t *testing.T) {
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 1
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+	user, topUp := seedCachedStripeClawback(t, -common.MaxWalletQuota+99, 100)
+
+	require.ErrorIs(t, ReverseStripeTopUp(topUp.PaymentIntent, 100, 100, false, "test"), ErrTopUpQuotaLimitExceeded)
+	assert.Equal(t, -common.MaxWalletQuota+99, getUserQuotaFromDB(t, user.Id))
+	var persisted TopUp
+	require.NoError(t, DB.First(&persisted, topUp.Id).Error)
+	assert.Zero(t, persisted.ClawedBackQuota)
+	assert.Equal(t, common.TopUpStatusSuccess, persisted.Status)
+
+	require.NoError(t, ReverseStripeTopUp(topUp.PaymentIntent, 99, 100, false, "test"))
+	assert.Equal(t, -common.MaxWalletQuota, getUserQuotaFromDB(t, user.Id))
+}
+
+func TestStripeClawbackRejectsInvalidRecordedReversal(t *testing.T) {
+	previousQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 1
+	t.Cleanup(func() { common.QuotaPerUnit = previousQuotaPerUnit })
+	for _, clawedBack := range []int64{-1, 101} {
+		t.Run(fmt.Sprintf("reversed_%d", clawedBack), func(t *testing.T) {
+			user, topUp := seedCachedStripeClawback(t, 100, 100)
+			require.NoError(t, DB.Model(&topUp).Update("clawed_back_quota", clawedBack).Error)
+
+			require.ErrorIs(t, ReverseStripeTopUp(topUp.PaymentIntent, 100, 100, false, "test"), ErrTopUpAmountInvalid)
+			assert.Equal(t, 100, getUserQuotaFromDB(t, user.Id))
+			var persisted TopUp
+			require.NoError(t, DB.First(&persisted, topUp.Id).Error)
+			assert.Equal(t, clawedBack, persisted.ClawedBackQuota)
+			assert.Equal(t, common.TopUpStatusSuccess, persisted.Status)
+		})
+	}
 }

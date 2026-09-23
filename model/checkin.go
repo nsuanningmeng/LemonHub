@@ -93,6 +93,7 @@ func UserCheckin(userId int) (*Checkin, error) {
 
 // userCheckinWithTransaction 使用事务执行签到（适用于 MySQL 和 PostgreSQL）
 func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) (*Checkin, error) {
+	var cacheGeneration string
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		// 步骤1: 创建签到记录
 		// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
@@ -101,7 +102,7 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 		}
 
 		// 步骤2: 在事务中增加用户额度
-		if err := creditTopUpQuota(tx, userId, quotaAwarded, nil); err != nil {
+		if err := creditTopUpQuota(tx, userId, quotaAwarded, nil, &cacheGeneration); err != nil {
 			return errors.New("签到失败：更新额度出错")
 		}
 
@@ -115,26 +116,27 @@ func userCheckinWithTransaction(checkin *Checkin, userId int, quotaAwarded int) 
 	// Credit cache synchronously so an immediately-following request observes
 	// the award. Failure is conservative (temporarily less spendable balance)
 	// and is logged by the shared best-effort credit helper.
-	syncCreditUserQuotaCache(userId, quotaAwarded, "daily check-in")
+	syncCreditUserQuotaCache(userId, quotaAwarded, "daily check-in", cacheGeneration)
 
 	return checkin, nil
 }
 
 // userCheckinWithoutTransaction 不使用事务执行签到（适用于 SQLite）
 func userCheckinWithoutTransaction(checkin *Checkin, userId int, quotaAwarded int) (*Checkin, error) {
+	var cacheGeneration string
 	// 步骤1: 创建签到记录
 	// 数据库有唯一约束 (user_id, checkin_date)，可以防止并发重复签到
 	if err := DB.Create(checkin).Error; err != nil {
 		return nil, errors.New("签到失败，请稍后重试")
 	}
 
-	// 步骤2: 原子增加用户额度并守住 int32 钱包上限。
-	if err := creditTopUpQuota(DB, userId, quotaAwarded, nil); err != nil {
+	// 步骤2: 原子增加用户额度并守住 钱包安全整数上限。
+	if err := creditTopUpQuota(DB, userId, quotaAwarded, nil, &cacheGeneration); err != nil {
 		// 如果增加额度失败，需要回滚签到记录
 		DB.Delete(checkin)
 		return nil, errors.New("签到失败：更新额度出错")
 	}
-	syncCreditUserQuotaCache(userId, quotaAwarded, "daily check-in")
+	syncCreditUserQuotaCache(userId, quotaAwarded, "daily check-in", cacheGeneration)
 
 	return checkin, nil
 }

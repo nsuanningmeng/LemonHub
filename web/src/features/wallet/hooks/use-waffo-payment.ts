@@ -21,6 +21,7 @@ import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
 
 import { requestWaffoPayment, isApiSuccess } from '../api'
+import { getPaymentErrorMessage, getSafePaymentRedirectUrl } from '../lib'
 
 function getPaymentUrl(data: unknown): string | null {
   if (!data || typeof data !== 'object') {
@@ -32,14 +33,6 @@ function getPaymentUrl(data: unknown): string | null {
   }
 
   return null
-}
-
-function getErrorMessage(message: string | undefined, data: unknown): string {
-  if (typeof data === 'string' && data.trim()) {
-    return data
-  }
-
-  return message || i18next.t('Payment request failed')
 }
 
 /**
@@ -59,16 +52,19 @@ export function useWaffoPayment() {
         })
 
         if (isApiSuccess(response)) {
-          const paymentUrl = getPaymentUrl(response.data)
-
-          if (paymentUrl) {
-            window.open(paymentUrl, '_blank')
-            toast.success(i18next.t('Redirecting to payment page...'))
-            return true
+          const paymentUrl = getSafePaymentRedirectUrl(
+            getPaymentUrl(response.data)
+          )
+          if (!paymentUrl) {
+            toast.error(i18next.t('Payment request failed'))
+            return false
           }
+          window.open(paymentUrl, '_blank', 'noopener,noreferrer')
+          toast.success(i18next.t('Redirecting to payment page...'))
+          return true
         }
 
-        toast.error(getErrorMessage(response.message, response.data))
+        toast.error(getPaymentErrorMessage(response))
         return false
       } catch {
         toast.error(i18next.t('Payment request failed'))

@@ -46,7 +46,7 @@ func TestSearchRedemptionsNumericKeywordSiteScoped(t *testing.T) {
 	}
 }
 
-func TestRedeemForSiteSynchronizesCacheAndRejectsInt32Overflow(t *testing.T) {
+func TestRedeemForSiteSynchronizesCacheAndRejectsWalletOverflow(t *testing.T) {
 	useUserCacheMiniRedis(t)
 	require.NoError(t, DB.AutoMigrate(&Redemption{}, &User{}))
 	const siteID = 6789
@@ -85,20 +85,20 @@ func TestRedeemForSiteSynchronizesCacheAndRejectsInt32Overflow(t *testing.T) {
 	})
 
 	t.Run("overflow rolls back code consumption and user credit", func(t *testing.T) {
-		user, redemption := seed(common.MaxQuota-5, 10)
+		user, redemption := seed(common.MaxWalletQuota-5, 10)
 		_, err := RedeemForSite(redemption.Key, user.Id, siteID)
 		assert.ErrorIs(t, err, ErrRedeemFailed)
-		assert.Equal(t, common.MaxQuota-5, getUserQuotaFromDB(t, user.Id))
+		assert.Equal(t, common.MaxWalletQuota-5, getUserQuotaFromDB(t, user.Id))
 		var persisted Redemption
 		require.NoError(t, DB.First(&persisted, redemption.Id).Error)
 		assert.Equal(t, common.RedemptionCodeStatusEnabled, persisted.Status)
 	})
 
 	t.Run("main redemption path enforces the same overflow guard", func(t *testing.T) {
-		user, redemption := seed(common.MaxQuota-5, 10)
+		user, redemption := seed(common.MaxWalletQuota-5, 10)
 		_, err := Redeem(redemption.Key, user.Id)
 		assert.ErrorIs(t, err, ErrRedeemFailed)
-		assert.Equal(t, common.MaxQuota-5, getUserQuotaFromDB(t, user.Id))
+		assert.Equal(t, common.MaxWalletQuota-5, getUserQuotaFromDB(t, user.Id))
 		var persisted Redemption
 		require.NoError(t, DB.First(&persisted, redemption.Id).Error)
 		assert.Equal(t, common.RedemptionCodeStatusEnabled, persisted.Status)
