@@ -16,8 +16,11 @@ import (
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	relaytypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -404,25 +407,101 @@ func TestChannelHealthCheckCountsUnsupportedLocalErrorWithoutAutoDisablePanic(t 
 	assert.Equal(t, channelTestSummary{Tested: 1, Failed: 1}, summary)
 }
 
-func TestBuildChannelTestPerfSamplesTargetsEveryConfiguredModel(t *testing.T) {
+func TestBuildChannelTestPerfSamplesTargetsEveryConfiguredModelAndGroup(t *testing.T) {
+	originalWhitelist := perf_metrics_setting.GetSetting().ErrorCodeWhitelist
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+			"perf_metrics_setting.error_code_whitelist": originalWhitelist,
+		}))
+	})
 	const (
 		firstModel  = "zz-channel-test-health-model-a"
 		secondModel = "zz-channel-test-health-model-b"
 		probeModel  = "zz-channel-test-health-probe"
-		group       = "zz-channel-test-health-group"
+		firstGroup  = "Gemini"
+		secondGroup = "Gemini混合"
 	)
-	channel := &model.Channel{Models: firstModel + ", " + secondModel + ", " + secondModel + ", "}
-	for _, success := range []bool{true, false} {
-		t.Run(fmt.Sprintf("success=%t", success), func(t *testing.T) {
+	channel := &model.Channel{
+		Models: firstModel + ", " + secondModel + ", " + secondModel + ", ",
+		Group:  firstGroup + ", " + secondGroup + ", , " + secondGroup + ", ",
+	}
+	for _, tc := range []struct {
+		name       string
+		whitelist  string
+		statusCode int
+		success    bool
+	}{
+		{name: "successful probe", whitelist: "429,500-503", success: true},
+		{name: "listed status", whitelist: "429,500-503", statusCode: 429},
+		{name: "range start", whitelist: "429,500-503", statusCode: 500},
+		{name: "range middle", whitelist: "429,500-503", statusCode: 502},
+		{name: "range end", whitelist: "429,500-503", statusCode: 503},
+		{name: "unlisted client error", whitelist: "429,500-503", statusCode: 400, success: true},
+		{name: "unlisted health check timeout", whitelist: "429,500-503", statusCode: 408, success: true},
+		{name: "listed health check timeout", whitelist: "408,429,500-503", statusCode: 408},
+		{name: "below range", whitelist: "429,500-503", statusCode: 499, success: true},
+		{name: "above range", whitelist: "429,500-503", statusCode: 504, success: true},
+		{name: "empty whitelist counts all errors", statusCode: 400},
+		{name: "blank whitelist counts all errors", whitelist: "  ", statusCode: 400},
+		{name: "invalid legacy whitelist counts errors", whitelist: "invalid", statusCode: 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+				"perf_metrics_setting.error_code_whitelist": tc.whitelist,
+			}))
+			var finalError *relaytypes.NewAPIError
+			if tc.statusCode != 0 {
+				finalError = relaytypes.NewErrorWithStatusCode(fmt.Errorf("probe failed"), relaytypes.ErrorCodeBadResponse, tc.statusCode)
+			}
 			samples := buildChannelTestPerfSamples(channel, testResult{
 				perfModel: probeModel,
-				perfGroup: group,
-			}, 240, success)
+				perfGroup: "default",
+			}, 240, finalError)
 
 			require.Equal(t, []perfmetrics.Sample{
-				{Model: firstModel, Group: group, LatencyMs: 240, Success: success},
-				{Model: secondModel, Group: group, LatencyMs: 240, Success: success},
+				{Model: firstModel, Group: firstGroup, LatencyMs: 240, Success: tc.success},
+				{Model: firstModel, Group: secondGroup, LatencyMs: 240, Success: tc.success},
+				{Model: secondModel, Group: firstGroup, LatencyMs: 240, Success: tc.success},
+				{Model: secondModel, Group: secondGroup, LatencyMs: 240, Success: tc.success},
 			}, samples)
+		})
+	}
+}
+
+func TestBuildChannelTestPerfSamplesHandlesLegacyConfigurationAndUninitializedRelay(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		channel *model.Channel
+		result  testResult
+		want    []perfmetrics.Sample
+	}{
+		{
+			name:    "legacy channel without configured groups uses resolved group",
+			channel: &model.Channel{Models: "model-a", Group: " , "},
+			result:  testResult{perfModel: "probe", perfGroup: " vip "},
+			want:    []perfmetrics.Sample{{Model: "model-a", Group: "vip", LatencyMs: 240, Success: true}},
+		},
+		{
+			name:    "legacy channel without models uses probe for every configured group",
+			channel: &model.Channel{Models: " , ", Group: "Gemini,Gemini混合"},
+			result:  testResult{perfModel: " probe ", perfGroup: "default"},
+			want: []perfmetrics.Sample{
+				{Model: "probe", Group: "Gemini", LatencyMs: 240, Success: true},
+				{Model: "probe", Group: "Gemini混合", LatencyMs: 240, Success: true},
+			},
+		},
+		{
+			name:    "error before relay initialization does not create samples",
+			channel: &model.Channel{Models: "model-a", Group: "Gemini"},
+			result:  testResult{},
+		},
+		{
+			name:   "missing channel does not create samples",
+			result: testResult{perfModel: "probe", perfGroup: "default"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, buildChannelTestPerfSamples(tc.channel, tc.result, 240, nil))
 		})
 	}
 }

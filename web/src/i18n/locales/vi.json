@@ -2250,6 +2250,7 @@
     "For operators with steady traffic": "For operators with steady traffic",
     "For partners with steady traffic and real promotional reach. Once approved as a Professional Promoter, your commission is settled to you in cash off-platform on a regular cycle instead of being credited to your platform balance — with the cash owed and cash paid clearly shown on your referral page.": "For partners with steady traffic and real promotional reach. Once approved as a Professional Promoter, your commission is settled to you in cash off-platform on a regular cycle instead of being credited to your platform balance — with the cash owed and cash paid clearly shown on your referral page.",
     "For private deployments, format: https://fastgpt.run/api/openapi": "Đối với các triển khai riêng tư, định dạng: https://fastgpt.run/api/openapi",
+    "For requests and channel tests, only these HTTP status codes count as failures; other errors count as successes. Leave empty to count all errors as failures.": "Đối với yêu cầu và kiểm tra kênh, chỉ lỗi có các mã trạng thái HTTP này được tính là thất bại; các lỗi khác được tính là thành công. Để trống để tính tất cả lỗi là thất bại.",
     "For resellers operating at scale": "For resellers operating at scale",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "Vì lý do bảo mật, không thể hiển thị lại token truy cập hiện có. Chỉ tạo lại khi bạn cần token mới.",
     "Force a syntactically valid JSON response": "Buộc phản hồi JSON hợp lệ về cú pháp",

@@ -424,7 +424,7 @@ export function MonitoringSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Only these HTTP status codes count as failures. Leave empty to count all errors.'
+                      'For requests and channel tests, only these HTTP status codes count as failures; other errors count as successes. Leave empty to count all errors as failures.'
                     )}
                   </FormDescription>
                   <FormMessage />

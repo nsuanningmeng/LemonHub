@@ -112,6 +112,8 @@ Upstream ships a one-off invite bonus. LemonHub replaces it with a full commissi
 ### 8. Model-performance settings
 
 - Success-rate threshold, error-code whitelist, and "no data = 100%" handling.
+- Manual and scheduled tests of enabled channels contribute health samples to every configured model/group pair; groups that are no longer available are excluded from displayed model success rates.
+- Relay and channel-test errors count as failures only when their HTTP status matches the configured performance error-code whitelist; other errors count as successful samples. An empty whitelist counts all errors as failures.
 
 ### 9. Security and migration hardening
 

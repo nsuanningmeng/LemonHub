@@ -21,7 +21,7 @@ type PerfMetricsSetting struct {
 	// ErrorCodeWhitelist: HTTP status codes (single codes and ranges, e.g.
 	// "429,500,499-520") that count as failures lowering the success rate. When
 	// empty, every failed relay counts (legacy behavior). Failed relays whose
-	// status code is NOT whitelisted are ignored and do not affect the metric.
+	// status code is NOT whitelisted count as successful samples.
 	ErrorCodeWhitelist string `json:"error_code_whitelist"`
 	// NoDataAsFull: when true, a model with no requests in the window is treated
 	// as 100% success (green) on the frontend instead of "no data".
@@ -53,8 +53,8 @@ func GetSetting() PerfMetricsSetting {
 //
 // An empty whitelist means "count every error" (legacy behavior). Otherwise only
 // status codes inside the configured whitelist ranges are counted; other failed
-// relays are not recorded and therefore do not lower the success rate. On an
-// invalid/unparsable whitelist it fails open (counts the error) so a typo never
+// relays count as successful samples. An invalid/unparsable whitelist counts
+// every error so a typo never
 // silently hides outages.
 func ShouldCountErrorAsFailure(statusCode int) bool {
 	raw := strings.TrimSpace(perfMetricsSetting.ErrorCodeWhitelist)

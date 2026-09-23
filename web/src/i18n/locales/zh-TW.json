@@ -2250,6 +2250,7 @@
     "For operators with steady traffic": "For operators with steady traffic",
     "For partners with steady traffic and real promotional reach. Once approved as a Professional Promoter, your commission is settled to you in cash off-platform on a regular cycle instead of being credited to your platform balance — with the cash owed and cash paid clearly shown on your referral page.": "For partners with steady traffic and real promotional reach. Once approved as a Professional Promoter, your commission is settled to you in cash off-platform on a regular cycle instead of being credited to your platform balance — with the cash owed and cash paid clearly shown on your referral page.",
     "For private deployments, format: https://fastgpt.run/api/openapi": "對於私有部署，格式為：https://fastgpt.run/api/openapi",
+    "For requests and channel tests, only these HTTP status codes count as failures; other errors count as successes. Leave empty to count all errors as failures.": "請求和管道測試僅將這些 HTTP 狀態碼的錯誤計為失敗，其他錯誤計為成功。留空則將所有錯誤計為失敗。",
     "For resellers operating at scale": "For resellers operating at scale",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "基於安全考量，現有存取令牌無法再次顯示。僅在需要新令牌時重新生成。",
     "Force a syntactically valid JSON response": "強制返回語法合法的 JSON",

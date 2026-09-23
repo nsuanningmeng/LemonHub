@@ -28,6 +28,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/perf_metrics_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/samber/lo"
@@ -40,10 +41,9 @@ type testResult struct {
 	context     *gin.Context
 	localErr    error
 	newAPIError *types.NewAPIError
-	// perfModel/perfGroup expose the resolved client-facing model and group of
-	// the test relay (empty until the relay info is built). The model is retained
-	// as a fallback for legacy channels without a configured model list; normal
-	// scheduled tests apply the result to every model configured on the channel.
+	// perfModel/perfGroup expose the resolved probe identity once relay info is
+	// built. They are fallbacks for legacy channels with empty configuration;
+	// tests otherwise apply the result to every configured model/group pair.
 	perfModel string
 	perfGroup string
 }
@@ -83,8 +83,8 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	tik := time.Now()
 	// perfInfo is set once the relay info is built; the deferred read happens
 	// after model mapping so the fallback model and group keep the probe's
-	// client-facing identity. testChannelForHealthCheck decides whether the final
-	// outcome is eligible for performance metrics.
+	// client-facing identity. Callers decide whether the final outcome is eligible
+	// for performance metrics after any health-check threshold is applied.
 	var perfInfo *relaycommon.RelayInfo
 	defer func() {
 		if perfInfo != nil {
@@ -910,6 +910,12 @@ func TestChannel(c *gin.Context) {
 		requestCtx = c.Request.Context()
 	}
 	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
+	milliseconds := time.Since(tik).Milliseconds()
+	if channel.Status == common.ChannelStatusEnabled && requestCtx.Err() == nil && (result.localErr == nil || result.newAPIError != nil) {
+		for _, sample := range buildChannelTestPerfSamples(channel, result, milliseconds, result.newAPIError) {
+			perfmetrics.Record(sample)
+		}
+	}
 	if result.localErr != nil {
 		resp := gin.H{
 			"success": false,
@@ -922,8 +928,6 @@ func TestChannel(c *gin.Context) {
 		c.JSON(http.StatusOK, resp)
 		return
 	}
-	tok := time.Now()
-	milliseconds := tok.Sub(tik).Milliseconds()
 	go channel.UpdateResponseTime(milliseconds)
 	consumedTime := float64(milliseconds) / 1000.0
 	if result.newAPIError != nil {
@@ -953,11 +957,10 @@ type channelTestSummary struct {
 }
 
 // buildChannelTestPerfSamples projects a channel-level health-check result
-// onto every client-facing model served by that channel. A channel test sends
-// only one probe request, but its routing-health result applies to all of the
-// channel's configured models. The resolved probe model remains a fallback for
-// legacy channels whose model list is empty.
-func buildChannelTestPerfSamples(channel *model.Channel, result testResult, latencyMs int64, success bool) []perfmetrics.Sample {
+// onto every configured model/group pair served by that channel. The probe's
+// resolved group belongs to the testing user and may not be served by the
+// channel. Use that identity only as a fallback for empty legacy configuration.
+func buildChannelTestPerfSamples(channel *model.Channel, result testResult, latencyMs int64, finalError *types.NewAPIError) []perfmetrics.Sample {
 	if channel == nil {
 		return nil
 	}
@@ -970,14 +973,21 @@ func buildChannelTestPerfSamples(channel *model.Channel, result testResult, late
 	if len(modelNames) == 0 {
 		modelNames = []string{probeModel}
 	}
-	samples := make([]perfmetrics.Sample, 0, len(modelNames))
+	groups := lo.Without(lo.Uniq(channel.GetGroups()), "")
+	if len(groups) == 0 {
+		groups = []string{strings.TrimSpace(result.perfGroup)}
+	}
+	success := finalError == nil || !perf_metrics_setting.ShouldCountErrorAsFailure(finalError.StatusCode)
+	samples := make([]perfmetrics.Sample, 0, len(modelNames)*len(groups))
 	for _, modelName := range modelNames {
-		samples = append(samples, perfmetrics.Sample{
-			Model:     modelName,
-			Group:     result.perfGroup,
-			LatencyMs: latencyMs,
-			Success:   success,
-		})
+		for _, group := range groups {
+			samples = append(samples, perfmetrics.Sample{
+				Model:     modelName,
+				Group:     group,
+				LatencyMs: latencyMs,
+				Success:   success,
+			})
+		}
 	}
 	return samples
 }
@@ -1025,10 +1035,10 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 	}
 
 	// Feed the final health-check outcome into every configured client-facing
-	// model bucket. Disabled-channel recovery probes are deliberately excluded
+	// model/group bucket. Disabled-channel recovery probes are deliberately excluded
 	// so they cannot depress an enabled route's score.
 	if isChannelEnabled {
-		for _, sample := range buildChannelTestPerfSamples(channel, result, milliseconds, newAPIError == nil) {
+		for _, sample := range buildChannelTestPerfSamples(channel, result, milliseconds, newAPIError) {
 			perfmetrics.Record(sample)
 		}
 	}

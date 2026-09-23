@@ -2250,6 +2250,7 @@
     "For operators with steady traffic": "适合有稳定流量的运营者",
     "For partners with steady traffic and real promotional reach. Once approved as a Professional Promoter, your commission is settled to you in cash off-platform on a regular cycle instead of being credited to your platform balance — with the cash owed and cash paid clearly shown on your referral page.": "面向拥有稳定流量、规模化推广能力的伙伴。经平台审核开通「专业推广者」后，你的返佣不再计入平台余额，而是由平台按周期线下以现金结算给你；累计「应结现金 / 已结现金」在邀请返佣页一目了然。",
     "For private deployments, format: https://fastgpt.run/api/openapi": "对于私有部署，格式为：https://fastgpt.run/api/openapi",
+    "For requests and channel tests, only these HTTP status codes count as failures; other errors count as successes. Leave empty to count all errors as failures.": "请求和渠道测试仅将这些 HTTP 状态码的错误计为失败，其他错误计为成功。留空则将所有错误计为失败。",
     "For resellers operating at scale": "适合规模化渠道商",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "出于安全考虑，现有访问令牌无法再次显示。仅在需要新令牌时重新生成。",
     "Force a syntactically valid JSON response": "强制返回语法合法的 JSON",

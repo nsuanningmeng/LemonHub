@@ -2250,6 +2250,7 @@
     "For operators with steady traffic": "For operators with steady traffic",
     "For partners with steady traffic and real promotional reach. Once approved as a Professional Promoter, your commission is settled to you in cash off-platform on a regular cycle instead of being credited to your platform balance — with the cash owed and cash paid clearly shown on your referral page.": "For partners with steady traffic and real promotional reach. Once approved as a Professional Promoter, your commission is settled to you in cash off-platform on a regular cycle instead of being credited to your platform balance — with the cash owed and cash paid clearly shown on your referral page.",
     "For private deployments, format: https://fastgpt.run/api/openapi": "プライベートデプロイメントの場合、形式: https://fastgpt.run/api/openapi",
+    "For requests and channel tests, only these HTTP status codes count as failures; other errors count as successes. Leave empty to count all errors as failures.": "リクエストとチャネルテストでは、これらの HTTP ステータスコードのエラーのみを失敗として集計し、その他のエラーは成功として集計します。空欄の場合、すべてのエラーを失敗として集計します。",
     "For resellers operating at scale": "For resellers operating at scale",
     "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "セキュリティ上、既存のアクセストークンは再表示できません。新しいトークンが必要な場合のみ再生成してください。",
     "Force a syntactically valid JSON response": "構文的に有効な JSON 応答を強制",

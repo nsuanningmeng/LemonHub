@@ -282,15 +282,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		logger.LogInfo(c, retryLogStr)
 	}
 	if newAPIError != nil {
-		// Only count this failure toward the model success-rate metric when its
-		// HTTP status code is whitelisted (empty whitelist counts every error).
-		// Non-whitelisted errors are ignored entirely so they neither lower nor
-		// inflate the success rate.
-		if perf_metrics_setting.ShouldCountErrorAsFailure(newAPIError.StatusCode) {
-			gopool.Go(func() {
-				perfmetrics.RecordRelaySample(relayInfo, false, 0)
-			})
-		}
+		// Only whitelisted HTTP errors lower the success rate; other errors
+		// contribute successful samples. An empty whitelist counts every error.
+		success := !perf_metrics_setting.ShouldCountErrorAsFailure(newAPIError.StatusCode)
+		gopool.Go(func() {
+			perfmetrics.RecordRelaySample(relayInfo, success, 0)
+		})
 	}
 }
 
