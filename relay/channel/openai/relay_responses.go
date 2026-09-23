@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -30,6 +31,11 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
+	var responseStatus string
+	_ = common.Unmarshal(responsesResponse.Status, &responseStatus)
+	if strings.EqualFold(strings.TrimSpace(responseStatus), "failed") {
+		common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
+	}
 	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
@@ -43,16 +49,8 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	// compute usage
-	usage := dto.Usage{}
-	if responsesResponse.Usage != nil {
-		usage.PromptTokens = responsesResponse.Usage.InputTokens
-		usage.CompletionTokens = responsesResponse.Usage.OutputTokens
-		usage.TotalTokens = responsesResponse.Usage.TotalTokens
-		if responsesResponse.Usage.InputTokensDetails != nil {
-			usage.PromptTokensDetails.CachedTokens = responsesResponse.Usage.InputTokensDetails.CachedTokens
-			usage.PromptTokensDetails.CacheWriteTokens = responsesResponse.Usage.InputTokensDetails.CacheWriteTokens
-		}
-	}
+	accumulator := responsesUsageAccumulator{info: info}
+	accumulator.observeResponse(&responsesResponse)
 	// Count actual tool invocations from Output (not tool declarations).
 	for _, output := range responsesResponse.Output {
 		switch output.Type {
@@ -74,7 +72,7 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	}
 	imageCounter.Commit(info)
 
-	return &usage, nil
+	return accumulator.finish(), nil
 }
 
 func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
@@ -85,8 +83,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	defer service.CloseResponseBodyGracefully(resp)
 
-	var usage = &dto.Usage{}
-	var responseTextBuilder strings.Builder
+	accumulator := responsesUsageAccumulator{info: info}
 	imageCounter := &relaycommon.ImageGenerationCallCounter{}
 	imageCommitted := false
 
@@ -99,6 +96,14 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
+		var responseStatus string
+		if streamResponse.Response != nil {
+			_ = common.Unmarshal(streamResponse.Response.Status, &responseStatus)
+		}
+		if streamResponse.Type == "response.failed" || streamResponse.Type == "response.error" || streamResponse.Type == "error" || strings.EqualFold(strings.TrimSpace(responseStatus), "failed") {
+			common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
+		}
+		accumulator.observe(&streamResponse)
 		switch streamResponse.Type {
 		case "response.failed", "response.error", "error":
 			// 终止性错误事件仅在命中泄密关键词时替换，其余原样透传
@@ -117,21 +122,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
 			if streamResponse.Response != nil {
-				if streamResponse.Response.Usage != nil {
-					if streamResponse.Response.Usage.InputTokens != 0 {
-						usage.PromptTokens = streamResponse.Response.Usage.InputTokens
-					}
-					if streamResponse.Response.Usage.OutputTokens != 0 {
-						usage.CompletionTokens = streamResponse.Response.Usage.OutputTokens
-					}
-					if streamResponse.Response.Usage.TotalTokens != 0 {
-						usage.TotalTokens = streamResponse.Response.Usage.TotalTokens
-					}
-					if streamResponse.Response.Usage.InputTokensDetails != nil {
-						usage.PromptTokensDetails.CachedTokens = streamResponse.Response.Usage.InputTokensDetails.CachedTokens
-						usage.PromptTokensDetails.CacheWriteTokens = streamResponse.Response.Usage.InputTokensDetails.CacheWriteTokens
-					}
-				}
 				if !imageCommitted {
 					if relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
 						imageCounter.Reset()
@@ -156,9 +146,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				imageCounter.Commit(info)
 				imageCommitted = true
 			}
-		case "response.output_text.delta":
-			// 处理输出文本
-			responseTextBuilder.WriteString(streamResponse.Delta)
 		case dto.ResponsesOutputTypeItemDone:
 			if streamResponse.Item != nil {
 				switch streamResponse.Item.Type {
@@ -177,23 +164,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 	})
 
-	if usage.CompletionTokens == 0 {
-		// 计算输出文本的 token 数量
-		tempStr := responseTextBuilder.String()
-		if len(tempStr) > 0 {
-			// 非正常结束，使用输出文本的 token 数量
-			completionTokens := service.CountTextToken(tempStr, info.UpstreamModelName)
-			usage.CompletionTokens = completionTokens
-		}
-	}
-
-	if usage.PromptTokens == 0 && usage.CompletionTokens != 0 {
-		usage.PromptTokens = info.GetEstimatePromptTokens()
-	}
-
-	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
-
-	return usage, nil
+	return accumulator.finish(), nil
 }
 
 // maskResponsesErrorEvent replaces the upstream error text inside a Responses

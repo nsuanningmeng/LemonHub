@@ -221,21 +221,22 @@ type CompletionsStreamResponse struct {
 }
 
 type Usage struct {
-	PromptTokens         int           `json:"prompt_tokens"`
-	CompletionTokens     int           `json:"completion_tokens"`
-	TotalTokens          int           `json:"total_tokens"`
-	PromptCacheHitTokens int           `json:"prompt_cache_hit_tokens,omitempty"`
-	UsageSemantic        string        `json:"usage_semantic,omitempty"`
-	UsageSource          string        `json:"usage_source,omitempty"`
+	PromptTokens         int    `json:"prompt_tokens"`
+	CompletionTokens     int    `json:"completion_tokens"`
+	TotalTokens          int    `json:"total_tokens"`
+	PromptCacheHitTokens int    `json:"prompt_cache_hit_tokens,omitempty"`
+	UsageSemantic        string `json:"usage_semantic,omitempty"`
+	UsageSource          string `json:"usage_source,omitempty"`
 	// BillingUsage is an in-process settlement snapshot; it must never reach
 	// clients (it names the converter/channel kind, which the fork hides).
 	BillingUsage *BillingUsage `json:"-"`
 
-	PromptTokensDetails    InputTokenDetails  `json:"prompt_tokens_details"`
-	CompletionTokenDetails OutputTokenDetails `json:"completion_tokens_details"`
-	InputTokens            int                `json:"input_tokens"`
-	OutputTokens           int                `json:"output_tokens"`
-	InputTokensDetails     *InputTokenDetails `json:"input_tokens_details"`
+	PromptTokensDetails    InputTokenDetails   `json:"prompt_tokens_details"`
+	CompletionTokenDetails OutputTokenDetails  `json:"completion_tokens_details"`
+	InputTokens            int                 `json:"input_tokens"`
+	OutputTokens           int                 `json:"output_tokens"`
+	InputTokensDetails     *InputTokenDetails  `json:"input_tokens_details"`
+	OutputTokensDetails    *OutputTokenDetails `json:"output_tokens_details,omitempty"`
 
 	// claude cache 1h
 	ClaudeCacheCreation5mTokens int `json:"claude_cache_creation_5_m_tokens"`
@@ -327,17 +328,18 @@ type IncompleteDetails struct {
 }
 
 type ResponsesOutput struct {
-	Type      string                   `json:"type"`
-	ID        string                   `json:"id"`
-	Status    string                   `json:"status"`
-	Role      string                   `json:"role"`
-	Content   []ResponsesOutputContent `json:"content"`
-	Quality   string                   `json:"quality"`
-	Size      string                   `json:"size"`
-	Result    string                   `json:"result,omitempty"`
-	CallId    string                   `json:"call_id,omitempty"`
-	Name      string                   `json:"name,omitempty"`
-	Arguments json.RawMessage          `json:"arguments,omitempty"`
+	Type      string                          `json:"type"`
+	ID        string                          `json:"id"`
+	Status    string                          `json:"status"`
+	Role      string                          `json:"role"`
+	Content   []ResponsesOutputContent        `json:"content"`
+	Quality   string                          `json:"quality"`
+	Size      string                          `json:"size"`
+	Result    string                          `json:"result,omitempty"`
+	CallId    string                          `json:"call_id,omitempty"`
+	Name      string                          `json:"name,omitempty"`
+	Arguments json.RawMessage                 `json:"arguments,omitempty"`
+	Summary   []ResponsesReasoningSummaryPart `json:"summary,omitempty"`
 }
 
 // ArgumentsString returns function call arguments in the string form expected by Chat Completions.
@@ -356,6 +358,7 @@ func ResponsesArgumentsString(arguments json.RawMessage) string {
 type ResponsesOutputContent struct {
 	Type        string        `json:"type"`
 	Text        string        `json:"text"`
+	Refusal     string        `json:"refusal,omitempty"`
 	Annotations []interface{} `json:"annotations"`
 }
 
