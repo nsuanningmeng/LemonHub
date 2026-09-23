@@ -67,6 +67,7 @@ import {
   SOURCE_HEADER,
   SOURCE_PARAM,
   SOURCE_TIME,
+  SOURCE_TOKEN,
   TIME_FUNCS,
   buildRequestRuleExpr,
   combineBillingExpr,
@@ -100,6 +101,8 @@ import {
   tryParseVisualConfig,
 } from '@/features/pricing/lib/tier-expr'
 import { cn } from '@/lib/utils'
+
+import { OPENAI_PRICING_PRESETS } from './openai-pricing-presets'
 
 const PRICE_SUFFIX = '$/1M tokens'
 const CACHE_PRICE_VARS = BILLING_EXTRA_VARS.filter(
@@ -219,35 +222,7 @@ const PRESET_GROUPS: PresetGroup[] = [
           },
         ],
       },
-      {
-        key: 'gpt-5.4-tiers',
-        label: 'GPT-5.4 Priority/Flex',
-        expr: 'len <= 272000 ? tier("standard", p * 2.5 + c * 15 + cr * 0.25) : tier("long_context", p * 5 + c * 22.5 + cr * 0.5)',
-        requestRules: [
-          {
-            conditions: [
-              {
-                source: SOURCE_PARAM as 'param',
-                path: 'service_tier',
-                mode: MATCH_EQ,
-                value: 'priority',
-              },
-            ],
-            multiplier: '2',
-          },
-          {
-            conditions: [
-              {
-                source: SOURCE_PARAM as 'param',
-                path: 'service_tier',
-                mode: MATCH_EQ,
-                value: 'flex',
-              },
-            ],
-            multiplier: '0.5',
-          },
-        ],
-      },
+      ...OPENAI_PRICING_PRESETS,
     ],
   },
   {
@@ -332,8 +307,9 @@ function formatTokenHint(n: number | string | null | undefined): string {
 
 function formatNumberDraft(value: number | string): string {
   if (value === '') return ''
-  if (typeof value === 'number')
+  if (typeof value === 'number') {
     return Number.isFinite(value) ? String(value) : '0'
+  }
   return value
 }
 
@@ -436,12 +412,10 @@ function ConditionRow({ condition, onChange, onRemove }: ConditionRowProps) {
   return (
     <div className='flex items-center gap-2'>
       <Select
-        items={[
-          ...CONDITION_INPUT_OPTIONS.map((option) => ({
-            value: option.value,
-            label: t(option.labelKey),
-          })),
-        ]}
+        items={CONDITION_INPUT_OPTIONS.map((option) => ({
+          value: option.value,
+          label: t(option.labelKey),
+        }))}
         value={condition.var}
         onValueChange={(value) =>
           onChange({ ...condition, var: value as TierConditionInput['var'] })
@@ -667,6 +641,7 @@ function VisualTierCard({
         ) : (
           tier.conditions.map((condition, conditionIndex) => (
             <ConditionRow
+              // eslint-disable-next-line react/no-array-index-key -- Formula rows have no IDs; editing values must not remount their inputs.
               key={conditionIndex}
               condition={condition}
               onChange={(next) => handleConditionChange(conditionIndex, next)}
@@ -849,6 +824,7 @@ function VisualEditor({ visualConfig, onChange }: VisualEditorProps) {
       </p>
       {config.tiers.map((tier, index) => (
         <VisualTierCard
+          // eslint-disable-next-line react/no-array-index-key -- Tier labels are editable and not unique identifiers.
           key={index}
           tier={tier}
           index={index}
@@ -967,16 +943,24 @@ function RuleConditionRow({
         return timeFunc
     }
   }
-  const sourceLabel =
-    condition.source === SOURCE_PARAM
-      ? t('Body param')
-      : condition.source === SOURCE_HEADER
-        ? t('Header')
-        : t('Time')
+  const sourceLabels = {
+    [SOURCE_PARAM]: t('Body param'),
+    [SOURCE_HEADER]: t('Header'),
+    [SOURCE_TIME]: t('Time'),
+    [SOURCE_TOKEN]: t('Tokens'),
+  }
+  const sourceLabel = sourceLabels[condition.source]
 
   const handleSourceChange = (source: string) => {
     if (source === SOURCE_TIME) {
       onChange(createEmptyTimeCondition())
+    } else if (source === SOURCE_TOKEN) {
+      onChange({
+        source: SOURCE_TOKEN,
+        path: 'len',
+        mode: MATCH_LTE,
+        value: '',
+      })
     } else if (source === SOURCE_HEADER || source === SOURCE_PARAM) {
       onChange({
         ...createEmptyCondition(),
@@ -992,12 +976,10 @@ function RuleConditionRow({
   const renderTimeCondition = (timeCond: TimeCondition) => (
     <>
       <Select
-        items={[
-          ...TIME_FUNCS.map((fn) => ({
-            value: fn,
-            label: getTimeFuncLabel(fn),
-          })),
-        ]}
+        items={TIME_FUNCS.map((fn) => ({
+          value: fn,
+          label: getTimeFuncLabel(fn),
+        }))}
         value={timeCond.timeFunc}
         onValueChange={(value) =>
           onChange({ ...timeCond, timeFunc: value as TimeFunc })
@@ -1017,12 +999,10 @@ function RuleConditionRow({
         </SelectContent>
       </Select>
       <Select
-        items={[
-          ...COMMON_TIMEZONES.map((tz) => ({
-            value: tz.value,
-            label: tz.label,
-          })),
-        ]}
+        items={COMMON_TIMEZONES.map((tz) => ({
+          value: tz.value,
+          label: tz.label,
+        }))}
         value={timeCond.timezone}
         onValueChange={(value) =>
           value !== null && onChange({ ...timeCond, timezone: value })
@@ -1045,12 +1025,10 @@ function RuleConditionRow({
         </SelectContent>
       </Select>
       <Select
-        items={[
-          ...matchOptions.map((option) => ({
-            value: option.value,
-            label: getMatchLabel(option.value),
-          })),
-        ]}
+        items={matchOptions.map((option) => ({
+          value: option.value,
+          label: getMatchLabel(option.value),
+        }))}
         value={timeCond.mode}
         onValueChange={(v) => v !== null && handleModeChange(v)}
       >
@@ -1102,21 +1080,47 @@ function RuleConditionRow({
 
   const renderParamHeaderCondition = (phCond: ParamHeaderCondition) => (
     <>
-      <Input
-        value={phCond.path}
-        onChange={(event) => onChange({ ...phCond, path: event.target.value })}
-        placeholder={
-          phCond.source === SOURCE_HEADER ? 'X-Header-Name' : 'service_tier'
-        }
-        className='w-44'
-      />
-      <Select
-        items={[
-          ...matchOptions.map((option) => ({
+      {phCond.source === SOURCE_TOKEN ? (
+        <Select
+          items={CONDITION_INPUT_OPTIONS.map((option) => ({
             value: option.value,
-            label: getMatchLabel(option.value),
-          })),
-        ]}
+            label: t(option.labelKey),
+          }))}
+          value={phCond.path}
+          onValueChange={(value) =>
+            value !== null && onChange({ ...phCond, path: value })
+          }
+        >
+          <SelectTrigger className='w-44' size='sm'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              {CONDITION_INPUT_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      ) : (
+        <Input
+          value={phCond.path}
+          onChange={(event) =>
+            onChange({ ...phCond, path: event.target.value })
+          }
+          placeholder={
+            phCond.source === SOURCE_HEADER ? 'X-Header-Name' : 'service_tier'
+          }
+          className='w-44'
+        />
+      )}
+      <Select
+        items={matchOptions.map((option) => ({
+          value: option.value,
+          label: getMatchLabel(option.value),
+        }))}
         value={phCond.mode}
         onValueChange={(v) => v !== null && handleModeChange(v)}
       >
@@ -1153,6 +1157,7 @@ function RuleConditionRow({
           { value: SOURCE_PARAM, label: t('Body param') },
           { value: SOURCE_HEADER, label: t('Header') },
           { value: SOURCE_TIME, label: t('Time') },
+          { value: SOURCE_TOKEN, label: t('Tokens') },
         ]}
         value={condition.source}
         onValueChange={(v) => v !== null && handleSourceChange(v)}
@@ -1165,6 +1170,7 @@ function RuleConditionRow({
             <SelectItem value={SOURCE_PARAM}>{t('Body param')}</SelectItem>
             <SelectItem value={SOURCE_HEADER}>{t('Header')}</SelectItem>
             <SelectItem value={SOURCE_TIME}>{t('Time')}</SelectItem>
+            <SelectItem value={SOURCE_TOKEN}>{t('Tokens')}</SelectItem>
           </SelectGroup>
         </SelectContent>
       </Select>
@@ -1246,6 +1252,7 @@ function RuleGroupCard({
       <div className='space-y-2'>
         {group.conditions.map((condition, conditionIndex) => (
           <RuleConditionRow
+            // eslint-disable-next-line react/no-array-index-key -- Formula rows have no IDs; editing values must not remount their inputs.
             key={conditionIndex}
             condition={condition}
             onChange={(next) => handleConditionChange(conditionIndex, next)}
@@ -1567,7 +1574,7 @@ function LlmPromptHelper({ modelName }: LlmPromptHelperProps) {
 
   const prompt = useMemo(() => {
     if (modelName) {
-      return LLM_PROMPT_TEMPLATE + `\n\nCurrent model: ${modelName}`
+      return `${LLM_PROMPT_TEMPLATE}\n\nCurrent model: ${modelName}`
     }
     return LLM_PROMPT_TEMPLATE
   }, [modelName])
@@ -1784,9 +1791,12 @@ export const TieredPricingEditor = memo(function TieredPricingEditor({
         setVisualConfig(null)
       }
       setRequestRuleGroups(presetGroups)
+      // Publish both halves together so initialization cannot restore the old
+      // base expression when applying a preset that switches to raw mode.
+      onBillingExprChange(preset.expr)
       onRequestRuleExprChange(ruleExpr)
     },
-    [onRequestRuleExprChange]
+    [onBillingExprChange, onRequestRuleExprChange]
   )
 
   const handleRuleGroupsChange = useCallback((next: RequestRuleGroup[]) => {
@@ -1861,6 +1871,7 @@ export const TieredPricingEditor = memo(function TieredPricingEditor({
               <>
                 {requestRuleGroups.map((group, groupIndex) => (
                   <RuleGroupCard
+                    // eslint-disable-next-line react/no-array-index-key -- Groups are positional terms with no persisted IDs.
                     key={groupIndex}
                     group={group}
                     index={groupIndex}

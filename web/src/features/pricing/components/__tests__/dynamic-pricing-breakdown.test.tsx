@@ -32,4 +32,15 @@ describe('DynamicPricingBreakdown', () => {
 
     expect(screen.getAllByText('Matched')).toHaveLength(2)
   })
+
+  test('shows a token-length restriction together with its Fast surcharge', () => {
+    render(
+      <DynamicPricingBreakdown billingExpr='(tier("standard", p * 5 + c * 30 + cr * 0.5)) * (param("service_tier") == "fast" && len <= 272000 ? 2.5 : 1)' />
+    )
+
+    expect(
+      screen.getByText(/service_tier.*fast.*Full input length.*272000/)
+    ).toBeInTheDocument()
+    expect(screen.getByText('2.5x')).toBeInTheDocument()
+  })
 })

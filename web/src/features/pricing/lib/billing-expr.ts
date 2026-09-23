@@ -172,6 +172,7 @@ const BILLING_VAR_REGEX = new RegExp(
 export const SOURCE_PARAM = 'param'
 export const SOURCE_HEADER = 'header'
 export const SOURCE_TIME = 'time'
+export const SOURCE_TOKEN = 'token'
 
 export const MATCH_EQ = 'eq'
 export const MATCH_CONTAINS = 'contains'
@@ -205,7 +206,7 @@ export const COMMON_TIMEZONES: { value: string; label: string }[] = [
 const NUMERIC_LITERAL_REGEX = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
 
 export type ParamHeaderCondition = {
-  source: 'param' | 'header'
+  source: 'param' | 'header' | 'token'
   path: string
   mode: string
   value: string
@@ -451,7 +452,22 @@ function tryParseRequestCondition(expr: string): RequestCondition | null {
   const tc = tryParseTimeCondition(expr)
   if (tc) return tc
 
-  let m = expr.match(/^header\("([^"]+)"\) != ""$/)
+  let m = expr.match(/^(\w+) (==|>|>=|<|<=) (.+)$/)
+  if (m && BILLING_CONDITION_VARS.includes(m[1])) {
+    if (!NUMERIC_LITERAL_REGEX.test(m[3]) || !Number.isFinite(Number(m[3]))) {
+      return null
+    }
+    const opMap: Record<string, string> = {
+      '==': MATCH_EQ,
+      '>': MATCH_GT,
+      '>=': MATCH_GTE,
+      '<': MATCH_LT,
+      '<=': MATCH_LTE,
+    }
+    return { source: SOURCE_TOKEN, path: m[1], mode: opMap[m[2]], value: m[3] }
+  }
+
+  m = expr.match(/^header\("([^"]+)"\) != ""$/)
   if (m) return { source: 'header', path: m[1], mode: MATCH_EXISTS, value: '' }
 
   m = expr.match(/^param\("([^"]+)"\) != nil$/)
@@ -718,6 +734,15 @@ export function getRequestRuleMatchOptions(source: string): MatchOption[] {
       { value: MATCH_RANGE, labelKey: 'Time range' },
     ]
   }
+  if (source === SOURCE_TOKEN) {
+    return [
+      { value: MATCH_EQ, labelKey: 'Equals' },
+      { value: MATCH_GT, labelKey: 'Greater than' },
+      { value: MATCH_GTE, labelKey: 'Greater than or equal' },
+      { value: MATCH_LT, labelKey: 'Less than' },
+      { value: MATCH_LTE, labelKey: 'Less than or equal' },
+    ]
+  }
   const base: MatchOption[] = [
     { value: MATCH_EQ, labelKey: 'Equals' },
     { value: MATCH_CONTAINS, labelKey: 'Contains' },
@@ -749,6 +774,8 @@ export function normalizeCondition(
     source = 'time'
   } else if (cond?.source === 'header') {
     source = 'header'
+  } else if (cond?.source === SOURCE_TOKEN) {
+    source = SOURCE_TOKEN
   }
 
   if (source === 'time') {
@@ -835,6 +862,26 @@ function buildRequestConditionExpr(cond: RequestCondition): string {
   const path = normalized.path.trim()
   if (!path) return ''
 
+  if (normalized.source === SOURCE_TOKEN) {
+    const numText = normalized.value.trim()
+    const opMap: Record<string, string> = {
+      [MATCH_EQ]: '==',
+      [MATCH_GT]: '>',
+      [MATCH_GTE]: '>=',
+      [MATCH_LT]: '<',
+      [MATCH_LTE]: '<=',
+    }
+    if (
+      !BILLING_CONDITION_VARS.includes(path) ||
+      !Object.hasOwn(opMap, cond.mode) ||
+      !NUMERIC_LITERAL_REGEX.test(numText) ||
+      !Number.isFinite(Number(numText))
+    ) {
+      return ''
+    }
+    return `${path} ${opMap[cond.mode]} ${numText}`
+  }
+
   const sourceExpr =
     normalized.source === 'header'
       ? `header(${JSON.stringify(path)})`
@@ -874,12 +921,14 @@ function buildRuleGroupFactor(group: RequestRuleGroup): string {
   if (!NUMERIC_LITERAL_REGEX.test(multiplier)) return ''
   const conditions = group.conditions || []
   const builtConditions = conditions.map(buildRequestConditionExpr)
-  // An invalid time restriction must not leave the remaining conditions
-  // applying the multiplier throughout the day.
+  // Invalid time or token restrictions must not leave the remaining
+  // conditions applying a multiplier outside its intended range.
   if (
     conditions.some(
       (condition, index) =>
-        condition.source === SOURCE_TIME && !builtConditions[index]
+        (condition.source === SOURCE_TIME ||
+          condition.source === SOURCE_TOKEN) &&
+        !builtConditions[index]
     )
   ) {
     return ''

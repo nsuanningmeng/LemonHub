@@ -34,6 +34,7 @@ import {
   MATCH_LT,
   MATCH_RANGE,
   SOURCE_TIME,
+  SOURCE_TOKEN,
   normalizeTierLabel,
   parseTiersFromExpr,
   requestRuleGroupsFromTrace,
@@ -144,6 +145,14 @@ function describeCondition(
     gte: '≥',
     lt: '<',
     lte: '≤',
+  }
+  if (cond.source === SOURCE_TOKEN) {
+    const labels: Record<string, string> = {
+      p: 'Billable input tokens',
+      c: 'Billable output tokens',
+      len: 'Full input length',
+    }
+    return `${t(labels[path] || path)} ${opMap[cond.mode] || '='} ${cond.value}`
   }
   return `${src} ${path} ${opMap[cond.mode] || '='} ${cond.value}`
 }

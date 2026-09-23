@@ -261,6 +261,53 @@ This enables future evolution without breaking existing expressions.
 
 ## File Map
 
+### OpenAI pricing presets (verified 2026-09-23)
+
+The editor's OpenAI presets are maintained in
+`web/src/features/system-settings/models/openai-pricing-presets.ts`.
+Select the preset matching the billed model; a preset does not detect an upstream
+model mapping or automatically change a previously saved expression.
+
+Prices below are USD per million tokens, ordered as input / cache read /
+cache write / output. A dash means no separate cache-write price.
+
+| Preset | Standard, input <=272K | Standard, input >272K | Fast multiplier | Flex multiplier |
+|--------|-----------------------|----------------------|-----------------|-----------------|
+| GPT-5.4 | 2.5 / 0.25 / - / 15 | 5 / 0.5 / - / 22.5 | 2, only <=272K | 0.5 |
+| GPT-5.5 | 5 / 0.5 / - / 30 | 10 / 1 / - / 45 | 2.5, only <=272K | 0.5 |
+| GPT-5.6 Sol | 4 / 0.4 / 5 / 20 | 8 / 0.8 / 10 / 30 | 2 | 0.5 |
+| GPT-6 Astra | 10 / 1 / 12.5 / 50 | 20 / 2 / 25 / 75 | 2 | 0.5 |
+| GPT-6 Sol | 2 / 0.2 / 2.5 / 10 | 4 / 0.4 / 5 / 15 | 2 | 0.5 |
+| GPT-6 Luna | 0.1 / 0.01 / 0.125 / 0.5 | 0.2 / 0.02 / 0.25 / 0.75 | 2 | 0.5 |
+
+- Both `service_tier: "priority"` and `"fast"` select the Fast multiplier.
+- GPT-5.4 and GPT-5.5 exclude long context from Fast. Their templates use a
+  visual token condition to preserve the `len <= 272000` restriction in each
+  Fast request-rule group. Above the threshold, the template
+  does not apply a Fast surcharge. GPT-5.4 explicitly falls back to Standard;
+  GPT-5.5's published Fast table excludes these requests.
+- GPT-5.6 Sol and GPT-6 presets separately price `cc`, populated from OpenAI
+  `cache_write_tokens`. Normalization subtracts `cc` from `p` once; `len` remains
+  the full input length.
+- GPT-5.6 Sol's promotional prices are available at least through 2026-11-21;
+  re-check official prices before revising these presets. No expiry is assumed.
+- These are **request-based** presets. They do not reconcile an upstream project
+  default, channel parameter override/filter, protocol conversion, or service
+  downgrade. `auto` / missing tier uses the Standard branch in the expression,
+  which is accurate only when the actual upstream tier is Standard. Final
+  response-tier reconciliation remains a separate backend change.
+- Regional processing uplifts and tool fees are not included in the token table.
+- Selecting a template replaces the editor's current formula. Existing saved
+  pricing is unchanged until the administrator selects and saves a template.
+
+Sources: [OpenAI pricing](https://developers.openai.com/api/docs/pricing),
+[Fast mode pricing and long-context limits](https://openai.com/api-fast-mode/),
+[GPT-5.4 long context](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.4),
+[GPT-5.6 Sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol),
+[prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
+
+### Implementation files
+
 | Layer | Files |
 |-------|-------|
 | Expression engine | `pkg/billingexpr/compile.go`, `run.go`, `settle.go`, `round.go`, `types.go` |
