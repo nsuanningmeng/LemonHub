@@ -83,7 +83,7 @@ function analyzeError(errorLogs) {
       type: '数据文件被占用',
       title: '无法访问数据文件',
       message: '应用的数据文件正被其他程序占用',
-      solution: '可能的解决方案：\n\n1. 检查是否已经打开了另一个 New API 窗口\n   - 查看任务栏/Dock 中是否有其他 New API 图标\n   - 查看系统托盘（Windows）或菜单栏（Mac）中是否有 New API 图标\n\n2. 如果刚刚关闭过应用，请等待 10 秒后再试\n\n3. 重启电脑以释放被占用的文件\n\n4. 如果问题持续，可以尝试：\n   - 退出所有 New API 实例\n   - 删除数据目录中的临时文件（.db-shm 和 .db-wal）\n   - 重新启动应用'
+      solution: '可能的解决方案：\n\n1. 检查是否已经打开了另一个 New API 窗口\n   - 查看任务栏/Dock 中是否有其他 New API 图标\n   - 查看系统托盘（Windows）或菜单栏（Mac）中是否有其他 New API 图标\n\n2. 如果刚刚关闭过应用，请等待 10 秒后再试\n\n3. 正常退出所有 New API 实例后重新启动应用\n\n4. 如果问题持续，请先备份整个数据目录（包括 .db、.db-wal 和 .db-shm），保留日志并联系管理员排查；不要手动删除数据库或 WAL 文件，以免丢失已提交的数据'
     };
   }
   

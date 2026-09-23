@@ -17,7 +17,7 @@ jobs:
     name: Backend vet, build, and test
     if: github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       GOWORK: 'off'
 
@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ github.event.pull_request.base.repo.full_name }}
-          ref: ${{ github.event.action == 'closed' && github.event.pull_request.base.ref || github.ref }}
+          ref: ${{ github.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -58,6 +58,16 @@ jobs:
       - name: Test root and relaykit modules
         run: make test
 
+      - name: Install Go vulnerability checker
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+
+      - name: Scan reachable root-module vulnerabilities
+        run: govulncheck ./...
+
+      - name: Scan reachable relaykit vulnerabilities independently
+        working-directory: relaykit
+        run: govulncheck ./...
+
   frontend:
     name: Frontend typecheck and test
     if: github.event.action != 'closed' || github.event.pull_request.merged == true
@@ -72,7 +82,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: ${{ github.event.pull_request.base.repo.full_name }}
-          ref: ${{ github.event.action == 'closed' && github.event.pull_request.base.ref || github.ref }}
+          ref: ${{ github.sha }}
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -87,6 +97,32 @@ jobs:
 
       - name: Test
         run: bun run test
+
+      - name: Audit dependencies
+        run: bun audit
+
+  desktop-dependencies:
+    name: Desktop dependency audit
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: electron
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22'
+
+      - name: Install locked dependencies without build scripts
+        run: npm ci --ignore-scripts
+
+      - name: Audit dependencies
+        run: npm audit
 
   mysql-token-migration:
     name: MySQL ${{ matrix.mysql-version }} migration data preservation
@@ -117,6 +153,7 @@ jobs:
       MYSQL_TOKEN_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_token_quota_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       MYSQL_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_topup_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       TEST_MYSQL_RC25_UPGRADE_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_rc25_upgrade_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      MYSQL_TOKEN_GROUP_UPGRADE_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_token_group_upgrade_test_ci?charset=utf8mb4&parseTime=True&loc=Local
 
     steps:
       - name: Checkout
@@ -133,9 +170,70 @@ jobs:
           docker exec -e MYSQL_PWD=lemonhub-migration-test "${{ job.services.mysql.id }}" mysql -uroot -e "
             CREATE DATABASE lemonhub_topup_migration_test_ci;
             CREATE DATABASE lemonhub_rc25_upgrade_test_ci;
+            CREATE DATABASE lemonhub_token_group_upgrade_test_ci;
             GRANT ALL PRIVILEGES ON lemonhub_topup_migration_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_rc25_upgrade_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_token_group_upgrade_test_ci.* TO 'lemonhub'@'%';
           "
 
-      - name: Verify legacy data, top-up, and token quota migrations
-        run: go test ./model -run '^TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData)$' -count=1 -v
+      - name: Verify legacy data, top-up, token quota, and unassigned key migrations
+        run: go test ./model -run '^TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData|TokenGroupUpgradePreservesExistingKeys)$' -count=1 -v
+
+      - name: Verify MySQL container recreation preserves named-volume data
+        env:
+          MYSQL_VERSION: ${{ matrix.mysql-version }}
+        run: |
+          set -euo pipefail
+          resource="lemonhub-persistence-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${MYSQL_VERSION//./-}"
+          container="${resource}-mysql"
+          volume="${resource}-data"
+          image="mysql:${MYSQL_VERSION}"
+          if docker volume inspect "$volume" >/dev/null 2>&1 || docker container inspect "$container" >/dev/null 2>&1; then
+            echo 'Refusing to reuse existing persistence-test resources.' >&2
+            exit 1
+          fi
+          cleanup() {
+            docker rm -f "$container" >/dev/null 2>&1 || true
+            docker volume rm "$volume" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker volume create --label lemonhub.purpose=ci-persistence "$volume"
+          start_mysql() {
+            docker run -d --name "$container" --network none \
+              --label lemonhub.purpose=ci-persistence \
+              --mount "type=volume,source=${volume},target=/var/lib/mysql" \
+              -e MYSQL_ROOT_PASSWORD=lemonhub-persistence-test "$image"
+            for attempt in {1..90}; do
+              if docker exec -e MYSQL_PWD=lemonhub-persistence-test "$container" \
+                mysqladmin ping -h127.0.0.1 -uroot --silent >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 2
+            done
+            docker logs "$container"
+            return 1
+          }
+          start_mysql
+          docker exec -e MYSQL_PWD=lemonhub-persistence-test "$container" mysql -uroot -e "
+            CREATE DATABASE lemonhub_persistence_test;
+            CREATE TABLE lemonhub_persistence_test.legacy_records (
+              id INT PRIMARY KEY, marker VARCHAR(64), quota BIGINT, token_group VARCHAR(64)
+            );
+            INSERT INTO lemonhub_persistence_test.legacy_records VALUES
+              (1, 'existing-key', 5000000000, ''), (2, 'existing-wallet', 987654, 'premium');
+          "
+          query='SELECT id, marker, quota, token_group FROM lemonhub_persistence_test.legacy_records ORDER BY id'
+          before="$(docker exec -e MYSQL_PWD=lemonhub-persistence-test "$container" mysql -uroot --batch --skip-column-names -e "$query")"
+          schema_before="$(docker exec -e MYSQL_PWD=lemonhub-persistence-test "$container" mysql -uroot --batch --skip-column-names -e 'SHOW CREATE TABLE lemonhub_persistence_test.legacy_records')"
+          test "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$container")" = "$volume"
+          docker stop --time 60 "$container"
+          docker rm "$container"
+          docker volume inspect "$volume" >/dev/null
+          start_mysql
+          after="$(docker exec -e MYSQL_PWD=lemonhub-persistence-test "$container" mysql -uroot --batch --skip-column-names -e "$query")"
+          schema_after="$(docker exec -e MYSQL_PWD=lemonhub-persistence-test "$container" mysql -uroot --batch --skip-column-names -e 'SHOW CREATE TABLE lemonhub_persistence_test.legacy_records')"
+          test "$before" = "$after"
+          test "$schema_before" = "$schema_after"
+          test "$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/var/lib/mysql"}}{{.Name}}{{end}}{{end}}' "$container")" = "$volume"
+          docker exec -e MYSQL_PWD=lemonhub-persistence-test "$container" mysql -uroot --batch -e 'SELECT VERSION() AS tested_version;'
+          echo 'Named-volume sentinel rows survived MySQL container removal and recreation.'

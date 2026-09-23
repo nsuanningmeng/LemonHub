@@ -19,7 +19,8 @@ TODO
 ### 2. Electron Dependencies
 ```bash
 cd electron
-npm install
+npm ci
+node node_modules/electron/install.js
 ```
 
 ## Development

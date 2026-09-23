@@ -262,7 +262,8 @@ jobs:
       - name: Install Electron dependencies
         run: |
           cd electron
-          npm install
+          npm ci
+          node node_modules/electron/install.js
 
       - name: Build Electron app
         run: |

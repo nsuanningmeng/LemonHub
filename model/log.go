@@ -672,10 +672,27 @@ type Stat struct {
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, siteScope int) (stat Stat, err error) {
+	return sumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, siteScope, 0)
+}
+
+// SumUserUsedQuota scopes self-service statistics to a stable account ID. Names
+// can be shared across sites, renamed, or contain admin-search wildcard syntax.
+func SumUserUsedQuota(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, channel int, group string) (Stat, error) {
+	if userId <= 0 {
+		return Stat{}, errors.New("invalid user id")
+	}
+	return sumUsedQuota(logType, startTimestamp, endTimestamp, modelName, "", tokenName, channel, group, SiteScopeAll, userId)
+}
+
+func sumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, siteScope int, userId int) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+	if userId > 0 {
+		tx = tx.Where("user_id = ?", userId)
+		rpmTpmQuery = rpmTpmQuery.Where("user_id = ?", userId)
+	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err
