@@ -92,6 +92,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	defer func() {
 		if newAPIError != nil {
+			common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
 			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
 			if overrideText, ok := newAPIError.UserMessageOverride(); ok {
 				newAPIError.ApplyUserMessageOverride(common.MessageWithRequestId(overrideText, requestId))
@@ -237,6 +238,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		// A successful retry must not inherit the previous attempt's outcome.
+		common.SetContextKey(c, constant.ContextKeyResponseFailed, false)
+		relayInfo.StreamStatus = nil
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -249,6 +253,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 
 		if newAPIError == nil {
+			if status := relayInfo.StreamStatus; status != nil && (!status.IsNormalEnd() || status.HasErrors()) {
+				common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
+			}
 			relayInfo.LastError = nil
 			return
 		}
@@ -746,6 +753,7 @@ func RelayTask(c *gin.Context) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
+	common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
 	if taskErr.StatusCode == http.StatusTooManyRequests {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
