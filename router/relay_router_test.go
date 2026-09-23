@@ -89,6 +89,49 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 	}
 }
 
+func TestGeminiCountTokensRejectsBeforeAuthentication(t *testing.T) {
+	setupRelayRouterTestDB(t)
+	engine := gin.New()
+	SetRelayRouter(engine)
+
+	for _, prefix := range []string{"/v1", "/v1beta"} {
+		for _, suffix := range []string{":countTokens", ":countTokens?key=unused", "%3AcountTokens"} {
+			t.Run(prefix+suffix, func(t *testing.T) {
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, prefix+"/models/gemini-2.5-flash"+suffix, strings.NewReader(`{"contents":[]}`))
+				request.Header.Set("Content-Type", "application/json")
+				engine.ServeHTTP(recorder, request)
+
+				require.Equal(t, http.StatusNotFound, recorder.Code)
+				var payload struct {
+					Error struct {
+						Type string `json:"type"`
+					} `json:"error"`
+				}
+				require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+				assert.Equal(t, "invalid_request_error", payload.Error.Type)
+			})
+		}
+	}
+}
+
+func TestGeminiSupportedRoutesStillRequireAuthentication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	SetRelayRouter(engine)
+
+	for _, prefix := range []string{"/v1", "/v1beta"} {
+		for _, action := range []string{"generateContent", "streamGenerateContent", "embedContent", "batchEmbedContents"} {
+			t.Run(prefix+action, func(t *testing.T) {
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, prefix+"/models/gemini-test:"+action, nil)
+				engine.ServeHTTP(recorder, request)
+				assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+			})
+		}
+	}
+}
+
 func setupRelayRouterTestDB(t *testing.T) {
 	t.Helper()
 
