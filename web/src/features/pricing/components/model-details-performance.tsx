@@ -39,7 +39,7 @@ import {
 import type { PerformanceGroup } from '@/features/performance-metrics/types'
 import { cn } from '@/lib/utils'
 
-import { type UptimeDayPoint } from '../lib/mock-stats'
+import type { UptimeDayPoint } from '../lib/mock-stats'
 import type { PricingModel } from '../types'
 import { LatencyTrendChart, UptimeTrendChart } from './model-details-charts'
 import { UptimeSparkline } from './model-details-uptime-sparkline'
@@ -103,7 +103,7 @@ function toLatencySeries(groups: PerformanceGroup[]) {
     }
   }
 
-  return Array.from(byTs.entries())
+  return [...byTs.entries()]
     .sort(([a], [b]) => a - b)
     .map(([ts, values]) => ({
       timestamp: new Date(ts * 1000).toISOString(),
@@ -127,7 +127,7 @@ function toUptimeSeries(groups: PerformanceGroup[]): UptimeDayPoint[] {
       byTs.set(point.ts, current)
     }
   }
-  return Array.from(byTs.entries())
+  return [...byTs.entries()]
     .sort(([a], [b]) => a - b)
     .map(([ts, value]) => {
       const uptime =
@@ -167,29 +167,38 @@ function average(
   )
 }
 
-export function ModelDetailsPerformance(props: { model: PricingModel }) {
+export function ModelDetailsPerformance(props: {
+  model: PricingModel
+  availableGroups: string[]
+}) {
   const { t } = useTranslation()
   const srConfig = useSuccessRateConfig()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics', props.model.model_name],
     queryFn: () => getPerfMetrics(props.model.model_name, 24),
     staleTime: 60 * 1000,
+    refetchOnMount: 'always',
   })
   const groups = useMemo(
-    () => metricsQuery.data?.data.groups ?? [],
-    [metricsQuery.data]
-  )
-  const performances = useMemo<PerformanceRow[]>(
     () =>
-      groups.map((group) => ({
-        group: group.group,
-        avg_ttft_ms: group.avg_ttft_ms,
-        avg_latency_ms: group.avg_latency_ms,
-        success_rate: group.success_rate,
-        avg_tps: group.avg_tps,
-      })),
-    [groups]
+      (metricsQuery.data?.data.groups ?? []).filter((group) =>
+        props.availableGroups.includes(group.group)
+      ),
+    [metricsQuery.data, props.availableGroups]
   )
+  const performances = useMemo<PerformanceRow[]>(() => {
+    const metricsByGroup = new Map(groups.map((group) => [group.group, group]))
+    return props.availableGroups.map((group) => {
+      const metrics = metricsByGroup.get(group)
+      return {
+        group,
+        avg_ttft_ms: metrics?.avg_ttft_ms ?? Number.NaN,
+        avg_latency_ms: metrics?.avg_latency_ms ?? Number.NaN,
+        success_rate: metrics?.success_rate ?? Number.NaN,
+        avg_tps: metrics?.avg_tps ?? Number.NaN,
+      }
+    })
+  }, [groups, props.availableGroups])
   const latencySeries = useMemo(() => toLatencySeries(groups), [groups])
   const uptimeSeries = useMemo(() => toUptimeSeries(groups), [groups])
   const uptimeByGroup = useMemo<Record<string, UptimeDayPoint[]>>(() => {
@@ -225,9 +234,9 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
         <StatCard
           icon={HeartPulse}
           label={t('Success rate')}
-          value={formatSuccessRate(NaN, srConfig)}
+          value={formatSuccessRate(Number.NaN, srConfig)}
           hint={t('No requests in the last 24 hours')}
-          intent={successRateIntent(NaN, srConfig)}
+          intent={successRateIntent(Number.NaN, srConfig)}
         />
       </div>
     )
@@ -248,9 +257,18 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
     successRates.length > 0
       ? successRates.reduce((sum, value) => sum + value, 0) /
         successRates.length
-      : 0
+      : Number.NaN
   const incidentCount = uptimeSeries.reduce((s, p) => s + p.incidents, 0)
   const intent = successRateIntent(successRate, srConfig)
+  let successRateHint = t('No requests in the last 24 hours')
+  if (successRates.length > 0) {
+    successRateHint =
+      incidentCount > 0
+        ? t('{{count}} incidents in the last 24 hours', {
+            count: incidentCount,
+          })
+        : t('No incidents in the last 24 hours')
+  }
 
   return (
     <div className='flex flex-col gap-4'>
@@ -270,13 +288,7 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
           icon={HeartPulse}
           label={t('Success rate')}
           value={formatSuccessRate(successRate, srConfig)}
-          hint={
-            incidentCount > 0
-              ? t('{{count}} incidents in the last 24 hours', {
-                  count: incidentCount,
-                })
-              : t('No incidents in the last 24 hours')
-          }
+          hint={successRateHint}
           intent={intent}
         />
       </div>
@@ -327,12 +339,15 @@ export function ModelDetailsPerformance(props: { model: PricingModel }) {
               header: t('Success rate'),
               className: cn(tableStyles.compactHeaderCell, 'min-w-[180px]'),
               cellClassName: tableStyles.compactCell,
-              cell: (perf) => (
-                <UptimeSparkline
-                  size='sm'
-                  series={uptimeByGroup[perf.group] ?? []}
-                />
-              ),
+              cell: (perf) =>
+                Number.isFinite(perf.success_rate) ? (
+                  <UptimeSparkline
+                    size='sm'
+                    series={uptimeByGroup[perf.group] ?? []}
+                  />
+                ) : (
+                  <span className='text-muted-foreground text-xs'>—</span>
+                ),
             },
           ]}
         />

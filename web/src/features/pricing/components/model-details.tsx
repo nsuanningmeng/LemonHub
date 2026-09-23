@@ -174,15 +174,21 @@ function OverviewMetric(props: {
   )
 }
 
-function OverviewSummaryGrid(props: { model: PricingModel }) {
+function OverviewSummaryGrid(props: {
+  model: PricingModel
+  availableGroups: string[]
+}) {
   const { t } = useTranslation()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics', props.model.model_name],
     queryFn: () => getPerfMetrics(props.model.model_name, 24),
     staleTime: 60 * 1000,
+    refetchOnMount: 'always',
   })
 
-  const groups = metricsQuery.data?.data.groups ?? []
+  const groups = (metricsQuery.data?.data.groups ?? []).filter((group) =>
+    props.availableGroups.includes(group.group)
+  )
   const successRates = groups
     .map((group) => group.success_rate)
     .filter((rate) => Number.isFinite(rate))
@@ -852,7 +858,7 @@ function getDynamicFormattedPricesByTier(
 function GroupPricingSection(props: {
   model: PricingModel
   groupRatio: Record<string, number>
-  usableGroup: Record<string, { desc: string; ratio: number }>
+  availableGroups: string[]
   autoGroups: string[]
   priceRate: number
   usdExchangeRate: number
@@ -862,10 +868,7 @@ function GroupPricingSection(props: {
   const { t } = useTranslation()
   const showRechargePrice = props.showRechargePrice ?? false
 
-  const availableGroups = useMemo(
-    () => getAvailableGroups(props.model, props.usableGroup || {}),
-    [props.model, props.usableGroup]
-  )
+  const availableGroups = props.availableGroups
 
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
@@ -1140,6 +1143,10 @@ export interface ModelDetailsContentProps {
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
   const { t } = useTranslation()
   const showRechargePrice = props.showRechargePrice ?? false
+  const availableGroups = useMemo(
+    () => getAvailableGroups(props.model, props.usableGroup, props.groupRatio),
+    [props.model, props.usableGroup, props.groupRatio]
+  )
 
   const isDynamic =
     props.model.billing_mode === 'tiered_expr' &&
@@ -1167,7 +1174,10 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
         </TabsList>
 
         <TabsContent value='overview' className='space-y-6 outline-none'>
-          <OverviewSummaryGrid model={props.model} />
+          <OverviewSummaryGrid
+            model={props.model}
+            availableGroups={availableGroups}
+          />
 
           <section className='bg-card/60 space-y-5 rounded-xl border p-4 shadow-sm'>
             <SectionTitle>{t('Pricing')}</SectionTitle>
@@ -1184,7 +1194,7 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
             <GroupPricingSection
               model={props.model}
               groupRatio={props.groupRatio}
-              usableGroup={props.usableGroup}
+              availableGroups={availableGroups}
               autoGroups={props.autoGroups}
               priceRate={props.priceRate}
               usdExchangeRate={props.usdExchangeRate}
@@ -1197,7 +1207,10 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
         </TabsContent>
 
         <TabsContent value='performance' className='outline-none'>
-          <ModelDetailsPerformance model={props.model} />
+          <ModelDetailsPerformance
+            model={props.model}
+            availableGroups={availableGroups}
+          />
         </TabsContent>
 
         <TabsContent value='api' className='outline-none'>

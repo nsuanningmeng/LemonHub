@@ -4,7 +4,10 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -19,8 +22,7 @@ func GetPerfMetricsSummary(c *gin.Context) {
 		}
 	}
 
-	activeGroups := append(lo.Keys(ratio_setting.GetGroupRatioCopy()), "auto")
-	result, err := perfmetrics.QuerySummaryAll(hours, activeGroups)
+	result, err := perfmetrics.QuerySummaryAll(hours, getPerfMetricsModelGroups(c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -65,7 +67,10 @@ func GetPerfMetrics(c *gin.Context) {
 		return
 	}
 
-	result.Groups = filterActiveGroups(result.Groups)
+	activeGroups := getPerfMetricsModelGroups(c)[modelName]
+	result.Groups = lo.Filter(result.Groups, func(group perfmetrics.GroupResult, _ int) bool {
+		return common.StringsContains(activeGroups, group.Group)
+	})
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -73,10 +78,31 @@ func GetPerfMetrics(c *gin.Context) {
 	})
 }
 
-func filterActiveGroups(groups []perfmetrics.GroupResult) []perfmetrics.GroupResult {
+// Use the same current model memberships and viewer permissions as pricing.
+// A group can still exist globally after it has been removed from one model.
+func getPerfMetricsModelGroups(c *gin.Context) map[string][]string {
+	userGroup := ""
+	if userID, exists := c.Get("id"); exists {
+		if user, err := model.GetUserCache(userID.(int)); err == nil {
+			userGroup = user.Group
+		}
+	}
+	usableGroups := service.GetUserUsableGroups(userGroup)
 	activeRatios := ratio_setting.GetGroupRatioCopy()
-	return lo.Filter(groups, func(g perfmetrics.GroupResult, _ int) bool {
-		_, ok := activeRatios[g.Group]
-		return ok || g.Group == "auto"
-	})
+	modelGroups := make(map[string][]string)
+	for _, pricing := range model.GetPricing() {
+		for _, group := range pricing.EnableGroup {
+			if group == "" || group == "auto" {
+				continue
+			}
+			if _, ok := usableGroups[group]; !ok {
+				continue
+			}
+			if _, ok := activeRatios[group]; !ok {
+				continue
+			}
+			modelGroups[pricing.ModelName] = append(modelGroups[pricing.ModelName], group)
+		}
+	}
+	return modelGroups
 }

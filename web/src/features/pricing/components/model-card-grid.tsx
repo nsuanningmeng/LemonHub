@@ -51,6 +51,7 @@ export function ModelCardGrid(props: ModelCardGridProps) {
     queryKey: ['perf-metrics-summary', 24],
     queryFn: () => getPerfMetricsSummary(24),
     staleTime: 60 * 1000,
+    refetchOnMount: 'always',
     retry: false,
   })
 
