@@ -145,6 +145,12 @@ const ModelRatioVisualEditorComponent = forwardRef<
   const [globalFilter, setGlobalFilter] = useState('')
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const editorPanelRef = useRef<ModelPricingEditorPanelHandle>(null)
+  // Keep column callbacks stable while opening the editor so table cells and
+  // the user's text selection are preserved.
+  const editingModelNameRef = useRef<string | null>(null)
+  useEffect(() => {
+    editingModelNameRef.current = editData?.name ?? null
+  }, [editData])
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: 20,
@@ -415,7 +421,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         JSON.stringify(billingExprMap, null, 2)
       )
 
-      if (editData?.name === name) {
+      if (editingModelNameRef.current === name) {
         setEditData(null)
         setEditorOpen(false)
         setSheetOpen(false)
@@ -433,7 +439,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       onChange,
-      editData,
     ]
   )
 
@@ -779,6 +784,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                   }
                   onClick={(event) => {
                     const target = event.target as HTMLElement
+                    if (!event.currentTarget.contains(target)) return
                     if (target.closest('button, [role="checkbox"]')) return
                     handleEdit(row.original)
                   }}
