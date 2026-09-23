@@ -44,6 +44,13 @@ const STATUS_RELATED_KEYS = new Set([
   'perf_metrics_setting.success_rate_yellow_threshold',
   'perf_metrics_setting.no_data_as_full',
   'oidc.display_name',
+  // Login widgets must use the same captcha provider and public credentials
+  // as the backend immediately after a settings change.
+  'TurnstileCheckEnabled',
+  'CaptchaProvider',
+  'TurnstileSiteKey',
+  'GeetestCaptchaId',
+  'TencentCaptchaAppId',
 ])
 
 export function useUpdateOption() {

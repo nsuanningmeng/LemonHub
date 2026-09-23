@@ -110,12 +110,9 @@ func TestAltchaRejectsExpiredAndForgedPayloads(t *testing.T) {
 // --- GeeTest ----------------------------------------------------------------
 
 func TestGeetestVerifySendsSignedFormAndAcceptsSuccess(t *testing.T) {
-	common.GeetestCaptchaId = "test-captcha-id"
-	common.GeetestCaptchaKey = "test-captcha-key"
+	originalID, originalKey, originalURL := common.GeetestCaptchaId, common.GeetestCaptchaKey, geetestValidateURL
 	t.Cleanup(func() {
-		common.GeetestCaptchaId = ""
-		common.GeetestCaptchaKey = ""
-		geetestValidateURL = "https://gcaptcha4.geetest.com/validate"
+		common.GeetestCaptchaId, common.GeetestCaptchaKey, geetestValidateURL = originalID, originalKey, originalURL
 	})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,13 +126,102 @@ func TestGeetestVerifySendsSignedFormAndAcceptsSuccess(t *testing.T) {
 		mac.Write([]byte("lot-1"))
 		assert.Equal(t, hex.EncodeToString(mac.Sum(nil)), r.Form.Get("sign_token"),
 			"sign_token must be HMAC-SHA256(captcha_key, lot_number)")
-		w.Write([]byte(`{"status":"success","result":"success"}`))
+		w.Write([]byte(`{"result":"success","reason":"","captcha_args":{"lot_number":"lot-1"}}`))
 	}))
 	defer server.Close()
 	geetestValidateURL = server.URL
 
-	token := `{"lot_number":"lot-1","captcha_output":"out-1","pass_token":"pass-1","gen_time":"1751400000"}`
-	require.NoError(t, verifyGeetest(token))
+	for _, tc := range []struct {
+		name  string
+		id    string
+		key   string
+		token string
+	}{
+		{
+			name:  "widget proof for configured ID",
+			id:    "test-captcha-id",
+			key:   "test-captcha-key",
+			token: `{"captcha_id":"test-captcha-id","lot_number":"lot-1","captcha_output":"out-1","pass_token":"pass-1","gen_time":"1751400000"}`,
+		},
+		{
+			name:  "pasted credentials with surrounding whitespace",
+			id:    " test-captcha-id\r\n",
+			key:   "\ttest-captcha-key \n",
+			token: `{"captcha_id":"test-captcha-id","lot_number":"lot-1","captcha_output":"out-1","pass_token":"pass-1","gen_time":"1751400000"}`,
+		},
+		{
+			name:  "legacy proof without optional captcha ID",
+			id:    "test-captcha-id",
+			key:   "test-captcha-key",
+			token: `{"lot_number":"lot-1","captcha_output":"out-1","pass_token":"pass-1","gen_time":"1751400000"}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			common.GeetestCaptchaId, common.GeetestCaptchaKey = tc.id, tc.key
+			require.NoError(t, verifyGeetest(tc.token))
+		})
+	}
+}
+
+func TestGeetestRejectsInvalidConfigurationAndProofBeforeUpstream(t *testing.T) {
+	originalID, originalKey, originalURL := common.GeetestCaptchaId, common.GeetestCaptchaKey, geetestValidateURL
+	t.Cleanup(func() {
+		common.GeetestCaptchaId, common.GeetestCaptchaKey, geetestValidateURL = originalID, originalKey, originalURL
+	})
+	// The existing outage fallback would accept a token if these checks reached
+	// the network. Invalid inputs must be rejected before that boundary.
+	geetestValidateURL = "http://127.0.0.1:1"
+	const validToken = `{"captcha_id":"test-captcha-id","lot_number":"lot-1","captcha_output":"o","pass_token":"p","gen_time":"1"}`
+	for _, tc := range []struct {
+		name  string
+		id    string
+		key   string
+		token string
+		want  string
+	}{
+		{"blank ID", " \n", "test-key", validToken, "管理员未正确配置极验验证码"},
+		{"blank key", "test-captcha-id", " \n", validToken, "管理员未正确配置极验验证码"},
+		{"masked key", "test-captcha-id", "example***key", validToken, "极验验证 Key 不完整，请联系管理员从极验控制台复制完整 Key"},
+		{"stale widget ID", "new-captcha-id", "test-key", validToken, "人机验证配置已更新，请刷新页面后重试"},
+		{"missing lot number", "test-captcha-id", "test-key", `{"captcha_output":"o","pass_token":"p","gen_time":"1"}`, "人机验证参数无效，请刷新重试"},
+		{"missing output", "test-captcha-id", "test-key", `{"lot_number":"lot-1","pass_token":"p","gen_time":"1"}`, "人机验证参数无效，请刷新重试"},
+		{"missing pass token", "test-captcha-id", "test-key", `{"lot_number":"lot-1","captcha_output":"o","gen_time":"1"}`, "人机验证参数无效，请刷新重试"},
+		{"missing generation time", "test-captcha-id", "test-key", `{"lot_number":"lot-1","captcha_output":"o","pass_token":"p"}`, "人机验证参数无效，请刷新重试"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			common.GeetestCaptchaId, common.GeetestCaptchaKey = tc.id, tc.key
+			require.EqualError(t, verifyGeetest(tc.token), tc.want)
+		})
+	}
+}
+
+func TestGeetestRejectsAPIErrors(t *testing.T) {
+	originalID, originalKey, originalURL := common.GeetestCaptchaId, common.GeetestCaptchaKey, geetestValidateURL
+	common.GeetestCaptchaId, common.GeetestCaptchaKey = "test-captcha-id", "test-captcha-key"
+	t.Cleanup(func() {
+		common.GeetestCaptchaId, common.GeetestCaptchaKey, geetestValidateURL = originalID, originalKey, originalURL
+	})
+	for _, tc := range []struct {
+		name     string
+		response string
+		want     string
+	}{
+		{"invalid signature", `{"status":"error","code":"-50304","msg":"lot_number not match"}`, "极验验证签名不匹配，请联系管理员检查验证 ID 和 Key"},
+		{"numeric error code", `{"status":"error","code":-50304,"msg":"lot_number not match"}`, "极验验证签名不匹配，请联系管理员检查验证 ID 和 Key"},
+		{"unexpected diagnostic types", `{"status":"error","code":{},"msg":{"detail":"rejected"}}`, "人机验证失败，请刷新重试"},
+		{"invalid timestamp", `{"status":"error","code":"-50005","msg":"illegal gen_time"}`, "人机验证失败，请刷新重试"},
+		{"explicit error with success result", `{"status":"error","result":"success"}`, "人机验证失败，请刷新重试"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, err := w.Write([]byte(tc.response))
+				assert.NoError(t, err)
+			}))
+			t.Cleanup(server.Close)
+			geetestValidateURL = server.URL
+			require.EqualError(t, verifyGeetest(`{"lot_number":"lot-1","captcha_output":"o","pass_token":"p","gen_time":"1"}`), tc.want)
+		})
+	}
 }
 
 func TestGeetestVerifyFailureModes(t *testing.T) {
