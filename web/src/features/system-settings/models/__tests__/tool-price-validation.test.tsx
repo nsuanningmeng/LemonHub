@@ -17,10 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import i18next from 'i18next'
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vitest'
 
+import { api } from '@/lib/api'
+
+import type { UpdateOptionRequest } from '../../types'
 import { ToolPriceSettings } from '../tool-price-settings'
 
 describe('tool price validation', () => {
@@ -61,4 +64,35 @@ describe('tool price validation', () => {
 
     queryClient.clear()
   })
+
+  test.each([0.0001, 0.125, 1.2345])(
+    'accepts and saves a tool price of %s without rounding',
+    async (price) => {
+      const queryClient = new QueryClient({
+        defaultOptions: { mutations: { retry: false } },
+      })
+      const put = vi.spyOn(api, 'put').mockResolvedValue({
+        data: { success: true },
+      })
+      const view = render(
+        <QueryClientProvider client={queryClient}>
+          <ToolPriceSettings defaultValue='{"web_search":10}' />
+        </QueryClientProvider>
+      )
+      const priceInput = screen.getByRole('spinbutton', {
+        name: 'Price ($/1K calls): web_search',
+      })
+
+      fireEvent.change(priceInput, { target: { value: String(price) } })
+
+      expect(priceInput).toBeValid()
+      fireEvent.click(screen.getByRole('button', { name: 'Save tool prices' }))
+      await waitFor(() => expect(put).toHaveBeenCalledTimes(1))
+      const savedOption = put.mock.calls[0][1] as UpdateOptionRequest
+      const savedPrices = JSON.parse(String(savedOption.value))
+      expect(savedPrices.web_search).toBe(price)
+      view.unmount()
+      queryClient.clear()
+    }
+  )
 })
