@@ -28,7 +28,7 @@
 
 <p align="center">
   <a href="#aperçu">Aperçu</a> •
-  <a href="#en-quoi-lemonhub-diffère-de-new-api">Différences avec new-api</a> •
+  <a href="#features">Fonctionnalités</a> •
   <a href="#démarrage-rapide">Démarrage rapide</a> •
   <a href="#franchise-dagents--revendeurs">Franchise d'agents</a> •
   <a href="#déploiement">Déploiement</a>
@@ -44,7 +44,7 @@ LemonHub est un fork de développement secondaire de [new-api](https://github.co
 - un **système étendu de commissions de parrainage** (bonus à la première recharge, commission en pourcentage continue, taux par utilisateur, classement administrateur et mode promoteur réglé en espèces) ;
 - une **suite de tickets de support et de campagnes e-mail** ;
 - une **configuration client en un clic** (Connect Hub) ;
-- et une série de modifications de **facturation, paiement, relais, sécurité et migration**.
+- des dispositifs de **facturation, paiement, relais, sécurité et migration**.
 
 Le cœur de relais / transfert de canaux / facturation est maintenu compatible avec l'amont afin que les fonctionnalités et correctifs de new-api fusionnent proprement ; les ajouts de LemonHub vivent autour de lui.
 
@@ -53,15 +53,17 @@ Le cœur de relais / transfert de canaux / facturation est maintenu compatible a
 > - Vous devez obtenir légalement les clés d'API, comptes, services de modèles et autorisations d'interface en amont, et respecter les conditions d'utilisation en amont ainsi que les lois et réglementations applicables.
 > - Lorsque vous fournissez des services d'IA générative au public, accomplissez toutes les obligations d'enregistrement, de licence, de sécurité des contenus, de vérification d'identité réelle, de conservation des journaux, de fiscalité, de paiement et d'autorisation en amont requises par votre juridiction.
 
-## En quoi LemonHub diffère de new-api
+<a id="features"></a>
 
-Tout ce qui suit est ajouté ou modifié par le fork au-dessus de new-api en amont, regroupé par domaine. Il s'agit de la liste cumulative depuis la première version de LemonHub, pas d'une seule release.
+## Fonctionnalités
+
+LemonHub propose les fonctionnalités suivantes en complément de la passerelle new-api. Pour les changements propres à chaque version et les instructions de mise à niveau, consultez les [GitHub Releases](https://github.com/nsuanningmeng/LemonHub/releases).
 
 ### 1. Sous-sites multi-locataires
 
 - Un seul déploiement et une seule base de données desservent de nombreux sous-sites indépendants ; chaque requête entrante est routée vers un sous-site selon son `Host` (middleware de domaine).
 - Personnalisation par site : nom, logo, avis, pied de page et texte d'accroche de la page d'accueil, tous configurables par sous-site.
-- Isolation des données par site : chaque table porte un `site_id` ; les noms d'utilisateur sont uniques **par site** (`(site_id, username)`) ; les mots de passe, la 2FA et toutes les liaisons OAuth sont isolés par site ; l'inscription, la connexion et OAuth sont limités au site courant. L'accès inter-sites est couvert par des tests d'autorisation.
+- Isolation des données par site : les utilisateurs, clés API, journaux et autres enregistrements propres à un site sont délimités par `site_id`, tandis que les canaux en amont et les paramètres système communs restent gérés par le site principal. Les noms d'utilisateur sont uniques **par site** (`(site_id, username)`) ; les mots de passe, la 2FA, les liaisons OAuth, l'inscription et la connexion sont limités au site courant.
 - Une page de gestion du site principal pour créer et administrer les sous-sites.
 
 ### 2. Franchise d'agents / revendeurs
@@ -76,9 +78,10 @@ Tout ce qui suit est ajouté ou modifié par le fork au-dessus de new-api en amo
 
 ### 3. Système de commissions de parrainage
 
-L'amont fournit un bonus d'invitation ponctuel. LemonHub le remplace par un système de commissions complet :
+Le système de parrainage de LemonHub comprend :
 
 - La récompense de parrainage est créditée **après la première recharge réussie du filleul** (et non à l'inscription), à laquelle s'ajoute une **commission en pourcentage continue** sur chaque recharge effectuée par le filleul ; les deux passent par un registre idempotent par événement avec des API de statistiques.
+- Les remboursements et litiges Stripe entraînent la reprise des quotas et récompenses de parrainage correspondants.
 - Une page de détail du parrainage destinée à l'utilisateur et un classement personnel des contributions.
 - **Remplacement du taux de commission par utilisateur** qui prime sur le taux global (non défini hérite du global ; `0` désactive la commission pour ce parrain).
 - Un **classement de parrainage à l'échelle du site pour l'administrateur** (cartes de synthèse + classement avec recherche, tri et pagination, derrière `AdminAuth`).
@@ -87,8 +90,8 @@ L'amont fournit un bonus d'invitation ponctuel. LemonHub le remplace par un syst
 ### 4. Tickets de support et campagnes e-mail
 
 - Un espace de tickets pour les utilisateurs et une vue de gestion des tickets pour l'administrateur, avec priorité.
-- Un outil de campagne e-mail / promotion de masse : migration de schéma, téléversement de pièces jointes, envoi groupé, limitation de débit, nettoyage et audit.
-- Des tests de sécurité côté backend couvrant la gestion des téléversements, le XSS Markdown, l'injection d'en-têtes, l'autorisation et la priorité.
+- Un outil de campagne e-mail et de promotion de masse avec téléversement de pièces jointes, envoi groupé, limitation de débit, nettoyage et audit.
+- Un SMTP dédié aux campagnes marketing, avec désabonnement, listes d'exclusion et reprise des envois groupés interrompus.
 
 ### 5. Connect Hub (configuration client en un clic)
 
@@ -102,24 +105,30 @@ L'amont fournit un bonus d'invitation ponctuel. LemonHub le remplace par un syst
 ### 7. Fiabilité du paiement et du relais
 
 - Les rappels EasyPay sont exemptés du traitement gzip et du limiteur de débit global et bénéficient d'un limiteur de secours dédié et permissif ; `notify_url` est ancré à un domaine stable.
-- Les URL de rappel/retour de paiement et le `<title>` de la page au premier rendu suivent le domaine visité (de confiance), avec protection contre l'usurpation de Host ; un bug de scintillement du titre est corrigé.
-- Des tests de concurrence/idempotence pour le règlement EasyPay.
-- Les nouvelles tentatives de relais respectent les codes de statut 504/524 configurés ; les réponses `BadResponseBody` hors streaming deviennent réessayables ; lorsque tous les canaux sont épuisés, la véritable erreur en amont est renvoyée au lieu d'une erreur générique.
-- Correctif d'abonnement : un abonnement expiré ramène correctement l'utilisateur à son groupe d'origine (`prev_user_group` est préservé lors du renouvellement).
+- Les URL de notification/retour de paiement et le `<title>` dès le premier affichage suivent le domaine visité (de confiance), avec une protection contre l'usurpation de l'en-tête `Host`.
+- Le règlement EasyPay traite les notifications signées comme des déclencheurs : il interroge séparément la passerelle du marchand propriétaire de la commande. L'identité du marchand et de la commande, ainsi que le montant exact enregistré, doivent correspondre avant tout crédit de quota ou d'abonnement.
+- Les commandes d'abonnement figent les conditions de fourniture au moment du paiement ; pour les forfaits limités via EasyPay, la réservation atomique permet de réutiliser une commande en attente en toute sécurité, sans conflit avec une modification du forfait ni commande payable en double.
+- Les nouvelles tentatives du relais respectent les codes de statut 504/524 configurés ; les réponses `BadResponseBody` hors streaming peuvent être réessayées ; lorsque tous les canaux sont épuisés, la véritable erreur en amont est renvoyée.
+- À l'expiration d'un abonnement, l'utilisateur retrouve son groupe d'origine (`prev_user_group` est conservé lors du renouvellement).
 
 ### 8. Paramètres de performance des modèles
 
 - Seuil de taux de réussite, liste blanche de codes d'erreur et gestion du cas « aucune donnée = 100 % ».
+- Les tests manuels et planifiés des canaux activés produisent des échantillons de santé pour chaque couple modèle/groupe configuré ; les groupes devenus indisponibles sont exclus du taux de réussite affiché.
+- Les erreurs du relais et des tests de canal ne comptent comme des échecs que si leur statut HTTP correspond à la liste configurée dans les paramètres de performance ; les autres erreurs comptent comme des échantillons réussis. Une liste vide compte toutes les erreurs comme des échecs.
+- Les vues de performance suivent les couples modèle/groupe actuellement actifs, disponibles et tarifés ; les groupes supprimés n'affectent plus les statistiques globales ni les tendances.
 
 ### 9. Renforcement de la sécurité et des migrations
 
-- Renforcement SSRF pour les canaux personnalisés avancés.
+- Protection contre les requêtes SSRF pour les canaux personnalisés avancés.
+- Contrôles d'accès aux tickets et médias privés, masquage des données sensibles dans les journaux et sélection explicite des groupes des clés API.
 - Sûreté des migrations de base de données sur les trois moteurs (SQLite / MySQL / PostgreSQL) : contrôle préalable fail-closed de la précision de `price_amount`, contrôle préalable de la précision des prix d'abonnement, contrôle préalable fail-stop en chemin rapide, et un remplissage des `site_id` NULL afin que les requêtes du site principal ne masquent jamais d'anciennes lignes.
 
 ### 10. Empaquetage et documentation
 
 - Les images Docker sont publiées sur GitHub Container Registry (`ghcr.io/nsuanningmeng/lemonhub`), multi-arch (amd64 + arm64) ; `docker-compose` pointe par défaut vers l'image du fork.
-- Un README multilingue et des guides pas à pas pour les sous-sites / agents.
+- Les GitHub Releases proposent des binaires serveur pour Linux, macOS et Windows, une application Electron pour Windows et des fichiers de sommes de contrôle.
+- Des éditions du README en anglais, chinois simplifié, chinois traditionnel, français et japonais, ainsi que des guides pas à pas pour les sous-sites et agents.
 
 > Nouveau dans le modèle d'agent ? Lisez le guide pas à pas : **[Guide des sous-sites / franchise d'agents (中文)](./docs/subsite-guide.md)** · [English](./docs/subsite-guide.en.md)
 
@@ -131,10 +140,11 @@ L'amont fournit un bonus d'invitation ponctuel. LemonHub le remplace par un syst
 git clone https://github.com/nsuanningmeng/LemonHub.git
 cd LemonHub
 
-# Review/edit the configuration (DB password, ServerAddress, etc.)
+# Le fichier Compose fourni démarre PostgreSQL et Redis : modifiez leurs mots de passe
+# ainsi que les chaînes de connexion correspondantes avant d'exposer le service.
 nano docker-compose.yml
 
-# Start (the compose file already points at the LemonHub image)
+# Démarrez les services ; le fichier Compose utilise déjà l'image LemonHub.
 docker compose up -d
 ```
 
@@ -144,25 +154,28 @@ docker compose up -d
 ```bash
 docker pull ghcr.io/nsuanningmeng/lemonhub:latest
 
-# SQLite (default — mount /data to persist)
+# SQLite par défaut : montez /data pour conserver les données.
 docker run --name lemonhub -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
   ghcr.io/nsuanningmeng/lemonhub:latest
 
-# MySQL / PostgreSQL (set SQL_DSN)
+# MySQL distant : remplacez l'hôte et les identifiants ; l'hôte doit être
+# accessible depuis le conteneur.
 docker run --name lemonhub -d --restart always \
   -p 3000:3000 \
-  -e SQL_DSN="root:123456@tcp(localhost:3306)/lemonhub" \
+  -e SQL_DSN="user:password@tcp(db.example.internal:3306)/lemonhub" \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
   ghcr.io/nsuanningmeng/lemonhub:latest
+
+# Pour PostgreSQL, utilisez SQL_DSN="postgresql://user:password@db.example.internal:5432/lemonhub".
 ```
 
 </details>
 
-Après le déploiement, ouvrez `http://localhost:3000`. Le premier compte enregistré devient l'**administrateur root / de la plateforme (site principal)**.
+Après le déploiement, ouvrez `http://localhost:3000` et terminez l'assistant d'initialisation pour créer le compte **root / administrateur de la plateforme (site principal)**.
 
 > [!WARNING]
 > Lorsque vous exploitez LemonHub comme service d'IA public ou destiné à la revente, accomplissez d'abord toutes les obligations requises d'enregistrement, de licence, de sécurité des contenus, de vérification d'identité réelle, de conservation des journaux, de fiscalité, de paiement et d'autorisation en amont.
@@ -174,14 +187,14 @@ LemonHub s'articule autour de deux rôles :
 - **Administrateur du site principal (propriétaire de la plateforme)** — détient le déploiement et les canaux d'IA (clés en amont) et vend du quota en gros. Crée les sous-sites, alimente les portefeuilles des agents et fixe le taux de remise de chaque agent.
 - **Administrateur de sous-site (agent / revendeur)** — exploite un sous-site sur son propre domaine, configure son propre marchand de paiement et son apparence, et sert ses propres utilisateurs finaux.
 
-Le flux d'argent en un coup d'œil (exemple, remise `7000` = 70 %) :
+Le flux financier en un coup d'œil (exemple, remise `7000` = 70 %) :
 
 ```
-End-user pays ¥100  ──►  Agent's OWN EasyPay merchant   (agent keeps ¥100)
-        │
-        ▼ (callback, one DB transaction, idempotent)
-   User credited ¥100 of quota   +   Agent procurement wallet debited ¥70
-                                          └─ ¥30 is the agent's margin
+L'utilisateur paie ¥100 ──► Compte EasyPay de l'agent (qui reçoit ¥100)
+          │
+          ▼ (notification ; une transaction en base, idempotente)
+   Utilisateur crédité de ¥100 de quota + portefeuille d'approvisionnement débité de ¥70
+                                             └─ marge brute de l'agent : ¥30
 ```
 
 Le tutoriel complet — ce que chaque rôle doit préparer, et chaque étape — se trouve ici :
@@ -194,9 +207,9 @@ LemonHub conserve les capacités de passerelle de new-api, notamment :
 - **Formats** : OpenAI Chat/Responses/Realtime, Claude Messages, Google Gemini, Rerank (Cohere/Jina), Image/Audio/Embedding, Midjourney-Proxy, Suno, Dify.
 - **Conversion de format** : OpenAI ⇄ Claude Messages, OpenAI → Gemini, thinking-to-content, suffixes de reasoning-effort.
 - **Routage intelligent** : canaux aléatoires pondérés, nouvelle tentative automatique en cas d'échec (codes de statut de reprise configurables), limitation de débit au niveau utilisateur.
-- **Facturation** : comptabilité par requête / basée sur l'usage / sur les accès au cache, tarification par paliers et par expressions, recharge via EasyPay et Stripe.
+- **Facturation** : calcul par requête, selon l'usage ou les accès au cache, tarification par paliers et par expressions ; intégrations de paiement facultatives EasyPay, Stripe, Creem, Waffo et Waffo Pancake après configuration du marchand.
 - **Authentification** : JWT, WebAuthn/Passkeys, OAuth (GitHub, Discord, OIDC, LinuxDO, Telegram, WeChat).
-- **Interface** : tableau de bord moderne, multilingue (zh/en/fr/ja/vi…), tableau de bord de données, métriques de performance des modèles.
+- **Interface** : tableau de bord moderne, sept langues côté interface (en, zh, zh-TW, fr, ja, ru, vi), statistiques d'utilisation et métriques de performance des modèles.
 
 Pour les détails sur la passerelle/l'API, reportez-vous à la [documentation new-api](https://docs.newapi.pro) en amont.
 
@@ -213,6 +226,7 @@ Pour les détails sur la passerelle/l'API, reportez-vous à la [documentation ne
 | BD distante | MySQL ≥ 5.7.8 ou PostgreSQL ≥ 9.6 |
 | Cache (recommandé) | Redis |
 | Moteur | Docker / Docker Compose |
+| Compilation depuis les sources | Go 1.26.8 et Bun |
 
 ### Variables d'environnement courantes
 
@@ -220,15 +234,20 @@ Pour les détails sur la passerelle/l'API, reportez-vous à la [documentation ne
 |---|---|---|
 | `SESSION_SECRET` | Secret de session (requis pour le multi-nœuds) | - |
 | `CRYPTO_SECRET` | Secret de chiffrement ; les nœuds partageant Redis doivent utiliser la même valeur | Par défaut : `SESSION_SECRET` |
+| `SESSION_COOKIE_SECURE` | Active le cookie de renouvellement Secure et le contrôle de l'origine pour refresh/logout en HTTPS | `false` |
+| `SESSION_COOKIE_TRUSTED_URL` | Origines HTTPS exactes requises lorsque `SESSION_COOKIE_SECURE=true` ; ce n'est pas une liste CORS pour le relais | - |
+| `TRUSTED_PROXIES` | IP/CIDR des mandataires inverses de confiance ; `none` ignore les en-têtes de transfert | Plages privées et locales (avec avertissement) |
 | `SQL_DSN` | Chaîne de connexion à la base de données (MySQL/PostgreSQL) | - |
 | `REDIS_CONN_STRING` | Chaîne de connexion Redis | - |
 | `TRUSTED_REDIRECT_DOMAINS` | Domaines de confiance séparés par des virgules pour la redirection de paiement / les rappels multi-domaines | - |
 | `PAYMENT_WEBHOOK_RATE_LIMIT` | Garde-fou généreux par IP pour les webhooks de notification de paiement (requêtes / fenêtre) | `1800` |
 | `PAYMENT_WEBHOOK_RATE_LIMIT_DURATION` | Fenêtre pour le paramètre ci-dessus (secondes) | `60` |
 | `STREAMING_TIMEOUT` | Délai d'expiration sans réponse en streaming (secondes) | `300` |
-| `MAX_REQUEST_BODY_MB` | Corps de requête maximal (Mo, après décompression) | `32` |
+| `RELAY_RESPONSE_HEADER_TIMEOUT` | Délai maximal d'attente des en-têtes du serveur en amont (secondes) ; `0` le désactive. Le flux après les en-têtes n'est pas affecté ; prévoyez une durée suffisante pour les générations non diffusées en continu | `1800` |
+| `MAX_REQUEST_BODY_MB` | Corps de requête maximal (Mo, après décompression) | `128` |
 
 Les variables de limitation de débit et la plupart des variables de réglage retombent sur des valeurs par défaut raisonnables du code ; elles ne sont donc pas requises dans `.env`/compose. Voir `.env.example` pour les réglages optionnels documentés.
+Pour configurer les sessions et le mandataire inverse en production, consultez [Authentification et sécurité des sessions](./docs/authentication.md).
 
 ### Multi-nœuds
 
@@ -263,6 +282,7 @@ Il s'agit d'un projet open source développé à partir de [One API](https://git
 ## Aide et contributions
 
 - Problèmes et demandes de fonctionnalités : [LemonHub Issues](https://github.com/nsuanningmeng/LemonHub/issues)
+- Versions et téléchargements : [GitHub Releases](https://github.com/nsuanningmeng/LemonHub/releases)
 - Guide des sous-sites : [中文](./docs/subsite-guide.md) · [English](./docs/subsite-guide.en.md)
 - Référence passerelle/API : [documentation new-api](https://docs.newapi.pro)
 

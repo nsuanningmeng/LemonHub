@@ -28,7 +28,7 @@
 
 <p align="center">
   <a href="#项目简介">项目简介</a> •
-  <a href="#与-new-api-的差异">与 new-api 的差异</a> •
+  <a href="#features">主要功能</a> •
   <a href="#快速开始">快速开始</a> •
   <a href="#代理与分销加盟">代理加盟</a> •
   <a href="#部署">部署</a>
@@ -44,7 +44,7 @@ LemonHub 是 [new-api](https://github.com/QuantumNous/new-api)（其本身基于
 - **增强版邀请返佣系统**：首充到账、按比例持续返佣、按用户差异化比例、管理员全站返佣榜，以及现金结算推广者模式；
 - **工单与邮件推广套件**；
 - **客户端一键配置**（Connect Hub）；
-- 以及一系列**计费、支付、中继、安全与迁移**方面的改动。
+- **计费、支付、中继、安全与迁移**方面的管理能力。
 
 中继 / 渠道转发 / 计费核心与上游保持兼容，便于干净地合并 new-api 的新特性与修复；LemonHub 的新增能力都围绕其外围实现。
 
@@ -53,15 +53,17 @@ LemonHub 是 [new-api](https://github.com/QuantumNous/new-api)（其本身基于
 > - 你必须合法获取上游 API 密钥、账号、模型服务与接口权限，并遵守上游服务条款及适用法律法规。
 > - 向公众提供生成式 AI 服务时，请先完成所在司法辖区要求的备案、许可、内容安全、实名、日志留存、税务、支付与上游授权等义务。
 
-## 与 new-api 的差异
+<a id="features"></a>
 
-以下是分支在上游 new-api 之上新增或改动的全部内容，按领域分组。这是自首个 LemonHub 版本以来的累计清单，并非单次发布。
+## 主要功能
+
+除上游 new-api 网关能力外，LemonHub 还提供以下功能。各版本的具体变更及升级说明见 [GitHub Releases](https://github.com/nsuanningmeng/LemonHub/releases)。
 
 ### 1. 多租户子站
 
 - 一套部署、一个数据库承载多个独立子站；每个请求按 `Host`（域名中间件）路由到对应子站。
 - 按站定制：站点名称、Logo、公告、页脚、首页主视觉文案均可逐站配置。
-- 按站数据隔离：每张表带 `site_id`；用户名按站唯一（`(site_id, username)`）；密码、2FA 与所有 OAuth 绑定按站隔离；注册、登录、OAuth 均限定在当前站点。跨站访问有越权测试覆盖。
+- 按站数据隔离：本站用户、令牌、日志等记录由 `site_id` 限定，共享的上游渠道和系统设置仍由主站管理。用户名**按站唯一**（`(site_id, username)`）；密码、2FA、OAuth 绑定及注册、登录均限定在当前站点。
 - 主站提供子站创建与管理页面。
 
 ### 2. 代理 / 分销加盟
@@ -76,9 +78,10 @@ LemonHub 是 [new-api](https://github.com/QuantumNous/new-api)（其本身基于
 
 ### 3. 邀请返佣系统
 
-上游仅提供一次性邀请奖励。LemonHub 将其替换为完整的返佣系统：
+LemonHub 的邀请返佣系统包括：
 
-- 邀请奖励改为在**被邀请人首次充值成功后**到账（而非注册即发），并对被邀请人的每次充值**按比例持续返佣**；两者均走幂等的逐笔台账并提供统计接口。
+- 邀请奖励在**被邀请人首次充值成功后**到账（而非注册时），并对被邀请人的每次充值**按比例持续返佣**；两者均走幂等的逐笔台账并提供统计接口。
+- Stripe 退款和争议付款会追回相应的额度与邀请奖励。
 - 面向用户的返佣详情页与个人贡献排行榜。
 - **按用户差异化返佣比例**，可覆盖全局比例（不设则继承全局；设为 `0` 则对该邀请人停发）。
 - **管理员全站返佣榜**（汇总卡 + 排行榜，支持搜索、排序、分页，受 `AdminAuth` 保护）。
@@ -87,8 +90,8 @@ LemonHub 是 [new-api](https://github.com/QuantumNous/new-api)（其本身基于
 ### 4. 工单与邮件推广
 
 - 用户工单台与管理员工单管理，支持优先级。
-- 邮件推广 / 群发工具：表结构迁移、附件上传、群发、限流、清理与审计。
-- 后端安全单测覆盖上传处理、Markdown XSS、头注入、越权与优先级。
+- 邮件推广 / 群发工具支持附件上传、群发、限流、清理与审计。
+- 独立的推广邮件 SMTP、退订与抑制发送控制，以及中断群发任务的恢复机制。
 
 ### 5. Connect Hub（客户端一键配置）
 
@@ -102,24 +105,30 @@ LemonHub 是 [new-api](https://github.com/QuantumNous/new-api)（其本身基于
 ### 7. 支付与中继可靠性
 
 - 易支付回调豁免 gzip 处理与全局限流，并配专用的宽松兜底限流；`notify_url` 固定回稳定域名。
-- 支付回调 / 返回地址与首屏页面 `<title>` 跟随用户访问的（可信）域名，并防 Host 伪造；修复标题闪烁问题。
-- 易支付结算的并发 / 幂等测试。
-- 中继重试遵循配置的 504/524 状态码；非流式 `BadResponseBody` 响应可重试；渠道耗尽时回传真实的上游错误而非笼统报错。
-- 订阅修复：订阅过期后正确退回用户原分组（续费时保留 `prev_user_group`）。
+- 支付回调 / 返回地址与首屏页面 `<title>` 跟随用户访问的（可信）域名，并防 Host 伪造。
+- 易支付结算将签名回调视为查单触发器，由服务端向订单所属商户的网关独立查验；确认商户、订单身份及与本地记录完全一致的金额后，才发放额度或订阅。
+- 订阅下单时保存履约条件快照；易支付限购套餐订单原子预留名额，并安全复用待支付订单，防止套餐编辑竞态与重复创建待付款订单。
+- 中继重试遵循配置的 504/524 状态码；非流式 `BadResponseBody` 响应可重试；渠道耗尽时返回真实的上游错误。
+- 订阅过期后，用户会回到原分组（续费时保留 `prev_user_group`）。
 
 ### 8. 模型性能设置
 
 - 成功率阈值、错误码白名单、无数据按 100% 处理。
+- 已启用渠道的手动和定时测试，会为配置的每个模型、每个分组记录健康样本；已不可用的分组不再计入显示的模型成功率。
+- 中继与渠道测试错误仅在 HTTP 状态码命中性能设置的错误码白名单时计为失败，其他错误计为成功样本；白名单留空则所有错误都计为失败。
+- 性能界面按当前已启用、用户可用且已定价的模型 / 分组展示；已移除的分组不再影响总体与趋势指标。
 
-### 9. 安全与迁移加固
+### 9. 安全与迁移保护
 
-- 针对高级自定义渠道的 SSRF 加固。
+- 高级自定义渠道具备 SSRF 防护。
+- 私有工单与媒体访问控制、敏感日志脱敏，以及 API 密钥显式选择分组。
 - 三种数据库（SQLite / MySQL / PostgreSQL）上的迁移安全：`price_amount` 精度的失败即停预检、订阅价格精度预检、快速路径失败即停预检，以及 `site_id` NULL 兜底回填，确保主站查询不会漏掉历史数据。
 
 ### 10. 打包与文档
 
 - Docker 镜像发布到 GitHub Container Registry（`ghcr.io/nsuanningmeng/lemonhub`），多架构（amd64 + arm64）；`docker-compose` 默认指向分支镜像。
-- 提供全语言 README 与保姆级子站 / 代理教程。
+- GitHub Releases 提供 Linux、macOS、Windows 服务端程序、Windows Electron 应用及校验文件。
+- 提供英文、简体中文、繁体中文、法文与日文 README，以及分步的子站 / 代理教程。
 
 > 第一次接触代理模式？请看分步指南：**[子站 / 代理加盟保姆级指南（中文）](./docs/subsite-guide.md)** · [English](./docs/subsite-guide.en.md)
 
@@ -131,10 +140,11 @@ LemonHub 是 [new-api](https://github.com/QuantumNous/new-api)（其本身基于
 git clone https://github.com/nsuanningmeng/LemonHub.git
 cd LemonHub
 
-# 检查 / 编辑配置（数据库密码、ServerAddress 等）
+# 随附的 Compose 文件默认启动 PostgreSQL 和 Redis；对外开放服务前，
+# 请修改这两项的密码及对应的连接串。
 nano docker-compose.yml
 
-# 启动（compose 文件已指向 LemonHub 镜像）
+# 启动（Compose 文件已指向 LemonHub 镜像）
 docker compose up -d
 ```
 
@@ -151,18 +161,20 @@ docker run --name lemonhub -d --restart always \
   -v ./data:/data \
   ghcr.io/nsuanningmeng/lemonhub:latest
 
-# MySQL / PostgreSQL（设置 SQL_DSN）
+# 远程 MySQL（请替换主机名与凭据；容器必须能访问该主机）
 docker run --name lemonhub -d --restart always \
   -p 3000:3000 \
-  -e SQL_DSN="root:123456@tcp(localhost:3306)/lemonhub" \
+  -e SQL_DSN="user:password@tcp(db.example.internal:3306)/lemonhub" \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
   ghcr.io/nsuanningmeng/lemonhub:latest
+
+# PostgreSQL 可使用 SQL_DSN="postgresql://user:password@db.example.internal:5432/lemonhub"。
 ```
 
 </details>
 
-部署完成后访问 `http://localhost:3000`。**首个注册账号将成为 root / 平台（主站）管理员。**
+部署完成后访问 `http://localhost:3000`，完成首次初始化向导，创建 **root / 平台（主站）管理员**。
 
 > [!WARNING]
 > 以公开或分销形式对外提供 AI 服务前，请先完成备案、许可、内容安全、实名、日志留存、税务、支付与上游授权等所有必要义务。
@@ -194,9 +206,9 @@ LemonHub 保留 new-api 的网关能力，包括：
 - **格式**：OpenAI Chat/Responses/Realtime、Claude Messages、Google Gemini、Rerank（Cohere/Jina）、图像/音频/Embedding、Midjourney-Proxy、Suno、Dify。
 - **格式转换**：OpenAI ⇄ Claude Messages、OpenAI → Gemini、thinking 转 content、reasoning-effort 后缀。
 - **智能路由**：加权随机渠道、失败自动重试（可配置重试状态码）、用户级限流。
-- **计费**：按次 / 按量 / 缓存命中计费，tiered 与表达式定价，易支付与 Stripe 充值。
+- **计费**：按次 / 按量 / 缓存命中计费，tiered 与表达式定价；完成商户配置后可选用易支付、Stripe、Creem、Waffo 和 Waffo Pancake 支付集成。
 - **鉴权**：JWT、WebAuthn/Passkeys、OAuth（GitHub、Discord、OIDC、LinuxDO、Telegram、微信）。
-- **界面**：现代化后台、多语言（zh/en/fr/ja/vi…）、数据看板、模型性能指标。
+- **界面**：现代化后台、七种前端语言（en、zh、zh-TW、fr、ja、ru、vi）、数据看板、模型性能指标。
 
 网关 / API 细节请参考上游 [new-api 文档](https://docs.newapi.pro)。
 
@@ -213,6 +225,7 @@ LemonHub 保留 new-api 的网关能力，包括：
 | 远程数据库 | MySQL ≥ 5.7.8 或 PostgreSQL ≥ 9.6 |
 | 缓存（推荐） | Redis |
 | 运行引擎 | Docker / Docker Compose |
+| 源码构建 | Go 1.26.8 与 Bun |
 
 ### 常用环境变量
 
@@ -220,15 +233,20 @@ LemonHub 保留 new-api 的网关能力，包括：
 |---|---|---|
 | `SESSION_SECRET` | 会话密钥（多节点必填） | - |
 | `CRYPTO_SECRET` | 加密密钥（共享 Redis 的节点需一致） | 默认取 `SESSION_SECRET` |
+| `SESSION_COOKIE_SECURE` | 为 HTTPS 部署启用安全刷新 Cookie 和 refresh/logout 来源校验 | `false` |
+| `SESSION_COOKIE_TRUSTED_URL` | 启用 `SESSION_COOKIE_SECURE=true` 时必填的精确 HTTPS 来源；不是中继 CORS 白名单 | - |
+| `TRUSTED_PROXIES` | 受信任反向代理的 IP/CIDR；`none` 表示忽略转发请求头 | 私网及环回网段（启动时会告警） |
 | `SQL_DSN` | 数据库连接串（MySQL/PostgreSQL） | - |
 | `REDIS_CONN_STRING` | Redis 连接串 | - |
 | `TRUSTED_REDIRECT_DOMAINS` | 支付跳转 / 多域名回调的可信域名（逗号分隔） | - |
 | `PAYMENT_WEBHOOK_RATE_LIMIT` | 支付回调 webhook 的宽松按 IP 兜底（次 / 窗口） | `1800` |
 | `PAYMENT_WEBHOOK_RATE_LIMIT_DURATION` | 上一项的窗口（秒） | `60` |
 | `STREAMING_TIMEOUT` | 流式无响应超时（秒） | `300` |
-| `MAX_REQUEST_BODY_MB` | 最大请求体（MB，解压后） | `32` |
+| `RELAY_RESPONSE_HEADER_TIMEOUT` | 等待上游响应头的超时（秒）；设为 `0` 则不限制。响应头返回后的流式传输不受影响，非流式生成需预留足够时间 | `1800` |
+| `MAX_REQUEST_BODY_MB` | 最大请求体（MB，解压后） | `128` |
 
 限流及大多数调优变量都有合理的代码默认值，因此不必写进 `.env`/compose。可选项的说明见 `.env.example`。
+生产环境的会话与反向代理配置见[身份认证与会话安全](./docs/authentication.md)。
 
 ### 多节点
 
@@ -263,6 +281,7 @@ LemonHub 会定期与上游 new-api 同步。
 ## 帮助与贡献
 
 - 问题与需求：[LemonHub Issues](https://github.com/nsuanningmeng/LemonHub/issues)
+- 版本与下载：[GitHub Releases](https://github.com/nsuanningmeng/LemonHub/releases)
 - 子站指南：[中文](./docs/subsite-guide.md) · [English](./docs/subsite-guide.en.md)
 - 网关 / API 参考：[new-api 文档](https://docs.newapi.pro)
 
