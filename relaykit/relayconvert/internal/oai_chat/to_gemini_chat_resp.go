@@ -103,8 +103,9 @@ func StreamResponseOpenAI2Gemini(openAIResponse *dto.ChatCompletionsStreamRespon
 		}
 	}
 
-	// 如果没有实际内容且没有结束标志，跳过。主要针对 openai 流响应开头的空数据
-	if !hasContent && !hasFinishReason {
+	// include_usage 的独立尾帧没有 choices；保留其用量，同时仍跳过开头的空 role 块。
+	hasUsageOnly := len(openAIResponse.Choices) == 0 && openAIResponse.Usage != nil
+	if !hasContent && !hasFinishReason && !hasUsageOnly {
 		return nil
 	}
 

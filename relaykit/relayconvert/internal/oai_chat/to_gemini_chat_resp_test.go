@@ -107,6 +107,36 @@ func TestStreamResponseOpenAI2GeminiMapsToolCallFinishReasonAndUsage(t *testing.
 	assert.Equal(t, map[string]interface{}{"q": "x"}, resp.Candidates[0].Content.Parts[0].FunctionCall.Arguments)
 }
 
+func TestStreamResponseOpenAI2GeminiPreservesUsageOnlyTail(t *testing.T) {
+	info := &convmeta.Values{EstimatePromptTokens: 3}
+	for _, emptyChunk := range []*dto.ChatCompletionsStreamResponse{
+		{},
+		{Choices: []dto.ChatCompletionsStreamResponseChoice{{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{Role: "assistant"}}}},
+		{
+			Choices: []dto.ChatCompletionsStreamResponseChoice{{Delta: dto.ChatCompletionsStreamResponseChoiceDelta{Role: "assistant"}}},
+			Usage:   &dto.Usage{PromptTokens: 4, TotalTokens: 4},
+		},
+	} {
+		assert.Nil(t, StreamResponseOpenAI2Gemini(emptyChunk, info))
+	}
+
+	resp := StreamResponseOpenAI2Gemini(&dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{},
+		Usage: &dto.Usage{
+			PromptTokens: 11, CompletionTokens: 5, TotalTokens: 16,
+		},
+	}, info)
+	require.NotNil(t, resp)
+	assert.Empty(t, resp.Candidates)
+	assert.True(t, resp.HasUsageMetadata)
+	assert.Equal(t, 11, resp.UsageMetadata.PromptTokenCount)
+	assert.Equal(t, 5, resp.UsageMetadata.CandidatesTokenCount)
+	assert.Equal(t, 16, resp.UsageMetadata.TotalTokenCount)
+	require.NotNil(t, resp.UsageMetadata.BillingUsage)
+	require.NotNil(t, resp.UsageMetadata.BillingUsage.OpenAIUsage)
+	assert.Equal(t, 16, resp.UsageMetadata.BillingUsage.OpenAIUsage.TotalTokens)
+}
+
 func geminiRespPtr[T any](value T) *T {
 	return &value
 }
