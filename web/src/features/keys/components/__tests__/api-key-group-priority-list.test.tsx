@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { createInstance } from 'i18next'
 import { I18nextProvider, initReactI18next } from 'react-i18next'
 import { describe, expect, test, vi } from 'vitest'
@@ -57,13 +57,13 @@ function renderList(value: string[]) {
 }
 
 describe('API key group priority boundaries', () => {
-  test('does not allow removing the only selected group', () => {
+  test('allows removing the only selected group so a new choice is required', () => {
     const onChange = renderList(['group-0'])
 
     const removeButton = screen.getByRole('button', { name: 'Remove' })
-    expect(removeButton).toBeDisabled()
-    removeButton.click()
-    expect(onChange).not.toHaveBeenCalled()
+    expect(removeButton).toBeEnabled()
+    fireEvent.click(removeButton)
+    expect(onChange).toHaveBeenCalledWith([])
   })
 
   test('does not allow adding a ninth group', () => {

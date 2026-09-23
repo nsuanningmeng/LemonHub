@@ -3656,7 +3656,7 @@
       "post": {
         "summary": "创建令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要登录（User权限）。必须显式提供 group，包含至少一个手动选择的分组；缺失、null、空字符串或仅含空白/逗号均返回 success=false，并提示选择分组。",
         "tags": [
           "令牌管理"
         ],
@@ -3688,7 +3688,7 @@
       "put": {
         "summary": "更新令牌",
         "deprecated": false,
-        "description": "🔐 需要登录（User权限）",
+        "description": "🔐 需要登录（User权限）。普通编辑必须提供非空 group，并保留其他可编辑设置。status_only 非空时仅更新状态：允许停用旧空分组令牌，但重新启用前必须先编辑并选择分组。",
         "tags": [
           "令牌管理"
         ],
@@ -5382,6 +5382,11 @@
       "Token": {
         "type": "object",
         "properties": {
+          "group": {
+            "type": "string",
+            "description": "按优先级排列、逗号分隔的分组名称，最多 8 个。创建和普通编辑时至少选择一个分组，不会自动指定默认分组；可显式选择 auto。",
+            "example": "vip,default"
+          },
           "id": {
             "type": "integer"
           },

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { describe, expect, test } from 'vitest'
 
 const { createInstance } = await import('i18next')
@@ -61,6 +61,16 @@ function CellHarness(props: {
 }
 
 describe('API key group table cell', () => {
+  test.each(['', '   '])(
+    'shows a selection reminder for legacy blank group %j',
+    (group) => {
+      render(<CellHarness group={group} />)
+
+      expect(screen.getByText('Select a group')).toBeVisible()
+      expect(screen.queryByText('User Group')).toBeNull()
+    }
+  )
+
   test('renders an unclipped ring and a localized Auto ratio when API data uses a nonlocalized string', () => {
     const { container } = render(
       <CellHarness

@@ -304,15 +304,21 @@ func validateTokenQuota(c *gin.Context, token *model.Token) bool {
 	return true
 }
 
-// validateTokenGroupCount 校验令牌分组数量未超过上限；超过则直接响应错误并返回 false。
-func validateTokenGroupCount(c *gin.Context, token *model.Token) bool {
-	if len(token.GetGroups()) > maxTokenGroups {
+// validateTokenGroups requires an explicit group selection and bounds retry fan-out.
+func validateTokenGroups(c *gin.Context, token *model.Token) bool {
+	groups := token.GetGroups()
+	if len(groups) == 0 {
+		common.ApiErrorI18n(c, i18n.MsgTokenGroupRequired)
+		return false
+	}
+	if len(groups) > maxTokenGroups {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": fmt.Sprintf("分组数量不能超过 %d 个", maxTokenGroups),
 		})
 		return false
 	}
+	token.Group = strings.Join(groups, ",")
 	return true
 }
 
@@ -331,7 +337,7 @@ func AddToken(c *gin.Context) {
 	if !validateTokenQuota(c, &token) {
 		return
 	}
-	if !validateTokenGroupCount(c, &token) {
+	if !validateTokenGroups(c, &token) {
 		return
 	}
 	// 检查用户令牌数量是否已达上限
@@ -375,7 +381,7 @@ func AddToken(c *gin.Context) {
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
-		Group:              model.NormalizeGroupString(token.Group),
+		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
 		AutoGroups:         token.AutoGroups,
 	}
@@ -437,9 +443,14 @@ func UpdateToken(c *gin.Context) {
 		}
 	}
 	if statusOnly != "" {
+		// Legacy tokens without a group can still be disabled, but must be repaired
+		// before they can be enabled again.
+		if token.Status == common.TokenStatusEnabled && !validateTokenGroups(c, cleanToken) {
+			return
+		}
 		cleanToken.Status = token.Status
 	} else {
-		if !validateTokenGroupCount(c, &token) {
+		if !validateTokenGroups(c, &token) {
 			return
 		}
 		// If you add more fields, please also update token.Update()
@@ -450,7 +461,7 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
-		cleanToken.Group = model.NormalizeGroupString(token.Group)
+		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 		if token.Group != "auto" {
 			cleanToken.CrossGroupRetry = false

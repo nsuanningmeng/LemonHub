@@ -16,8 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, describe, expect, test } from 'vitest'
+
+import type { ApiKey } from '../../types'
 
 const { createInstance } = await import('i18next')
 const { I18nextProvider, initReactI18next } = await import('react-i18next')
@@ -37,6 +46,7 @@ type ApiMethod = (url: string, data?: unknown) => Promise<{ data: unknown }>
 type MockableApi = {
   get: ApiMethod
   post: ApiMethod
+  put: ApiMethod
 }
 type RenderedDrawer = {
   queryClient: InstanceType<typeof QueryClient>
@@ -45,9 +55,14 @@ type RenderedDrawer = {
 const apiClient = api as unknown as MockableApi
 const originalGet = apiClient.get
 const originalPost = apiClient.post
+const originalPut = apiClient.put
 let renderedDrawer: RenderedDrawer | null = null
 
-function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
+function installApiFixtures(
+  createdPayloads: Array<Record<string, unknown>>,
+  existingKey?: ApiKey,
+  updatedPayloads: Array<Record<string, unknown>> = []
+) {
   apiClient.get = async (url) => {
     switch (url) {
       case '/api/status':
@@ -73,6 +88,9 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
           },
         }
       default:
+        if (existingKey && url === `/api/token/${existingKey.id}`) {
+          return { data: { success: true, data: existingKey } }
+        }
         throw new Error(`Unexpected GET ${url}`)
     }
   }
@@ -82,9 +100,31 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
     createdPayloads.push(data as Record<string, unknown>)
     return { data: { success: true, data: {} } }
   }
+  apiClient.put = async (url, data) => {
+    expect(url).toBe('/api/token/')
+    expect(data && typeof data === 'object').toBeTruthy()
+    updatedPayloads.push(data as Record<string, unknown>)
+    return { data: { success: true, data: {} } }
+  }
 }
 
-async function renderCreateDrawer(): Promise<void> {
+function DrawerSession(props: { currentRow?: ApiKey }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <>
+      <button type='button' onClick={() => setOpen(true)}>
+        Open API key form
+      </button>
+      <ApiKeysMutateDrawer
+        open={open}
+        onOpenChange={setOpen}
+        currentRow={props.currentRow}
+      />
+    </>
+  )
+}
+
+async function renderCreateDrawer(currentRow?: ApiKey): Promise<void> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -125,7 +165,7 @@ async function renderCreateDrawer(): Promise<void> {
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={i18n}>
         <ApiKeysProvider>
-          <ApiKeysMutateDrawer open onOpenChange={() => undefined} />
+          <DrawerSession currentRow={currentRow} />
         </ApiKeysProvider>
       </I18nextProvider>
     </QueryClientProvider>
@@ -206,6 +246,7 @@ function selectComboboxOption(
 afterEach(() => {
   apiClient.get = originalGet
   apiClient.post = originalPost
+  apiClient.put = originalPut
   localStorage.clear()
   if (renderedDrawer) {
     renderedDrawer.queryClient.clear()
@@ -218,6 +259,11 @@ describe('API keys mutate drawer Auto group integration', () => {
     const createdPayloads: Array<Record<string, unknown>> = []
     installApiFixtures(createdPayloads)
     await renderCreateDrawer()
+
+    selectComboboxOption(
+      screen.getByRole('combobox', { name: 'Groups' }),
+      'Automatic routing'
+    )
 
     expect(getFormItemByLabel('Groups')).toHaveTextContent('auto')
     expect(
@@ -250,6 +296,11 @@ describe('API keys mutate drawer Auto group integration', () => {
     const createdPayloads: Array<Record<string, unknown>> = []
     installApiFixtures(createdPayloads)
     await renderCreateDrawer()
+
+    selectComboboxOption(
+      screen.getByRole('combobox', { name: 'Groups' }),
+      'Automatic routing'
+    )
 
     const autoOrderControl = getControlByLabel('Auto group order')
     const addGroupTrigger = autoOrderControl.querySelector<HTMLButtonElement>(
@@ -307,4 +358,128 @@ describe('API keys mutate drawer Auto group integration', () => {
     await waitFor(() => expect(createdPayloads).toHaveLength(1))
     expect(createdPayloads[0]?.auto_groups).toEqual(['vip'])
   })
+})
+
+describe('API key required group selection', () => {
+  test('opens with no selected group and blocks batch creation until a group is selected', async () => {
+    const createdPayloads: Array<Record<string, unknown>> = []
+    installApiFixtures(createdPayloads)
+    await renderCreateDrawer()
+
+    const groupField = getFormItemByLabel('Groups')
+    expect(within(groupField).queryAllByRole('listitem')).toHaveLength(0)
+    changeInput(screen.getByLabelText('Name'), 'manual-group')
+    changeInput(screen.getByLabelText('Quantity'), '2')
+    fireEvent.click(findButton('Save changes', true))
+
+    await waitFor(() =>
+      expect(within(groupField).getByText('Select a group')).toBeVisible()
+    )
+    const groupTrigger = screen.getByRole<HTMLButtonElement>('combobox', {
+      name: 'Groups',
+    })
+    expect(groupTrigger).toHaveAttribute('aria-invalid', 'true')
+    await waitFor(() => expect(groupTrigger).toHaveFocus())
+    expect(createdPayloads).toHaveLength(0)
+
+    selectComboboxOption(groupTrigger, 'Standard access')
+    fireEvent.click(findButton('Save changes', true))
+    await waitFor(() => expect(createdPayloads).toHaveLength(2))
+    expect(createdPayloads.map((payload) => payload.group)).toEqual([
+      'default',
+      'default',
+    ])
+  })
+
+  test('reopening the create drawer clears a previous manual group selection', async () => {
+    installApiFixtures([])
+    await renderCreateDrawer()
+    selectComboboxOption(
+      screen.getByRole('combobox', { name: 'Groups' }),
+      'Standard access'
+    )
+    expect(
+      within(getFormItemByLabel('Groups')).getByRole('listitem')
+    ).toHaveTextContent('default')
+
+    fireEvent.click(findButton('Close', true))
+    await waitFor(() =>
+      expect(screen.queryByRole('combobox', { name: 'Groups' })).toBeNull()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open API key form' }))
+    await waitFor(() => expect(findButton('Save changes', true)).toBeEnabled())
+
+    expect(
+      within(getFormItemByLabel('Groups')).queryAllByRole('listitem')
+    ).toHaveLength(0)
+  })
+
+  test('removing the last chosen group blocks submission without choosing a replacement', async () => {
+    const createdPayloads: Array<Record<string, unknown>> = []
+    installApiFixtures(createdPayloads)
+    await renderCreateDrawer()
+    changeInput(screen.getByLabelText('Name'), 'removed-group')
+    selectComboboxOption(
+      screen.getByRole('combobox', { name: 'Groups' }),
+      'Priority access'
+    )
+    const groupField = getFormItemByLabel('Groups')
+    fireEvent.click(within(groupField).getByRole('button', { name: 'Remove' }))
+    fireEvent.click(findButton('Save changes', true))
+
+    await waitFor(() =>
+      expect(within(groupField).getByText('Select a group')).toBeVisible()
+    )
+    expect(within(groupField).queryAllByRole('listitem')).toHaveLength(0)
+    expect(createdPayloads).toHaveLength(0)
+  })
+
+  test.each(['', 'retired-group'])(
+    'editing a key with group %j requires choosing a valid group',
+    async (group) => {
+      const existingKey: ApiKey = {
+        id: 42,
+        name: 'existing-key',
+        key: 'masked-key',
+        status: 1,
+        remain_quota: 0,
+        used_quota: 0,
+        unlimited_quota: true,
+        expired_time: -1,
+        created_time: 1,
+        accessed_time: 0,
+        group,
+        auto_groups: null,
+        cross_group_retry: false,
+        model_limits_enabled: false,
+        model_limits: '',
+        allow_ips: '',
+      }
+      const updatedPayloads: Array<Record<string, unknown>> = []
+      installApiFixtures([], existingKey, updatedPayloads)
+      await renderCreateDrawer(existingKey)
+
+      const groupField = getFormItemByLabel('Groups')
+      await waitFor(() =>
+        expect(within(groupField).queryAllByRole('listitem')).toHaveLength(0)
+      )
+      fireEvent.click(findButton('Save changes', true))
+      await waitFor(() =>
+        expect(within(groupField).getByText('Select a group')).toBeVisible()
+      )
+      expect(updatedPayloads).toHaveLength(0)
+
+      selectComboboxOption(
+        screen.getByRole('combobox', { name: 'Groups' }),
+        'Priority access'
+      )
+      fireEvent.click(findButton('Save changes', true))
+      await waitFor(() => expect(updatedPayloads).toHaveLength(1))
+      expect(updatedPayloads[0]).toMatchObject({
+        id: 42,
+        name: 'existing-key',
+        group: 'vip',
+      })
+    }
+  )
 })

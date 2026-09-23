@@ -222,10 +222,11 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
           )
         }
 
+        const selectedGroup = groupList[0] ?? ''
         return (
           <ApiKeyGroupCell
-            group={group}
-            ratio={groupRatios[group]}
+            group={selectedGroup}
+            ratio={groupRatios[selectedGroup]}
             crossGroupRetry={apiKey.cross_group_retry}
             shouldReduceMotion={shouldReduceMotion}
           />

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ArrowDown, ArrowUp, ChevronsUpDown, Plus, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ComponentProps } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -39,7 +39,10 @@ import { MAX_API_KEY_GROUPS } from '../constants'
 import type { ApiKeyGroupOption } from './api-key-group-combobox'
 import { GroupRatioBadge } from './auto-group-visuals'
 
-type ApiKeyGroupPriorityListProps = {
+type ApiKeyGroupPriorityListProps = Omit<
+  ComponentProps<'button'>,
+  'value' | 'onChange'
+> & {
   options: ApiKeyGroupOption[]
   value: string[]
   onChange: (value: string[]) => void
@@ -60,6 +63,7 @@ export function ApiKeyGroupPriorityList({
   onChange,
   placeholder,
   disabled,
+  ...triggerProps
 }: ApiKeyGroupPriorityListProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -100,7 +104,6 @@ export function ApiKeyGroupPriorityList({
   }
 
   const removeGroup = (groupValue: string) => {
-    if (value.length <= 1) return
     onChange(value.filter((item) => item !== groupValue))
   }
 
@@ -178,7 +181,7 @@ export function ApiKeyGroupPriorityList({
                   variant='ghost'
                   size='icon-sm'
                   className='text-muted-foreground hover:text-destructive'
-                  disabled={disabled || value.length <= 1}
+                  disabled={disabled}
                   onClick={() => removeGroup(groupValue)}
                   aria-label={t('Remove')}
                 >
@@ -194,6 +197,7 @@ export function ApiKeyGroupPriorityList({
         <PopoverTrigger
           render={
             <Button
+              {...triggerProps}
               type='button'
               variant='outline'
               role='combobox'

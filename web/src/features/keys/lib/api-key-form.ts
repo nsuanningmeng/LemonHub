@@ -21,7 +21,7 @@ import { z } from 'zod'
 
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
-import { DEFAULT_GROUP, MAX_API_KEY_GROUPS } from '../constants'
+import { MAX_API_KEY_GROUPS } from '../constants'
 import type { ApiKey, ApiKeyFormData } from '../types'
 
 // ============================================================================
@@ -43,6 +43,10 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
       groups: z
         .array(z.string())
         .min(1, t('Select a group'))
+        .refine(
+          (groups) => groups.every((group) => group.trim().length > 0),
+          t('Select a group')
+        )
         .max(
           MAX_API_KEY_GROUPS,
           t('Maximum {{max}} groups selected', {
@@ -120,22 +124,20 @@ export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   unlimited_quota: true,
   model_limits: [],
   allow_ips: '',
-  groups: [DEFAULT_GROUP],
+  groups: [],
   auto_groups_mode: 'inherit',
   auto_groups: [],
-  cross_group_retry: true,
+  cross_group_retry: false,
   tokenCount: 1,
 }
 
-export function getApiKeyFormDefaultValues(
-  defaultUseAutoGroup: boolean
-): ApiKeyFormValues {
+export function getApiKeyFormDefaultValues(): ApiKeyFormValues {
   return {
     ...API_KEY_FORM_DEFAULT_VALUES,
-    groups: [defaultUseAutoGroup ? 'auto' : DEFAULT_GROUP],
+    groups: [],
     auto_groups_mode: 'inherit',
     auto_groups: [],
-    cross_group_retry: defaultUseAutoGroup,
+    cross_group_retry: false,
   }
 }
 
@@ -208,12 +210,10 @@ export function transformApiKeyToFormDefaults(
       : [],
     allow_ips: apiKey.allow_ips || '',
     // 兼容旧单分组（无逗号）与新多分组（逗号分隔有序）。
-    groups: apiKey.group
-      ? apiKey.group
-          .split(',')
-          .map((g) => g.trim())
-          .filter(Boolean)
-      : [DEFAULT_GROUP],
+    groups: (apiKey.group ?? '')
+      .split(',')
+      .map((group) => group.trim())
+      .filter(Boolean),
     auto_groups_mode: autoGroupsMode,
     auto_groups: autoGroups,
     cross_group_retry: !!apiKey.cross_group_retry,

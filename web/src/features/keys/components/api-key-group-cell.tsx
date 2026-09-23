@@ -43,6 +43,16 @@ type ApiKeyGroupCellProps = {
 export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
   const { t } = useTranslation()
 
+  if (!props.group?.trim()) {
+    return (
+      <StatusBadge
+        label={t('Select a group')}
+        variant='warning'
+        copyable={false}
+      />
+    )
+  }
+
   if (props.group !== 'auto') {
     const ratio = typeof props.ratio === 'number' ? props.ratio : undefined
     return (

@@ -70,7 +70,6 @@ export const API_KEY_STATUS_OPTIONS = Object.values(API_KEY_STATUSES).map(
 // Default Values
 // ============================================================================
 
-export const DEFAULT_GROUP = '' as const
 // Keep in sync with controller/maxTokenGroups; the API rejects larger lists.
 export const MAX_API_KEY_GROUPS = 8
 

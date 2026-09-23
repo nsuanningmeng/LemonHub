@@ -61,14 +61,41 @@ describe('API key Auto group form mapping', () => {
     expect(apiKeySchema.parse(legacyApiKey).auto_groups).toBe(null)
   })
 
-  test('creates an Auto token that inherits the global order', () => {
-    const defaults = getApiKeyFormDefaultValues(true)
+  test('starts new keys without a selected group', () => {
+    const defaults = getApiKeyFormDefaultValues()
 
-    expect(defaults.groups).toEqual(['auto'])
+    expect(defaults.groups).toEqual([])
     expect(defaults.auto_groups_mode).toBe('inherit')
     expect(defaults.auto_groups).toEqual([])
     expect(transformFormDataToPayload(defaults).auto_groups).toEqual([])
   })
+
+  test.each([
+    { groups: [] },
+    { groups: [''] },
+    { groups: ['   '] },
+    { groups: ['vip', ''] },
+  ])('rejects missing or blank group selections $groups', ({ groups }) => {
+    const result = getApiKeyFormSchema(t).safeParse({
+      ...getApiKeyFormDefaultValues(),
+      name: 'explicit selection',
+      groups,
+    })
+
+    expect(result.success).toBe(false)
+    if (result.success) return
+    expect(result.error.issues[0]?.path).toEqual(['groups'])
+    expect(result.error.issues[0]?.message).toBe('Select a group')
+  })
+
+  test.each(['', '   ', ', ,'])(
+    'leaves legacy empty group %j unselected',
+    (group) => {
+      const defaults = transformApiKeyToFormDefaults({ ...baseApiKey, group })
+
+      expect(defaults.groups).toEqual([])
+    }
+  )
 
   test('maps omitted, null, and empty snapshots to inheritance on edit', () => {
     const legacyApiKey: Record<string, unknown> = { ...baseApiKey }
@@ -126,7 +153,8 @@ describe('API key Auto group form mapping', () => {
 
   test('submits a valid custom snapshot in its configured order', () => {
     const custom = {
-      ...getApiKeyFormDefaultValues(true),
+      ...getApiKeyFormDefaultValues(),
+      groups: ['auto'],
       auto_groups_mode: 'custom' as const,
       auto_groups: ['vip', 'default'],
     }
@@ -138,7 +166,7 @@ describe('API key Auto group form mapping', () => {
   })
 
   test('submits an empty array for inheritance and for non-Auto groups', () => {
-    const inherited = getApiKeyFormDefaultValues(true)
+    const inherited = { ...getApiKeyFormDefaultValues(), groups: ['auto'] }
     expect(transformFormDataToPayload(inherited).auto_groups).toEqual([])
 
     const nonAuto = {
@@ -153,7 +181,8 @@ describe('API key Auto group form mapping', () => {
 
   test('rejects snapshots over the configured limit', () => {
     const result = getApiKeyFormSchema(t, 1).safeParse({
-      ...getApiKeyFormDefaultValues(true),
+      ...getApiKeyFormDefaultValues(),
+      groups: ['auto'],
       name: 'limited token',
       auto_groups_mode: 'custom',
       auto_groups: ['default', 'vip'],
@@ -167,7 +196,8 @@ describe('API key Auto group form mapping', () => {
 
   test('rejects duplicate custom groups', () => {
     const result = getApiKeyFormSchema(t).safeParse({
-      ...getApiKeyFormDefaultValues(true),
+      ...getApiKeyFormDefaultValues(),
+      groups: ['auto'],
       name: 'duplicate token',
       auto_groups_mode: 'custom',
       auto_groups: ['vip', 'vip'],
@@ -182,7 +212,7 @@ describe('API key Auto group form mapping', () => {
 
   test('requires between one and eight ordered token groups', () => {
     const defaults = {
-      ...getApiKeyFormDefaultValues(false),
+      ...getApiKeyFormDefaultValues(),
       name: 'bounded token',
     }
 
