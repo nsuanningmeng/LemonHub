@@ -1167,18 +1167,6 @@ func (user *User) FillUserByGitHubId(siteId int) error {
 	return user.fillByExternalIdentity("github_id", user.GitHubId, siteId)
 }
 
-// UpdateGitHubId updates the user's GitHub ID (used for migration from login to numeric ID)
-func (user *User) UpdateGitHubId(newGitHubId string) error {
-	if user.Id == 0 {
-		return errors.New("user id is empty")
-	}
-	if err := UpdateUserBindColumn(user.Id, "github_id", newGitHubId); err != nil {
-		return err
-	}
-	user.GitHubId, _ = NormalizeExternalIdentitySubject(newGitHubId)
-	return nil
-}
-
 func (user *User) FillUserByDiscordId(siteId int) error {
 	return user.fillByExternalIdentity("discord_id", user.DiscordId, siteId)
 }

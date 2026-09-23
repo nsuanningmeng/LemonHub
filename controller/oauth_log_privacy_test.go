@@ -15,7 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestGitHubLegacyIdentityMigrationLogDoesNotExposeProviderSubjects(t *testing.T) {
+func TestGitHubLegacyIdentityDenialDoesNotExposeProviderSubjects(t *testing.T) {
 	previousDB := model.DB
 	previousDatabaseType := common.MainDatabaseType()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -52,11 +52,11 @@ func TestGitHubLegacyIdentityMigrationLogDoesNotExposeProviderSubjects(t *testin
 		}, "")
 	})
 
-	require.NoError(t, err)
-	require.NotNil(t, migrated)
-	assert.Equal(t, legacyUser.Id, migrated.Id)
-	assert.Equal(t, newID, migrated.GitHubId)
-	assert.Contains(t, logs, "legacy identity migration started")
+	require.ErrorAs(t, err, new(*OAuthLegacyBindingNotConfirmedError))
+	assert.Nil(t, migrated)
+	assert.NotContains(t, err.Error(), legacyID)
+	assert.NotContains(t, err.Error(), newID)
+	assert.Contains(t, logs, "legacy GitHub binding login declined")
 	assert.NotContains(t, logs, legacyID)
 	assert.NotContains(t, logs, newID)
 }

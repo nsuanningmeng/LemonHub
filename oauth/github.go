@@ -147,7 +147,7 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 		DisplayName:    githubUser.Name,
 		Email:          githubUser.Email,
 		Extra: map[string]any{
-			"legacy_id": githubUser.Login, // Store login for migration from old accounts
+			"legacy_id": githubUser.Login, // Detect legacy bindings that require authenticated relinking
 		},
 	}, nil
 }
