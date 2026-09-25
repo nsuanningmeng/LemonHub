@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { AnimateInView } from '@/components/animate-in-view'
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
+import { RichContent } from '@/components/rich-content'
 import { Markdown } from '@/components/ui/markdown'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -134,7 +135,7 @@ export function Contact() {
             className='h-[calc(100vh-3.5rem)] w-full border-0'
             title={t('Contact Us')}
             referrerPolicy='no-referrer'
-            sandbox='allow-scripts allow-forms allow-popups allow-same-origin'
+            sandbox='allow-scripts allow-forms allow-popups'
           />
         </PublicLayout>
       )
@@ -143,9 +144,10 @@ export function Contact() {
       <PublicLayout>
         <div className='mx-auto max-w-6xl px-4 py-8'>
           {isHtml ? (
-            <div
+            <RichContent
+              mode='html'
+              content={rawContent}
               className='prose prose-neutral dark:prose-invert max-w-none'
-              dangerouslySetInnerHTML={{ __html: rawContent }}
             />
           ) : (
             <Markdown className='prose-neutral dark:prose-invert max-w-none'>
