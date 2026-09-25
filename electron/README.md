@@ -68,6 +68,20 @@ npm run build:linux  # Creates .AppImage and .deb
 
 ## Configuration
 
+### Network access
+
+The production desktop app binds its bundled backend to `127.0.0.1` only, including
+the initial administrator setup. This overrides an inherited `BIND_ADDRESS` so
+other devices on the network cannot initialize or access the local desktop service.
+To serve other devices, run the standalone server or Docker deployment instead.
+Standalone servers retain their existing all-interface default; set `BIND_ADDRESS`
+to a host address (without a port) when a narrower listener is needed.
+
+Optional diagnostics (`ENABLE_PPROF=true`) now default to `127.0.0.1:8005`.
+`PPROF_LISTEN_ADDRESS` explicitly overrides the diagnostic host and port. These
+endpoints have no application authentication; use an SSH tunnel or restrict access
+outside the application before configuring a remote listener.
+
 ### Port
 Default port is 3000. To change, edit `main.js`:
 ```javascript

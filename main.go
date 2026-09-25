@@ -167,7 +167,7 @@ func main() {
 
 	if os.Getenv("ENABLE_PPROF") == "true" {
 		gopool.Go(func() {
-			log.Println(http.ListenAndServe("0.0.0.0:8005", nil))
+			log.Println(http.ListenAndServe(common.PprofListenAddress(), nil))
 		})
 		go common.Monitor()
 		common.SysLog("pprof enabled")
@@ -217,7 +217,7 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:    ":" + port,
+		Addr:    common.HTTPListenAddress(port),
 		Handler: server,
 	}
 

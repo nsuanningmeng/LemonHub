@@ -255,7 +255,7 @@ function startServer() {
     }
 
     // 生产模式：启动二进制服务器
-    const env = { ...process.env, PORT: PORT.toString() };
+    const env = { ...process.env, PORT: PORT.toString(), BIND_ADDRESS: '127.0.0.1' };
 
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
