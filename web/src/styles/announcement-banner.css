@@ -1,0 +1,77 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+.announcement-banner-viewport {
+  overflow: hidden;
+}
+
+.announcement-banner-track {
+  display: flex;
+  width: max-content;
+  min-width: 200%;
+  animation: announcement-banner-scroll linear infinite;
+}
+
+.announcement-banner-items {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: space-around;
+  gap: 2rem;
+  padding-right: 2rem;
+}
+
+.announcement-banner:hover .announcement-banner-track,
+.announcement-banner[data-paused='true'] .announcement-banner-track {
+  animation-play-state: paused;
+}
+
+/* Keep every announcement reachable when navigating with a keyboard. */
+.announcement-banner-viewport:has(:focus-visible) {
+  overflow-x: auto;
+}
+
+.announcement-banner-viewport:has(:focus-visible) .announcement-banner-track {
+  min-width: 100%;
+  animation: none;
+}
+
+.announcement-banner-viewport:has(:focus-visible) [data-copy='true'] {
+  display: none;
+}
+
+@keyframes announcement-banner-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .announcement-banner-viewport {
+    overflow-x: auto;
+  }
+
+  .announcement-banner-track {
+    min-width: 100%;
+    animation: none;
+  }
+
+  .announcement-banner [data-copy='true'] {
+    display: none;
+  }
+}
