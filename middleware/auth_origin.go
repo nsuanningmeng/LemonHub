@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"crypto/subtle"
+	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,6 +25,51 @@ func SessionCookieOriginGuard() gin.HandlerFunc {
 		}
 		origin, ok := requestBrowserOrigin(c.Request)
 		if !ok || !isAllowedSessionOrigin(c.Request, origin) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"code":    "AUTH_ORIGIN_FORBIDDEN",
+				"message": "request origin is not allowed",
+			})
+			return
+		}
+		c.Next()
+	}
+}
+
+// JSONLoginOriginGuard prevents browser form submissions and cross-origin
+// credential injection into anonymous session issuance and initial setup.
+// JSON clients without browser Origin/Referer headers remain supported.
+func JSONLoginOriginGuard() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		contentTypes := c.Request.Header.Values("Content-Type")
+		mediaType, _, err := mime.ParseMediaType(c.GetHeader("Content-Type"))
+		if len(contentTypes) != 1 || err != nil || mediaType != "application/json" {
+			c.AbortWithStatusJSON(http.StatusUnsupportedMediaType, gin.H{
+				"success": false,
+				"code":    "AUTH_JSON_REQUIRED",
+				"message": "application/json is required",
+			})
+			return
+		}
+		if len(c.Request.Header.Values("Origin")) == 0 && len(c.Request.Header.Values("Referer")) == 0 {
+			c.Next()
+			return
+		}
+		origin, ok := requestBrowserOrigin(c.Request)
+		allowed := ok && isAllowedSessionOrigin(c.Request, origin)
+		if ok && !allowed && !common.SessionCookieSecure && c.Request.TLS == nil {
+			// Rsbuild changes Host to the backend's loopback address but keeps
+			// the browser's frontend Origin. Permit only local HTTP development.
+			browserURL, browserErr := url.Parse(origin)
+			backendURL, backendErr := url.Parse("http://" + c.Request.Host)
+			if browserErr == nil && backendErr == nil && browserURL.Scheme == "http" {
+				browserHost, backendHost := browserURL.Hostname(), backendURL.Hostname()
+				browserLocal := browserHost == "localhost" || net.ParseIP(browserHost).IsLoopback()
+				backendLocal := backendHost == "localhost" || net.ParseIP(backendHost).IsLoopback()
+				allowed = browserLocal && backendLocal
+			}
+		}
+		if !allowed {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"code":    "AUTH_ORIGIN_FORBIDDEN",

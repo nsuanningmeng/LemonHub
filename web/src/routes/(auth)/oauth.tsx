@@ -38,8 +38,8 @@ function OAuthComponent() {
   useEffect(() => {
     ;(async () => {
       try {
-        if (search?.provider === 'wechat' && search.code) {
-          const res = await wechatLoginByCode(search.code)
+        if (search?.provider === 'wechat' && search.code && search.state) {
+          const res = await wechatLoginByCode(search.code, search.state)
           if (res?.success && isAuthBundle(res.data)) {
             applyAuthBundle(res.data)
             const target =

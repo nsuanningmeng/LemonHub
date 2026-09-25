@@ -61,6 +61,10 @@ func WeChatAuth(c *gin.Context) {
 		})
 		return
 	}
+	state, ok := requireBrowserBoundProviderLogin(c, "wechat")
+	if !ok {
+		return
+	}
 	code := c.Query("code")
 	wechatId, err := getWeChatIdByCode(code)
 	if err != nil {
@@ -75,6 +79,13 @@ func WeChatAuth(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if _, err := model.ConsumeAuthFlow(state, model.AuthFlowMatch{
+		Purpose: model.AuthFlowPurposeOAuth, Provider: "wechat", Intent: model.AuthFlowIntentLogin,
+	}); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	http.SetCookie(c.Writer, oauthLoginBrowserCookie(state, "", -1))
 	// Resolve the sub-site from the request Host (0 = main site); scope lookups/insert to it.
 	siteId := middleware.GetRequestSiteId(c)
 	user := model.User{

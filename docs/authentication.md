@@ -97,14 +97,14 @@ refresh/logout 的 Origin 防护与 Refresh Cookie 的 Secure 模式绑定：
 
 Secure 模式的 Origin 校验不信任客户端直接发送的 `X-Forwarded-Proto`。TLS 在反向代理终止时，应将面板的公开 HTTPS Origin 明确写入 `SESSION_COOKIE_TRUSTED_URL`。
 
-`SESSION_COOKIE_TRUSTED_URL` 现在具有明确的新语义：它是 refresh/logout Cookie 端点的可信 Origin 列表，不是 CORS 白名单。配置规则如下：
+`SESSION_COOKIE_TRUSTED_URL` 是 refresh/logout、匿名登录和首次初始化端点的可信 Origin 列表，不是 CORS 白名单。配置规则如下：
 
 - 仅在 `SESSION_COOKIE_SECURE=true` 时配置；多个值用英文逗号分隔。
 - 每项必须是精确的 HTTPS Origin，例如 `https://panel.example.com` 或 `https://panel.example.com:8443`。
 - 不接受通配符、路径、查询参数、用户信息或域名后缀匹配。
 - 不会修改 relay、旧 billing dashboard、`/api/usage/token` 或 `/api/log/token` 的 CORS 行为。浏览器使用 `sk-` key 直连 relay 的场景保持不变。
 
-本地 HTTP 开发示例（OriginGuard 关闭）：
+本地 HTTP 开发示例（refresh/logout 的 OriginGuard 关闭）：
 
 ```env
 SESSION_SECRET=<local-random-value>
@@ -120,7 +120,15 @@ SESSION_COOKIE_SECURE=true
 SESSION_COOKIE_TRUSTED_URL=https://panel.example.com,https://admin.example.com
 ```
 
-该开关只控制面板 Refresh Cookie 和 refresh/logout 的 OriginGuard，不会修改 relay、旧 billing dashboard、`/api/usage/token` 或 `/api/log/token` 的 CORS 行为。
+该开关控制面板 Cookie 的 Secure 属性和 refresh/logout 的 OriginGuard，不会修改 relay、旧 billing dashboard、`/api/usage/token` 或 `/api/log/token` 的 CORS 行为。
+
+## 匿名登录与首次初始化的请求边界
+
+`POST /api/user/login`、`POST /api/user/login/2fa`、`POST /api/user/passkey/login/finish` 和 `POST /api/setup` 在所有模式下都要求单一的 `Content-Type: application/json`（允许合法的 `charset` 参数）。表单、`text/plain`、缺失或重复 Content-Type 返回 `415 AUTH_JSON_REQUIRED`，避免跨站页面通过表单把受害者登录到攻击者账号，或抢先初始化本机服务。
+
+这些端点同时检查显式的 `Origin`，缺少时检查 `Referer`，仅接受请求自身或上述可信列表中的精确来源；非法、多值、`null` 或不可信来源返回 `403 AUTH_ORIGIN_FORBIDDEN`。检查在密码验证、一次性凭据消费或创建 root 用户之前执行，不依赖 CAPTCHA 或 CORS 响应设置。完全没有 Origin 和 Referer 的 JSON 非浏览器客户端仍可调用。
+
+非 secure 模式只额外允许 HTTP loopback 开发代理：浏览器来源与后端 Host 都必须是 `localhost` 或回环 IP，可以跨端口或在 localhost、IPv4、IPv6 回环地址之间转发，兼容 Rsbuild 的 `changeOrigin`。LAN/远程开发代理不适用此例外；HTTPS 反代应使用 secure 模式并明确配置公开 Origin，不信任请求自行携带的 `X-Forwarded-Proto`。Passkey begin 不要求新请求体，第三方 OAuth GET 回跳仍使用浏览器绑定 flow，不受同源 POST 限制。
 
 ## 可信代理与 IP 限流
 
@@ -147,6 +155,12 @@ PAT 不是浏览器登录会话，不能调用登录会话管理接口，也不�
 ## 临时鉴权流程与二次验证
 
 OAuth state、2FA pending、Passkey ceremony、Telegram bind 等临时状态存放在 `auth_flows`。客户端只持有随机 `flow_token`，数据库仅保存 HMAC 摘要；流程具有用途、provider、intent、用户和登录会话绑定，并且只能原子消费一次。OAuth 注册的 affiliate code 也随登录 AuthFlow 保存。
+
+标准 OAuth 登录还必须绑定发起浏览器：创建每个 login flow 时，后端设置独立的随机 HttpOnly Cookie，并仅在 flow payload 中保存该 Cookie secret 的 HMAC。回调必须在兑换提供商授权码前同时验证 state 和对应 Cookie；仅转发攻击者的 state/code 到另一个浏览器会被拒绝。同一 provider 的不同标签页使用不同 Cookie，完成或取消一个流程不会使另一个失效；已消费的流程不可重放。Cookie 使用 `SameSite=Lax`，支持提供商的跨站顶层回跳，并在 10 分钟后过期；成功消费或提供商明确取消时立即清除。临时网络或提供商错误保留未消费流程供原浏览器重试。
+
+微信验证码登录和 Telegram widget 登录使用相同的浏览器绑定机制。前端仅在用户提交微信验证码或点击 Telegram 登录按钮时，调用 `POST /api/oauth/state` 创建对应 provider 的 login flow；后续登录请求通过 `X-OAuth-State` 请求头携带该 state，并由浏览器自动携带对应 Cookie。后端在兑换微信验证码或验证 Telegram 凭据前拒绝缺少任一部分、Cookie 不匹配或 provider 不匹配的请求。`/oauth?provider=wechat&code=...` 回跳页不能自行创建 flow，必须携带已经发起的 state。Telegram 的 state 不混入已签名查询参数，原有验签规则保持不变，其 assertion 一次性认领与 login flow 消费在同一数据库事务中提交。旧版直接凭微信验证码或 Telegram assertion 调用登录 API 的客户端需先显式创建 flow 并保留 Cookie。
+
+当 `SESSION_COOKIE_SECURE=true` 时，OAuth Cookie 使用 `__Host-` 前缀、`Secure`、`Path=/` 且不设置 `Domain`，防止同父域的不可信子域注入攻击者已知的 Cookie。非 secure 模式使用普通名称与 `/api/oauth` 路径，仍仅限可信本地 HTTP 开发。反向代理必须保留 `Set-Cookie` 属性；登录发起与回调应回到同一浏览器主机。GitHub/LinuxDO 等使用提供商预设回调地址时，从别名或子站发起却回到主站的流程会因缺少 Cookie 被拒绝；应先进入规范回调主机再发起登录，不能通过设置共享 `Domain` Cookie 放宽边界。升级前签发、尚无浏览器绑定的 OAuth 登录流程会被拒绝，用户重新点击登录即可；现有登录会话与基于用户/Session 的账号绑定流程不受影响。
 
 标准 OAuth 绑定回调由 popup 通过同源 `postMessage` 交给 opener；只有 opener 使用自身内存中的 Bearer 调用后端绑定接口。Telegram 绑定先由已登录前端创建绑定 AuthFlow，再让 widget 回调携带路径中的 `flow_token`，回调时会重新确认原登录会话仍有效。Telegram 的已签名 widget assertion 也会登记为一次性凭据，重复回放会被拒绝。
 

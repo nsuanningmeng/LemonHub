@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"crypto/hmac"
 	"errors"
 	"net/http"
 	"strconv"
@@ -25,7 +26,61 @@ type oauthStateRequest struct {
 }
 
 type oauthFlowPayload struct {
-	AffiliateCode string `json:"affiliate_code,omitempty"`
+	AffiliateCode    string `json:"affiliate_code,omitempty"`
+	LoginBrowserHash string `json:"login_browser_hash,omitempty"`
+}
+
+// Each login attempt has its own cookie so concurrent tabs cannot overwrite
+// each other's binding. Lax permits the provider's top-level return navigation.
+func oauthLoginBrowserCookie(state, secret string, maxAge int) *http.Cookie {
+	name := "new_api_oauth_" + state
+	path := "/api/oauth"
+	if common.SessionCookieSecure {
+		// The __Host- prefix prevents an untrusted sibling subdomain from
+		// injecting a Domain cookie for an attacker's known state and secret.
+		name = "__Host-" + name
+		path = "/"
+	}
+	return &http.Cookie{
+		Name:     name,
+		Value:    secret,
+		Path:     path,
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   common.SessionCookieSecure,
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+func oauthLoginBrowserHash(secret string) string {
+	return common.GenerateHMACWithKey([]byte("oauth-login-browser-v1:"+common.SessionSecret), secret)
+}
+
+func validateOAuthLoginBrowser(c *gin.Context, state string, flow *model.AuthFlow) (oauthFlowPayload, bool) {
+	var payload oauthFlowPayload
+	browserCookies := c.Request.CookiesNamed(oauthLoginBrowserCookie(state, "", 0).Name)
+	if err := common.UnmarshalJsonStr(flow.Payload, &payload); err != nil ||
+		len(browserCookies) != 1 || browserCookies[0].Value == "" || payload.LoginBrowserHash == "" ||
+		!hmac.Equal([]byte(payload.LoginBrowserHash), []byte(oauthLoginBrowserHash(browserCookies[0].Value))) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgOAuthStateInvalid)})
+		return oauthFlowPayload{}, false
+	}
+	return payload, true
+}
+
+// Non-standard providers carry state separately from their signed credentials.
+// In particular, Telegram's signature must still cover the unchanged query.
+func requireBrowserBoundProviderLogin(c *gin.Context, provider string) (string, bool) {
+	state := c.GetHeader("X-OAuth-State")
+	flow, err := model.GetAuthFlow(state, model.AuthFlowMatch{
+		Purpose: model.AuthFlowPurposeOAuth, Provider: provider, Intent: model.AuthFlowIntentLogin,
+	})
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgOAuthStateInvalid)})
+		return "", false
+	}
+	_, ok := validateOAuthLoginBrowser(c, state, flow)
+	return state, ok
 }
 
 // providerParams returns map with Provider key for i18n templates
@@ -43,7 +98,8 @@ func GenerateOAuthCode(c *gin.Context) {
 	request.Provider = strings.TrimSpace(request.Provider)
 	request.Intent = strings.TrimSpace(request.Intent)
 	request.Aff = strings.TrimSpace(request.Aff)
-	if oauth.GetProvider(request.Provider) == nil ||
+	nonstandardLogin := request.Intent == model.AuthFlowIntentLogin && (request.Provider == "wechat" || request.Provider == "telegram")
+	if (oauth.GetProvider(request.Provider) == nil && !nonstandardLogin) ||
 		(request.Intent != model.AuthFlowIntentLogin && request.Intent != model.AuthFlowIntentBind) ||
 		len(request.Aff) > 32 ||
 		(request.Intent == model.AuthFlowIntentBind && request.Aff != "") {
@@ -61,7 +117,18 @@ func GenerateOAuthCode(c *gin.Context) {
 		userID = identity.UserID
 		sessionID = identity.SessionID
 	}
-	payload, err := common.Marshal(oauthFlowPayload{AffiliateCode: request.Aff})
+	flowPayload := oauthFlowPayload{AffiliateCode: request.Aff}
+	browserSecret := ""
+	if request.Intent == model.AuthFlowIntentLogin {
+		var err error
+		browserSecret, err = common.GenerateRandomCharsKey(64)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		flowPayload.LoginBrowserHash = oauthLoginBrowserHash(browserSecret)
+	}
+	payload, err := common.Marshal(flowPayload)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -79,6 +146,9 @@ func GenerateOAuthCode(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if request.Intent == model.AuthFlowIntentLogin {
+		http.SetCookie(c.Writer, oauthLoginBrowserCookie(state, browserSecret, int(oauthAuthFlowTTL.Seconds())))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -121,6 +191,7 @@ func HandleOAuth(c *gin.Context) {
 		Provider: providerName,
 		Intent:   pendingFlow.Intent,
 	}
+	var payload oauthFlowPayload
 	// 2. Bind flows are bound to the live dashboard Session that created them.
 	if pendingFlow.Intent == model.AuthFlowIntentBind {
 		identity, ok := middleware.GetSessionAuthIdentity(c)
@@ -133,7 +204,16 @@ func HandleOAuth(c *gin.Context) {
 		}
 		consumeMatch.UserId = identity.UserID
 		consumeMatch.SessionId = identity.SessionID
-	} else if pendingFlow.Intent != model.AuthFlowIntentLogin {
+	} else if pendingFlow.Intent == model.AuthFlowIntentLogin {
+		// A state is not sufficient on its own: an attacker knows the state and
+		// authorization code for their own account and can send both to a victim.
+		// Require the independent secret delivered only to the initiating browser.
+		var ok bool
+		payload, ok = validateOAuthLoginBrowser(c, state, pendingFlow)
+		if !ok {
+			return
+		}
+	} else {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -150,6 +230,9 @@ func HandleOAuth(c *gin.Context) {
 		if _, err := model.ConsumeAuthFlow(state, consumeMatch); err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgOAuthStateInvalid)})
 			return
+		}
+		if pendingFlow.Intent == model.AuthFlowIntentLogin {
+			http.SetCookie(c.Writer, oauthLoginBrowserCookie(state, "", -1))
 		}
 		errorDescription := c.Query("error_description")
 		if errorDescription == "" {
@@ -180,18 +263,14 @@ func HandleOAuth(c *gin.Context) {
 		handleOAuthError(c, err)
 		return
 	}
-	flow, err := model.ConsumeAuthFlow(state, consumeMatch)
+	_, err = model.ConsumeAuthFlow(state, consumeMatch)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgOAuthStateInvalid)})
 		return
 	}
+	http.SetCookie(c.Writer, oauthLoginBrowserCookie(state, "", -1))
 
 	// 7. Find or create user
-	var payload oauthFlowPayload
-	if err := common.UnmarshalJsonStr(flow.Payload, &payload); err != nil {
-		common.ApiError(c, err)
-		return
-	}
 	user, err := findOrCreateOAuthUser(c, provider, oauthUser, payload.AffiliateCode)
 	if err != nil {
 		switch err.(type) {

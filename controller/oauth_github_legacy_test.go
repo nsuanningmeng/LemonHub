@@ -216,11 +216,8 @@ func TestGitHubLegacyCallbackDeclinesWithPrivateRelinkGuidance(t *testing.T) {
 	t.Cleanup(func() { oauth.Unregister("github-identity-test") })
 	for _, language := range []string{i18n.LangEn, i18n.LangZhCN, i18n.LangZhTW} {
 		t.Run(language, func(t *testing.T) {
-			flowToken, _, err := model.CreateAuthFlow(model.AuthFlowCreate{
-				Purpose: model.AuthFlowPurposeOAuth, Provider: "github-identity-test", Intent: model.AuthFlowIntentLogin,
-				Payload: `{}`, ExpiresAt: time.Now().Add(time.Minute),
-			})
-			require.NoError(t, err)
+			flowToken, cookies := startOAuthLoginFlow(t, "github-identity-test")
+			require.Len(t, cookies, 1)
 			router := gin.New()
 			router.Use(func(c *gin.Context) {
 				common.SetContextKey(c, constant.ContextKeySiteId, 7)
@@ -229,7 +226,9 @@ func TestGitHubLegacyCallbackDeclinesWithPrivateRelinkGuidance(t *testing.T) {
 			})
 			router.GET("/api/oauth/:provider", HandleOAuth)
 			response := httptest.NewRecorder()
-			router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/oauth/github-identity-test?state="+flowToken+"&code=test", nil))
+			request := httptest.NewRequest(http.MethodGet, "/api/oauth/github-identity-test?state="+flowToken+"&code=test", nil)
+			request.AddCookie(cookies[0])
+			router.ServeHTTP(response, request)
 			var result struct {
 				Success bool   `json:"success"`
 				Message string `json:"message"`
@@ -241,9 +240,12 @@ func TestGitHubLegacyCallbackDeclinesWithPrivateRelinkGuidance(t *testing.T) {
 			for _, privateValue := range []string{legacyID, provider.identity.ProviderUserID, legacyUser.Username, legacyUser.Email} {
 				assert.NotContains(t, response.Body.String(), privateValue)
 			}
-			assert.Empty(t, response.Result().Cookies())
+			cleared := response.Result().Cookies()
+			require.Len(t, cleared, 1)
+			assert.Equal(t, cookies[0].Name, cleared[0].Name)
+			assert.Equal(t, -1, cleared[0].MaxAge)
 			assert.NotContains(t, response.Body.String(), "access_token")
-			_, err = model.GetAuthFlow(flowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
+			_, err := model.GetAuthFlow(flowToken, model.AuthFlowMatch{Purpose: model.AuthFlowPurposeOAuth})
 			assert.ErrorIs(t, err, model.ErrAuthFlowConsumed)
 		})
 	}

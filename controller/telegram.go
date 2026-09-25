@@ -241,6 +241,10 @@ func TelegramLogin(c *gin.Context) {
 		})
 		return
 	}
+	state, ok := requireBrowserBoundProviderLogin(c, "telegram")
+	if !ok {
+		return
+	}
 	params := c.Request.URL.Query()
 	telegramId, err := verifyTelegramAuthorization(params, common.TelegramBotToken, time.Now())
 	if err != nil {
@@ -262,7 +266,15 @@ func TelegramLogin(c *gin.Context) {
 		})
 		return
 	}
-	if err := claimTelegramAuthorization(params, time.Now()); err != nil {
+	assertion, assertionExpiresAt, err := telegramAuthorizationClaim(params, time.Now())
+	if err == nil {
+		_, err = model.ConsumeAuthFlowWithAction(state, model.AuthFlowMatch{
+			Purpose: model.AuthFlowPurposeOAuth, Provider: "telegram", Intent: model.AuthFlowIntentLogin,
+		}, func(tx *gorm.DB, flow *model.AuthFlow) error {
+			return model.ClaimExternalAuthAssertionWithTx(tx, model.AuthFlowPurposeTelegramAssertion, assertion, assertionExpiresAt)
+		})
+	}
+	if err != nil {
 		common.SysLog("TelegramLogin assertion replay rejected: " + err.Error())
 		c.JSON(http.StatusForbidden, gin.H{
 			"message": "该登录凭据已被使用",
@@ -270,15 +282,8 @@ func TelegramLogin(c *gin.Context) {
 		})
 		return
 	}
+	http.SetCookie(c.Writer, oauthLoginBrowserCookie(state, "", -1))
 	setupLogin(&user, c)
-}
-
-func claimTelegramAuthorization(params url.Values, now time.Time) error {
-	assertion, expiresAt, err := telegramAuthorizationClaim(params, now)
-	if err != nil {
-		return err
-	}
-	return model.ClaimExternalAuthAssertion(model.AuthFlowPurposeTelegramAssertion, assertion, expiresAt)
 }
 
 func telegramAuthorizationClaim(params url.Values, now time.Time) (string, time.Time, error) {

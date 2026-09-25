@@ -48,6 +48,7 @@ export function useOAuthLogin(
   const [githubButtonText, setGithubButtonText] = useState('')
   const [githubButtonDisabled, setGithubButtonDisabled] = useState(false)
   const githubTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const telegramFlowTokenRef = useRef('')
 
   useEffect(() => {
     setGithubButtonText(t('Continue with GitHub'))
@@ -168,6 +169,7 @@ export function useOAuthLogin(
     setIsLoading(true)
     try {
       await resetSession()
+      telegramFlowTokenRef.current = await createOAuthFlow('telegram', 'login')
       setIsTelegramDialogOpen(true)
     } catch {
       toast.error(
@@ -180,20 +182,22 @@ export function useOAuthLogin(
 
   const handleTelegramAuthorization = async (value: unknown) => {
     const authorization = pickTelegramAuthorization(value)
-    if (!authorization) {
+    const flowToken = telegramFlowTokenRef.current
+    if (!authorization || !flowToken) {
       toast.error(t('Login failed'))
       return
     }
 
     setIsTelegramPending(true)
     try {
-      const response = await telegramLogin(authorization)
+      const response = await telegramLogin(authorization, flowToken)
       if (!response.success || !isAuthBundle(response.data)) {
         toast.error(t('Login failed'))
         return
       }
 
       setIsTelegramDialogOpen(false)
+      telegramFlowTokenRef.current = ''
       await handleLoginSuccess(response.data, redirectTo)
       toast.success(t('Welcome back!'))
     } catch {

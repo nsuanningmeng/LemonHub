@@ -160,16 +160,24 @@ export async function createOAuthFlow(
 }
 
 // WeChat login by authorization code
-export async function wechatLoginByCode(code: string): Promise<ApiResponse> {
-  const res = await api.get('/api/oauth/wechat', { params: { code } })
+export async function wechatLoginByCode(
+  code: string,
+  flowToken: string
+): Promise<ApiResponse> {
+  const res = await api.get('/api/oauth/wechat', {
+    params: { code },
+    headers: { 'X-OAuth-State': flowToken },
+  })
   return res.data
 }
 
 export async function telegramLogin(
-  authorization: TelegramAuthorization
+  authorization: TelegramAuthorization,
+  flowToken: string
 ): Promise<ApiResponse> {
   const res = await api.get('/api/oauth/telegram/login', {
     params: authorization,
+    headers: { 'X-OAuth-State': flowToken },
     disableDuplicate: true,
     skipAuthRefresh: true,
     skipBusinessError: true,
