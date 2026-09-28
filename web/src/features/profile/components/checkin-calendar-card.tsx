@@ -256,6 +256,7 @@ export function CheckinCalendarCard({
         title={t('Security Check')}
         contentClassName='sm:max-w-md'
         contentHeight='auto'
+        bodyOverflow='visible'
         bodyClassName='space-y-4'
       >
         <div className='text-muted-foreground text-sm'>

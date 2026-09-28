@@ -36,6 +36,7 @@ type DialogProps = React.ComponentProps<typeof DialogRoot> & {
   trigger?: React.ReactElement
   footer?: React.ReactNode
   contentHeight?: React.CSSProperties['height']
+  bodyOverflow?: 'auto' | 'visible'
   contentClassName?: string
   headerClassName?: string
   titleClassName?: string
@@ -56,6 +57,7 @@ export function Dialog({
   trigger,
   footer,
   contentHeight = 'auto',
+  bodyOverflow = 'auto',
   contentClassName,
   headerClassName,
   titleClassName,
@@ -71,7 +73,8 @@ export function Dialog({
       {trigger ? <DialogTrigger render={trigger} /> : null}
       <DialogContent
         className={cn(
-          'flex max-h-[calc(100vh-2rem)] w-full flex-col gap-4 overflow-hidden p-4 sm:max-w-2xl sm:p-6',
+          'flex max-h-[calc(100vh-2rem)] w-full flex-col gap-4 p-4 sm:max-w-2xl sm:p-6',
+          bodyOverflow === 'visible' ? 'overflow-visible' : 'overflow-hidden',
           contentClassName,
           dialogContentMotionClassName
         )}
@@ -96,8 +99,10 @@ export function Dialog({
 
         <div
           className={cn(
-            '-mx-1 min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain',
-            'h-[var(--dialog-content-height)] max-h-[calc(100vh-14rem)]'
+            '-mx-1 min-h-0 h-[var(--dialog-content-height)]',
+            bodyOverflow === 'visible'
+              ? 'overflow-visible'
+              : 'max-h-[calc(100vh-14rem)] overflow-x-hidden overflow-y-auto overscroll-contain'
           )}
         >
           <div
