@@ -5282,6 +5282,7 @@
     "Total Usage": "Total Usage",
     "Total:": "Total:",
     "TPM": "TPM",
+    "TPS and TTFT require samples from this model. TTFT is available only for streaming responses.": "TPS and TTFT require samples from this model. TTFT is available only for streaming responses.",
     "Track per-request consumption to power usage analytics. Keeping this on increases database writes.": "Track per-request consumption to power usage analytics. Keeping this on increases database writes.",
     "Track usage, costs and performance with real-time analytics": "Track usage, costs and performance with real-time analytics",
     "Tracked apps": "Tracked apps",

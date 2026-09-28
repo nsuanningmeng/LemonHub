@@ -117,6 +117,8 @@ LemonHub's referral system includes:
 - Manual and scheduled tests of enabled channels contribute health samples to every configured model/group pair; groups that are no longer available are excluded from displayed model success rates.
 - Relay and channel-test errors count as failures only when their HTTP status matches the configured performance error-code whitelist; other errors count as successful samples. An empty whitelist counts all errors as failures.
 - Performance views follow currently enabled, available, priced model/group pairs; removed groups no longer affect aggregate or trend metrics.
+- Metrics retain channel identity: manually disabled or deleted channels are excluded from current success rates and trends, including their retained history. Automatic failures remain visible until recovery.
+- Channel tests retain measured TPS and first-token latency for the model actually probed; TTFT requires streaming. See [performance statistics and upgrade notes](./docs/performance-metrics.md) for the new storage format and historical-data handling.
 
 ### 9. Security and migration hardening
 

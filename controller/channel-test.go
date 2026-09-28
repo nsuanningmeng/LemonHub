@@ -46,6 +46,8 @@ type testResult struct {
 	// tests otherwise apply the result to every configured model/group pair.
 	perfModel string
 	perfGroup string
+	// Only the probed model has measured throughput and first-response timing.
+	perfSample perfmetrics.Sample
 }
 
 func normalizeChannelTestEndpoint(channel *model.Channel, endpointType string) string {
@@ -509,6 +511,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
 		}
 	}
+	perfSample := perfmetrics.BuildRelaySample(info, true, int64(usage.CompletionTokens), time.Now())
 	info.SetEstimatePromptTokens(usage.PromptTokens)
 
 	quota, tieredResult := settleTestQuota(info, priceData, usage)
@@ -534,6 +537,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 		context:     c,
 		localErr:    nil,
 		newAPIError: nil,
+		perfSample:  perfSample,
 	}
 }
 
@@ -883,13 +887,12 @@ func TestChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	channel, err := model.CacheGetChannel(channelId)
+	// Use a database snapshot: the shared cache can be stale or change while a
+	// probe is running, which must not change its initial eligibility.
+	channel, err := model.GetChannelById(channelId, true)
 	if err != nil {
-		channel, err = model.GetChannelById(channelId, true)
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
+		common.ApiError(c, err)
+		return
 	}
 	//defer func() {
 	//	if channel.ChannelInfo.IsMultiKey {
@@ -912,8 +915,13 @@ func TestChannel(c *gin.Context) {
 	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
 	milliseconds := time.Since(tik).Milliseconds()
 	if channel.Status == common.ChannelStatusEnabled && requestCtx.Err() == nil && (result.localErr == nil || result.newAPIError != nil) {
-		for _, sample := range buildChannelTestPerfSamples(channel, result, milliseconds, result.newAPIError) {
-			perfmetrics.Record(sample)
+		currentChannel, err := model.GetChannelById(channel.Id, false)
+		if err != nil {
+			common.SysError(fmt.Sprintf("failed to refresh channel #%d for test metrics: %v", channel.Id, err))
+		} else {
+			for _, sample := range buildChannelTestPerfSamples(currentChannel, result, milliseconds, result.newAPIError) {
+				perfmetrics.Record(sample)
+			}
 		}
 	}
 	if result.localErr != nil {
@@ -961,7 +969,7 @@ type channelTestSummary struct {
 // resolved group belongs to the testing user and may not be served by the
 // channel. Use that identity only as a fallback for empty legacy configuration.
 func buildChannelTestPerfSamples(channel *model.Channel, result testResult, latencyMs int64, finalError *types.NewAPIError) []perfmetrics.Sample {
-	if channel == nil {
+	if channel == nil || channel.Status != common.ChannelStatusEnabled {
 		return nil
 	}
 	probeModel := strings.TrimSpace(result.perfModel)
@@ -981,12 +989,20 @@ func buildChannelTestPerfSamples(channel *model.Channel, result testResult, late
 	samples := make([]perfmetrics.Sample, 0, len(modelNames)*len(groups))
 	for _, modelName := range modelNames {
 		for _, group := range groups {
-			samples = append(samples, perfmetrics.Sample{
+			sample := perfmetrics.Sample{
+				ChannelID: channel.Id,
 				Model:     modelName,
 				Group:     group,
 				LatencyMs: latencyMs,
 				Success:   success,
-			})
+			}
+			if modelName == probeModel && result.localErr == nil && result.newAPIError == nil {
+				sample.TtftMs = result.perfSample.TtftMs
+				sample.HasTtft = result.perfSample.HasTtft
+				sample.OutputTokens = result.perfSample.OutputTokens
+				sample.GenerationMs = result.perfSample.GenerationMs
+			}
+			samples = append(samples, sample)
 		}
 	}
 	return samples
@@ -997,6 +1013,19 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 		ctx = context.Background()
 	}
 	summary := channelTestSummary{}
+	if channel == nil || ctx.Err() != nil {
+		return summary
+	}
+	// Batch jobs can wait in the queue after the channel list was loaded.
+	currentChannel, err := model.GetChannelById(channel.Id, true)
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to refresh channel #%d before health check: %v", channel.Id, err))
+		return summary
+	}
+	if currentChannel.Status == common.ChannelStatusManuallyDisabled {
+		return summary
+	}
+	channel = currentChannel
 	isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 	tik := time.Now()
 	result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
@@ -1033,22 +1062,27 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 	} else {
 		summary.Failed++
 	}
+	currentChannel, err = model.GetChannelById(channel.Id, false)
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to refresh channel #%d after health check: %v", channel.Id, err))
+		return summary
+	}
 
 	// Feed the final health-check outcome into every configured client-facing
 	// model/group bucket. Disabled-channel recovery probes are deliberately excluded
 	// so they cannot depress an enabled route's score.
 	if isChannelEnabled {
-		for _, sample := range buildChannelTestPerfSamples(channel, result, milliseconds, newAPIError) {
+		for _, sample := range buildChannelTestPerfSamples(currentChannel, result, milliseconds, newAPIError) {
 			perfmetrics.Record(sample)
 		}
 	}
 
-	if allowDisable && isChannelEnabled && shouldBanChannel && channel.GetAutoBan() && result.context != nil {
+	if allowDisable && isChannelEnabled && currentChannel.Status == common.ChannelStatusEnabled && shouldBanChannel && currentChannel.GetAutoBan() && result.context != nil {
 		processChannelError(result.context, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
 		summary.Disabled++
 	}
 
-	if result.localErr == nil && result.context != nil && !isChannelEnabled && service.ShouldEnableChannel(newAPIError, channel.Status) {
+	if result.localErr == nil && result.context != nil && !isChannelEnabled && service.ShouldEnableChannel(newAPIError, currentChannel.Status) {
 		service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
 		summary.Enabled++
 	}

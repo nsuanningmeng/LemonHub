@@ -157,7 +157,46 @@ describe('model performance groups', () => {
     const emptyGroup = within(table).getByRole('row', { name: /Gemini混合/ })
     expect(within(emptyGroup).getAllByText('—')).toHaveLength(4)
     expect(screen.getByText('60.00%')).toBeInTheDocument()
+    expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
+
+  test.each([
+    { name: 'TPS', avg_tps: 0, avg_ttft_ms: 100, missingCells: 1 },
+    { name: 'TTFT', avg_tps: 20, avg_ttft_ms: 0, missingCells: 1 },
+    { name: 'TPS and TTFT', avg_tps: 0, avg_ttft_ms: 0, missingCells: 2 },
+  ])(
+    'groups with success-rate samples but no $name explain the missing measurements',
+    async ({ avg_tps, avg_ttft_ms, missingCells }) => {
+      const user = userEvent.setup()
+      const group = {
+        ...sampledGroups[0],
+        avg_tps,
+        avg_ttft_ms,
+        series: [{ ...sampledGroups[0].series[0], avg_tps, avg_ttft_ms }],
+      }
+      queryClient.setQueryData(['perf-metrics', 'gemini-test'], {
+        success: true,
+        data: { model_name: 'gemini-test', groups: [group] },
+      })
+      vi.mocked(api.get).mockResolvedValue({
+        data: queryClient.getQueryData(['perf-metrics', 'gemini-test']),
+      })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ModelDetailsContent {...props} />
+        </QueryClientProvider>
+      )
+      await user.click(screen.getByRole('tab', { name: 'Performance' }))
+
+      expect(screen.getByRole('note')).toHaveTextContent(
+        'TPS and TTFT require samples from this model. TTFT is available only for streaming responses.'
+      )
+      const row = within(screen.getByRole('table')).getByRole('row', {
+        name: /^Gemini\s/,
+      })
+      expect(within(row).getAllByText('—')).toHaveLength(missingCells)
+    }
+  )
 
   test('removing a model group immediately removes its row and contribution despite cached metrics', async () => {
     const user = userEvent.setup()
@@ -242,6 +281,7 @@ describe('model performance groups', () => {
         screen.getByText('No requests in the last 24 hours')
       ).toBeInTheDocument()
       expect(screen.queryByText('100.00%') !== null).toBe(noDataAsFull)
+      expect(screen.queryByRole('note')).not.toBeInTheDocument()
     }
   )
 })

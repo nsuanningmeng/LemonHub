@@ -5282,6 +5282,7 @@
     "Total Usage": "Tổng Mức Sử dụng",
     "Total:": "Tổng cộng:",
     "TPM": "TPM",
+    "TPS and TTFT require samples from this model. TTFT is available only for streaming responses.": "TPS và TTFT cần mẫu đo từ mô hình này. TTFT chỉ có với phản hồi truyền trực tuyến.",
     "Track per-request consumption to power usage analytics. Keeping this on increases database writes.": "Theo dõi mức tiêu thụ theo từng yêu cầu để phục vụ phân tích mức độ sử dụng. Việc bật tính năng này làm tăng số lượt ghi vào cơ sở dữ liệu.",
     "Track usage, costs and performance with real-time analytics": "Theo dõi sử dụng, chi phí và hiệu suất với phân tích thời gian thực",
     "Tracked apps": "Ứng dụng được theo dõi",

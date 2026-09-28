@@ -5282,6 +5282,7 @@
     "Total Usage": "總用量",
     "Total:": "總計：",
     "TPM": "TPM",
+    "TPS and TTFT require samples from this model. TTFT is available only for streaming responses.": "TPS 和首 token 延遲需要該模型的實測樣本；首 token 延遲僅適用於串流回應。",
     "Track per-request consumption to power usage analytics. Keeping this on increases database writes.": "追蹤每個請求的消耗，以支援使用情況分析。保持開啟會增加資料庫寫入。",
     "Track usage, costs and performance with real-time analytics": "透過實時分析追蹤用量、成本和效能",
     "Tracked apps": "已追蹤的套用",

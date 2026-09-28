@@ -45,6 +45,11 @@ func setupPerfMetricsControllerTest(t *testing.T) *gorm.DB {
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"Gemini":1,"Gemini混合":3,"private":1,"disabled":1}`))
 	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","Gemini":"Gemini","Gemini混合":"Mixed","disabled":"Disabled","retired":"Retired"}`))
 	require.NoError(t, db.AutoMigrate(&model.PerfMetric{}))
+	require.NoError(t, db.Create(&[]model.Channel{
+		{Id: 1, Name: "perf source", Status: common.ChannelStatusEnabled},
+		{Id: 2, Name: "perf source two", Status: common.ChannelStatusEnabled},
+		{Id: 3, Name: "perf source three", Status: common.ChannelStatusEnabled},
+	}).Error)
 	model.InvalidatePricingCache()
 	return db
 }
@@ -78,8 +83,8 @@ func TestGetPerfMetricsRemovesDeletedModelGroup(t *testing.T) {
 	}).Error)
 	bucket := time.Now().Add(-time.Hour).Unix()
 	require.NoError(t, db.Create(&[]model.PerfMetric{
-		{ModelName: modelName, Group: "Gemini", BucketTs: bucket, RequestCount: 2, SuccessCount: 2},
-		{ModelName: modelName, Group: "default", BucketTs: bucket, RequestCount: 3, SuccessCount: 0},
+		{ChannelID: 1, ModelName: modelName, Group: "Gemini", BucketTs: bucket, RequestCount: 2, SuccessCount: 2},
+		{ChannelID: 1, ModelName: modelName, Group: "default", BucketTs: bucket, RequestCount: 3, SuccessCount: 0},
 	}).Error)
 	var response struct {
 		Data perfmetrics.QueryResult `json:"data"`
@@ -114,15 +119,15 @@ func TestGetPerfMetricsSummaryExcludesUnavailableModelGroups(t *testing.T) {
 	}).Error)
 	bucket := time.Now().Add(-3 * time.Hour).Unix()
 	require.NoError(t, db.Create(&[]model.PerfMetric{
-		{ModelName: modelName, Group: "Gemini", BucketTs: bucket, RequestCount: 2, SuccessCount: 1},
-		{ModelName: modelName, Group: "Gemini", BucketTs: bucket + 3600, RequestCount: 1, SuccessCount: 1},
-		{ModelName: modelName, Group: "default", BucketTs: bucket, RequestCount: 8},
-		{ModelName: modelName, Group: "default", BucketTs: bucket + 7200, RequestCount: 5},
-		{ModelName: modelName, Group: "private", BucketTs: bucket, RequestCount: 6},
-		{ModelName: modelName, Group: "retired", BucketTs: bucket, RequestCount: 7},
-		{ModelName: modelName, Group: "disabled", BucketTs: bucket, RequestCount: 9},
-		{ModelName: "perf-default-model", Group: "default", BucketTs: bucket, RequestCount: 4, SuccessCount: 3},
-		{ModelName: "perf-deleted-model", Group: "Gemini", BucketTs: bucket, RequestCount: 10},
+		{ChannelID: 1, ModelName: modelName, Group: "Gemini", BucketTs: bucket, RequestCount: 2, SuccessCount: 1},
+		{ChannelID: 1, ModelName: modelName, Group: "Gemini", BucketTs: bucket + 3600, RequestCount: 1, SuccessCount: 1},
+		{ChannelID: 1, ModelName: modelName, Group: "default", BucketTs: bucket, RequestCount: 8},
+		{ChannelID: 1, ModelName: modelName, Group: "default", BucketTs: bucket + 7200, RequestCount: 5},
+		{ChannelID: 1, ModelName: modelName, Group: "private", BucketTs: bucket, RequestCount: 6},
+		{ChannelID: 1, ModelName: modelName, Group: "retired", BucketTs: bucket, RequestCount: 7},
+		{ChannelID: 1, ModelName: modelName, Group: "disabled", BucketTs: bucket, RequestCount: 9},
+		{ChannelID: 1, ModelName: "perf-default-model", Group: "default", BucketTs: bucket, RequestCount: 4, SuccessCount: 3},
+		{ChannelID: 1, ModelName: "perf-deleted-model", Group: "Gemini", BucketTs: bucket, RequestCount: 10},
 	}).Error)
 	var response struct {
 		Data perfmetrics.SummaryAllResult `json:"data"`
@@ -165,8 +170,8 @@ func TestGetPerfMetricsUsesCurrentUsersUsableGroups(t *testing.T) {
 	}).Error)
 	bucket := time.Now().Add(-time.Hour).Unix()
 	require.NoError(t, db.Create(&[]model.PerfMetric{
-		{ModelName: modelName, Group: "Gemini", BucketTs: bucket, RequestCount: 1, SuccessCount: 1},
-		{ModelName: modelName, Group: "private", BucketTs: bucket, RequestCount: 1, SuccessCount: 0},
+		{ChannelID: 1, ModelName: modelName, Group: "Gemini", BucketTs: bucket, RequestCount: 1, SuccessCount: 1},
+		{ChannelID: 1, ModelName: modelName, Group: "private", BucketTs: bucket, RequestCount: 1, SuccessCount: 0},
 	}).Error)
 	for _, tc := range []struct {
 		name   string

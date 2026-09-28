@@ -349,9 +349,9 @@ func (channel *Channel) Save() error {
 // saveStatusState persists only the fields owned by the channel status flow.
 // Keeping this allowlist here prevents a stale channel snapshot from
 // overwriting credentials, accounting counters, or channel configuration.
-func (channel *Channel) saveStatusState() error {
+func (channel *Channel) saveStatusState(tx *gorm.DB, automatic bool) (bool, error) {
 	if channel.Id == 0 {
-		return errors.New("channel ID is 0")
+		return false, errors.New("channel ID is 0")
 	}
 	updates := map[string]any{
 		"status":     channel.Status,
@@ -360,7 +360,13 @@ func (channel *Channel) saveStatusState() error {
 	if channel.ChannelInfo.IsMultiKey {
 		updates["channel_info"] = channel.ChannelInfo
 	}
-	return DB.Model(&Channel{}).Where("id = ?", channel.Id).Updates(updates).Error
+	query := tx.Model(&Channel{}).Where("id = ?", channel.Id)
+	if automatic {
+		// A queued health check must never replace an administrator's decision.
+		query = query.Where("status <> ?", common.ChannelStatusManuallyDisabled)
+	}
+	result := query.Updates(updates)
+	return result.RowsAffected > 0, result.Error
 }
 
 func GetAllChannels(startIdx int, num int, selectAll bool, idSort bool, sortOptions ...ChannelSortOptions) ([]*Channel, error) {
@@ -720,6 +726,19 @@ func hasEnabledMultiKey(keys []string, statusList map[int]int) bool {
 }
 
 func UpdateChannelStatus(channelId int, usingKey string, status int, reason string) bool {
+	return updateChannelStatus(channelId, usingKey, status, reason, false)
+}
+
+// UpdateChannelStatusAutomatically applies health-check and relay outcomes while
+// preserving a manual disable, including one made after the probe completed.
+func UpdateChannelStatusAutomatically(channelId int, usingKey string, status int, reason string) bool {
+	if status != common.ChannelStatusEnabled && status != common.ChannelStatusAutoDisabled {
+		return false
+	}
+	return updateChannelStatus(channelId, usingKey, status, reason, true)
+}
+
+func updateChannelStatus(channelId int, usingKey string, status int, reason string, automatic bool) bool {
 	if common.MemoryCacheEnabled {
 		channelStatusLock.Lock()
 		defer channelStatusLock.Unlock()
@@ -732,67 +751,83 @@ func UpdateChannelStatus(channelId int, usingKey string, status int, reason stri
 	pollingLock.Lock()
 	defer pollingLock.Unlock()
 
-	if common.MemoryCacheEnabled {
-		channelCache, _ := CacheGetChannel(channelId)
-		if channelCache == nil {
-			return false
+	changed := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var channel Channel
+		if err := lockForUpdate(tx).First(&channel, channelId).Error; err != nil {
+			return err
 		}
-		if channelCache.ChannelInfo.IsMultiKey {
-			beforeStatus := channelCache.Status
-			// 如果是多Key模式，更新缓存中的状态
-			handlerMultiKeyUpdate(channelCache, usingKey, status, reason)
-			if beforeStatus != channelCache.Status {
-				CacheUpdateChannelStatus(channelId, channelCache.Status)
-			}
-			//CacheUpdateChannel(channelCache)
-			//return true
-		} else {
-			// 如果缓存渠道存在，且状态已是目标状态，直接返回
-			if channelCache.Status == status {
-				return false
-			}
-			CacheUpdateChannelStatus(channelId, status)
-		}
-	}
-
-	shouldUpdateAbilities := false
-	defer func() {
-		if shouldUpdateAbilities {
-			err := UpdateAbilityStatus(channelId, status == common.ChannelStatusEnabled)
-			if err != nil {
-				common.SysLog(fmt.Sprintf("failed to update ability status: channel_id=%d, error=%v", channelId, err))
-			}
-		}
-	}()
-	channel, err := GetChannelById(channelId, true)
-	if err != nil {
-		return false
-	} else {
-		if channel.Status == status {
-			return false
+		if (automatic && channel.Status == common.ChannelStatusManuallyDisabled) || channel.Status == status {
+			return nil
 		}
 
+		beforeStatus := channel.Status
 		if channel.ChannelInfo.IsMultiKey {
-			beforeStatus := channel.Status
-			handlerMultiKeyUpdate(channel, usingKey, status, reason)
-			if beforeStatus != channel.Status {
-				shouldUpdateAbilities = true
-			}
+			handlerMultiKeyUpdate(&channel, usingKey, status, reason)
 		} else {
 			info := channel.GetOtherInfo()
 			info["status_reason"] = reason
 			info["status_time"] = common.GetTimestamp()
 			channel.SetOtherInfo(info)
 			channel.Status = status
-			shouldUpdateAbilities = true
 		}
-		err = channel.saveStatusState()
+		var err error
+		changed, err = channel.saveStatusState(tx, automatic)
 		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channel.Id, status, err))
-			return false
+			return err
+		}
+		if !changed || beforeStatus == channel.Status {
+			return nil
+		}
+		// Commit routing eligibility with the channel state while its row is locked.
+		// A separate deferred update could re-enable abilities after a manual disable.
+		return tx.Model(&Ability{}).Where("channel_id = ?", channelId).
+			Update("enabled", channel.Status == common.ChannelStatusEnabled).Error
+	})
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to update channel status: channel_id=%d, status=%d, error=%v", channelId, status, err))
+		return false
+	}
+	if common.MemoryCacheEnabled {
+		refreshChannelStatusCache(channelId)
+	}
+	return changed
+}
+
+// refreshChannelStatusCache reads committed state under the cache lock. Publishing
+// the pre-commit snapshot could overwrite a manual disable that finished first.
+// The caller holds the per-channel polling lock so its in-memory cursor is stable.
+func refreshChannelStatusCache(channelId int) {
+	channelSyncLock.Lock()
+	defer channelSyncLock.Unlock()
+	cached := channelsIDM[channelId]
+	if cached == nil {
+		return
+	}
+	channel, err := GetChannelById(channelId, false)
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to refresh channel status cache: channel_id=%d, error=%v", channelId, err))
+		return
+	}
+	if channel.ChannelInfo.IsMultiKey && cached.ChannelInfo.IsMultiKey && channel.ChannelInfo.MultiKeyMode == constant.MultiKeyModePolling {
+		channel.ChannelInfo.MultiKeyPollingIndex = cached.ChannelInfo.MultiKeyPollingIndex
+	}
+	cached.Status = channel.Status
+	cached.OtherInfo = channel.OtherInfo
+	cached.ChannelInfo = channel.ChannelInfo
+	if channel.Status == common.ChannelStatusEnabled {
+		return
+	}
+	for group, models := range group2model2channels {
+		for modelName, channelIds := range models {
+			for i, id := range channelIds {
+				if id == channelId {
+					group2model2channels[group][modelName] = append(channelIds[:i], channelIds[i+1:]...)
+					break
+				}
+			}
 		}
 	}
-	return true
 }
 
 func EnableChannelByTag(tag string) error {

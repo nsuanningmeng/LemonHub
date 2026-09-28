@@ -384,18 +384,19 @@ func TestSelectChannelsForAutomaticTestAutoBanOnlyUsesEligibleChannels(t *testin
 }
 
 func TestChannelHealthCheckCountsUnsupportedLocalErrorWithoutAutoDisablePanic(t *testing.T) {
+	db := setupPerfMetricsControllerTest(t)
 	originalAutomaticDisable := common.AutomaticDisableChannelEnabled
 	common.AutomaticDisableChannelEnabled = true
 	t.Cleanup(func() { common.AutomaticDisableChannelEnabled = originalAutomaticDisable })
 
 	autoBan := 1
 	channel := &model.Channel{
-		Id:      1,
 		Name:    "unsupported",
 		Type:    constant.ChannelTypeMidjourney,
 		Status:  common.ChannelStatusEnabled,
 		AutoBan: &autoBan,
 	}
+	require.NoError(t, db.Create(channel).Error)
 
 	var summary channelTestSummary
 	require.NotPanics(t, func() {
@@ -422,6 +423,8 @@ func TestBuildChannelTestPerfSamplesTargetsEveryConfiguredModelAndGroup(t *testi
 		secondGroup = "Gemini混合"
 	)
 	channel := &model.Channel{
+		Id:     41,
+		Status: common.ChannelStatusEnabled,
 		Models: firstModel + ", " + secondModel + ", " + secondModel + ", ",
 		Group:  firstGroup + ", " + secondGroup + ", , " + secondGroup + ", ",
 	}
@@ -459,10 +462,10 @@ func TestBuildChannelTestPerfSamplesTargetsEveryConfiguredModelAndGroup(t *testi
 			}, 240, finalError)
 
 			require.Equal(t, []perfmetrics.Sample{
-				{Model: firstModel, Group: firstGroup, LatencyMs: 240, Success: tc.success},
-				{Model: firstModel, Group: secondGroup, LatencyMs: 240, Success: tc.success},
-				{Model: secondModel, Group: firstGroup, LatencyMs: 240, Success: tc.success},
-				{Model: secondModel, Group: secondGroup, LatencyMs: 240, Success: tc.success},
+				{ChannelID: 41, Model: firstModel, Group: firstGroup, LatencyMs: 240, Success: tc.success},
+				{ChannelID: 41, Model: firstModel, Group: secondGroup, LatencyMs: 240, Success: tc.success},
+				{ChannelID: 41, Model: secondModel, Group: firstGroup, LatencyMs: 240, Success: tc.success},
+				{ChannelID: 41, Model: secondModel, Group: secondGroup, LatencyMs: 240, Success: tc.success},
 			}, samples)
 		})
 	}
@@ -477,33 +480,105 @@ func TestBuildChannelTestPerfSamplesHandlesLegacyConfigurationAndUninitializedRe
 	}{
 		{
 			name:    "legacy channel without configured groups uses resolved group",
-			channel: &model.Channel{Models: "model-a", Group: " , "},
+			channel: &model.Channel{Id: 41, Status: common.ChannelStatusEnabled, Models: "model-a", Group: " , "},
 			result:  testResult{perfModel: "probe", perfGroup: " vip "},
-			want:    []perfmetrics.Sample{{Model: "model-a", Group: "vip", LatencyMs: 240, Success: true}},
+			want:    []perfmetrics.Sample{{ChannelID: 41, Model: "model-a", Group: "vip", LatencyMs: 240, Success: true}},
 		},
 		{
 			name:    "legacy channel without models uses probe for every configured group",
-			channel: &model.Channel{Models: " , ", Group: "Gemini,Gemini混合"},
+			channel: &model.Channel{Id: 41, Status: common.ChannelStatusEnabled, Models: " , ", Group: "Gemini,Gemini混合"},
 			result:  testResult{perfModel: " probe ", perfGroup: "default"},
 			want: []perfmetrics.Sample{
-				{Model: "probe", Group: "Gemini", LatencyMs: 240, Success: true},
-				{Model: "probe", Group: "Gemini混合", LatencyMs: 240, Success: true},
+				{ChannelID: 41, Model: "probe", Group: "Gemini", LatencyMs: 240, Success: true},
+				{ChannelID: 41, Model: "probe", Group: "Gemini混合", LatencyMs: 240, Success: true},
 			},
 		},
 		{
 			name:    "error before relay initialization does not create samples",
-			channel: &model.Channel{Models: "model-a", Group: "Gemini"},
+			channel: &model.Channel{Id: 41, Status: common.ChannelStatusEnabled, Models: "model-a", Group: "Gemini"},
 			result:  testResult{},
 		},
 		{
 			name:   "missing channel does not create samples",
 			result: testResult{perfModel: "probe", perfGroup: "default"},
 		},
+		{
+			name:    "manually disabled channel does not create samples",
+			channel: &model.Channel{Id: 41, Status: common.ChannelStatusManuallyDisabled, Models: "probe", Group: "Gemini"},
+			result:  testResult{perfModel: "probe", perfGroup: "default"},
+		},
+		{
+			name:    "auto disabled recovery probe does not create samples",
+			channel: &model.Channel{Id: 41, Status: common.ChannelStatusAutoDisabled, Models: "probe", Group: "Gemini"},
+			result:  testResult{perfModel: "probe", perfGroup: "default"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.want, buildChannelTestPerfSamples(tc.channel, tc.result, 240, nil))
 		})
 	}
+}
+
+func TestBuildChannelTestPerfSamplesUsesMeasurementsOnlyForProbedModel(t *testing.T) {
+	originalWhitelist := perf_metrics_setting.GetSetting().ErrorCodeWhitelist
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"perf_metrics_setting.error_code_whitelist": "408,500-503"}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"perf_metrics_setting.error_code_whitelist": originalWhitelist}))
+	})
+	channel := &model.Channel{Id: 42, Status: common.ChannelStatusEnabled, Models: "probe,other", Group: "Gemini,Gemini混合"}
+	for _, tc := range []struct {
+		name       string
+		measured   perfmetrics.Sample
+		probeError *relaytypes.NewAPIError
+		finalError *relaytypes.NewAPIError
+		want       perfmetrics.Sample
+	}{
+		{
+			name:     "streaming response records throughput and first response",
+			measured: perfmetrics.Sample{TtftMs: 150, HasTtft: true, OutputTokens: 30, GenerationMs: 600},
+			want:     perfmetrics.Sample{TtftMs: 150, HasTtft: true, OutputTokens: 30, GenerationMs: 600, Success: true},
+		},
+		{
+			name:     "nonstream response records throughput without fabricated first response",
+			measured: perfmetrics.Sample{OutputTokens: 30, GenerationMs: 750},
+			want:     perfmetrics.Sample{OutputTokens: 30, GenerationMs: 750, Success: true},
+		},
+		{
+			name:       "unlisted error counts as healthy but has no speed measurement",
+			measured:   perfmetrics.Sample{TtftMs: 150, HasTtft: true, OutputTokens: 30, GenerationMs: 600},
+			probeError: relaytypes.NewErrorWithStatusCode(fmt.Errorf("bad request"), relaytypes.ErrorCodeBadResponse, 400),
+			finalError: relaytypes.NewErrorWithStatusCode(fmt.Errorf("bad request"), relaytypes.ErrorCodeBadResponse, 400),
+			want:       perfmetrics.Sample{Success: true},
+		},
+		{
+			name:       "slow completed response retains measurements despite health threshold failure",
+			measured:   perfmetrics.Sample{TtftMs: 150, HasTtft: true, OutputTokens: 30, GenerationMs: 600},
+			finalError: relaytypes.NewErrorWithStatusCode(fmt.Errorf("slow response"), relaytypes.ErrorCodeChannelResponseTimeExceeded, 408),
+			want:       perfmetrics.Sample{TtftMs: 150, HasTtft: true, OutputTokens: 30, GenerationMs: 600},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			samples := buildChannelTestPerfSamples(channel, testResult{
+				perfModel: "probe", perfGroup: "default", perfSample: tc.measured, newAPIError: tc.probeError,
+			}, 750, tc.finalError)
+			require.Len(t, samples, 4)
+			for index, group := range []string{"Gemini", "Gemini混合"} {
+				want := tc.want
+				want.ChannelID, want.Model, want.Group, want.LatencyMs = 42, "probe", group, 750
+				assert.Equal(t, want, samples[index])
+				assert.Equal(t, perfmetrics.Sample{ChannelID: 42, Model: "other", Group: group, LatencyMs: 750, Success: tc.want.Success}, samples[index+2])
+			}
+		})
+	}
+}
+
+func TestChannelHealthCheckSkipsChannelDisabledAfterBatchSnapshot(t *testing.T) {
+	db := setupPerfMetricsControllerTest(t)
+	channel := &model.Channel{Name: "queued channel", Status: common.ChannelStatusEnabled}
+	require.NoError(t, db.Create(channel).Error)
+	require.NoError(t, db.Model(&model.Channel{}).Where("id = ?", channel.Id).Update("status", common.ChannelStatusManuallyDisabled).Error)
+
+	assert.Equal(t, channelTestSummary{}, testChannelForHealthCheck(context.Background(), channel, 1, true, 1000))
 }
 
 func TestRunChannelTestWorkersHonorsConfiguredConcurrency(t *testing.T) {

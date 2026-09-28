@@ -25,24 +25,31 @@ func Init() {
 }
 
 func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens int64) {
-	if info == nil {
-		return
+	Record(BuildRelaySample(info, success, outputTokens, time.Now()))
+}
+
+// BuildRelaySample preserves the measured probe timings for both normal relay
+// traffic and channel tests. Passing completion time keeps the sample independent
+// of delayed logging, fan-out, or asynchronous recording.
+func BuildRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens int64, completedAt time.Time) Sample {
+	if info == nil || info.ChannelMeta == nil {
+		return Sample{}
 	}
-	now := time.Now()
-	hasTtft := info.IsStream && info.HasSendResponse()
+	hasTtft := info.IsStream && info.HasSendResponse() && !info.FirstResponseTime.After(completedAt)
 	ttftMs := int64(0)
 	if hasTtft {
 		ttftMs = info.FirstResponseTime.Sub(info.StartTime).Milliseconds()
 	}
-	latencyMs := now.Sub(info.StartTime).Milliseconds()
+	latencyMs := max(int64(0), completedAt.Sub(info.StartTime).Milliseconds())
 	generationMs := latencyMs
 	if hasTtft {
-		generationMs = now.Sub(info.FirstResponseTime).Milliseconds()
+		generationMs = completedAt.Sub(info.FirstResponseTime).Milliseconds()
 	}
 	if generationMs <= 0 {
 		generationMs = latencyMs
 	}
-	Record(Sample{
+	return Sample{
+		ChannelID:    info.ChannelId,
 		Model:        info.OriginModelName,
 		Group:        info.UsingGroup,
 		LatencyMs:    latencyMs,
@@ -51,12 +58,12 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 		Success:      success,
 		OutputTokens: outputTokens,
 		GenerationMs: generationMs,
-	})
+	}
 }
 
 func Record(sample Sample) {
 	setting := perf_metrics_setting.GetSetting()
-	if !setting.Enabled || sample.Model == "" {
+	if !setting.Enabled || sample.Model == "" || sample.ChannelID <= 0 {
 		return
 	}
 	if sample.Group == "" {
@@ -67,9 +74,10 @@ func Record(sample Sample) {
 	}
 
 	key := bucketKey{
-		model:    sample.Model,
-		group:    sample.Group,
-		bucketTs: bucketStart(time.Now().Unix()),
+		channelID: sample.ChannelID,
+		model:     sample.Model,
+		group:     sample.Group,
+		bucketTs:  bucketStart(time.Now().Unix()),
 	}
 	actual, _ := hotBuckets.LoadOrStore(key, &atomicBucket{})
 	actual.(*atomicBucket).add(sample)
@@ -87,7 +95,15 @@ func Query(params QueryParams) (QueryResult, error) {
 	startTs := endTs - int64(params.Hours)*3600
 
 	merged := map[bucketKey]counters{}
-	rows, err := model.GetPerfMetrics(params.Model, params.Group, startTs, endTs)
+	channelIDs, err := model.GetPerfMetricsEligibleChannelIDs()
+	if err != nil {
+		return QueryResult{}, err
+	}
+	allowedChannels := make(map[int]struct{}, len(channelIDs))
+	for _, channelID := range channelIDs {
+		allowedChannels[channelID] = struct{}{}
+	}
+	rows, err := model.GetPerfMetrics(params.Model, params.Group, startTs, endTs, channelIDs)
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -109,12 +125,18 @@ func Query(params QueryParams) (QueryResult, error) {
 
 	hotBuckets.Range(func(key, value any) bool {
 		k := key.(bucketKey)
+		if _, allowed := allowedChannels[k.channelID]; !allowed {
+			return true
+		}
 		if k.model != params.Model || k.bucketTs < startTs || k.bucketTs > endTs {
 			return true
 		}
 		if params.Group != "" && k.group != params.Group {
 			return true
 		}
+		// Channel identity is needed for filtering/storage, but the response
+		// combines the eligible channels into one model/group/time bucket.
+		k.channelID = 0
 		mergeCounters(merged, k, value.(*atomicBucket).snapshot())
 		return true
 	})
@@ -147,7 +169,15 @@ func QuerySummaryAll(hours int, modelGroups map[string][]string) (SummaryAllResu
 		}
 	}
 
-	rows, err := model.GetPerfMetricsSummaryBucketsAll(startTs, endTs, groups)
+	channelIDs, err := model.GetPerfMetricsEligibleChannelIDs()
+	if err != nil {
+		return SummaryAllResult{}, err
+	}
+	allowedChannels := make(map[int]struct{}, len(channelIDs))
+	for _, channelID := range channelIDs {
+		allowedChannels[channelID] = struct{}{}
+	}
+	rows, err := model.GetPerfMetricsSummaryBucketsAll(startTs, endTs, groups, channelIDs)
 	if err != nil {
 		return SummaryAllResult{}, err
 	}
@@ -171,6 +201,9 @@ func QuerySummaryAll(hours int, modelGroups map[string][]string) (SummaryAllResu
 
 	hotBuckets.Range(func(key, value any) bool {
 		k := key.(bucketKey)
+		if _, allowed := allowedChannels[k.channelID]; !allowed {
+			return true
+		}
 		if k.bucketTs < startTs || k.bucketTs > endTs {
 			return true
 		}
@@ -420,24 +453,6 @@ func recordRedis(key bucketKey, sample Sample) {
 	_, _ = pipe.Exec(ctx)
 }
 
-func mergeRedisActiveBuckets(merged map[bucketKey]counters, params QueryParams, startTs int64, endTs int64) {
-	if !common.RedisEnabled || common.RDB == nil || params.Model == "" || params.Group == "" {
-		return
-	}
-	active := bucketStart(time.Now().Unix())
-	if active < startTs || active > endTs {
-		return
-	}
-	key := bucketKey{model: params.Model, group: params.Group, bucketTs: active}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	values, err := common.RDB.HGetAll(ctx, redisBucketKey(key)).Result()
-	if err != nil || len(values) == 0 {
-		return
-	}
-	mergeCounters(merged, key, redisCounters(values))
-}
-
 func redisBucketKey(key bucketKey) string {
-	return fmt.Sprintf("perf:%s:%s:%d", key.model, key.group, key.bucketTs)
+	return fmt.Sprintf("channel-perf:%d:%s:%s:%d", key.channelID, key.model, key.group, key.bucketTs)
 }

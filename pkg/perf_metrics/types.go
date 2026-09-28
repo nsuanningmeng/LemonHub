@@ -8,6 +8,7 @@ type Store interface {
 }
 
 type Sample struct {
+	ChannelID    int
 	Model        string
 	Group        string
 	LatencyMs    int64
@@ -61,9 +62,10 @@ type SummaryAllResult struct {
 }
 
 type bucketKey struct {
-	model    string
-	group    string
-	bucketTs int64
+	channelID int
+	model     string
+	group     string
+	bucketTs  int64
 }
 
 type counters struct {

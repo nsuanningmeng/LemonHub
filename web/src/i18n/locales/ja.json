@@ -5282,6 +5282,7 @@
     "Total Usage": "総使用量",
     "Total:": "合計:",
     "TPM": "TPM",
+    "TPS and TTFT require samples from this model. TTFT is available only for streaming responses.": "TPS と TTFT には、このモデルの実測サンプルが必要です。TTFT はストリーミング応答でのみ計測できます。",
     "Track per-request consumption to power usage analytics. Keeping this on increases database writes.": "リクエストごとの消費を追跡し、使用状況分析に利用します。これをオンにすると、データベースへの書き込みが増加します。",
     "Track usage, costs and performance with real-time analytics": "リアルタイム分析で使用量、コスト、パフォーマンスを追跡",
     "Tracked apps": "追跡中のアプリ",

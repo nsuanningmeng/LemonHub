@@ -260,6 +260,11 @@ export function ModelDetailsPerformance(props: {
       : Number.NaN
   const incidentCount = uptimeSeries.reduce((s, p) => s + p.incidents, 0)
   const intent = successRateIntent(successRate, srConfig)
+  const hasMissingSpeedMetrics = performances.some(
+    (perf) =>
+      Number.isFinite(perf.success_rate) &&
+      (!(perf.avg_tps > 0) || !(perf.avg_ttft_ms > 0))
+  )
   let successRateHint = t('No requests in the last 24 hours')
   if (successRates.length > 0) {
     successRateHint =
@@ -351,6 +356,13 @@ export function ModelDetailsPerformance(props: {
             },
           ]}
         />
+        {hasMissingSpeedMetrics && (
+          <p role='note' className='text-muted-foreground mt-2 text-xs'>
+            {t(
+              'TPS and TTFT require samples from this model. TTFT is available only for streaming responses.'
+            )}
+          </p>
+        )}
       </section>
 
       <section>
