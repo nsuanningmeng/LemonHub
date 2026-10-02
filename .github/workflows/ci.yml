@@ -135,7 +135,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mysql-version: ['5.7', '8.0']
+        mysql-version: ['5.7', '8.0', '8.4']
     services:
       mysql:
         image: mysql:${{ matrix.mysql-version }}
@@ -158,6 +158,8 @@ jobs:
       TEST_MYSQL_RC25_UPGRADE_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_rc25_upgrade_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       MYSQL_TOKEN_GROUP_UPGRADE_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_token_group_upgrade_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       MYSQL_WALLET_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_wallet_quota_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      MYSQL_MIGRATION_SAFETY_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_migration_safety_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      TEST_MYSQL_IDENTITY_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_identity_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
 
     steps:
       - name: Checkout
@@ -176,14 +178,18 @@ jobs:
             CREATE DATABASE lemonhub_rc25_upgrade_test_ci;
             CREATE DATABASE lemonhub_token_group_upgrade_test_ci;
             CREATE DATABASE lemonhub_wallet_quota_migration_test_ci;
+            CREATE DATABASE lemonhub_migration_safety_test_ci;
+            CREATE DATABASE lemonhub_identity_migration_test_ci;
             GRANT ALL PRIVILEGES ON lemonhub_topup_migration_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_rc25_upgrade_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_token_group_upgrade_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_wallet_quota_migration_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_migration_safety_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_identity_migration_test_ci.* TO 'lemonhub'@'%';
           "
 
-      - name: Verify legacy data, top-up, token quota, and unassigned key migrations
-        run: go test ./model -run '^TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData|TokenGroupUpgradePreservesExistingKeys|WalletQuotaMigrationPreservesData)$' -count=1 -v
+      - name: Verify legacy data, balances, keys, and lossless column migrations
+        run: go test ./model -run '^(TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData|TokenGroupUpgradePreservesExistingKeys|WalletQuotaMigrationPreservesData|MigrationPreflightPreservesWideColumns)|TestPreflightExternalIdentityClaimsMySQLCollation|TestCustomOAuthBindingPreflightUsesClaimCollationMySQL)$' -count=1 -v
 
       - name: Verify MySQL container recreation preserves named-volume data
         env:
@@ -245,7 +251,7 @@ jobs:
           echo 'Named-volume sentinel rows survived MySQL container removal and recreation.'
 
   postgres-wallet-migration:
-    name: PostgreSQL ${{ matrix.postgres-version }} wallet migration
+    name: PostgreSQL ${{ matrix.postgres-version }} migration data preservation
     if: github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -269,6 +275,7 @@ jobs:
     env:
       GOWORK: 'off'
       POSTGRES_WALLET_MIGRATION_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_wallet_quota_migration_test_ci?sslmode=disable
+      POSTGRES_MIGRATION_SAFETY_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_migration_safety_test_ci?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -277,5 +284,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: Verify legacy wallet data and repeatable BIGINT migration
-        run: go test ./model -run '^TestPostgresWalletQuotaMigrationPreservesData$' -count=1 -v
+      - name: Create isolated precision migration database
+        run: |
+          docker exec -e PGPASSWORD=lemonhub-migration-test "${{ job.services.postgres.id }}" \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE lemonhub_migration_safety_test_ci'
+      - name: Verify wallet preservation and lossless price migrations
+        run: go test ./model -run '^TestPostgres(WalletQuotaMigrationPreservesData|MigrationPreflightPreservesPrices)$' -count=1 -v

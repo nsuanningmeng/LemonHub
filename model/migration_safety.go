@@ -1,10 +1,11 @@
 package model
 
 import (
+	"database/sql"
 	"fmt"
-	"strconv"
 	"strings"
 
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -98,35 +99,80 @@ func countOutOfRangePriceAmounts(db *gorm.DB) (int64, error) {
 // column, quietly changing stored monetary data — so the migration uses this as a
 // second fail-closed preflight.
 //
-// The check runs in Go (the table is tiny) using the shortest round-tripping decimal
-// representation, which avoids cross-DB ROUND/CAST dialect differences and float
-// noise. SQLite never reaches this path (it has no decimal precision enforcement, so
-// the narrowing is a no-op there).
+// Read the database's exact decimal text, not float64: a wider DECIMAL can contain
+// digits below float64 resolution which still must not be rounded away. Trailing
+// zeroes do not count as precision loss. NULL cannot become the model's NOT NULL
+// default losslessly either. SQLite does not use this gate during migrations.
 func countPrecisionLossPriceAmounts(db *gorm.DB) (int64, error) {
 	if !db.Migrator().HasTable(&SubscriptionPlan{}) ||
 		!db.Migrator().HasColumn(&SubscriptionPlan{}, "price_amount") {
 		return 0, nil
 	}
-	var amounts []float64
-	if err := db.Model(&SubscriptionPlan{}).Pluck("price_amount", &amounts).Error; err != nil {
+	rows, err := db.Model(&SubscriptionPlan{}).Select("price_amount").Rows()
+	if err != nil {
 		return 0, err
 	}
+	defer rows.Close()
 	var n int64
-	for _, a := range amounts {
-		if fractionalDigitCount(a) > 6 {
+	for rows.Next() {
+		var value sql.NullString
+		if err := rows.Scan(&value); err != nil {
+			return 0, err
+		}
+		if !value.Valid {
+			n++
+			continue
+		}
+		amount, err := decimal.NewFromString(value.String)
+		if err != nil {
+			return 0, fmt.Errorf("price_amount is not a finite decimal: %w", err)
+		}
+		if !amount.Equal(amount.Truncate(6)) {
 			n++
 		}
 	}
-	return n, nil
+	return n, rows.Err()
 }
 
-// fractionalDigitCount returns the number of fractional digits in the shortest
-// decimal string that round-trips to v (e.g. 19.99 -> 2, 1.1234567 -> 7). A value
-// needing more than 6 cannot be represented exactly by decimal(10,6).
-func fractionalDigitCount(v float64) int {
-	s := strconv.FormatFloat(v, 'f', -1, 64)
-	if i := strings.IndexByte(s, '.'); i >= 0 {
-		return len(s) - i - 1
+// Both the explicit TEXT conversion and a later GORM MODIFY can inherit the
+// table's default collation. Refuse incompatible custom columns before either
+// executes; changing a column's encoding requires an explicit operator decision.
+func preflightMySQLTokenModelLimits(db *gorm.DB) (string, error) {
+	var column struct {
+		DataType        string
+		ColumnCollation string
+		TableCollation  string
 	}
-	return 0
+	result := db.Raw(`SELECT c.DATA_TYPE AS data_type, c.COLLATION_NAME AS column_collation,
+		t.TABLE_COLLATION AS table_collation
+		FROM information_schema.COLUMNS c JOIN information_schema.TABLES t
+		ON c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME
+		WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = 'tokens' AND c.COLUMN_NAME = 'model_limits'`).Scan(&column)
+	if result.Error != nil {
+		return "", fmt.Errorf("pre-flight metadata for tokens.model_limits failed: %w", result.Error)
+	}
+	if result.RowsAffected != 1 || column.ColumnCollation == "" || column.TableCollation == "" {
+		return "", fmt.Errorf("cannot migrate tokens.model_limits: expected one character column with known collation")
+	}
+	if !strings.EqualFold(column.ColumnCollation, column.TableCollation) {
+		return "", fmt.Errorf("cannot migrate tokens.model_limits: column collation %s differs from table default %s; explicitly align the encodings before upgrading", column.ColumnCollation, column.TableCollation)
+	}
+	dataType := strings.ToLower(column.DataType)
+	switch dataType {
+	case "char", "varchar", "tinytext", "text":
+		// These types already enforce a <=65535-byte ceiling. In particular,
+		// ordinary restarts must not scan every token in an existing TEXT table.
+		return dataType, nil
+	case "mediumtext", "longtext":
+	default:
+		return "", fmt.Errorf("cannot migrate tokens.model_limits: unsupported source type %s", column.DataType)
+	}
+	var oversized int64
+	if err := db.Table("tokens").Where("OCTET_LENGTH(model_limits) > ?", 65535).Count(&oversized).Error; err != nil {
+		return "", fmt.Errorf("pre-flight byte length for tokens.model_limits failed: %w", err)
+	}
+	if oversized > 0 {
+		return "", fmt.Errorf("cannot migrate tokens.model_limits to TEXT: %d row(s) exceed its 65535-byte limit; preserve or explicitly normalize these values before upgrading", oversized)
+	}
+	return dataType, nil
 }

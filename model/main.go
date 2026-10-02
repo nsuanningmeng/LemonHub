@@ -719,18 +719,17 @@ func migrateTokenModelLimitsToText() error {
 		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
 			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&dataType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+			return fmt.Errorf("failed to query metadata for %s.%s: %w", tableName, columnName, err)
 		} else if dataType == "text" {
 			return nil
 		}
 		alterSQL = fmt.Sprintf(`ALTER TABLE %s ALTER COLUMN %s TYPE text`, tableName, columnName)
 	} else if common.UsingMainDatabase(common.DatabaseTypeMySQL) {
-		var columnType string
-		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
-				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
-			tableName, columnName).Scan(&columnType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
-		} else if strings.ToLower(columnType) == "text" {
+		columnType, err := preflightMySQLTokenModelLimits(DB)
+		if err != nil {
+			return err
+		}
+		if columnType == "text" {
 			return nil
 		}
 		alterSQL = fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s text", tableName, columnName)
@@ -773,6 +772,36 @@ func migrateSubscriptionPlanPriceAmount() error {
 		return nil
 	}
 
+	if !common.UsingMainDatabase(common.DatabaseTypeMySQL) && !common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		return nil
+	}
+	// Run this even for an existing DECIMAL/NUMERIC: AutoMigrate may narrow a
+	// wider declaration while changing a default, nullability or other attribute.
+	// Fail-closed pre-flight: refuse to narrow the type if any existing value
+	// cannot be stored losslessly in decimal(10,6). On MySQL non-STRICT mode the
+	// MODIFY would otherwise silently truncate such values; on PostgreSQL the
+	// USING cast would abort the migration mid-way.
+	outOfRange, err := countOutOfRangePriceAmounts(DB)
+	if err != nil {
+		return fmt.Errorf("pre-flight check for %s.%s failed: %w", tableName, columnName, err)
+	}
+	if outOfRange > 0 {
+		return fmt.Errorf(
+			"cannot migrate %s.%s to decimal(10,6): %d row(s) are outside [-9999.999999, 9999.999999] and would be truncated or rejected; correct these values before upgrading",
+			tableName, columnName, outOfRange,
+		)
+	}
+	precisionLoss, err := countPrecisionLossPriceAmounts(DB)
+	if err != nil {
+		return fmt.Errorf("pre-flight precision check for %s.%s failed: %w", tableName, columnName, err)
+	}
+	if precisionLoss > 0 {
+		return fmt.Errorf(
+			"cannot migrate %s.%s to decimal(10,6): %d row(s) are NULL or have more than 6 fractional digits and would change; normalize these values before upgrading",
+			tableName, columnName, precisionLoss,
+		)
+	}
+
 	var alterSQL string
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		// PostgreSQL: Check if already decimal/numeric
@@ -780,7 +809,7 @@ func migrateSubscriptionPlanPriceAmount() error {
 		if err := DB.Raw(`SELECT data_type FROM information_schema.columns
 			WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&dataType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+			return fmt.Errorf("failed to query metadata for %s.%s: %w", tableName, columnName, err)
 		} else if dataType == "numeric" {
 			return nil // Already decimal/numeric
 		}
@@ -792,7 +821,7 @@ func migrateSubscriptionPlanPriceAmount() error {
 		if err := DB.Raw(`SELECT COLUMN_TYPE FROM information_schema.columns
 				WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?`,
 			tableName, columnName).Scan(&columnType).Error; err != nil {
-			common.SysLog(fmt.Sprintf("Warning: failed to query metadata for %s.%s: %v", tableName, columnName, err))
+			return fmt.Errorf("failed to query metadata for %s.%s: %w", tableName, columnName, err)
 		} else if strings.HasPrefix(strings.ToLower(columnType), "decimal") {
 			return nil // Already decimal
 		}
@@ -803,30 +832,6 @@ func migrateSubscriptionPlanPriceAmount() error {
 	}
 
 	if alterSQL != "" {
-		// Fail-closed pre-flight: refuse to narrow the type if any existing value
-		// cannot be stored losslessly in decimal(10,6). On MySQL non-STRICT mode the
-		// MODIFY would otherwise silently truncate such values; on PostgreSQL the
-		// USING cast would abort the migration mid-way.
-		outOfRange, err := countOutOfRangePriceAmounts(DB)
-		if err != nil {
-			return fmt.Errorf("pre-flight check for %s.%s failed: %w", tableName, columnName, err)
-		}
-		if outOfRange > 0 {
-			return fmt.Errorf(
-				"cannot migrate %s.%s to decimal(10,6): %d row(s) have |price_amount| >= 10000 and would be truncated or rejected; correct these values before upgrading",
-				tableName, columnName, outOfRange,
-			)
-		}
-		precisionLoss, err := countPrecisionLossPriceAmounts(DB)
-		if err != nil {
-			return fmt.Errorf("pre-flight precision check for %s.%s failed: %w", tableName, columnName, err)
-		}
-		if precisionLoss > 0 {
-			return fmt.Errorf(
-				"cannot migrate %s.%s to decimal(10,6): %d row(s) have more than 6 fractional digits and would be silently rounded; normalize these values before upgrading",
-				tableName, columnName, precisionLoss,
-			)
-		}
 		if err := DB.Exec(alterSQL).Error; err != nil {
 			return fmt.Errorf("failed to migrate %s.%s to decimal(10,6): %w", tableName, columnName, err)
 		}
