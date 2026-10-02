@@ -466,6 +466,14 @@ func reasoningEffortFromRequest(request dto.Request) string {
 	case *dto.GeminiChatRequest:
 		if req != nil && req.GenerationConfig.ThinkingConfig != nil {
 			effort = req.GenerationConfig.ThinkingConfig.ThinkingLevel
+			// Gemini accepts thinkingLevel case-insensitively. Normalize known
+			// effort labels for logs while retaining the original request and
+			// unknown provider values; this is not a validation boundary.
+			canonical := strings.ToLower(strings.TrimSpace(effort))
+			switch canonical {
+			case "none", "minimal", "low", "medium", "high", "xhigh", "max":
+				effort = canonical
+			}
 		}
 	}
 	return strings.TrimSpace(effort)

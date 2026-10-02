@@ -198,3 +198,29 @@ func TestInitChannelMetaRestoresRequestReasoningEffortForRetry(t *testing.T) {
 	info.InitChannelMeta(ctx)
 	assert.Equal(t, "max", info.ReasoningEffort)
 }
+
+func TestGeminiThinkingLevelCanonicalLoggingPreservesRequest(t *testing.T) {
+	for _, tt := range []struct{ input, expected string }{
+		{input: "HIGH", expected: "high"},
+		{input: " Medium ", expected: "medium"},
+		{input: "Minimal", expected: "minimal"},
+		{input: "low", expected: "low"},
+		{input: "VendorFutureLevel", expected: "VendorFutureLevel"},
+		{input: "", expected: ""},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			request := &dto.GeminiChatRequest{GenerationConfig: dto.GeminiChatGenerationConfig{
+				ThinkingConfig: &dto.GeminiThinkingConfig{ThinkingLevel: tt.input},
+			}}
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest("POST", "/v1beta/models/gemini-3-pro:generateContent", nil)
+			info, err := GenRelayInfo(ctx, types.RelayFormatGemini, request, nil)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected, info.ReasoningEffort)
+			assert.Equal(t, tt.input, request.GenerationConfig.ThinkingConfig.ThinkingLevel)
+			info.SetReasoningEffort("low")
+			info.InitChannelMeta(ctx)
+			assert.Equal(t, tt.expected, info.ReasoningEffort, "retry restores canonical client effort")
+		})
+	}
+}

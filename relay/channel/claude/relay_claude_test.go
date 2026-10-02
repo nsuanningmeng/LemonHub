@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
@@ -429,4 +430,56 @@ func TestOpenAIChatRequestToClaudeMessages_ClaudeOpus48ThinkingUsesAdaptiveHighE
 	require.Nil(t, claudeRequest.Temperature)
 	require.Nil(t, claudeRequest.TopP)
 	require.Nil(t, claudeRequest.TopK)
+}
+
+func TestConvertClaudeRequestPreservesMessageOutputConfig(t *testing.T) {
+	body := `{"model":"claude-opus-5-5","max_tokens":64,"output_config":{"effort":"medium"},"messages":[` +
+		`{"role":"user","content":"summary"},` +
+		`{"role":"system","content":[],"output_config":{"effort":"high"}},` +
+		`{"role":"assistant","content":"done"}]}`
+	var req dto.ClaudeRequest
+	require.NoError(t, common.UnmarshalJsonStr(body, &req))
+	info := &relaycommon.RelayInfo{
+		OriginModelName: req.Model,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: req.Model,
+		},
+	}
+
+	out, err := (&Adaptor{}).ConvertClaudeRequest(nil, info, &req)
+	require.NoError(t, err)
+	encoded, err := common.Marshal(out)
+	require.NoError(t, err)
+
+	var upstream struct {
+		Messages []map[string]any `json:"messages"`
+	}
+	require.NoError(t, common.Unmarshal(encoded, &upstream))
+	require.Len(t, upstream.Messages, 3)
+	assert.Equal(t, map[string]any{"effort": "high"}, upstream.Messages[1]["output_config"])
+	assert.NotContains(t, upstream.Messages[0], "output_config")
+	assert.NotContains(t, upstream.Messages[2], "output_config")
+}
+
+func TestConvertClaudeRequestPreservesNativeSafeguards(t *testing.T) {
+	for _, safeguards := range []string{"", `{"auto":false,"levels":["custom"],"limit":0}`} {
+		t.Run("safeguards="+safeguards, func(t *testing.T) {
+			body := `{"model":"claude-opus-5-5","max_tokens":64,"messages":[{"role":"user","content":"hello"}]`
+			if safeguards != "" {
+				body += `,"safeguards":` + safeguards
+			}
+			body += `}`
+			var request dto.ClaudeRequest
+			require.NoError(t, common.UnmarshalJsonStr(body, &request))
+			info := &relaycommon.RelayInfo{
+				OriginModelName: request.Model,
+				ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: request.Model},
+			}
+			out, err := (&Adaptor{}).ConvertClaudeRequest(nil, info, &request)
+			require.NoError(t, err)
+			encoded, err := common.Marshal(out)
+			require.NoError(t, err)
+			assert.JSONEq(t, body, string(encoded), "native safeguards must pass through without interpreting their schema")
+		})
+	}
 }

@@ -106,6 +106,9 @@ func CreateWaffoPancakeCheckoutSession(ctx context.Context, params *WaffoPancake
 	if strings.TrimSpace(params.OrderMerchantExternalID) == "" {
 		return nil, fmt.Errorf("missing order merchant external id")
 	}
+	if strings.TrimSpace(setting.WaffoPancakeStoreID) == "" {
+		return nil, fmt.Errorf("missing Waffo Pancake store id")
+	}
 	client, err := newWaffoPancakeClient()
 	if err != nil {
 		return nil, fmt.Errorf("build Waffo Pancake client: %w", err)
@@ -159,12 +162,15 @@ func WaffoPancakeBuyerIdentityFromUserID(userID int) string {
 	return fmt.Sprintf("new-api-user-%d", userID)
 }
 
-// VerifyConfiguredWaffoPancakeWebhook verifies the signature header. The SDK
-// picks the matching test / prod public key from the payload's `mode` field.
+// VerifyConfiguredWaffoPancakeWebhook verifies the signature using the SDK's
+// test/prod key chain, then restricts the event to the configured store.
 func VerifyConfiguredWaffoPancakeWebhook(payload string, signatureHeader string) (*WaffoPancakeWebhookEvent, error) {
 	evt, err := pancake.VerifyWebhookTyped[pancake.WebhookEventData](payload, signatureHeader, nil)
 	if err != nil {
 		return nil, err
+	}
+	if storeID := strings.TrimSpace(setting.WaffoPancakeStoreID); storeID == "" || evt.StoreID != storeID {
+		return nil, fmt.Errorf("Waffo Pancake webhook store mismatch")
 	}
 	identity := ""
 	if evt.Data.MerchantProvidedBuyerIdentity != nil {

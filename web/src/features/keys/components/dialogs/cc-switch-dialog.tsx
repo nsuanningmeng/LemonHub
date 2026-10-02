@@ -17,13 +17,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
-import { ComboboxInput } from '@/components/ui/combobox-input'
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxTrigger,
+  useComboboxAnchor,
+} from '@/components/ui/combobox'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { getUserModels } from '@/lib/api'
@@ -94,6 +104,61 @@ interface Props {
   tokenKey: string
 }
 
+function CCSwitchModelPicker(props: {
+  id: string
+  label: string
+  options: string[]
+  value: string
+  onValueChange: (value: string) => void
+}) {
+  const { t } = useTranslation()
+  const anchor = useComboboxAnchor()
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  return (
+    <Combobox
+      items={props.options}
+      value={props.value || null}
+      open={open}
+      inputValue={open ? search : props.value}
+      onInputValueChange={(value, details) => {
+        if (details.reason === 'input-change') setSearch(value)
+      }}
+      onOpenChange={(nextOpen, details) => {
+        setOpen(nextOpen)
+        if (details.reason !== 'input-change') setSearch('')
+      }}
+      onValueChange={(value) => {
+        if (value) props.onValueChange(value)
+      }}
+    >
+      <div ref={anchor} className='relative min-w-0'>
+        <ComboboxInput
+          id={props.id}
+          aria-label={props.label}
+          placeholder={t('Select or enter model name')}
+          showTrigger={false}
+          className='w-full pr-8'
+        />
+        <ComboboxTrigger
+          aria-label={props.label}
+          className='absolute inset-y-0 right-0 flex w-8 items-center justify-center'
+        />
+      </div>
+      <ComboboxContent anchor={anchor}>
+        <ComboboxEmpty>{t('No models found')}</ComboboxEmpty>
+        <ComboboxList>
+          {(model: string) => (
+            <ComboboxItem key={model} value={model}>
+              {model}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  )
+}
+
 export function CCSwitchDialog(props: Props) {
   const { t } = useTranslation()
   const [app, setApp] = useState<AppType>('claude')
@@ -107,10 +172,7 @@ export function CCSwitchDialog(props: Props) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const modelOptions = useMemo(() => {
-    const items = modelsData?.data ?? []
-    return items.map((m) => ({ value: m, label: m }))
-  }, [modelsData?.data])
+  const modelOptions = modelsData?.data ?? []
 
   useEffect(() => {
     if (props.open) {
@@ -152,9 +214,7 @@ export function CCSwitchDialog(props: Props) {
       title={t('Import to CC Switch')}
       contentClassName='sm:max-w-md'
       contentHeight='auto'
-      bodyClassName={
-        currentConfig.modelFields.length === 1 ? 'space-y-4 pb-52' : 'space-y-4'
-      }
+      bodyClassName='space-y-4'
       footer={
         <>
           <Button variant='outline' onClick={() => props.onOpenChange(false)}>
@@ -189,33 +249,31 @@ export function CCSwitchDialog(props: Props) {
         </div>
 
         <div className='space-y-2'>
-          <Label>{t('Name')}</Label>
-          <ComboboxInput
-            options={[]}
+          <Label htmlFor='cc-switch-name'>{t('Name')}</Label>
+          <Input
+            id='cc-switch-name'
             value={name}
-            onValueChange={setName}
+            onChange={(event) => setName(event.target.value)}
             placeholder={currentConfig.defaultName}
-            emptyText=''
-            allowCustomValue={true}
           />
         </div>
 
         {currentConfig.modelFields.map((field) => (
           <div key={field.key} className='space-y-2'>
-            <Label>
+            <Label htmlFor={`cc-switch-${field.key}`}>
               {t(field.labelKey)}
               {field.required && (
                 <span className='text-destructive ml-0.5'>*</span>
               )}
             </Label>
-            <ComboboxInput
+            <CCSwitchModelPicker
+              id={`cc-switch-${field.key}`}
+              label={t(field.labelKey)}
               options={modelOptions}
               value={models[field.key] || ''}
               onValueChange={(v) =>
                 setModels((prev) => ({ ...prev, [field.key]: v }))
               }
-              placeholder={t('Select or enter model name')}
-              emptyText={t('No models found')}
             />
           </div>
         ))}

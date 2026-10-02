@@ -160,6 +160,7 @@ import {
   type ChannelFormValues,
   deduplicateKeys,
   getChannelTypeIcon,
+  getDefaultBaseUrl,
   getKeyPromptForType,
   parseModelsString,
   formatModelsArray,
@@ -729,6 +730,8 @@ export function ChannelMutateDrawer({
   const keyMode = form.watch('key_mode')
   const currentGroups = form.watch('group')
   const currentType = form.watch('type')
+  const baseUrlPlaceholder =
+    getDefaultBaseUrl(currentType) || t(FIELD_PLACEHOLDERS.BASE_URL)
   const currentStatus = form.watch('status')
   const currentBaseUrl = form.watch('base_url')
   const currentKey = form.watch('key')
@@ -2792,9 +2795,7 @@ export function ChannelMutateDrawer({
                                     <FormLabel>{t('Base URL')}</FormLabel>
                                     <FormControl>
                                       <Input
-                                        placeholder={t(
-                                          FIELD_PLACEHOLDERS.BASE_URL
-                                        )}
+                                        placeholder={baseUrlPlaceholder}
                                         {...field}
                                       />
                                     </FormControl>

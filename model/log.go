@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -117,43 +118,46 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 }
 
 func formatUserLogs(logs []*Log, startIdx int) {
-	for i := range logs {
-		logs[i].ChannelName = ""
-		var otherMap map[string]interface{}
-		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			// 统一错误信息生效的错误日志：用户视图的内容替换为用户实际看到的
-			// 固定文案，原始报错仅保留给管理员视图（不经过本函数）。
-			if adminInfo, ok := otherMap["admin_info"].(map[string]interface{}); ok {
-				if enabled, _ := adminInfo["error_override_enabled"].(bool); enabled {
-					maskedText, _ := adminInfo["error_override_text"].(string)
-					if maskedText == "" {
-						maskedText = dto.DefaultErrorOverrideMessage
+	for _, log := range logs {
+		log.ChannelName = ""
+		// Preserve exact billing values while removing privileged metadata,
+		// including legacy fields stored outside the admin_info object.
+		var other map[string]json.RawMessage
+		if err := common.UnmarshalJsonStr(log.Other, &other); err != nil || other == nil {
+			log.Other = "{}"
+			continue
+		}
+		var adminInfo map[string]json.RawMessage
+		if err := common.Unmarshal(other["admin_info"], &adminInfo); err == nil {
+			var overrideEnabled bool
+			_ = common.Unmarshal(adminInfo["error_override_enabled"], &overrideEnabled)
+			if overrideEnabled {
+				var maskedText string
+				_ = common.Unmarshal(adminInfo["error_override_text"], &maskedText)
+				if maskedText == "" {
+					maskedText = dto.DefaultErrorOverrideMessage
+				}
+				log.Content = maskedText
+				for _, key := range []string{"error_type", "error_code"} {
+					if _, exists := other[key]; exists {
+						other[key] = json.RawMessage(`"upstream_error"`)
 					}
-					logs[i].Content = maskedText
-					if _, exists := otherMap["error_type"]; exists {
-						otherMap["error_type"] = "upstream_error"
-					}
-					if _, exists := otherMap["error_code"]; exists {
-						otherMap["error_code"] = "upstream_error"
-					}
-					delete(otherMap, "channel_id")
-					delete(otherMap, "channel_name")
-					delete(otherMap, "channel_type")
 				}
 			}
-			// Remove admin-only debug fields.
-			delete(otherMap, "admin_info")
-			// Remove operation-audit details (operator/route info), admin-only.
-			delete(otherMap, "audit_info")
-			// delete(otherMap, "reject_reason")
-			delete(otherMap, "stream_status")
-			// Hide model redirection from users: they only see the requested
-			// model name; the actual upstream model stays admin-only.
-			delete(otherMap, "is_model_mapped")
-			delete(otherMap, "upstream_model_name")
 		}
-		logs[i].Other = common.MapToJsonStr(otherMap)
+		for _, key := range []string{
+			"admin_info", "root_info", "audit_info", "reject_reason",
+			"channel_id", "channel_name", "channel_type",
+			"stream_status", "is_model_mapped", "upstream_model_name",
+		} {
+			delete(other, key)
+		}
+		encoded, err := common.Marshal(other)
+		if err != nil {
+			log.Other = "{}"
+			continue
+		}
+		log.Other = string(encoded)
 	}
 	assignDisplayLogIds(logs, startIdx)
 }

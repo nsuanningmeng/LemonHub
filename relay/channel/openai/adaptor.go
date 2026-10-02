@@ -249,6 +249,12 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeAzure {
 		request.StreamOptions = nil
 	}
+	// OpenRouter moves this field into its nested reasoning object below.
+	// Keep it as a fallback when the final payload has no nested reasoning.
+	resolvedEffort := request.ReasoningEffort
+	if info.ChannelType == constant.ChannelTypeOpenRouter && resolvedEffort == "" {
+		resolvedEffort = info.ReasoningEffort
+	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {
 		if len(request.Usage) == 0 {
 			request.Usage = json.RawMessage(`{"include":true}`)
@@ -326,42 +332,61 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 
 	}
-	isOModel := dto.IsOpenAIReasoningOModel(info.UpstreamModelName)
-	isGPT5Model := dto.IsOpenAIGPT5Model(info.UpstreamModelName)
-	if isOModel || isGPT5Model {
+	// Resolve the existing effort suffix before choosing capabilities. Model
+	// mapping has already selected the upstream name; public aliases must not
+	// decide which parameters that upstream accepts.
+	effort, baseModel := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(info.UpstreamModelName)
+	capabilities := dto.GetOpenAIChatCapabilities(baseModel, resolvedEffort)
+	if capabilities.UseMaxCompletionTokens {
+		if effort != "" {
+			request.ReasoningEffort = effort
+			resolvedEffort = effort
+			info.UpstreamModelName = baseModel
+			request.Model = baseModel
+		}
+		capabilityEffort := resolvedEffort
+		if info.ChannelType == constant.ChannelTypeOpenRouter && len(request.Reasoning) > 0 {
+			// Existing nested reasoning wins over top-level and suffix effort.
+			// Enabled/budget-only objects have no known effort: do not allow
+			// sampling based on a top-level value that OpenRouter will ignore.
+			// Keep that uncertainty local to capabilities, not request logs.
+			resolvedEffort = ""
+			capabilityEffort = "unknown"
+			var nestedReasoning struct {
+				Effort  string `json:"effort"`
+				Enabled *bool  `json:"enabled"`
+			}
+			if err := common.Unmarshal(request.Reasoning, &nestedReasoning); err == nil {
+				if nestedReasoning.Effort != "" {
+					resolvedEffort = nestedReasoning.Effort
+					capabilityEffort = nestedReasoning.Effort
+				} else if nestedReasoning.Enabled != nil && !*nestedReasoning.Enabled {
+					resolvedEffort = "none"
+					capabilityEffort = "none"
+				}
+			}
+		}
+		info.SetReasoningEffort(resolvedEffort)
+		capabilities = dto.GetOpenAIChatCapabilities(info.UpstreamModelName, capabilityEffort)
+		// Explicit zero is a supplied value, not a missing alias. Preserve the
+		// existing max_completion_tokens precedence without falling back on 0.
 		if request.MaxCompletionTokens == nil && request.MaxTokens != nil {
 			request.MaxCompletionTokens = request.MaxTokens
 			request.MaxTokens = nil
 		}
-
-		if isOModel {
-			request.Temperature = nil
-		}
-
-		// gpt-5系列模型适配 归零不再支持的参数
-		if isGPT5Model {
-			request.Temperature = nil
-			request.TopP = nil
-			request.LogProbs = nil
-		}
-
-		// 转换模型推理力度后缀
-		effort, originModel := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(info.UpstreamModelName)
-		if effort != "" {
-			request.ReasoningEffort = effort
-			info.UpstreamModelName = originModel
-			request.Model = originModel
-		}
-
-		info.SetReasoningEffort(request.ReasoningEffort)
-
-		// o系列模型developer适配（o1-mini除外）
-		if !strings.HasPrefix(info.UpstreamModelName, "o1-mini") && !strings.HasPrefix(info.UpstreamModelName, "o1-preview") {
-			//修改第一个Message的内容，将system改为developer
-			if len(request.Messages) > 0 && request.Messages[0].Role == "system" {
-				request.Messages[0].Role = "developer"
-			}
-		}
+	}
+	if !capabilities.SupportsTemperature {
+		request.Temperature = nil
+	}
+	if !capabilities.SupportsTopP {
+		request.TopP = nil
+	}
+	if !capabilities.SupportsLogProbs {
+		request.LogProbs = nil
+		request.TopLogProbs = nil
+	}
+	if capabilities.UseDeveloperRole && len(request.Messages) > 0 && request.Messages[0].Role == "system" {
+		request.Messages[0].Role = "developer"
 	}
 
 	return request, nil
