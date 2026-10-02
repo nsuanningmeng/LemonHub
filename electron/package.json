@@ -153,5 +153,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
     }
+  },
+  "overrides": {
+    "undici@6": "6.28.1"
   }
 }
