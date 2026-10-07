@@ -1,8 +1,11 @@
 package model
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"sync"
 	"time"
 
@@ -43,7 +46,9 @@ func UpdateQuotaData() {
 	for {
 		if common.DataExportEnabled {
 			common.SysLog("正在更新数据看板数据...")
-			SaveQuotaDataCache()
+			if err := SaveQuotaDataCache(); err != nil {
+				common.SysError("failed to save dashboard data: " + err.Error())
+			}
 		}
 		time.Sleep(time.Duration(common.DataExportInterval) * time.Minute)
 	}
@@ -51,6 +56,12 @@ func UpdateQuotaData() {
 
 var CacheQuotaData = make(map[string]*QuotaData)
 var CacheQuotaDataLock = sync.Mutex{}
+
+// The gate serializes periodic/final saves without holding up new producers.
+// An uncertain transaction is kept separate and must never be replayed blindly.
+var quotaDataFlushGate = make(chan struct{}, 1)
+var quotaDataUncertain map[string]*QuotaData
+var quotaDataFlushError error
 
 func logQuotaDataCache(quotaData *QuotaData) {
 	key := fmt.Sprintf("%d\x00%s\x00%s\x00%d\x00%s\x00%d\x00%d\x00%s",
@@ -98,45 +109,112 @@ func LogQuotaData(params QuotaDataLogParams) {
 	logQuotaDataCache(quotaData)
 }
 
-func SaveQuotaDataCache() {
-	CacheQuotaDataLock.Lock()
-	defer CacheQuotaDataLock.Unlock()
-	size := len(CacheQuotaData)
-	// 如果缓存中有数据，就保存到数据库中
-	// 1. 先查询数据库中是否有数据
-	// 2. 如果有数据，就更新数据
-	// 3. 如果没有数据，就插入数据
-	for _, quotaData := range CacheQuotaData {
-		quotaDataDB := &QuotaData{}
-		DB.Table("quota_data").
-			Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
-				quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
-			First(quotaDataDB)
-		if quotaDataDB.Id > 0 {
-			//quotaDataDB.Count += quotaData.Count
-			//quotaDataDB.Quota += quotaData.Quota
-			//DB.Table("quota_data").Save(quotaDataDB)
-			increaseQuotaData(quotaData)
-		} else {
-			DB.Table("quota_data").Create(quotaData)
-		}
-	}
-	CacheQuotaData = make(map[string]*QuotaData)
-	common.SysLog(fmt.Sprintf("保存数据看板数据成功，共保存%d条数据", size))
+func SaveQuotaDataCache() error {
+	return SaveQuotaDataCacheContext(context.Background())
 }
 
-func increaseQuotaData(quotaData *QuotaData) {
-	err := DB.Table("quota_data").
-		Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
-			quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
-		Updates(map[string]interface{}{
-			"count":      gorm.Expr("count + ?", quotaData.Count),
-			"quota":      gorm.Expr("quota + ?", quotaData.Quota),
-			"token_used": gorm.Expr("CASE WHEN token_used > ? THEN ? ELSE token_used + ? END", math.MaxInt64-quotaData.TokenUsed, int64(math.MaxInt64), quotaData.TokenUsed),
-		}).Error
-	if err != nil {
-		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))
+// SaveQuotaDataCacheContext commits a complete snapshot or retains it after a
+// proven rollback. Unknown outcomes stop subsequent saves for reconciliation.
+// Producers must be drained before using this as the final shutdown save.
+func SaveQuotaDataCacheContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
+	select {
+	case quotaDataFlushGate <- struct{}{}:
+		defer func() { <-quotaDataFlushGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if quotaDataFlushError != nil {
+		return quotaDataFlushError
+	}
+	CacheQuotaDataLock.Lock()
+	stores := make(map[string]*QuotaData, len(CacheQuotaData))
+	for key, quotaData := range CacheQuotaData {
+		row := *quotaData
+		stores[key] = &row
+	}
+	CacheQuotaData = make(map[string]*QuotaData)
+	CacheQuotaDataLock.Unlock()
+	if len(stores) == 0 {
+		return nil
+	}
+	batchID := common.GetUUID()
+	tx := DB.WithContext(ctx).Session(&gorm.Session{SkipDefaultTransaction: true}).Begin()
+	if tx.Error != nil {
+		requeueQuotaData(stores)
+		return fmt.Errorf("dashboard batch %s begin: %w", batchID, tx.Error)
+	}
+	if err := applyQuotaDataSnapshot(tx, stores); err != nil {
+		if rollbackErr := tx.Rollback().Error; rollbackErr != nil {
+			return quarantineQuotaData(batchID, stores, errors.Join(err, fmt.Errorf("rollback outcome unknown: %w", rollbackErr)))
+		}
+		requeueQuotaData(stores)
+		return fmt.Errorf("dashboard batch %s rolled back: %w", batchID, err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return quarantineQuotaData(batchID, stores, fmt.Errorf("commit outcome unknown: %w", err))
+	}
+	common.SysLog(fmt.Sprintf("保存数据看板数据成功，共保存%d条数据，batch=%s", len(stores), batchID))
+	return nil
+}
+
+func applyQuotaDataSnapshot(tx *gorm.DB, stores map[string]*QuotaData) error {
+	keys := make([]string, 0, len(stores))
+	for key := range stores {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		quotaData := stores[key]
+		var existing QuotaData
+		result := tx.Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
+			quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
+			Order("id").Limit(1).Find(&existing)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			// GORM fills generated IDs even when a later statement rolls back.
+			// Keep the queued delta immutable so its retry uses a fresh INSERT.
+			row := *quotaData
+			row.Id = 0
+			result = tx.Create(&row)
+		} else {
+			// Update the selected row once, including when legacy data contains
+			// duplicate dimensions. Never multiply a new delta across duplicates.
+			result = tx.Model(&QuotaData{}).Where("id = ?", existing.Id).Updates(map[string]interface{}{
+				"count":      gorm.Expr("COALESCE(count, 0) + ?", quotaData.Count),
+				"quota":      gorm.Expr("COALESCE(quota, 0) + ?", quotaData.Quota),
+				"token_used": gorm.Expr("CASE WHEN COALESCE(token_used, 0) > ? THEN ? ELSE COALESCE(token_used, 0) + ? END", math.MaxInt64-quotaData.TokenUsed, int64(math.MaxInt64), quotaData.TokenUsed),
+			})
+		}
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return fmt.Errorf("dashboard row write affected %d rows, expected 1", result.RowsAffected)
+		}
+	}
+	return nil
+}
+
+func requeueQuotaData(stores map[string]*QuotaData) {
+	CacheQuotaDataLock.Lock()
+	defer CacheQuotaDataLock.Unlock()
+	for _, quotaData := range stores {
+		logQuotaDataCache(quotaData)
+	}
+}
+
+func quarantineQuotaData(batchID string, stores map[string]*QuotaData, err error) error {
+	quotaDataUncertain = stores
+	quotaDataFlushError = fmt.Errorf("dashboard batch %s requires reconciliation; automatic replay disabled: %w", batchID, err)
+	// This is operator evidence, not a durable exactly-once recovery journal.
+	deltas, _ := common.Marshal(stores)
+	common.SysError(fmt.Sprintf("%v; pending_dashboard_deltas=%s", quotaDataFlushError, deltas))
+	return quotaDataFlushError
 }
 
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {

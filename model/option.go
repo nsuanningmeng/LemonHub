@@ -3,6 +3,7 @@ package model
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Option struct {
@@ -23,14 +25,33 @@ type Option struct {
 	Value string `json:"value"`
 }
 
+// optionStorageError keeps driver details (which can embed option values) out
+// of API responses and ordinary logs while preserving errors.Is/As internally.
+type optionStorageError struct{ cause error }
+
+func (e *optionStorageError) Error() string { return "failed to access option storage" }
+func (e *optionStorageError) Unwrap() error { return e.cause }
+
 func AllOption() ([]*Option, error) {
 	var options []*Option
-	var err error
-	err = DB.Find(&options).Error
-	return options, err
+	if err := DB.Find(&options).Error; err != nil {
+		return nil, &optionStorageError{cause: err}
+	}
+	return options, nil
 }
 
-func InitOptionMap() {
+func InitOptionMap() error {
+	options, err := AllOption()
+	if err != nil {
+		return err
+	}
+	// A failed read must never look like a new installation. Validate the entire
+	// snapshot before replacing the map or invoking any stateful setters.
+	for _, option := range options {
+		if err := validateOptionValue(option.Key, option.Value); err != nil {
+			return fmt.Errorf("invalid stored option %s", option.Key)
+		}
+	}
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
 
@@ -214,76 +235,120 @@ func InitOptionMap() {
 	}
 
 	common.OptionMapRWMutex.Unlock()
-	loadOptionsFromDatabase()
-	ensureUnsubscribeSecret()
+	hasPersistedSecret := false
+	for _, option := range options {
+		if err := updateOptionMap(option.Key, option.Value); err != nil {
+			return err
+		}
+		if option.Key == "UnsubscribeSecret" && option.Value != "" {
+			hasPersistedSecret = true
+		}
+	}
+	if hasPersistedSecret {
+		return nil
+	}
+	return ensureUnsubscribeSecret()
 }
 
 // ensureUnsubscribeSecret bootstraps the persisted secret that signs one-click
 // unsubscribe tokens. It must live in the options table (not a per-boot random
 // like SessionSecret): unsubscribe links are embedded in already-delivered mail
 // and must keep verifying across restarts and on every node.
-func ensureUnsubscribeSecret() {
-	if common.UnsubscribeSecret != "" {
-		return
-	}
+func ensureUnsubscribeSecret() error {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
-		common.SysError("failed to generate unsubscribe secret: " + err.Error())
-		return
+		return err
 	}
-	if err := UpdateOption("UnsubscribeSecret", hex.EncodeToString(buf)); err != nil {
-		common.SysError("failed to persist unsubscribe secret: " + err.Error())
+	candidate := hex.EncodeToString(buf)
+	var persisted Option
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// Another node may have bootstrapped after the startup snapshot. Never
+		// overwrite its nonempty secret: read the winner under a fresh row lock.
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&Option{Key: "UnsubscribeSecret", Value: candidate}).Error; err != nil {
+			return err
+		}
+		if err := lockForUpdate(tx).Where(&Option{Key: "UnsubscribeSecret"}).First(&persisted).Error; err != nil {
+			return err
+		}
+		if persisted.Value == "" {
+			if err := tx.Model(&persisted).Update("value", candidate).Error; err != nil {
+				return err
+			}
+			persisted.Value = candidate
+		}
+		return nil
+	})
+	if err != nil {
+		return &optionStorageError{cause: err}
 	}
+	return updateOptionMap("UnsubscribeSecret", persisted.Value)
 }
 
-func loadOptionsFromDatabase() {
-	options, _ := AllOption()
+func loadOptionsFromDatabase() error {
+	options, err := AllOption()
+	if err != nil {
+		return err
+	}
+	// Preflight all parseable options so one malformed row cannot clear an
+	// existing setting or leave a partially applied snapshot.
 	for _, option := range options {
-		err := updateOptionMap(option.Key, option.Value)
-		if err != nil {
-			common.SysLog("failed to update option map: " + err.Error())
+		if err := validateOptionValue(option.Key, option.Value); err != nil {
+			return fmt.Errorf("invalid stored option %s", option.Key)
 		}
 	}
+	for _, option := range options {
+		if err := updateOptionMap(option.Key, option.Value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func SyncOptions(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
 		common.SysLog("syncing options from database")
-		loadOptionsFromDatabase()
+		if err := loadOptionsFromDatabase(); err != nil {
+			common.SysError("failed to synchronize options from database")
+		}
 	}
 }
 
 func validateOptionValue(key string, value string) error {
-	if key == operation_setting.ToolPriceOptionKey {
+	switch key {
+	case operation_setting.ToolPriceOptionKey:
 		return operation_setting.ValidateToolPricesJSON(value)
-	}
-	if key == operation_setting.ChannelTestConcurrencyOptionKey {
+	case operation_setting.ChannelTestConcurrencyOptionKey:
 		return operation_setting.ValidateChannelTestConcurrency(value)
-	}
-	if key == "MaxTokenAutoGroups" {
+	case "MaxTokenAutoGroups":
 		return setting.ValidateMaxTokenAutoGroups(value)
+	case "Chats", "PayMethods":
+		var parsed []map[string]string
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "AutoGroups":
+		var parsed []string
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "UserUsableGroups":
+		var parsed map[string]string
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "ModelRequestRateLimitGroup":
+		var parsed map[string][2]int
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "GroupGroupRatio":
+		var parsed map[string]map[string]float64
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "TopupGroupRatio", "ModelRatio", "GroupRatio", "CompletionRatio", "ModelPrice", "CacheRatio", "CreateCacheRatio", "ImageRatio", "AudioRatio", "AudioCompletionRatio":
+		var parsed map[string]float64
+		return common.UnmarshalJsonStr(value, &parsed)
+	case "AutomaticDisableStatusCodes", "AutomaticRetryStatusCodes":
+		_, err := operation_setting.ParseHTTPStatusCodeRanges(value)
+		return err
 	}
 	return nil
 }
 
 func UpdateOption(key string, value string) error {
-	if err := validateOptionValue(key, value); err != nil {
-		return err
-	}
-	// Save to database first
-	option := Option{
-		Key: key,
-	}
-	// https://gorm.io/docs/update.html#Save-All-Fields
-	DB.FirstOrCreate(&option, Option{Key: key})
-	option.Value = value
-	// Save is a combination function.
-	// If save value does not contain primary key, it will execute Create,
-	// otherwise it will execute Update (with all fields).
-	DB.Save(&option)
-	// Update OptionMap
-	return updateOptionMap(key, value)
+	return UpdateOptionsBulk(map[string]string{key: value})
 }
 
 // UpdateOptionsBulk persists multiple key/value pairs in a single database
@@ -314,7 +379,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return &optionStorageError{cause: err}
 	}
 	for k, v := range values {
 		if err := updateOptionMap(k, v); err != nil {

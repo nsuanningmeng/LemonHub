@@ -168,8 +168,11 @@ func shutdownAccounting(ctx context.Context, server *http.Server, requests *drai
 	}
 	// Even a completed refund that failed must not discard unrelated healthy
 	// accounting or dashboard data. Preserve it before reporting non-clean exit.
+	var dashboardErr error
 	if common.DataExportEnabled {
-		model.SaveQuotaDataCache()
+		if err := model.SaveQuotaDataCacheContext(ctx); err != nil {
+			dashboardErr = fmt.Errorf("persist final dashboard batch: %w", err)
+		}
 	}
-	return errors.Join(refundErr, flushErr)
+	return errors.Join(refundErr, flushErr, dashboardErr)
 }

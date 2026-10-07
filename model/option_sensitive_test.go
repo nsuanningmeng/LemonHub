@@ -34,7 +34,7 @@ func TestSensitiveWholeWordOptionPersistsAndReloads(t *testing.T) {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, "SensitiveWordsWholeWordEnabled")
 		common.OptionMapRWMutex.Unlock()
-		loadOptionsFromDatabase()
+		require.NoError(t, loadOptionsFromDatabase())
 		assert.Equal(t, value == "true", setting.SensitiveWordsWholeWordEnabled)
 		common.OptionMapRWMutex.RLock()
 		assert.Equal(t, value, common.OptionMap["SensitiveWordsWholeWordEnabled"])

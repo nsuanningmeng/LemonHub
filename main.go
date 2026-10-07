@@ -83,20 +83,10 @@ func main() {
 		common.SysLog("memory cache enabled")
 		common.SysLog(fmt.Sprintf("sync frequency: %d seconds", common.SyncFrequency))
 
-		// Add panic recovery and retry for InitChannelCache
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					common.SysLog(fmt.Sprintf("InitChannelCache panic: %v, retrying once", r))
-					// Retry once
-					_, _, fixErr := model.FixAbility()
-					if fixErr != nil {
-						common.FatalLog(fmt.Sprintf("InitChannelCache failed: %s", fixErr.Error()))
-					}
-				}
-			}()
-			model.InitChannelCache()
-		}()
+		if err := model.InitChannelCache(); err != nil {
+			common.FatalLog("failed to initialize channel cache: " + err.Error())
+			return
+		}
 
 		go model.SyncChannelCache(common.SyncFrequency)
 	}
@@ -332,7 +322,10 @@ func InitResources() error {
 			common.SysError("failed to migrate retired frontend options: " + err.Error())
 		}
 	}
-	model.InitOptionMap()
+	if err := model.InitOptionMap(); err != nil {
+		common.FatalLog("failed to initialize options")
+		return err
+	}
 
 	// Load the sub-site (white-label) domain cache after the schema is ready.
 	if err := model.ReloadSiteCache(); err != nil {

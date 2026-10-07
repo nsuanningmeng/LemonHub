@@ -23,15 +23,34 @@ var channelsIDM map[int]*Channel                     // all channels include dis
 var channel2advancedCustomConfig map[int]*dto.AdvancedCustomConfig
 var channelSyncLock sync.RWMutex
 
-func InitChannelCache() {
+type channelCacheSnapshot struct {
+	groupModels map[string]map[string][]int
+	channels    map[int]*Channel
+	advanced    map[int]*dto.AdvancedCustomConfig
+}
+
+// Read failures never publish partial state or repair the database.
+func InitChannelCache() error {
 	if !common.MemoryCacheEnabled {
 		InvalidatePricingCache()
-		return
+		return nil
 	}
+	var channels []*Channel
+	if err := DB.Find(&channels).Error; err != nil {
+		return fmt.Errorf("read channel cache channels: %w", err)
+	}
+	var abilities []*Ability
+	if err := DB.Find(&abilities).Error; err != nil {
+		return fmt.Errorf("read channel cache abilities: %w", err)
+	}
+	publishChannelCache(prepareChannelCache(channels, abilities))
+	common.SysLog("channels synced from database")
+	return nil
+}
+
+func prepareChannelCache(channels []*Channel, abilities []*Ability) *channelCacheSnapshot {
 	newChannelId2channel := make(map[int]*Channel)
 	newChannel2advancedCustomConfig := make(map[int]*dto.AdvancedCustomConfig)
-	var channels []*Channel
-	DB.Find(&channels)
 	for _, channel := range channels {
 		newChannelId2channel[channel.Id] = channel
 		if channel.Type == constant.ChannelTypeAdvancedCustom {
@@ -40,8 +59,6 @@ func InitChannelCache() {
 			}
 		}
 	}
-	var abilities []*Ability
-	DB.Find(&abilities)
 	groups := make(map[string]bool)
 	for _, ability := range abilities {
 		groups[ability.Group] = true
@@ -56,6 +73,9 @@ func InitChannelCache() {
 		}
 		groups := strings.Split(channel.Group, ",")
 		for _, group := range groups {
+			if newGroup2model2channels[group] == nil {
+				newGroup2model2channels[group] = make(map[string][]int)
+			}
 			models := strings.Split(channel.Models, ",")
 			for _, model := range models {
 				if _, ok := newGroup2model2channels[group][model]; !ok {
@@ -76,6 +96,17 @@ func InitChannelCache() {
 		}
 	}
 
+	return &channelCacheSnapshot{groupModels: newGroup2model2channels, channels: newChannelId2channel, advanced: newChannel2advancedCustomConfig}
+}
+
+func publishChannelCache(snapshot *channelCacheSnapshot) {
+	if !common.MemoryCacheEnabled {
+		InvalidatePricingCache()
+		return
+	}
+	newChannelId2channel := snapshot.channels
+	newGroup2model2channels := snapshot.groupModels
+	newChannel2advancedCustomConfig := snapshot.advanced
 	channelSyncLock.Lock()
 	group2model2channels = newGroup2model2channels
 	//channelsIDM = newChannelId2channel
@@ -100,14 +131,15 @@ func InitChannelCache() {
 	// loadPricingAdvancedCustomConfigs. channelSyncLock MUST be released before
 	// invalidating the pricing cache, otherwise the reversed order deadlocks.
 	InvalidatePricingCache()
-	common.SysLog("channels synced from database")
 }
 
 func SyncChannelCache(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
 		common.SysLog("syncing channels from database")
-		InitChannelCache()
+		if err := InitChannelCache(); err != nil {
+			common.SysLog("channel cache sync failed; previous cache retained")
+		}
 	}
 }
 

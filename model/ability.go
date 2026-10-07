@@ -334,58 +334,40 @@ func UpdateAbilityByTag(tag string, newTag *string, priority *int64, weight *uin
 
 var fixLock = sync.Mutex{}
 
+// FixAbility is an explicit administrator repair. Never call it automatically
+// after a cache read failure. Transactional DML preserves the old table on a
+// confirmed rollback; an uncertain commit returns an error without replay.
 func FixAbility() (int, int, error) {
-	lock := fixLock.TryLock()
-	if !lock {
+	if !fixLock.TryLock() {
 		return 0, 0, errors.New("已经有一个修复任务在运行中，请稍后再试")
 	}
 	defer fixLock.Unlock()
-
-	// truncate abilities table
-	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
-		err := DB.Exec("DELETE FROM abilities").Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			return 0, 0, err
+	var prepared *channelCacheSnapshot
+	var count int
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var channels []*Channel
+		if err := lockForUpdate(tx).Find(&channels).Error; err != nil {
+			return err
 		}
-	} else {
-		err := DB.Exec("TRUNCATE TABLE abilities").Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Truncate abilities failed: %s", err.Error()))
-			return 0, 0, err
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&Ability{}).Error; err != nil {
+			return err
 		}
-	}
-	var channels []*Channel
-	// Find all channels
-	err := DB.Model(&Channel{}).Find(&channels).Error
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(channels) == 0 {
-		return 0, 0, nil
-	}
-	successCount := 0
-	failCount := 0
-	for _, chunk := range lo.Chunk(channels, 50) {
-		ids := lo.Map(chunk, func(c *Channel, _ int) int { return c.Id })
-		// Delete all abilities of this channel
-		err = DB.Where("channel_id IN ?", ids).Delete(&Ability{}).Error
-		if err != nil {
-			common.SysLog(fmt.Sprintf("Delete abilities failed: %s", err.Error()))
-			failCount += len(chunk)
-			continue
-		}
-		// Then add new abilities
-		for _, channel := range chunk {
-			err = channel.AddAbilities(nil)
-			if err != nil {
-				common.SysLog(fmt.Sprintf("Add abilities for channel %d failed: %s", channel.Id, err.Error()))
-				failCount++
-			} else {
-				successCount++
+		for _, channel := range channels {
+			if err := channel.AddAbilities(tx); err != nil {
+				return err
 			}
 		}
+		var abilities []*Ability
+		if err := tx.Find(&abilities).Error; err != nil {
+			return err
+		}
+		prepared = prepareChannelCache(channels, abilities)
+		count = len(channels)
+		return nil
+	})
+	if err != nil {
+		return 0, 0, fmt.Errorf("ability repair transaction failed: %w", err)
 	}
-	InitChannelCache()
-	return successCount, failCount, nil
+	publishChannelCache(prepared)
+	return count, 0, nil
 }
