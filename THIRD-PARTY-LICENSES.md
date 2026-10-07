@@ -3,7 +3,7 @@
 This file summarizes direct third-party dependencies used by distributed builds of this project.
 It is an engineering compliance artifact and should be kept with Docker images, standalone binaries, frontend bundles, and Electron installers.
 
-Scope: direct dependencies from `go.mod`, `web/package.json`, and `electron/package.json`.
+Scope: direct dependencies from `go.mod`, `web/package.json`, and `electron/package.json`, plus the vendored assets listed below.
 Transitive dependencies should be audited before a final external release.
 
 ## Dependency Inventory
@@ -94,7 +94,7 @@ Transitive dependencies should be audited before a final external release.
 | web | production | npm | `i18next` | `26.3.6` | MIT |
 | web | production | npm | `i18next-browser-languagedetector` | `8.2.1` | MIT |
 | web | production | npm | `input-otp` | `1.4.2` | MIT |
-| web | production | npm | `katex` | `0.17.0` | MIT |
+| web | production | npm | `katex` | `0.18.2` | MIT |
 | web | production | npm | `lucide-react` | `1.25.0` | ISC |
 | web | production | npm | `marked` | `18.0.6` | MIT |
 | web | production | npm | `motion` | `12.42.2` | MIT |
@@ -137,10 +137,18 @@ Transitive dependencies should be audited before a final external release.
 | web | development | npm | `knip` | `6.27.0` | ISC |
 | web | development | npm | `oxfmt` | `0.57.0` | MIT |
 | web | development | npm | `oxlint` | `1.74.0` | MIT |
-| web | development | npm | `shadcn` | `4.13.1` | MIT |
 | electron    | development | npm       | `cross-env`                                           | `7.0.3`                              | MIT                                                |
 | electron    | development | npm       | `electron`                                            | `39.8.5`                             | MIT                                                |
 | electron    | development | npm       | `electron-builder`                                    | `26.7.0`                             | MIT                                                |
+
+## Vendored Assets
+
+`web/src/styles/shadcn.css` contains the complete `dist/tailwind.css` from
+[`shadcn@4.13.1`](https://registry.npmjs.org/shadcn/-/shadcn-4.13.1.tgz),
+Copyright (c) 2023 shadcn, licensed under MIT. The upstream CSS is unchanged;
+the local file adds its source information and the full MIT notice. This static
+stylesheet replaces the installed shadcn CLI dependency while preserving its
+Tailwind variants and utilities.
 
 ## License Texts
 
