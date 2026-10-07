@@ -21,6 +21,7 @@ import { MailQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { AnimateInView } from '@/components/animate-in-view'
+import { HtmlContent } from '@/components/html-content'
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
@@ -40,6 +41,12 @@ function isValidUrl(value: string) {
 
 function isLikelyHtml(value: string) {
   return /<\/?[a-z][\s\S]*>/i.test(value)
+}
+
+function isHtmlDocument(value: string): boolean {
+  return /^\s*(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html\b|<(?:html|head|body)(?:\s|>))/i.test(
+    value
+  )
 }
 
 // Default page shown when the admin has not configured any contact content in
@@ -137,6 +144,20 @@ export function Contact() {
             referrerPolicy='no-referrer'
             sandbox='allow-scripts allow-forms allow-popups'
           />
+        </PublicLayout>
+      )
+    }
+    if (isHtml && isHtmlDocument(rawContent)) {
+      return (
+        <PublicLayout showMainContainer={false}>
+          <main className='pt-16'>
+            <HtmlContent
+              variant='document'
+              content={rawContent}
+              title={t('Contact Us')}
+              className='h-[calc(100svh-4rem)]'
+            />
+          </main>
         </PublicLayout>
       )
     }
