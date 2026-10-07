@@ -570,3 +570,87 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	require.NoError(t, db.First(&stored, user.Id).Error)
 	assert.Equal(t, hashedPassword, stored.Password)
 }
+
+func TestListModelsProviderOwnerDoesNotExposePrivateChannelInstances(t *testing.T) {
+	withSelfUseModeEnabled(t)
+	db := setupModelListControllerTestDB(t)
+
+	originalMemoryCacheEnabled := common.MemoryCacheEnabled
+	common.MemoryCacheEnabled = true
+	t.Cleanup(func() {
+		common.MemoryCacheEnabled = originalMemoryCacheEnabled
+		model.InvalidatePricingCache()
+	})
+
+	require.NoError(t, db.Create(&model.User{
+		Id:       1003,
+		Username: "advanced-custom-model-list-user",
+		Password: "password",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}).Error)
+
+	channel := &model.Channel{
+		Id:     701,
+		Type:   constant.ChannelTypeAdvancedCustom,
+		Key:    "private-key-sentinel-A",
+		Status: common.ChannelStatusEnabled,
+		Name:   "private-name-sentinel-A",
+		Group:  "default",
+		Models: "gemini-3.5-flash",
+	}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{
+		AdvancedCustom: &dto.AdvancedCustomConfig{
+			Routes: []dto.AdvancedCustomRoute{
+				{
+					IncomingPath: "/v1/chat/completions",
+					UpstreamPath: "/v1/chat/completions",
+				},
+				{
+					IncomingPath: "/v1/responses",
+					UpstreamPath: "/v1beta/models/{model}:generateContent",
+					Converter:    "openai_responses_to_gemini_generate_content",
+					Models:       []string{"re:^gemini-"},
+				},
+			},
+		},
+	})
+	channel.BaseURL = common.GetPointer("https://private-url-sentinel-A.invalid")
+	require.NoError(t, db.Create(channel).Error)
+	second := *channel
+	second.Id = 702
+	second.Name = "private-name-sentinel-B"
+	second.Key = "private-key-sentinel-B"
+	second.BaseURL = common.GetPointer("https://private-url-sentinel-B.invalid")
+	require.NoError(t, db.Create(&second).Error)
+	require.NoError(t, db.Create(&model.Ability{Group: "default", Model: "gemini-3.5-flash", ChannelId: 702, Enabled: true}).Error)
+	require.NoError(t, db.Create(&model.Ability{
+		Group:     "default",
+		Model:     "gemini-3.5-flash",
+		ChannelId: 701,
+		Enabled:   true,
+	}).Error)
+
+	model.InitChannelCache()
+	model.GetPricing()
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	ctx.Set("id", 1003)
+
+	ListModels(ctx, constant.ChannelTypeOpenAI)
+
+	wire := recorder.Body.String()
+	for _, sentinel := range []string{"private-name-sentinel-A", "private-name-sentinel-B", "private-key-sentinel-A", "private-key-sentinel-B", "private-url-sentinel-A", "private-url-sentinel-B"} {
+		assert.NotContains(t, wire, sentinel)
+	}
+	payload := decodeListModelsPayload(t, recorder)
+	require.Len(t, payload.Data, 1)
+	assert.Equal(t, channelOwnerName(constant.ChannelTypeAdvancedCustom), payload.Data[0].OwnedBy)
+	require.Equal(t, "gemini-3.5-flash", payload.Data[0].Id)
+	require.Equal(t, []constant.EndpointType{
+		constant.EndpointTypeOpenAI,
+		constant.EndpointTypeOpenAIResponse,
+	}, payload.Data[0].SupportedEndpointTypes)
+}

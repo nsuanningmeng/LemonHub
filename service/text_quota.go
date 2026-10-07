@@ -64,6 +64,7 @@ type textQuotaSummary struct {
 	IsClaudeUsageSemantic  bool
 	UsageSemantic          string
 	AudioInputPrice        float64
+	AudioInputQuota        decimal.Decimal
 	ToolSurchargeItems     []ToolSurchargeItem
 	ToolCallSurchargeQuota decimal.Decimal
 }
@@ -284,6 +285,11 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	dCacheTokens := decimal.NewFromInt(int64(summary.CacheTokens))
 	dImageTokens := decimal.NewFromInt(int64(summary.ImageTokens))
 	dAudioTokens := decimal.NewFromInt(int64(summary.AudioTokens))
+	// Cache is always separately priced in ratio billing. Keep raw inclusive
+	// media counts in summary/logs, but bill only their fresh portion here.
+	cachedImages, cachedAudio := cachedGeminiInputMediaTokens(usage)
+	dImageTokens = dImageTokens.Sub(decimal.NewFromInt(int64(cachedImages)))
+	dAudioTokens = dAudioTokens.Sub(decimal.NewFromInt(int64(cachedAudio)))
 	dCompletionTokens := decimal.NewFromInt(int64(summary.CompletionTokens))
 	dCachedCreationTokens := decimal.NewFromInt(int64(summary.CacheCreationTokens))
 	dCompletionRatio := decimal.NewFromFloat(summary.CompletionRatio)
@@ -335,7 +341,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 			imageTokensWithRatio = dImageTokens.Mul(dImageRatio)
 		}
 
-		if !dAudioTokens.IsZero() {
+		if summary.AudioTokens > 0 {
 			summary.AudioInputPrice = operation_setting.GetGeminiInputAudioPricePerMillionTokens(summary.ModelName)
 			if summary.AudioInputPrice > 0 {
 				baseTokens = baseTokens.Sub(dAudioTokens)
@@ -343,6 +349,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 					Div(decimal.NewFromInt(1000000)).Mul(dAudioTokens).Mul(dGroupRatio).Mul(dQuotaPerUnit)
 			}
 		}
+		summary.AudioInputQuota = relayInfo.PriceData.ApplyOtherRatiosToDecimal(audioInputQuota)
 
 		// OpenAI cache-write usage reports unadjusted prefix counts, so
 		// cached_tokens + cache_write_tokens can exceed prompt_tokens and the
@@ -405,11 +412,12 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	adminRejectReason := common.GetContextKeyString(ctx, constant.ContextKeyAdminRejectReason)
+	exemptionReason := TextBillingExemptionReason(originUsage)
 	summary := calculateTextQuotaSummary(ctx, relayInfo, billingUsage)
 
 	var tieredResult *billingexpr.TieredResult
 	tieredBillingApplied := false
-	if originUsage != nil {
+	if originUsage != nil && exemptionReason == "" {
 		var tieredUsedVars map[string]bool
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
 			tieredUsedVars = billingexpr.UsedVars(snap.ExprString)
@@ -420,6 +428,14 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			tieredResult = tieredRes
 			summary.Quota = composeTieredTextQuota(relayInfo, summary, tieredQuota, tieredRes)
 		}
+	}
+	if exemptionReason != "" {
+		// Waive the complete request after all pricing modes, including fixed
+		// prices and constant expressions. Reference usage remains untouched.
+		summary.Quota = 0
+		summary.ToolSurchargeItems = nil
+		summary.ToolCallSurchargeQuota = decimal.Zero
+		extraContent = append(extraContent, "Claude 在输出前拒绝，未计费")
 	}
 
 	for _, item := range summary.ToolSurchargeItems {
@@ -436,11 +452,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		))
 	}
 	if summary.AudioInputPrice > 0 && summary.AudioTokens > 0 {
-		q := decimal.NewFromFloat(summary.AudioInputPrice).Div(decimal.NewFromInt(1000000)).Mul(decimal.NewFromInt(int64(summary.AudioTokens))).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
-		extraContent = append(extraContent, fmt.Sprintf("Audio Input 花费 %s", logger.LogQuota(common.QuotaFromDecimal(q))))
+		extraContent = append(extraContent, fmt.Sprintf("Audio Input 花费 %s", logger.LogQuota(common.QuotaFromDecimal(summary.AudioInputQuota))))
 	}
 
-	if !summary.hasBillableUsage() {
+	if !summary.hasBillableUsage() && exemptionReason == "" {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
@@ -477,6 +492,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		other = GenerateTextOtherInfo(ctx, relayInfo, summary.ModelRatio, summary.GroupRatio, summary.CompletionRatio, summary.CacheTokens, summary.CacheRatio, summary.ModelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	}
 	appendUsageBillingPathForLog(other, common.GetContextKeyBool(ctx, constant.ContextKeyLocalCountTokens), originUsage)
+	if exemptionReason != "" {
+		other["billing_exempt_reason"] = exemptionReason
+	}
 	if adminRejectReason != "" {
 		other["reject_reason"] = adminRejectReason
 	}
@@ -526,6 +544,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
+		InputTokensTotal: UsageInputTokensForStatistics(relayInfo, originUsage),
 		CompletionTokens: summary.CompletionTokens,
 		ModelName:        logModel,
 		TokenName:        summary.TokenName,
@@ -537,7 +556,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
+	sample := perfmetrics.BuildRelaySample(relayInfo, true, int64(summary.CompletionTokens), time.Now())
 	gopool.Go(func() {
-		perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
+		perfmetrics.Record(sample)
 	})
 }

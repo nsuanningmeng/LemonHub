@@ -209,16 +209,20 @@ func resetBatchUpdateTestState(t *testing.T) {
 	t.Helper()
 	oldBatchEnabled := common.BatchUpdateEnabled
 	common.BatchUpdateEnabled = false
+	batchUncertainError = nil
 	for i := 0; i < BatchUpdateTypeCount; i++ {
 		batchUpdateLocks[i].Lock()
 		batchUpdateStores[i] = make(map[int]int)
+		batchUncertainStores[i] = make(map[int]int)
 		batchUpdateLocks[i].Unlock()
 	}
 	t.Cleanup(func() {
 		common.BatchUpdateEnabled = oldBatchEnabled
+		batchUncertainError = nil
 		for i := 0; i < BatchUpdateTypeCount; i++ {
 			batchUpdateLocks[i].Lock()
 			batchUpdateStores[i] = make(map[int]int)
+			batchUncertainStores[i] = make(map[int]int)
 			batchUpdateLocks[i].Unlock()
 		}
 	})

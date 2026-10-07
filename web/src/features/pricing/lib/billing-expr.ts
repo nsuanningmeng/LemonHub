@@ -22,11 +22,12 @@ For commercial licensing, please contact support@quantumnous.com
  * Parses the dynamic billing expression format so that the pricing breakdown
  * UI can be rendered from the same backend expressions.
  *
- * The grammar is intentionally narrow: we only support the shapes that the
- * server emits (tiered pricing + request-rule conditional multipliers), so
- * the regular expressions are exact rather than tolerant of arbitrary
- * expression syntax.
+ * Structured prices require a complete parse of a deliberately narrow subset:
+ * linear prices, token/time guards, and known request-rule multipliers.
+ * Expressions outside that subset retain their raw representation.
  */
+
+import { resolveBillingTimeZone } from './billing-time'
 
 // ---------------------------------------------------------------------------
 // Variable registry
@@ -160,11 +161,6 @@ export const BILLING_CACHE_VAR_MAP = BILLING_EXTRA_VARS.map((v) => ({
   exprVar: v.key,
 }))
 
-const BILLING_VAR_REGEX = new RegExp(
-  `\\b(${BILLING_PRICING_VARS.map((v) => v.key).join('|')})\\s*\\*\\s*([\\d.eE+-]+)`,
-  'g'
-)
-
 // ---------------------------------------------------------------------------
 // Request rule constants
 // ---------------------------------------------------------------------------
@@ -246,6 +242,10 @@ export type TierCondition = {
 export type ParsedTier = {
   label: string
   conditions: TierCondition[]
+  /** The complete path to this tier, including preceding false branches. */
+  conditionText?: string
+  /** Present only when the whole guard is a lossless list of conditions. */
+  displayConditions?: RequestCondition[]
   [field: string]: unknown
 }
 
@@ -260,56 +260,389 @@ function stripExprVersion(exprStr: string): { version: number; body: string } {
   return { version: 1, body: exprStr }
 }
 
-function parseTierBody(bodyStr: string): Record<string, number> {
-  const coeffs: Record<string, number> = {}
-  const re = new RegExp(BILLING_VAR_REGEX.source, 'g')
-  let m
-  while ((m = re.exec(bodyStr)) !== null) {
-    if (!(m[1] in coeffs)) coeffs[m[1]] = Number(m[2])
+type PricingToken = { text: string; start: number; end: number }
+type PricingNode = { start: number; end: number } & (
+  | { kind: 'number'; value: number }
+  | { kind: 'string'; value: string }
+  | { kind: 'variable'; name: string }
+  | { kind: 'call'; name: string; args: PricingNode[] }
+  | { kind: 'unary'; op: string; value: PricingNode }
+  | { kind: 'binary'; op: string; left: PricingNode; right: PricingNode }
+  | {
+      kind: 'conditional'
+      condition: PricingNode
+      yes: PricingNode
+      no: PricingNode
+    }
+)
+
+// This is a display-only subset, not an implementation of expr-lang. Unknown
+// syntax remains a raw expression; no prefix or embedded tier may be extracted.
+function pricingTokens(source: string): PricingToken[] {
+  const tokens: PricingToken[] = []
+  const token =
+    /(?:"(?:[^"\\]|\\.)*"|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_]\w*|&&|\|\||<=|>=|==|!=|[()+*/?:,!<>-])/y
+  let index = 0
+  while (index < source.length) {
+    if (/\s/.test(source[index])) {
+      index += 1
+      continue
+    }
+    token.lastIndex = index
+    const match = token.exec(source)
+    if (!match) throw new Error('Unsupported pricing syntax')
+    tokens.push({ text: match[0], start: index, end: token.lastIndex })
+    index = token.lastIndex
   }
-  const tier: Record<string, number> = {}
-  for (const [varName, field] of Object.entries(BILLING_VAR_KEY_TO_FIELD)) {
-    tier[field] = coeffs[varName] || 0
+  return tokens
+}
+
+const PRICING_PRECEDENCE: Record<string, number> = {
+  '||': 1,
+  '&&': 2,
+  '==': 3,
+  '!=': 3,
+  '<': 4,
+  '<=': 4,
+  '>': 4,
+  '>=': 4,
+  '+': 5,
+  '-': 5,
+  '*': 6,
+  '/': 6,
+}
+
+class PricingParser {
+  private index = 0
+  constructor(private tokens: PricingToken[]) {}
+
+  parse(): PricingNode {
+    const node = this.expression()
+    if (this.index !== this.tokens.length) {
+      throw new Error('Incomplete pricing expression')
+    }
+    return node
   }
-  return tier
+
+  private take(expected?: string): PricingToken {
+    const token = this.tokens[this.index++]
+    if (!token || (expected && token.text !== expected)) {
+      throw new Error('Incomplete pricing expression')
+    }
+    return token
+  }
+
+  private expression(): PricingNode {
+    const condition = this.binary(1)
+    if (this.tokens[this.index]?.text !== '?') return condition
+    this.take('?')
+    const yes = this.expression()
+    this.take(':')
+    const no = this.expression()
+    return {
+      kind: 'conditional',
+      condition,
+      yes,
+      no,
+      start: condition.start,
+      end: no.end,
+    }
+  }
+
+  private binary(minimum: number): PricingNode {
+    let left = this.primary()
+    while (true) {
+      const op = this.tokens[this.index]?.text
+      const precedence = PRICING_PRECEDENCE[op] || 0
+      if (precedence < minimum) return left
+      this.take()
+      const right = this.binary(precedence + 1)
+      left = {
+        kind: 'binary',
+        op,
+        left,
+        right,
+        start: left.start,
+        end: right.end,
+      }
+    }
+  }
+
+  private primary(): PricingNode {
+    const token = this.take()
+    const start = token.start
+    if (token.text === '(') {
+      const node = this.expression()
+      const close = this.take(')')
+      return { ...node, start, end: close.end }
+    }
+    if (['+', '-', '!'].includes(token.text)) {
+      const value = this.primary()
+      return { kind: 'unary', op: token.text, value, start, end: value.end }
+    }
+    if (token.text.startsWith('"')) {
+      const value: unknown = JSON.parse(token.text)
+      if (typeof value !== 'string') throw new Error('Invalid pricing string')
+      return { kind: 'string', value, start, end: token.end }
+    }
+    if (NUMERIC_LITERAL_REGEX.test(token.text)) {
+      const value = Number(token.text)
+      if (!Number.isFinite(value)) throw new Error('Invalid pricing number')
+      return { kind: 'number', value, start, end: token.end }
+    }
+    if (!/^[A-Za-z_]\w*$/.test(token.text)) {
+      throw new Error('Invalid pricing operand')
+    }
+    if (this.tokens[this.index]?.text !== '(') {
+      return { kind: 'variable', name: token.text, start, end: token.end }
+    }
+    this.take('(')
+    const args: PricingNode[] = []
+    if (this.tokens[this.index]?.text !== ')') {
+      args.push(this.expression())
+      while (this.tokens[this.index]?.text === ',') {
+        this.take(',')
+        args.push(this.expression())
+      }
+    }
+    const close = this.take(')')
+    return { kind: 'call', name: token.text, args, start, end: close.end }
+  }
+}
+
+type LinearPrice = { constant: number; coefficients: Record<string, number> }
+
+function linearPrice(node: PricingNode): LinearPrice | null {
+  if (node.kind === 'number') return { constant: node.value, coefficients: {} }
+  if (
+    node.kind === 'variable' &&
+    Object.hasOwn(BILLING_VAR_KEY_TO_FIELD, node.name)
+  ) {
+    return { constant: 0, coefficients: { [node.name]: 1 } }
+  }
+  if (node.kind === 'unary' && node.op === '+') return linearPrice(node.value)
+  if (node.kind !== 'binary') return null
+  const left = linearPrice(node.left)
+  const right = linearPrice(node.right)
+  if (!left || !right) return null
+  if (node.op === '+') {
+    const coefficients = { ...left.coefficients }
+    for (const [key, value] of Object.entries(right.coefficients)) {
+      coefficients[key] = (coefficients[key] ?? 0) + value
+    }
+    return { constant: left.constant + right.constant, coefficients }
+  }
+  let scale: number
+  let price: LinearPrice
+  if (node.op === '*' && Object.keys(left.coefficients).length === 0) {
+    scale = left.constant
+    price = right
+  } else if (node.op === '*' && Object.keys(right.coefficients).length === 0) {
+    scale = right.constant
+    price = left
+  } else if (
+    node.op === '/' &&
+    Object.keys(right.coefficients).length === 0 &&
+    right.constant > 0
+  ) {
+    scale = 1 / right.constant
+    price = left
+  } else {
+    return null
+  }
+  return {
+    constant: price.constant * scale,
+    coefficients: Object.fromEntries(
+      Object.entries(price.coefficients).map(([key, value]) => [
+        key,
+        value * scale,
+      ])
+    ),
+  }
+}
+
+function tierPrice(node: PricingNode): LinearPrice | null {
+  if (
+    node.kind === 'call' &&
+    node.name === 'tier' &&
+    node.args.length === 2 &&
+    node.args[0].kind === 'string'
+  ) {
+    return linearPrice(node.args[1])
+  }
+  return linearPrice(node)
+}
+
+function validLinearPrice(price: LinearPrice | null): price is LinearPrice {
+  return (
+    price !== null &&
+    [price.constant, ...Object.values(price.coefficients)].every(
+      (value) => Number.isFinite(value) && value >= 0
+    )
+  )
+}
+
+function supportedTierCondition(node: PricingNode): boolean {
+  if (node.kind === 'unary' && node.op === '!') {
+    return supportedTierCondition(node.value)
+  }
+  if (node.kind !== 'binary') return false
+  if (node.op === '&&' || node.op === '||') {
+    return (
+      supportedTierCondition(node.left) && supportedTierCondition(node.right)
+    )
+  }
+  if (
+    !['<', '<=', '>', '>=', '==', '!='].includes(node.op) ||
+    node.right.kind !== 'number'
+  ) {
+    return false
+  }
+  const value = node.left
+  if (value.kind === 'variable') {
+    return BILLING_CONDITION_VARS.includes(value.name)
+  }
+  if (
+    value.kind !== 'call' ||
+    !TIME_FUNCS.includes(value.name as TimeFunc) ||
+    value.args.length !== 1 ||
+    value.args[0].kind !== 'string'
+  ) {
+    return false
+  }
+  if (!isTimeValueInRange(value.name as TimeFunc, String(node.right.value))) {
+    return false
+  }
+  return resolveBillingTimeZone(value.args[0].value).kind === 'supported'
+}
+
+function legacyTierConditions(
+  node: PricingNode,
+  negate = false
+): TierCondition[] | null {
+  if (node.kind === 'unary' && node.op === '!') {
+    return legacyTierConditions(node.value, !negate)
+  }
+  if (node.kind !== 'binary') return null
+  if ((!negate && node.op === '&&') || (negate && node.op === '||')) {
+    const left = legacyTierConditions(node.left, negate)
+    const right = legacyTierConditions(node.right, negate)
+    return left && right ? [...left, ...right] : null
+  }
+  if (
+    node.left.kind !== 'variable' ||
+    !BILLING_CONDITION_VARS.includes(node.left.name) ||
+    node.right.kind !== 'number'
+  ) {
+    return null
+  }
+  const inverse: Record<string, TierCondition['op']> = {
+    '<': '>=',
+    '<=': '>',
+    '>': '<=',
+    '>=': '<',
+  }
+  if (!Object.hasOwn(inverse, node.op)) return null
+  const op = negate ? inverse[node.op] : (node.op as TierCondition['op'])
+  return [
+    {
+      var: node.left.name as TierCondition['var'],
+      op,
+      value: node.right.value,
+    },
+  ]
+}
+
+type TierGuard = { node: PricingNode; negate: boolean }
+
+function collectPricingTiers(
+  node: PricingNode,
+  source: string,
+  guards: TierGuard[],
+  tiers: ParsedTier[]
+): boolean {
+  if (node.kind === 'conditional') {
+    if (!supportedTierCondition(node.condition)) return false
+    return (
+      collectPricingTiers(
+        node.yes,
+        source,
+        [...guards, { node: node.condition, negate: false }],
+        tiers
+      ) &&
+      collectPricingTiers(
+        node.no,
+        source,
+        [...guards, { node: node.condition, negate: true }],
+        tiers
+      )
+    )
+  }
+  const price = tierPrice(node)
+  if (
+    !validLinearPrice(price) ||
+    price.constant !== 0 ||
+    Object.keys(price.coefficients).length === 0
+  ) {
+    return false
+  }
+  const tier: ParsedTier = { label: '', conditions: [] }
+  if (node.kind === 'call' && node.args[0].kind === 'string') {
+    tier.label = node.args[0].value
+  }
+  for (const [key, field] of Object.entries(BILLING_VAR_KEY_TO_FIELD)) {
+    tier[field] = price.coefficients[key] ?? 0
+  }
+  const parts = guards.map((guard) => {
+    const text = source.slice(guard.node.start, guard.node.end)
+    if (guard.negate) return `!(${text})`
+    return guards.length > 1 ? `(${text})` : text
+  })
+  if (parts.length > 0) {
+    tier.conditionText = parts.join(' && ')
+    const conditions = guards.map((guard) =>
+      legacyTierConditions(guard.node, guard.negate)
+    )
+    if (conditions.every((condition) => condition !== null)) {
+      tier.conditions = conditions.flat() as TierCondition[]
+    }
+    // The existing request-condition parser knows safe flat AND/time ranges.
+    // Complex OR/else guards retain their complete text, never partial rows.
+    const display = tryParseRequestConditions(tier.conditionText)
+    if (display) tier.displayConditions = display
+  }
+  tiers.push(tier)
+  return true
 }
 
 export function parseTiersFromExpr(exprStr: string): ParsedTier[] {
   if (!exprStr) return []
   try {
-    const { body } = stripExprVersion(exprStr)
-    const condGroup =
-      `((?:(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)` +
-      `(?:\\s*&&\\s*(?:p|c|len)\\s*(?:<|<=|>|>=)\\s*[\\d.eE+]+)*)`
-    const tierRe = new RegExp(
-      `(?:${condGroup}\\s*\\?\\s*)?tier\\("([^"]*)",\\s*([^)]+)\\)`,
-      'g'
-    )
+    const { version, body } = stripExprVersion(exprStr.trim())
+    if (version !== 1) return []
+    const split = splitBillingExprAndRequestRules(body)
+    const source = split.billingExpr
+    const node = new PricingParser(pricingTokens(source)).parse()
     const tiers: ParsedTier[] = []
-    let m
-    while ((m = tierRe.exec(body)) !== null) {
-      const condStr = m[1] || ''
-      const conditions: TierCondition[] = []
-      if (condStr) {
-        for (const cp of condStr.split(/\s*&&\s*/)) {
-          const cm = cp.trim().match(/^(p|c|len)\s*(<|<=|>|>=)\s*([\d.eE+]+)$/)
-          if (cm) {
-            conditions.push({
-              var: cm[1] as TierCondition['var'],
-              op: cm[2] as TierCondition['op'],
-              value: Number(cm[3]),
-            })
-          }
-        }
-      }
-      const tier = parseTierBody(m[3]) as ParsedTier
-      tier.label = m[2]
-      tier.conditions = conditions
-      tiers.push(tier)
-    }
-    return tiers
+    return collectPricingTiers(node, source, [], tiers) ? tiers : []
   } catch {
     return []
+  }
+}
+
+export function classifyBillingExpression(
+  expr: string
+): 'token' | 'request' | 'dynamic' {
+  try {
+    const { version, body } = stripExprVersion(expr.trim())
+    if (version !== 1) return 'dynamic'
+    const node = new PricingParser(pricingTokens(body)).parse()
+    const price = tierPrice(node)
+    if (!validLinearPrice(price)) return 'dynamic'
+    if (Object.keys(price.coefficients).length === 0) return 'request'
+    return price.constant === 0 ? 'token' : 'dynamic'
+  } catch {
+    return 'dynamic'
   }
 }
 
@@ -326,48 +659,45 @@ export function normalizeTierLabel(label: string | undefined): string {
 // Request rule parser
 // ---------------------------------------------------------------------------
 
-function splitTopLevelMultiply(expr: string): string[] {
-  const parts: string[] = []
-  let start = 0
-  let depth = 0
-  for (let index = 0; index < expr.length; index += 1) {
-    const char = expr[index]
-    if (char === '(') depth += 1
-    if (char === ')') depth -= 1
-    if (depth === 0 && expr.slice(index, index + 3) === ' * ') {
-      parts.push(expr.slice(start, index).trim())
-      start = index + 3
-      index += 2
+function splitTopLevelOperator(expr: string, operator: string): string[] {
+  try {
+    const parts: string[] = []
+    let start = 0
+    let depth = 0
+    for (const token of pricingTokens(expr)) {
+      if (token.text === '(') depth += 1
+      if (token.text === ')') depth -= 1
+      if (depth < 0) return [expr]
+      if (depth === 0 && token.text === operator) {
+        parts.push(expr.slice(start, token.start).trim())
+        start = token.end
+      }
     }
+    parts.push(expr.slice(start).trim())
+    if (depth !== 0 || parts.some((part) => !part)) return [expr]
+    return parts
+  } catch {
+    return [expr]
   }
-  parts.push(expr.slice(start).trim())
-  return parts.filter(Boolean)
+}
+
+function splitTopLevelMultiply(expr: string): string[] {
+  return splitTopLevelOperator(expr, '*')
 }
 
 function splitTopLevelAnd(expr: string): string[] {
-  const parts: string[] = []
-  let start = 0
-  let depth = 0
-  for (let i = 0; i < expr.length; i += 1) {
-    const c = expr[i]
-    if (c === '(') depth += 1
-    if (c === ')') depth -= 1
-    if (depth === 0 && expr.slice(i, i + 4) === ' && ') {
-      parts.push(expr.slice(start, i).trim())
-      start = i + 4
-      i += 3
-    }
-  }
-  parts.push(expr.slice(start).trim())
-  return parts.filter(Boolean)
+  return splitTopLevelOperator(expr, '&&')
 }
 
 function parseExprLiteral(raw: string): string | null {
   const text = raw.trim()
   if (text === 'true' || text === 'false') return text
-  if (NUMERIC_LITERAL_REGEX.test(text)) return text
+  if (NUMERIC_LITERAL_REGEX.test(text)) {
+    return Number.isFinite(Number(text)) ? text : null
+  }
   try {
-    return JSON.parse(text) as string
+    const value: unknown = JSON.parse(text)
+    return typeof value === 'string' ? value : null
   } catch {
     return null
   }
@@ -394,11 +724,11 @@ function isTimeValueInRange(timeFunc: TimeFunc, text: string): boolean {
 
 function tryParseTimeCondition(expr: string): RequestCondition | null {
   let m = expr.match(
-    /^(hour|minute|weekday|month|day)\("([^"]+)"\) >= ([\d.eE+-]+) (&&|\|\|) \1\("\2"\) < ([\d.eE+-]+)$/
+    /^(hour|minute|weekday|month|day)\("([^"]*)"\) >= ([\d.eE+-]+) (&&|\|\|) \1\("\2"\) < ([\d.eE+-]+)$/
   )
   if (!m) {
     m = expr.match(
-      /^\((hour|minute|weekday|month|day)\("([^"]+)"\) >= ([\d.eE+-]+) (&&|\|\|) \1\("\2"\) < ([\d.eE+-]+)\)$/
+      /^\((hour|minute|weekday|month|day)\("([^"]*)"\) >= ([\d.eE+-]+) (&&|\|\|) \1\("\2"\) < ([\d.eE+-]+)\)$/
     )
   }
   if (m) {
@@ -415,10 +745,12 @@ function tryParseTimeCondition(expr: string): RequestCondition | null {
     // Stored expressions are billing contracts: never reinterpret an explicit
     // OR as AND (or vice versa) merely by opening and saving the editor.
     if ((m[4] === '||') !== Number(m[3]) > Number(m[5])) return null
+    const zone = resolveBillingTimeZone(m[2])
+    if (zone.kind !== 'supported') return null
     return {
       source: 'time',
       timeFunc: m[1] as TimeFunc,
-      timezone: m[2],
+      timezone: zone.timeZone,
       mode: MATCH_RANGE,
       value: '',
       rangeStart: m[3],
@@ -426,7 +758,7 @@ function tryParseTimeCondition(expr: string): RequestCondition | null {
     }
   }
   m = expr.match(
-    /^(hour|minute|weekday|month|day)\("([^"]+)"\) (==|>=|<) ([\d.eE+-]+)$/
+    /^(hour|minute|weekday|month|day)\("([^"]*)"\) (==|>=|<) ([\d.eE+-]+)$/
   )
   if (m) {
     if (!isTimeValueInRange(m[1] as TimeFunc, m[4])) return null
@@ -435,10 +767,12 @@ function tryParseTimeCondition(expr: string): RequestCondition | null {
       '>=': MATCH_GTE,
       '<': MATCH_LT,
     }
+    const zone = resolveBillingTimeZone(m[2])
+    if (zone.kind !== 'supported') return null
     return {
       source: 'time',
       timeFunc: m[1] as TimeFunc,
-      timezone: m[2],
+      timezone: zone.timeZone,
       mode: opMap[m[3]] || MATCH_EQ,
       value: m[4],
       rangeStart: '',
@@ -589,6 +923,7 @@ function tryParseRequestConditions(
 function tryParseRuleGroupFactor(part: string): RequestRuleGroup | null {
   const m = part.match(/^\((.+) \? ([\d.eE+-]+) : 1\)$/s)
   if (!m) return null
+  if (!Number.isFinite(Number(m[2])) || Number(m[2]) < 0) return null
 
   const conditions = tryParseRequestConditions(m[1])
   if (!conditions) return null
@@ -630,14 +965,19 @@ export function tryParseRequestRuleExpr(
 // ---------------------------------------------------------------------------
 
 function hasFullOuterParens(expr: string): boolean {
-  if (!expr.startsWith('(') || !expr.endsWith(')')) return false
-  let depth = 0
-  for (let i = 0; i < expr.length; i += 1) {
-    if (expr[i] === '(') depth += 1
-    if (expr[i] === ')') depth -= 1
-    if (depth === 0 && i < expr.length - 1) return false
+  try {
+    const tokens = pricingTokens(expr)
+    if (tokens[0]?.text !== '(' || tokens.at(-1)?.text !== ')') return false
+    let depth = 0
+    for (const [index, token] of tokens.entries()) {
+      if (token.text === '(') depth += 1
+      if (token.text === ')') depth -= 1
+      if (depth <= 0 && index < tokens.length - 1) return false
+    }
+    return depth === 0
+  } catch {
+    return false
   }
-  return depth === 0
 }
 
 function unwrapOuterParens(expr: string): string {
@@ -655,7 +995,21 @@ export function splitBillingExprAndRequestRules(expr: string): {
   const trimmed = (expr || '').trim()
   if (!trimmed) return { billingExpr: '', requestRuleExpr: '' }
 
-  const parts = splitTopLevelMultiply(trimmed)
+  const { version, body } = stripExprVersion(trimmed)
+  if (version !== 1) return { billingExpr: trimmed, requestRuleExpr: '' }
+  const parts: string[] = []
+  try {
+    const remaining = [new PricingParser(pricingTokens(body)).parse()]
+    for (let node = remaining.pop(); node; node = remaining.pop()) {
+      if (node.kind === 'binary' && node.op === '*') {
+        remaining.push(node.right, node.left)
+      } else {
+        parts.push(body.slice(node.start, node.end))
+      }
+    }
+  } catch {
+    return { billingExpr: trimmed, requestRuleExpr: '' }
+  }
   if (parts.length <= 1) return { billingExpr: trimmed, requestRuleExpr: '' }
 
   const ruleParts: string[] = []
@@ -675,7 +1029,7 @@ export function splitBillingExprAndRequestRules(expr: string): {
   }
 
   return {
-    billingExpr: unwrapOuterParens(baseParts[0]),
+    billingExpr: `${trimmed.startsWith('v1:') ? 'v1:' : ''}${unwrapOuterParens(baseParts[0])}`,
     requestRuleExpr: ruleParts.join(' * '),
   }
 }

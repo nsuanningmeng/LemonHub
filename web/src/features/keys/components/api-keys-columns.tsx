@@ -37,7 +37,7 @@ import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { API_KEY_STATUSES } from '../constants'
-import type { ApiKey } from '../types'
+import { getApiKeyEffectiveStatus, type ApiKey } from '../types'
 import { ApiKeyGroupCell } from './api-key-group-cell'
 import { ApiKeyTimestampCell } from './api-key-timestamp-cell'
 import {
@@ -50,7 +50,9 @@ import { DataTableRowActions } from './data-table-row-actions'
 
 function getQuotaProgressColor(percentage: number): string {
   if (percentage <= 10) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
-  if (percentage <= 30) return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+  if (percentage <= 30) {
+    return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+  }
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
@@ -115,7 +117,8 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
       meta: { mobileTitle: true },
     },
     {
-      accessorKey: 'status',
+      id: 'status',
+      accessorFn: getApiKeyEffectiveStatus,
       header: t('Status'),
       cell: ({ row }) => {
         const statusConfig = API_KEY_STATUSES[row.getValue('status') as number]
@@ -129,7 +132,6 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
           />
         )
       },
-      filterFn: (row, id, value) => value.includes(String(row.getValue(id))),
       size: 120,
       meta: { mobileBadge: true },
     },

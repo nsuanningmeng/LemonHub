@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient } from '@tanstack/react-query'
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import { Power, PowerOff, Tag, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -45,6 +45,7 @@ import {
   handleBatchDisable,
   handleBatchEnable,
   handleBatchSetTag,
+  isTagAggregateRow,
 } from '../lib'
 import type { Channel } from '../types'
 
@@ -67,16 +68,24 @@ export function DataTableBulkActions<TData>({
     ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
   )
 
-  const selectedRows = table.getFilteredSelectedRowModel().rows
-  const selectedIds = selectedRows.reduce<number[]>((ids, row) => {
-    const id = (row.original as Channel).id
+  const selectedIds = [
+    ...table
+      .getFilteredSelectedRowModel()
+      .flatRows.reduce<Set<number>>((ids, row) => {
+        const channel = row.original as Channel
+        if (
+          row.getIsSelected() &&
+          row.getCanSelect() &&
+          !isTagAggregateRow(channel) &&
+          Number.isSafeInteger(channel.id) &&
+          channel.id > 0
+        ) {
+          ids.add(channel.id)
+        }
 
-    if (typeof id === 'number') {
-      ids.push(id)
-    }
-
-    return ids
-  }, [])
+        return ids
+      }, new Set()),
+  ]
 
   const handleClearSelection = () => {
     table.resetRowSelection()
@@ -108,7 +117,11 @@ export function DataTableBulkActions<TData>({
 
   return (
     <>
-      <BulkActionsToolbar table={table} entityName='channel'>
+      <BulkActionsToolbar
+        table={table}
+        entityName='channel'
+        selectedCount={selectedIds.length}
+      >
         <Tooltip>
           <TooltipTrigger
             render={

@@ -52,7 +52,11 @@ import {
   API_KEY_STATUSES,
   ERROR_MESSAGES,
 } from '../constants'
-import type { ApiKey } from '../types'
+import {
+  getApiKeyEffectiveStatus,
+  type ApiKey,
+  type ApiKeyStatus,
+} from '../types'
 import { ApiKeyCell, UnlimitedQuotaBadge } from './api-keys-cells'
 import { useApiKeysColumns } from './api-keys-columns'
 import { useApiKeys } from './api-keys-provider'
@@ -67,7 +71,7 @@ const API_KEYS_MOBILE_SKELETON_IDS = Array.from(
 )
 
 function isDisabledApiKeyRow(apiKey: ApiKey) {
-  return apiKey.status !== API_KEY_STATUS.ENABLED
+  return getApiKeyEffectiveStatus(apiKey) !== API_KEY_STATUS.ENABLED
 }
 
 function ApiKeysMobileSkeleton() {
@@ -129,7 +133,7 @@ function ApiKeysMobileList({
     <div className='divide-border overflow-hidden rounded-lg border'>
       {rows.map((row) => {
         const apiKey = row.original
-        const statusConfig = API_KEY_STATUSES[apiKey.status]
+        const statusConfig = API_KEY_STATUSES[getApiKeyEffectiveStatus(apiKey)]
         const total = apiKey.used_quota + apiKey.remain_quota
 
         return (
@@ -228,6 +232,15 @@ export function ApiKeysTable() {
     columnId: '_tokenSearch',
     onColumnFiltersChange,
   })
+  const statusValue = columnFilters.find(
+    (filter) => filter.id === 'status'
+  )?.value
+  const selectedStatus = Array.isArray(statusValue)
+    ? Number(statusValue[0])
+    : Number.NaN
+  const status = [1, 2, 3, 4].includes(selectedStatus)
+    ? (selectedStatus as ApiKeyStatus)
+    : undefined
   const shouldSearch = Boolean(globalFilter?.trim() || tokenFilter.trim())
 
   // Fetch data with React Query
@@ -240,6 +253,7 @@ export function ApiKeysTable() {
       globalFilter,
       tokenFilter,
       refreshTrigger,
+      status,
     ],
     queryFn: async () => {
       const result = shouldSearch
@@ -248,10 +262,12 @@ export function ApiKeysTable() {
             token: tokenFilter,
             p: pagination.pageIndex + 1,
             size: pagination.pageSize,
+            status,
           })
         : await getApiKeys({
             p: pagination.pageIndex + 1,
             size: pagination.pageSize,
+            status,
           })
 
       if (!result.success) {
@@ -293,6 +309,7 @@ export function ApiKeysTable() {
     onGlobalFilterChange,
     onColumnFiltersChange,
     manualPagination: true,
+    manualFiltering: true,
     totalCount: data?.total || 0,
     ensurePageInRange,
   })

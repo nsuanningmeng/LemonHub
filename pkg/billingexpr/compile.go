@@ -111,6 +111,7 @@ func usesRequestProbe(node ast.Node) bool {
 type cachedEntry struct {
 	prog         *vm.Program
 	usedVars     map[string]bool
+	bodyRequired bool
 	requestRules []RequestRuleTrace
 	version      int
 }
@@ -198,6 +199,7 @@ func compileEntryFromCacheByHash(exprStr, hash string) (*cachedEntry, error) {
 	entry := &cachedEntry{
 		prog:         prog,
 		usedVars:     extractUsedVars(prog),
+		bodyRequired: requestBodyRequired(prog),
 		requestRules: patcher.requestRules,
 		version:      version,
 	}
@@ -242,6 +244,42 @@ func extractUsedVars(prog *vm.Program) map[string]bool {
 		return false
 	})
 	return vars
+}
+
+// requestBodyRequired also accounts for calls through the expression environment,
+// such as let f = $env[header("selector")]; f("service_tier"). Known non-param
+// members do not need a body; an escaping environment or dynamic member may.
+func requestBodyRequired(prog *vm.Program) bool {
+	safeEnvironmentReads := make(map[*ast.IdentifierNode]bool)
+	ast.Find(prog.Node(), func(node ast.Node) bool {
+		member, ok := node.(*ast.MemberNode)
+		if !ok {
+			return false
+		}
+		env, ok := member.Node.(*ast.IdentifierNode)
+		if !ok || env.Value != "$env" {
+			return false
+		}
+		if key, ok := member.Property.(*ast.StringNode); ok && key.Value != "param" {
+			safeEnvironmentReads[env] = true
+		}
+		return false
+	})
+	return ast.Find(prog.Node(), func(node ast.Node) bool {
+		id, ok := node.(*ast.IdentifierNode)
+		return ok && (id.Value == "param" || (id.Value == "$env" && !safeEnvironmentReads[id]))
+	}) != nil
+}
+
+// RequestBodyRequired reports whether the compiled program can access param.
+// Invalid expressions return their compile error before callers read a body.
+// This cached metadata is independent of the externally exposed UsedVars map.
+func RequestBodyRequired(exprStr string) (bool, error) {
+	entry, err := compileEntryFromCacheByHash(exprStr, ExprHashString(exprStr))
+	if err != nil {
+		return false, err
+	}
+	return entry.bodyRequired, nil
 }
 
 // UsedVars returns the set of identifier names referenced by an expression.

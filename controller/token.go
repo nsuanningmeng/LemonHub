@@ -41,10 +41,15 @@ type tokenRequest struct {
 
 type tokenResponse struct {
 	*model.Token
-	AutoGroups []string `json:"auto_groups"`
+	AutoGroups      []string `json:"auto_groups"`
+	EffectiveStatus int      `json:"effective_status"`
 }
 
 func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
+	return buildMaskedTokenResponseAt(token, common.GetTimestamp())
+}
+
+func buildMaskedTokenResponseAt(token *model.Token, now int64) *tokenResponse {
 	if token == nil {
 		return nil
 	}
@@ -58,13 +63,13 @@ func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	if len(autoGroups) == 0 {
 		autoGroups = nil
 	}
-	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups}
+	return &tokenResponse{Token: &maskedToken, AutoGroups: autoGroups, EffectiveStatus: token.EffectiveStatus(now)}
 }
 
-func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
+func buildMaskedTokenResponses(tokens []*model.Token, now int64) []*tokenResponse {
 	maskedTokens := make([]*tokenResponse, 0, len(tokens))
 	for _, token := range tokens {
-		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
+		maskedTokens = append(maskedTokens, buildMaskedTokenResponseAt(token, now))
 	}
 	return maskedTokens
 }
@@ -119,34 +124,65 @@ func setTokenAutoGroups(c *gin.Context, token *model.Token, groups []string) boo
 	return true
 }
 
+func getTokenStatusFilter(c *gin.Context) (model.TokenStatusFilter, bool) {
+	filter := model.TokenStatusFilter{Now: common.GetTimestamp()}
+	values, exists := c.Request.URL.Query()["status"]
+	if !exists {
+		return filter, true
+	}
+	if len(values) != 1 {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return filter, false
+	}
+	status, err := strconv.Atoi(values[0])
+	if err != nil || status < common.TokenStatusEnabled || status > common.TokenStatusExhausted {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return filter, false
+	}
+	filter.Status = status
+	return filter, true
+}
+
 func GetAllTokens(c *gin.Context) {
+	filter, ok := getTokenStatusFilter(c)
+	if !ok {
+		return
+	}
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
-	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, err := model.GetAllUserTokens(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), filter)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	total, _ := model.CountUserTokens(userId)
+	total, err := model.CountUserTokens(userId, filter)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	pageInfo.SetItems(buildMaskedTokenResponses(tokens, filter.Now))
 	common.ApiSuccess(c, pageInfo)
 }
 
 func SearchTokens(c *gin.Context) {
+	filter, ok := getTokenStatusFilter(c)
+	if !ok {
+		return
+	}
 	userId := c.GetInt("id")
 	keyword := c.Query("keyword")
 	token := c.Query("token")
 
 	pageInfo := common.GetPageQuery(c)
 
-	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+	tokens, total, err := model.SearchUserTokens(userId, keyword, token, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), filter)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(buildMaskedTokenResponses(tokens))
+	pageInfo.SetItems(buildMaskedTokenResponses(tokens, filter.Now))
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -318,6 +354,18 @@ func validateTokenGroups(c *gin.Context, token *model.Token) bool {
 		})
 		return false
 	}
+	userGroup, err := getTokenRequestUserGroup(c)
+	if err != nil {
+		common.ApiError(c, err)
+		return false
+	}
+	for _, group := range groups {
+		// Auto expands through the existing per-user permission filter at relay time.
+		if group != "auto" && !service.IsUserSelectableGroup(userGroup, group) {
+			common.ApiErrorI18n(c, i18n.MsgDistributorGroupAccessDenied)
+			return false
+		}
+	}
 	token.Group = strings.Join(groups, ",")
 	return true
 }
@@ -432,12 +480,12 @@ func UpdateToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if token.Status == common.TokenStatusEnabled {
-		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
+	if statusOnly != "" && token.Status == common.TokenStatusEnabled {
+		if cleanToken.ExpiredTime < common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
 			common.ApiErrorI18n(c, i18n.MsgTokenExpiredCannotEnable)
 			return
 		}
-		if cleanToken.Status == common.TokenStatusExhausted && cleanToken.RemainQuota <= 0 && !cleanToken.UnlimitedQuota {
+		if cleanToken.RemainQuota <= 0 && !cleanToken.UnlimitedQuota {
 			common.ApiErrorI18n(c, i18n.MsgTokenExhaustedCannotEable)
 			return
 		}

@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 
 import { SubscriptionsDialogs } from './components/subscriptions-dialogs'
 import { SubscriptionsPrimaryButtons } from './components/subscriptions-primary-buttons'
@@ -32,7 +33,7 @@ import { SubscriptionsTable } from './components/subscriptions-table'
 
 function SubscriptionsContent() {
   const { t } = useTranslation()
-  const { complianceConfirmed } = useSubscriptions()
+  const { complianceStatus, retryCompliance } = useSubscriptions()
 
   return (
     <>
@@ -55,7 +56,7 @@ function SubscriptionsContent() {
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>
-            {!complianceConfirmed ? (
+            {complianceStatus === 'unconfirmed' ? (
               <Alert variant='destructive' className='shrink-0'>
                 <AlertDescription>
                   {t(
@@ -64,6 +65,16 @@ function SubscriptionsContent() {
                 </AlertDescription>
               </Alert>
             ) : null}
+            {complianceStatus === 'error' && (
+              <Alert variant='destructive' className='shrink-0'>
+                <AlertDescription>
+                  {t('Unable to load payment compliance status. Please retry.')}
+                </AlertDescription>
+                <Button variant='outline' size='sm' onClick={retryCompliance}>
+                  {t('Retry')}
+                </Button>
+              </Alert>
+            )}
             <div className='min-h-0 flex-1'>
               <SubscriptionsTable />
             </div>

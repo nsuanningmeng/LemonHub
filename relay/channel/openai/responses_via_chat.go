@@ -1,12 +1,14 @@
 package openai
 
 import (
+	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/constant"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -48,7 +50,19 @@ func OaiChatToResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		return nil, types.NewOpenAIError(fmt.Errorf("expected OpenAI responses response, got %T", convertResult.Value), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	usage := convertResult.Usage
-	if usage == nil || usage.TotalTokens == 0 {
+	usageHasTokenFields := false
+	var envelope map[string]any
+	if common.Unmarshal(body, &envelope) == nil {
+		if rawUsage, ok := envelope["usage"].(map[string]any); ok {
+			for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
+				if value, present := rawUsage[key]; present && value != nil {
+					usageHasTokenFields = true
+					break
+				}
+			}
+		}
+	}
+	if !usageHasTokenFields && (usage == nil || usage.TotalTokens == 0) {
 		text := service.ExtractOutputTextFromResponses(responsesResp)
 		usage = service.ResponseText2Usage(c, text, info.UpstreamModelName, info.GetEstimatePromptTokens())
 		responsesResp.Usage = relayconvert.UsageFromChatUsage(usage)
@@ -77,51 +91,95 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
 	}
-	streamErr := (*types.NewAPIError)(nil)
+	var streamErr *types.NewAPIError
+	forwardedSemantic := false
+	choiceFinished := make(map[int]bool)
+	observedGeneration := false
+	usageObserved := false
+	writeFailed := false
 
 	sendEvent := func(event relayconvert.ChatToResponsesStreamEvent) bool {
 		data, err := common.Marshal(event.Payload)
 		if err != nil {
-			streamErr = types.NewOpenAIError(err, types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
+			streamErr = types.NewOpenAIError(fmt.Errorf("invalid converted Responses event"), types.ErrorCodeJsonMarshalFailed, http.StatusInternalServerError)
 			return false
 		}
-		helper.ResponseChunkData(c, dto.ResponsesStreamResponse{Type: event.Type}, string(data))
+		if err := helper.ResponseChunkData(c, event.Payload, string(data)); err != nil {
+			writeFailed = true
+			if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+				info.MarkDownstreamCancelled()
+			} else {
+				info.MarkUpstreamFailure()
+				if info.StreamOutcome().UpstreamFailureStatus == 0 {
+					info.MarkUpstreamFailureStatus(http.StatusBadGateway)
+				}
+			}
+			return false
+		}
+		forwardedSemantic = true
 		return true
 	}
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-		if streamErr != nil {
+		var envelope map[string]any
+		if err := common.UnmarshalJsonStr(data, &envelope); err == nil {
+			if apiErr := ClassifyOpenAIEmbeddedError(envelope["error"]); apiErr != nil {
+				streamErr = apiErr
+				info.MarkUpstreamFailureStatus(apiErr.StatusCode)
+				sr.Stop(apiErr)
+				return
+			}
+			if rawUsage, ok := envelope["usage"].(map[string]any); ok {
+				for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
+					if value, present := rawUsage[key]; present && value != nil {
+						usageObserved = true
+						break
+					}
+				}
+			}
+		}
+		if streamErr != nil || writeFailed {
 			sr.Stop(streamErr)
 			return
 		}
-
-		var errorResp dto.OpenAITextResponse
-		if err := common.UnmarshalJsonStr(data, &errorResp); err == nil {
-			if oaiError := errorResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-				streamErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
-				sr.Stop(streamErr)
-				return
-			}
-		}
-
 		var chunk dto.ChatCompletionsStreamResponse
 		if err := common.UnmarshalJsonStr(data, &chunk); err != nil {
-			logger.LogError(c, "failed to unmarshal chat stream response: "+err.Error())
-			sr.Error(err)
+			info.MarkUpstreamFailureStatus(http.StatusBadGateway)
+			sr.Error(fmt.Errorf("invalid upstream chat stream event"))
+			sr.Stop(nil)
+			return
+		}
+		for _, choice := range chunk.Choices {
+			if _, seen := choiceFinished[choice.Index]; !seen {
+				choiceFinished[choice.Index] = false
+			}
+			if choice.FinishReason != nil && strings.TrimSpace(*choice.FinishReason) != "" {
+				choiceFinished[choice.Index] = true
+			}
+			if choice.Delta.GetContentString() != "" || choice.Delta.GetReasoningContent() != "" || len(choice.Delta.ToolCalls) != 0 {
+				observedGeneration = true
+			}
+		}
+		if usageObserved && chunk.Usage != nil {
+			state.SetUsage(chunk.Usage)
+		}
+		if c.Request.Context().Err() != nil {
+			info.MarkDownstreamCancelled()
 			return
 		}
 		chunk.Model = info.PublicResponseModelName(chunk.Model)
-
 		results, err := relayconvert.ConvertStreamResponseChunk(c, info, state, &chunk)
 		if err != nil {
-			streamErr = types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
+			streamErr = types.NewOpenAIError(fmt.Errorf("invalid upstream chat stream event"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+			info.MarkUpstreamFailureStatus(http.StatusBadGateway)
 			sr.Stop(streamErr)
 			return
 		}
 		for _, result := range results {
 			event, ok := result.Value.(relayconvert.ChatToResponsesStreamEvent)
 			if !ok {
-				streamErr = types.NewOpenAIError(fmt.Errorf("expected OAI responses stream event, got %T", result.Value), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+				streamErr = types.NewOpenAIError(fmt.Errorf("invalid converted Responses event"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+				info.MarkUpstreamFailureStatus(http.StatusBadGateway)
 				sr.Stop(streamErr)
 				return
 			}
@@ -131,17 +189,65 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			}
 		}
 	})
-
-	if streamErr != nil {
-		return nil, streamErr
+	allChoicesFinished := len(choiceFinished) != 0
+	for _, finished := range choiceFinished {
+		if !finished {
+			allChoicesFinished = false
+			break
+		}
+	}
+	validChatTerminal := allChoicesFinished || (info.StreamStatus != nil && info.StreamStatus.EndReason == relaycommon.StreamEndReasonDone)
+	// A completed Chat choice/[DONE] can precede a harmless transport reset.
+	// Callback failures and actual timeout/panic/ping failures still win.
+	if !validChatTerminal || (info.StreamStatus != nil && info.StreamStatus.EndReason != relaycommon.StreamEndReasonEOF && info.StreamStatus.EndReason != relaycommon.StreamEndReasonDone && info.StreamStatus.EndReason != relaycommon.StreamEndReasonScannerErr) {
+		observeResponsesStreamEnd(c, info)
+	}
+	if validChatTerminal && streamErr == nil && !info.StreamOutcome().UpstreamFailed {
+		info.MarkUpstreamCompleted()
 	}
 
 	usage := state.Usage()
-	if usage == nil || usage.TotalTokens == 0 {
+	if !usageObserved || usage == nil {
 		usage = service.ResponseText2Usage(c, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		state.SetUsage(usage)
 	}
+	if c.Request.Context().Err() != nil && !info.StreamOutcome().UpstreamFailed && streamErr == nil {
+		info.MarkDownstreamCancelled()
+		if info.IsPureDownstreamCancellation() && !observedGeneration && !usageObserved {
+			info.MarkCancelledWithoutBillableOutput()
+		}
+		return usage, nil
+	}
+	if writeFailed {
+		return usage, streamErr
+	}
 
+	// EOF without a source completion is an interrupted stream. Keep this
+	// endpoint's existing observed-usage settlement while emitting failure once.
+	interrupted := streamErr != nil || info.StreamOutcome().UpstreamFailed || !validChatTerminal
+	if interrupted {
+		info.MarkUpstreamFailure()
+		if info.StreamOutcome().UpstreamFailureStatus == 0 {
+			info.MarkUpstreamFailureStatus(http.StatusBadGateway)
+		}
+		common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
+		if forwardedSemantic && c.Request.Context().Err() == nil && !c.GetBool("relay_stream_write_failed") {
+			results, err := relayconvert.AbortStreamResponse(state)
+			if err == nil {
+				for _, result := range results {
+					if event, ok := result.Value.(relayconvert.ChatToResponsesStreamEvent); ok && sendEvent(event) {
+						c.Set("relay_stream_error_emitted", true)
+					}
+				}
+			}
+		}
+		if streamErr != nil {
+			return nil, streamErr
+		}
+		return usage, nil
+	}
+
+	info.MarkUpstreamCompleted()
 	finalResults, err := relayconvert.FinalizeStreamResponse(c, info, state)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError)
@@ -149,12 +255,11 @@ func OaiChatToResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 	for _, result := range finalResults {
 		event, ok := result.Value.(relayconvert.ChatToResponsesStreamEvent)
 		if !ok {
-			return nil, types.NewOpenAIError(fmt.Errorf("expected OAI responses stream event, got %T", result.Value), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+			return nil, types.NewOpenAIError(fmt.Errorf("invalid converted Responses event"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
 		}
 		if !sendEvent(event) {
-			return nil, streamErr
+			return usage, streamErr
 		}
 	}
-
 	return usage, nil
 }

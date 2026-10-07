@@ -140,6 +140,7 @@ type FunctionResponse struct {
 }
 
 type ChatCompletionsStreamResponse struct {
+	Error             json.RawMessage                       `json:"error,omitempty"`
 	Id                string                                `json:"id"`
 	Object            string                                `json:"object"`
 	Created           int64                                 `json:"created"`
@@ -227,6 +228,8 @@ type Usage struct {
 	PromptCacheHitTokens int    `json:"prompt_cache_hit_tokens,omitempty"`
 	UsageSemantic        string `json:"usage_semantic,omitempty"`
 	UsageSource          string `json:"usage_source,omitempty"`
+	// ReasoningTokens preserves providers that report the Chat counter at top level.
+	ReasoningTokens *int `json:"reasoning_tokens,omitempty"`
 	// BillingUsage is an in-process settlement snapshot; it must never reach
 	// clients (it names the converter/channel kind, which the fork hides).
 	BillingUsage *BillingUsage `json:"-"`
@@ -244,6 +247,21 @@ type Usage struct {
 
 	// OpenRouter Params
 	Cost any `json:"cost,omitempty"`
+}
+
+// ChatReasoningTokens gives the standard Chat detail priority over the provider
+// compatibility field. An explicitly reported standard zero is authoritative.
+func (u *Usage) ChatReasoningTokens() int {
+	if u == nil {
+		return 0
+	}
+	if u.CompletionTokenDetails.reasoningTokensPresent || u.CompletionTokenDetails.ReasoningTokens != 0 {
+		return u.CompletionTokenDetails.ReasoningTokens
+	}
+	if u.ReasoningTokens != nil {
+		return *u.ReasoningTokens
+	}
+	return 0
 }
 
 type OpenAIVideoResponse struct {
@@ -287,16 +305,38 @@ func (d InputTokenDetails) CacheCreationTokensTotal() int {
 }
 
 type OutputTokenDetails struct {
-	TextTokens      int `json:"text_tokens"`
-	AudioTokens     int `json:"audio_tokens"`
-	ImageTokens     int `json:"image_tokens"`
-	ReasoningTokens int `json:"reasoning_tokens"`
+	TextTokens             int `json:"text_tokens"`
+	AudioTokens            int `json:"audio_tokens"`
+	ImageTokens            int `json:"image_tokens"`
+	ReasoningTokens        int `json:"reasoning_tokens"`
+	reasoningTokensPresent bool
+}
+
+// UnmarshalJSON retains presence only for this counter; changing all usage
+// integers to pointers would disrupt existing provider and settlement callers.
+func (d *OutputTokenDetails) UnmarshalJSON(data []byte) error {
+	type plainDetails OutputTokenDetails
+	var details plainDetails
+	decoded := struct {
+		*plainDetails
+		ReasoningTokens *int `json:"reasoning_tokens"`
+	}{plainDetails: &details}
+	if err := kitutil.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*d = OutputTokenDetails(details)
+	// Nonzero values already establish presence; only zero needs an extra bit.
+	d.reasoningTokensPresent = decoded.ReasoningTokens != nil && *decoded.ReasoningTokens == 0
+	if decoded.ReasoningTokens != nil {
+		d.ReasoningTokens = *decoded.ReasoningTokens
+	}
+	return nil
 }
 
 type OpenAIResponsesResponse struct {
 	ID                 string             `json:"id"`
 	Object             string             `json:"object"`
-	CreatedAt          int                `json:"created_at"`
+	CreatedAt          IntValue           `json:"created_at"`
 	Status             json.RawMessage    `json:"status"`
 	Error              any                `json:"error,omitempty"`
 	IncompleteDetails  *IncompleteDetails `json:"incomplete_details,omitempty"`
@@ -342,6 +382,23 @@ type ResponsesOutput struct {
 	Summary   []ResponsesReasoningSummaryPart `json:"summary,omitempty"`
 }
 
+// MarshalJSON includes the required summary array on reasoning items even
+// before the first summary part arrives. Other item types retain their wire shape.
+func (r ResponsesOutput) MarshalJSON() ([]byte, error) {
+	type plainOutput ResponsesOutput
+	if r.Type != "reasoning" {
+		return kitutil.Marshal(plainOutput(r))
+	}
+	summary := r.Summary
+	if summary == nil {
+		summary = []ResponsesReasoningSummaryPart{}
+	}
+	return kitutil.Marshal(struct {
+		plainOutput
+		Summary []ResponsesReasoningSummaryPart `json:"summary"`
+	}{plainOutput: plainOutput(r), Summary: summary})
+}
+
 // ArgumentsString returns function call arguments in the string form expected by Chat Completions.
 func (r *ResponsesOutput) ArgumentsString() string {
 	if r == nil {
@@ -363,8 +420,9 @@ type ResponsesOutputContent struct {
 }
 
 type ResponsesReasoningSummaryPart struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type        string         `json:"type"`
+	Text        string         `json:"text"`
+	Annotations *[]interface{} `json:"annotations,omitempty"`
 }
 
 const (
@@ -389,10 +447,13 @@ const (
 
 // ResponsesStreamResponse 用于处理 /v1/responses 流式响应
 type ResponsesStreamResponse struct {
-	Type     string                   `json:"type"`
-	Response *OpenAIResponsesResponse `json:"response,omitempty"`
-	Delta    string                   `json:"delta,omitempty"`
-	Item     *ResponsesOutput         `json:"item,omitempty"`
+	Type      string                   `json:"type"`
+	Response  *OpenAIResponsesResponse `json:"response,omitempty"`
+	Delta     string                   `json:"delta,omitempty"`
+	Text      *string                  `json:"text,omitempty"`
+	Arguments *string                  `json:"arguments,omitempty"`
+	Name      string                   `json:"name,omitempty"`
+	Item      *ResponsesOutput         `json:"item,omitempty"`
 	// - response.function_call_arguments.delta
 	// - response.function_call_arguments.done
 	OutputIndex  *int                           `json:"output_index,omitempty"`

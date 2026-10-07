@@ -791,14 +791,12 @@ func userOAuthBindingSubjectIndexIsSiteScoped(db *gorm.DB, name string) (bool, e
 		)
 	}
 	if db.Dialector.Name() == "postgres" {
-		unconditional, err := postgresIdentityIndexIsUnconditional(
+		return postgresIdentityIndexIsFullUnique(
 			db,
 			UserOAuthBinding{}.TableName(),
 			name,
+			[]string{"provider_id", "site_id", "provider_user_id"},
 		)
-		if err != nil || !unconditional {
-			return false, err
-		}
 	}
 	indexes, err := db.Migrator().GetIndexes(&UserOAuthBinding{})
 	if err != nil {

@@ -12,12 +12,16 @@ import (
 
 // SystemPerformanceCheck 检查系统性能中间件
 func SystemPerformanceCheck() gin.HandlerFunc {
+	return systemPerformanceCheck(common.GetSystemStatus)
+}
+
+func systemPerformanceCheck(getStatus func() common.SystemStatus) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 仅检查 Relay 接口 (/v1, /v1beta 等)
 		// 这里简单判断路径前缀，可以根据实际路由调整
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/v1/messages") {
-			if err := checkSystemPerformance(); err != nil {
+			if err := checkSystemPerformance(getStatus()); err != nil {
 				c.JSON(err.StatusCode, gin.H{
 					"error": err.ToClaudeError(),
 				})
@@ -25,7 +29,7 @@ func SystemPerformanceCheck() gin.HandlerFunc {
 				return
 			}
 		} else {
-			if err := checkSystemPerformance(); err != nil {
+			if err := checkSystemPerformance(getStatus()); err != nil {
 				c.JSON(err.StatusCode, gin.H{
 					"error": err.ToOpenAIError(),
 				})
@@ -38,13 +42,11 @@ func SystemPerformanceCheck() gin.HandlerFunc {
 }
 
 // checkSystemPerformance 检查系统性能是否超过阈值
-func checkSystemPerformance() *types.NewAPIError {
+func checkSystemPerformance(status common.SystemStatus) *types.NewAPIError {
 	config := common.GetPerformanceMonitorConfig()
 	if !config.Enabled {
 		return nil
 	}
-
-	status := common.GetSystemStatus()
 
 	// 检查 CPU
 	if config.CPUThreshold > 0 && int(status.CPUUsage) > config.CPUThreshold {

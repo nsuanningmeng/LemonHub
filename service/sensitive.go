@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"strings"
+	"unicode"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
@@ -45,7 +46,54 @@ func SensitiveWordContains(text string) (bool, []string) {
 		return false, nil
 	}
 	checkText := strings.ToLower(text)
-	return AcSearch(checkText, setting.SensitiveWords, true)
+	if !setting.SensitiveWordsWholeWordEnabled {
+		return AcSearch(checkText, setting.SensitiveWords, true)
+	}
+	m := getOrBuildAC(setting.SensitiveWords)
+	if m == nil {
+		return false, nil
+	}
+	// Classify original dictionary entries before lowercasing: Unicode letters
+	// such as Kelvin sign can normalize to ASCII without becoming ASCII entries.
+	wholeWords := make(map[string]bool, len(setting.SensitiveWords))
+	for _, entry := range setting.SensitiveWords {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		asciiLetters := true
+		for _, r := range entry {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+				asciiLetters = false
+				break
+			}
+		}
+		normalized := strings.ToLower(entry)
+		previous, exists := wholeWords[normalized]
+		wholeWords[normalized] = asciiLetters && (!exists || previous)
+	}
+	textRunes := []rune(checkText)
+	// Rejected substring hits must not hide a later valid whole-word match.
+	for _, hit := range m.MultiPatternSearch(textRunes, false) {
+		word := string(hit.Word)
+		if wholeWords[word] {
+			start, end := hit.Pos, hit.Pos+len(hit.Word)
+			if start > 0 {
+				before := textRunes[start-1]
+				if unicode.IsLetter(before) || unicode.IsDigit(before) || before == '_' {
+					continue
+				}
+			}
+			if end < len(textRunes) {
+				after := textRunes[end]
+				if unicode.IsLetter(after) || unicode.IsDigit(after) || after == '_' {
+					continue
+				}
+			}
+		}
+		return true, []string{word}
+	}
+	return false, nil
 }
 
 // SensitiveWordReplace 敏感词替换，返回是否包含敏感词和替换后的文本

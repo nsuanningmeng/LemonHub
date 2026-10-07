@@ -45,12 +45,10 @@ func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
 		}
 	}
 	billingUsage := dto.NewOpenAIChatBillingUsage(oaiUsage)
-	if existingBillingUsage := dto.CloneBillingUsage(oaiUsage.BillingUsage); existingBillingUsage != nil && existingBillingUsage.OpenAIUsage != nil {
-		if existingBillingUsage.Source == dto.BillingUsageSourceOAIChat ||
-			existingBillingUsage.Source == dto.BillingUsageSourceOAIResponses ||
-			existingBillingUsage.Semantic == dto.BillingUsageSemanticOpenAI {
-			billingUsage = existingBillingUsage
-		}
+	if existingBillingUsage := dto.CloneBillingUsage(oaiUsage.BillingUsage); existingBillingUsage != nil {
+		// Protocol conversion changes the displayed usage shape, not the
+		// authoritative provider accounting snapshot (including Gemini).
+		billingUsage = existingBillingUsage
 	}
 	cacheCreation5m, cacheCreation1h := NormalizeCacheCreationSplit(
 		oaiUsage.PromptTokensDetails.CachedCreationTokens,
@@ -59,14 +57,26 @@ func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
 	)
 	cacheCreationTokens := oaiUsage.PromptTokensDetails.CacheCreationTokensTotal()
 	inputTokens := oaiUsage.PromptTokens
-	if oaiUsage.PromptTokensDetails.CacheWriteTokens > 0 {
-		// OpenAI native cache-write usage counts cached and cache-write tokens
-		// inside prompt_tokens, while Claude semantics reports input_tokens
-		// excluding both. Both counts are unadjusted prefixes and may overlap,
-		// so clamp a negative remainder at zero.
-		inputTokens = oaiUsage.PromptTokens - oaiUsage.PromptTokensDetails.CachedTokens - cacheCreationTokens
-		if inputTokens < 0 {
+	if inputTokens < 0 {
+		inputTokens = 0
+	}
+	// Canonical OpenAI/Gemini input includes cache reads. Anthropic input_tokens
+	// counts fresh input, with cache_read_input_tokens reported separately.
+	if cached := oaiUsage.PromptTokensDetails.CachedTokens; cached > 0 {
+		if cached >= inputTokens {
 			inputTokens = 0
+		} else {
+			inputTokens -= cached
+		}
+	}
+	if oaiUsage.PromptTokensDetails.CacheWriteTokens > 0 {
+		// Native OpenAI cache writes are included in prompt_tokens too. Legacy
+		// Claude creation detail is additive; do not infer an inclusive write
+		// prefix unless the explicit native cache-write field is present.
+		if cacheCreationTokens >= inputTokens {
+			inputTokens = 0
+		} else {
+			inputTokens -= cacheCreationTokens
 		}
 	}
 	usage := &dto.ClaudeUsage{
@@ -478,6 +488,9 @@ func ResponseOpenAI2Claude(openAIResponse *dto.OpenAITextResponse, info convmeta
 	}
 	for _, choice := range openAIResponse.Choices {
 		stopReason = stopReasonOpenAI2Claude(choice.FinishReason)
+		if reasoning := choice.Message.GetReasoningContent(); reasoning != "" {
+			contents = append(contents, dto.ClaudeMediaMessage{Type: "thinking", Thinking: &reasoning})
+		}
 		textContent := choice.Message.StringContent()
 		toolCalls := choice.Message.ParseToolCalls()
 		if textContent != "" || len(toolCalls) == 0 {

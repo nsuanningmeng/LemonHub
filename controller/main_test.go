@@ -3,6 +3,7 @@ package controller
 import (
 	"testing"
 
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
@@ -11,6 +12,9 @@ import (
 // guard itself is covered by the fetch-setting validator tests; disable it here
 // the same way relay/channel/advancedcustom does in its TestMain.
 func TestMain(m *testing.M) {
+	if err := i18n.Init(); err != nil {
+		panic(err)
+	}
 	fs := system_setting.GetFetchSetting()
 	fs.EnableSSRFProtection, fs.AllowPrivateIp = false, true
 	m.Run()

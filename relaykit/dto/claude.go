@@ -1,10 +1,13 @@
 package dto
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -173,9 +176,11 @@ func (c *ClaudeMessage) ParseContent() ([]ClaudeMediaMessage, error) {
 }
 
 type Tool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	InputSchema map[string]interface{} `json:"input_schema"`
+	Strict         *bool                  `json:"strict,omitempty"`
+	AllowedCallers json.RawMessage        `json:"allowed_callers,omitempty"`
+	Name           string                 `json:"name"`
+	Description    string                 `json:"description,omitempty"`
+	InputSchema    map[string]interface{} `json:"input_schema"`
 }
 
 type InputSchema struct {
@@ -202,7 +207,7 @@ type ClaudeWebSearchUserLocation struct {
 type ClaudeToolChoice struct {
 	Type                   string `json:"type"`
 	Name                   string `json:"name,omitempty"`
-	DisableParallelToolUse bool   `json:"disable_parallel_tool_use,omitempty"`
+	DisableParallelToolUse *bool  `json:"disable_parallel_tool_use,omitempty"`
 }
 
 type ClaudeRequest struct {
@@ -257,68 +262,48 @@ func (c *ClaudeRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	var texts = make([]string, 0)
 	var fileMeta = make([]*types.FileMeta, 0)
 
-	// system
+	// System and ordinary messages share the same text/media classification
+	// as structured tool results. No media container is serialized as text.
 	if c.System != nil {
 		if c.IsStringSystem() {
-			sys := c.GetStringSystem()
-			if sys != "" {
-				texts = append(texts, sys)
+			if text := c.GetStringSystem(); text != "" {
+				texts = append(texts, text)
 			}
 		} else {
-			systemMedia := c.ParseSystem()
-			for _, media := range systemMedia {
-				switch media.Type {
-				case "text":
-					texts = append(texts, media.GetText())
-				case "image":
-					if source := media.ToFileSource(); source != nil {
-						fileMeta = append(fileMeta, &types.FileMeta{
-							FileType: types.FileTypeImage,
-							Source:   source,
-						})
-					}
-				}
+			for _, block := range c.ParseSystem() {
+				appendClaudeTokenBlock(block, &texts, &fileMeta)
 			}
 		}
 	}
-
-	// messages
 	for _, message := range c.Messages {
 		tokenCountMeta.MessagesCount++
 		texts = append(texts, message.Role)
 		if message.IsStringContent() {
-			content := message.GetStringContent()
-			if content != "" {
-				texts = append(texts, content)
+			if text := message.GetStringContent(); text != "" {
+				texts = append(texts, text)
 			}
 			continue
 		}
-
-		content, _ := message.ParseContent()
-		for _, media := range content {
-			switch media.Type {
-			case "text":
-				texts = append(texts, media.GetText())
-			case "image":
-				if source := media.ToFileSource(); source != nil {
-					fileMeta = append(fileMeta, &types.FileMeta{
-						FileType: types.FileTypeImage,
-						Source:   source,
-					})
-				}
+		for _, block := range claudeTokenBlocks(message.Content) {
+			switch block.Type {
 			case "tool_use":
-				if media.Name != "" {
-					texts = append(texts, media.Name)
+				if block.Name != "" {
+					texts = append(texts, block.Name)
 				}
-				if media.Input != nil {
-					b, _ := kitutil.Marshal(media.Input)
+				if block.Input != nil {
+					b, _ := kitutil.Marshal(block.Input)
 					texts = append(texts, string(b))
 				}
 			case "tool_result":
-				if media.Content != nil {
-					b, _ := kitutil.Marshal(media.Content)
-					texts = append(texts, string(b))
+				if text, ok := block.Content.(string); ok {
+					texts = append(texts, text)
+					continue
 				}
+				for _, nested := range claudeTokenBlocks(block.Content) {
+					appendClaudeTokenBlock(nested, &texts, &fileMeta)
+				}
+			default:
+				appendClaudeTokenBlock(block, &texts, &fileMeta)
 			}
 		}
 	}
@@ -359,6 +344,104 @@ func (c *ClaudeRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	tokenCountMeta.CombineText = strings.Join(texts, "\n")
 	tokenCountMeta.Files = fileMeta
 	return &tokenCountMeta
+}
+
+// claudeTokenBlocks reads raw JSON-decoded and typed blocks without copying an
+// entire media payload through JSON. Unknown objects are not user text.
+func claudeTokenBlocks(content any) []ClaudeMediaMessage {
+	switch content := content.(type) {
+	case []ClaudeMediaMessage:
+		return content
+	case []any:
+		blocks := make([]ClaudeMediaMessage, 0, len(content))
+		for _, item := range content {
+			switch item := item.(type) {
+			case ClaudeMediaMessage:
+				blocks = append(blocks, item)
+			case map[string]any:
+				kind, _ := item["type"].(string)
+				switch kind {
+				case "text", "input_text", "image", "document", "tool_use", "tool_result":
+				default:
+					continue
+				}
+				block := ClaudeMediaMessage{Type: kind, Content: item["content"], Input: item["input"]}
+				block.Name, _ = item["name"].(string)
+				if text, ok := item["text"].(string); ok {
+					block.Text = &text
+				}
+				if source, ok := item["source"].(map[string]any); ok {
+					block.Source = &ClaudeMessageSource{Data: source["data"]}
+					block.Source.Type, _ = source["type"].(string)
+					block.Source.MediaType, _ = source["media_type"].(string)
+					block.Source.Url, _ = source["url"].(string)
+				}
+				blocks = append(blocks, block)
+			}
+		}
+		return blocks
+	default:
+		return nil
+	}
+}
+
+// appendClaudeTokenBlock keeps supported image/PDF sources in FileMeta and
+// decodes text documents into actual text, never a base64 token stream.
+func appendClaudeTokenBlock(block ClaudeMediaMessage, texts *[]string, files *[]*types.FileMeta) {
+	if block.Type == "text" || block.Type == "input_text" {
+		if block.Text != nil {
+			*texts = append(*texts, *block.Text)
+		}
+		return
+	}
+	if block.Type != "image" && block.Type != "document" {
+		return
+	}
+	source := block.Source
+	if source == nil {
+		return
+	}
+	fileType := types.FileTypeFile
+	if block.Type == "image" {
+		fileType = types.FileTypeImage
+	}
+	switch source.Type {
+	case "text":
+		text, ok := source.Data.(string)
+		if block.Type == "document" && ok && (source.MediaType == "" || source.MediaType == "text/plain") && source.Url == "" {
+			*texts = append(*texts, text)
+		}
+	case "url":
+		parsed, err := url.Parse(source.Url)
+		if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || source.Data != nil {
+			return
+		}
+		*files = append(*files, &types.FileMeta{FileType: fileType, Source: types.NewURLFileSource(source.Url)})
+	case "base64":
+		data, ok := source.Data.(string)
+		if !ok || data == "" || source.Url != "" {
+			return
+		}
+		if block.Type == "document" && source.MediaType == "text/plain" {
+			text, err := base64.StdEncoding.DecodeString(data)
+			if err == nil && utf8.Valid(text) {
+				*texts = append(*texts, string(text))
+			}
+			return
+		}
+		if block.Type == "document" {
+			if source.MediaType != "application/pdf" {
+				return
+			}
+		} else {
+			switch source.MediaType {
+			case "image/png", "image/jpeg", "image/gif", "image/webp":
+			default:
+				return
+			}
+		}
+		*files = append(*files, &types.FileMeta{FileType: fileType, Source: types.NewBase64FileSource(data, source.MediaType)})
+	}
 }
 
 func (c *ClaudeRequest) IsStream(ctx *http.Request) bool {

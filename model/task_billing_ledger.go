@@ -933,6 +933,10 @@ end
 if ARGV[7] ~= '' and redis.call('HGET', KEYS[1], 'QuotaGeneration') ~= ARGV[7] then
   return -1
 end
+if ARGV[8] == 'reserve' and tonumber(ARGV[1]) < 0
+  and tonumber(redis.call('HGET', KEYS[1], 'RemainQuota')) < -tonumber(ARGV[1]) then
+  return 0
+end
 redis.call('HINCRBY', KEYS[1], 'RemainQuota', ARGV[1])
 redis.call('HINCRBY', KEYS[1], 'UsedQuota', ARGV[2])
 redis.call('HSET', KEYS[1], 'AccessedTime', ARGV[4])
@@ -1279,6 +1283,9 @@ func resolveTaskBillingUserQuotaFences(userId int) error {
 		return nil
 	}
 	for _, fenceValue := range fenceValues {
+		if strings.HasPrefix(fenceValue, subscriptionBillingFencePrefix) {
+			return fmt.Errorf("%w: subscription billing cache requires explicit reconciliation", ErrQuotaCacheUnavailable)
+		}
 		var committed bool
 		var resolveErr error
 		if strings.HasPrefix(fenceValue, "inflight:task-billing-operation|") {
@@ -1318,6 +1325,9 @@ func resolveTaskBillingTokenQuotaFences(tokenKey string, expectedTokenId int) er
 	}
 	tokenId := expectedTokenId
 	for _, fenceValue := range fenceValues {
+		if strings.HasPrefix(fenceValue, subscriptionBillingFencePrefix) {
+			return fmt.Errorf("%w: subscription billing cache requires explicit reconciliation", ErrQuotaCacheUnavailable)
+		}
 		resolvedTokenId := tokenId
 		var committed bool
 		var resolveErr error

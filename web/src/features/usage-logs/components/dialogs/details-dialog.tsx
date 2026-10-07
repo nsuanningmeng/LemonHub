@@ -399,13 +399,23 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
   const cacheWrite = other.cache_creation_tokens || 0
   const cacheWrite5m = other.cache_creation_tokens_5m || 0
   const cacheWrite1h = other.cache_creation_tokens_1h || 0
-  const hasTokens = promptTokens > 0 || completionTokens > 0
+  const hasTokens =
+    promptTokens > 0 ||
+    completionTokens > 0 ||
+    hasAnyCacheTokens(other) ||
+    log.input_tokens_total != null
 
   if (!hasTokens) return null
 
   const rows: Array<{ label: string; value: string }> = []
 
   rows.push({ label: t('Input Tokens'), value: promptTokens.toLocaleString() })
+  if (log.input_tokens_total != null) {
+    rows.push({
+      label: t('Total Input Tokens (including cache)'),
+      value: log.input_tokens_total.toLocaleString(),
+    })
+  }
   rows.push({
     label: t('Output Tokens'),
     value: completionTokens.toLocaleString(),
@@ -1184,8 +1194,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
               )}
             {other.subscription_consumed != null && (
               <DetailRow
-                label={t('Final Consumed')}
+                label={
+                  other.wallet_quota_deducted != null
+                    ? t('Deducted by subscription')
+                    : t('Final Consumed')
+                }
                 value={formatLogQuota(other.subscription_consumed)}
+                mono
+              />
+            )}
+            {other.wallet_quota_deducted != null && (
+              <DetailRow
+                label={t('Deducted from wallet')}
+                value={formatLogQuota(other.wallet_quota_deducted)}
                 mono
               />
             )}

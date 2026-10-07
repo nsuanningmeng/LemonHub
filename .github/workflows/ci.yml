@@ -160,6 +160,9 @@ jobs:
       MYSQL_WALLET_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_wallet_quota_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       MYSQL_MIGRATION_SAFETY_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_migration_safety_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       TEST_MYSQL_IDENTITY_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_identity_migration_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      MYSQL_SUBSCRIPTION_RECEIPT_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_subscription_receipt_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      MYSQL_LOG_INPUT_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_log_input_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      MYSQL_SUBSCRIPTION_SETTLEMENT_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_subscription_settlement_test_ci?charset=utf8mb4&parseTime=True&loc=Local
 
     steps:
       - name: Checkout
@@ -180,16 +183,28 @@ jobs:
             CREATE DATABASE lemonhub_wallet_quota_migration_test_ci;
             CREATE DATABASE lemonhub_migration_safety_test_ci;
             CREATE DATABASE lemonhub_identity_migration_test_ci;
+            CREATE DATABASE lemonhub_log_input_test_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+            CREATE DATABASE lemonhub_subscription_receipt_test_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+            CREATE DATABASE lemonhub_subscription_settlement_test_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
             GRANT ALL PRIVILEGES ON lemonhub_topup_migration_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_rc25_upgrade_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_token_group_upgrade_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_wallet_quota_migration_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_migration_safety_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_identity_migration_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_log_input_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_subscription_receipt_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_subscription_settlement_test_ci.* TO 'lemonhub'@'%';
           "
 
       - name: Verify legacy data, balances, keys, and lossless column migrations
         run: go test ./model -run '^(TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData|TokenGroupUpgradePreservesExistingKeys|WalletQuotaMigrationPreservesData|MigrationPreflightPreservesWideColumns)|TestPreflightExternalIdentityClaimsMySQLCollation|TestCustomOAuthBindingPreflightUsesClaimCollationMySQL)$' -count=1 -v
+
+      - name: Verify legacy subscription receipts and atomic settlement
+        run: go test ./model -run '^TestSubscription(ReceiptMigrationPreservesLegacyRows|SettlementDatabases)$/^mysql$' -count=1 -v
+
+      - name: Verify main and separate log migrations preserve NULL and token totals
+        run: go test ./model -run '^TestLogInputTokensMigrationPreservesLegacyRows$/^mysql$' -count=1 -v
 
       - name: Verify MySQL container recreation preserves named-volume data
         env:
@@ -276,6 +291,10 @@ jobs:
       GOWORK: 'off'
       POSTGRES_WALLET_MIGRATION_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_wallet_quota_migration_test_ci?sslmode=disable
       POSTGRES_MIGRATION_SAFETY_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_migration_safety_test_ci?sslmode=disable
+      POSTGRES_SUBSCRIPTION_RECEIPT_MIGRATION_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_subscription_receipt_test_ci?sslmode=disable
+      POSTGRES_SUBSCRIPTION_SETTLEMENT_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_subscription_settlement_test_ci?sslmode=disable
+      POSTGRES_LOG_INPUT_MIGRATION_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_log_input_test_ci?sslmode=disable
+      POSTGRES_IDENTITY_INDEX_DSN: postgres://postgres:lemonhub-migration-test@127.0.0.1:5432/lemonhub_pg_identity_index_test_ci?sslmode=disable
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -284,10 +303,59 @@ jobs:
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - name: Create isolated precision migration database
+      - name: Create isolated migration and settlement databases
         run: |
           docker exec -e PGPASSWORD=lemonhub-migration-test "${{ job.services.postgres.id }}" \
             psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -c 'CREATE DATABASE lemonhub_migration_safety_test_ci'
+          docker exec -e PGPASSWORD=lemonhub-migration-test "${{ job.services.postgres.id }}" \
+            psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'CREATE DATABASE lemonhub_subscription_receipt_test_ci' \
+            -c 'CREATE DATABASE lemonhub_subscription_settlement_test_ci' \
+            -c 'CREATE DATABASE lemonhub_pg_identity_index_test_ci' \
+            -c 'CREATE DATABASE lemonhub_log_input_test_ci'
       - name: Verify wallet preservation and lossless price migrations
         run: go test ./model -run '^TestPostgres(WalletQuotaMigrationPreservesData|MigrationPreflightPreservesPrices)$' -count=1 -v
+      - name: Verify legacy subscription receipts and atomic settlement
+        run: go test ./model -run '^TestSubscription(ReceiptMigrationPreservesLegacyRows|SettlementDatabases)$/^postgres$' -count=1 -v
+      - name: Verify main and separate log migrations preserve NULL and token totals
+        run: go test ./model -run '^TestLogInputTokensMigrationPreservesLegacyRows$/^postgres$' -count=1 -v
+      - name: Verify ordered PostgreSQL identity index keys
+        run: go test ./model -run '^TestPostgresIdentityIndexesPreserveKeyOrder$' -count=1 -v
+
+  clickhouse-log-migration:
+    name: ClickHouse existing log table migration
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      clickhouse:
+        # 25.8 LTS, fixed multi-platform image digest.
+        image: clickhouse/clickhouse-server:25.8-alpine@sha256:87e0a5b72f5465b18eacca7c76850e7ff551c9795c50e451f5646299e5e24146
+        env:
+          CLICKHOUSE_USER: lemonhub
+          CLICKHOUSE_PASSWORD: lemonhub-log-migration-test
+          CLICKHOUSE_DB: lemonhub_log_input_test_ci
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: '1'
+        ports:
+          - 9000:9000
+        options: >-
+          --cpus=2
+          --ulimit nofile=262144:262144
+          --health-cmd="clickhouse-client --host=$(hostname) --user lemonhub --password lemonhub-log-migration-test --query 'SELECT 1'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+    env:
+      GOWORK: 'off'
+      CLICKHOUSE_LOG_INPUT_MIGRATION_DSN: clickhouse://lemonhub:lemonhub-log-migration-test@127.0.0.1:9000/lemonhub_log_input_test_ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Verify ALTER migration, legacy NULLs, valid zero, and wide token statistics
+        run: go test ./model -run '^TestLogInputTokensMigrationPreservesLegacyRows$/^clickhouse$' -count=1 -v

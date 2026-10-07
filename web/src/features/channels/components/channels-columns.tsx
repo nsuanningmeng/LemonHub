@@ -715,7 +715,7 @@ export function useChannelsColumns(
                         />
                         <TooltipContent side='top'>
                           {t(
-                            'Request body pass-through is enabled. The request body will be sent directly to the upstream without any conversion.'
+                            'Forward request bodies unchanged; explicit parameter override rules apply to JSON requests.'
                           )}
                         </TooltipContent>
                       </Tooltip>

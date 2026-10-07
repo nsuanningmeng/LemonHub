@@ -295,7 +295,11 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 		estimatedCompletionTokens = defaultTieredPreConsumeMaxTokens
 	}
 
-	requestInput, err := ResolveIncomingBillingExprRequestInput(c, info)
+	needBody, err := billingexpr.RequestBodyRequired(exprStr)
+	if err != nil {
+		return hosttypes.PriceData{}, fmt.Errorf("model %s tiered expr run failed: %w", info.OriginModelName, err)
+	}
+	requestInput, err := ResolveIncomingBillingExprRequestInput(c, info, needBody)
 	if err != nil {
 		return hosttypes.PriceData{}, err
 	}
@@ -340,7 +344,11 @@ func modelPriceHelperTiered(c *gin.Context, info *relaycommon.RelayInfo, promptT
 		ExprVersion:               billingexpr.ExprVersion(exprStr),
 	}
 	info.TieredBillingSnapshot = snapshot
-	info.BillingRequestInput = &requestInput
+	// Keep the original capture when a later estimate does not need its body.
+	// A header-only first estimate remains eligible for lazy capture on demand.
+	if info.BillingRequestInput == nil || needBody {
+		info.BillingRequestInput = &requestInput
+	}
 
 	priceData := hosttypes.PriceData{
 		FreeModel:         freeModel,

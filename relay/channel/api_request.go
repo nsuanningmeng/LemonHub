@@ -10,18 +10,14 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -317,7 +313,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeUpstreamURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -347,7 +343,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, fmt.Errorf("get request url failed: %w", err)
 	}
 	logger.LogDebug(c, "fullRequestURL: %s", common.SanitizeUpstreamURLForLog(fullRequestURL))
-	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
+	req, err := http.NewRequestWithContext(c.Request.Context(), c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("new request failed: %w", err)
 	}
@@ -403,83 +399,64 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	return targetConn, nil
 }
 
-func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) (context.CancelFunc, <-chan struct{}) {
-	pingerCtx, stopPinger := context.WithCancel(context.Background())
-	done := make(chan struct{})
-
-	gopool.Go(func() {
-		defer close(done)
-		defer func() {
-			// 增加panic恢复处理
-			if r := recover(); r != nil {
-				logger.LogDebug(c, "SSE ping goroutine panic recovered: %v", r)
-			}
-			logger.LogDebug(c, "SSE ping goroutine stopped")
-		}()
-
-		if pingInterval <= 0 {
-			pingInterval = helper.DefaultPingInterval
-		}
-
-		ticker := time.NewTicker(pingInterval)
-		// 确保在任何情况下都清理ticker
-		defer func() {
-			ticker.Stop()
-			logger.LogDebug(c, "SSE ping ticker stopped")
-		}()
-
-		var pingMutex sync.Mutex
-		logger.LogDebug(c, "SSE ping goroutine started")
-
-		// 增加超时控制，防止goroutine长时间运行
-		maxPingDuration := 120 * time.Minute // 最大ping持续时间
-		pingTimeout := time.NewTimer(maxPingDuration)
-		defer pingTimeout.Stop()
-
-		for {
-			select {
-			// 发送 ping 数据
-			case <-ticker.C:
-				if err := sendPingData(c, &pingMutex); err != nil {
-					logger.LogDebug(c, "SSE ping error, stopping goroutine: %s", err.Error())
-					return
-				}
-			// 收到退出信号
-			case <-pingerCtx.Done():
-				return
-			// request 结束
-			case <-c.Request.Context().Done():
-				return
-			// 超时保护，防止goroutine无限运行
-			case <-pingTimeout.C:
-				logger.LogDebug(c, "SSE ping goroutine timeout, stopping")
-				return
-			}
-		}
-	})
-
-	return stopPinger, done
+// relayHTTPContext retains caller values while inheriting the incoming lifetime.
+type relayHTTPContext struct {
+	context.Context
+	caller context.Context
 }
 
-func sendPingData(c *gin.Context, mutex *sync.Mutex) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	// Bound the write so a slow client cannot block this goroutine forever;
-	// doRequest's defer waits for the pinger to exit before returning.
-	helper.ExtendWriteDeadline(c)
-	err := helper.PingData(c)
-	if err != nil {
-		logger.LogError(c, "SSE ping error: "+err.Error())
-		return err
+func (ctx relayHTTPContext) Value(key any) any {
+	if value := ctx.caller.Value(key); value != nil {
+		return value
 	}
+	return ctx.Context.Value(key)
+}
 
-	logger.LogDebug(c, "SSE ping data sent")
-	return nil
+type relayHTTPBody struct {
+	io.ReadCloser
+	cleanup func()
+}
+
+func (body *relayHTTPBody) Read(p []byte) (int, error) {
+	n, err := body.ReadCloser.Read(p)
+	if err != nil {
+		body.cleanup()
+	}
+	return n, err
+}
+
+func (body *relayHTTPBody) Close() error {
+	err := body.ReadCloser.Close()
+	body.cleanup()
+	return err
 }
 
 func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
-	return doRequest(c, req, info)
+	if c == nil || c.Request == nil || req.Context() == c.Request.Context() {
+		return doRequest(c, req, info)
+	}
+	caller := req.Context()
+	ctx := context.Context(relayHTTPContext{Context: c.Request.Context(), caller: caller})
+	cancel := context.CancelFunc(func() {})
+	if deadline, ok := caller.Deadline(); ok {
+		ctx, cancel = context.WithDeadline(ctx, deadline)
+	}
+	linked, cancelLinked := context.WithCancel(ctx)
+	stopCaller := context.AfterFunc(caller, cancelLinked)
+	if caller.Err() != nil {
+		cancelLinked()
+	}
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() { stopCaller(); cancelLinked(); cancel() })
+	}
+	resp, err := doRequest(c, req.WithContext(linked), info)
+	if err != nil {
+		cleanup()
+		return nil, err
+	}
+	resp.Body = &relayHTTPBody{ReadCloser: resp.Body, cleanup: cleanup}
+	return resp, nil
 }
 
 // keepUpstreamRedirectResponse stops net/http from following redirects while
@@ -489,6 +466,12 @@ func keepUpstreamRedirectResponse(_ *http.Request, _ []*http.Request) error {
 }
 
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+	if err := req.Context().Err(); err != nil {
+		if req.Body != nil {
+			_ = req.Body.Close()
+		}
+		return nil, types.NewErrorWithStatusCode(fmt.Errorf("upstream request cancelled: %w", err), types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+	}
 	client, err := service.GetHttpClientWithProxySettings(info.ChannelSetting.Proxy, info.ChannelSetting)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)
@@ -510,28 +493,15 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		))
 	}
 
-	var stopPinger context.CancelFunc
-	var pingerDone <-chan struct{}
-	if info.IsStream {
-		helper.SetEventStreamHeaders(c)
-		// 处理流式请求的 ping 保活
-		generalSettings := operation_setting.GetGeneralSetting()
-		if generalSettings.PingIntervalEnabled && !info.DisablePing {
-			pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
-			stopPinger, pingerDone = startPingKeepAlive(c, pingInterval)
-			// 使用defer确保在任何情况下都能停止ping goroutine
-			defer func() {
-				if stopPinger != nil {
-					stopPinger()
-					<-pingerDone
-					logger.LogDebug(c, "SSE ping goroutine stopped by defer")
-				}
-			}()
-		}
-	}
+	// Keepalive begins only after a handler validates and writes stream data.
+	// The scanner owns the shared write lock; pre-request ping would commit
+	// HTTP 200 before an upstream HTTP or embedded SSE error can be classified.
 
 	resp, err := relayClient.Do(req)
 	if err != nil {
+		if requestErr := req.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+			return nil, types.NewErrorWithStatusCode(fmt.Errorf("upstream request cancelled: %w", requestErr), types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+		}
 		logger.LogError(c, "do request failed: "+upstreamRequestErrorForLog(err))
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}
@@ -551,11 +521,17 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	}
 
 	if upID := resp.Header.Get(common2.RequestIdKey); upID != "" {
-		c.Set(common2.UpstreamRequestIdKey, upID)
+		if c != nil {
+			c.Set(common2.UpstreamRequestIdKey, upID)
+		}
 	}
 
-	_ = req.Body.Close()
-	_ = c.Request.Body.Close()
+	if req.Body != nil {
+		_ = req.Body.Close()
+	}
+	if c != nil && c.Request != nil && c.Request.Body != nil {
+		_ = c.Request.Body.Close()
+	}
 	return resp, nil
 }
 

@@ -32,6 +32,7 @@ import { DEFAULT_TOKEN_UNIT } from '../constants'
 import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
+  getExpressionBillingLabel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
@@ -146,13 +147,18 @@ export function usePricingColumns(
           if (primaryEntries.length === 0) {
             return (
               <span className='text-muted-foreground text-xs'>
-                {t('Dynamic Pricing')}
+                {t(getExpressionBillingLabel(model.billing_expr || ''))}
               </span>
             )
           }
 
           return (
             <div className='max-w-full min-w-0'>
+              {dynamicSummary.conditionText && (
+                <div className='text-muted-foreground text-xs'>
+                  {dynamicSummary.conditionText}
+                </div>
+              )}
               <span className='font-mono text-sm tabular-nums'>
                 {primaryEntries.map((entry, index) => (
                   <span key={entry.key}>

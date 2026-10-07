@@ -3,7 +3,6 @@ package dto
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
@@ -27,16 +26,8 @@ type OpenAIResponsesCompactionRequest struct {
 }
 
 func (r *OpenAIResponsesCompactionRequest) GetTokenCountMeta() *types.TokenCountMeta {
-	var parts []string
-	if len(r.Instructions) > 0 {
-		parts = append(parts, string(r.Instructions))
-	}
-	if len(r.Input) > 0 {
-		parts = append(parts, string(r.Input))
-	}
-	return &types.TokenCountMeta{
-		CombineText: strings.Join(parts, "\n"),
-	}
+	request := OpenAIResponsesRequest{Input: r.Input, Instructions: r.Instructions, Tools: r.Tools, Text: r.Text}
+	return request.GetTokenCountMeta()
 }
 
 func (r *OpenAIResponsesCompactionRequest) IsStream(c *http.Request) bool {

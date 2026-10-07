@@ -2,7 +2,9 @@ package oaichat
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"strings"
 
 	"context"
@@ -10,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	sharedclaude "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/claude"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/toolpolicy"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 )
@@ -28,6 +31,17 @@ type openRouterRequestReasoning struct {
 }
 
 func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, textRequest dto.GeneralOpenAIRequest) (*dto.ClaudeRequest, error) {
+	choice, err := toolpolicy.OpenAIChoice(textRequest.ToolChoice)
+	if err != nil {
+		return nil, err
+	}
+	if err := toolpolicy.ValidateChoiceTools(choice, textRequest.Tools); err != nil {
+		return nil, err
+	}
+	claudeChoice, err := sharedclaude.MapOpenAIToolChoice(textRequest.ToolChoice, textRequest.ParallelTooCalls)
+	if err != nil {
+		return nil, err
+	}
 	opts := convmeta.OptionsOf(info)
 	claudeTools := make([]any, 0, len(textRequest.Tools))
 
@@ -39,6 +53,7 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 			Name:        tool.Function.Name,
 			Description: tool.Function.Description,
 			InputSchema: sharedclaude.FunctionParametersToInputSchema(tool.Function.Parameters),
+			Strict:      tool.Function.Strict,
 		})
 	}
 
@@ -107,11 +122,8 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 		claudeRequest.Stream = kitutil.GetPointer(true)
 	}
 
-	if textRequest.ToolChoice != nil || textRequest.ParallelTooCalls != nil {
-		claudeToolChoice := sharedclaude.MapOpenAIToolChoice(textRequest.ToolChoice, textRequest.ParallelTooCalls)
-		if claudeToolChoice != nil {
-			claudeRequest.ToolChoice = claudeToolChoice
-		}
+	if claudeChoice != nil {
+		claudeRequest.ToolChoice = claudeChoice
 	}
 
 	if claudeRequest.MaxTokens == nil {
@@ -264,8 +276,9 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 				for _, ctx := range message.ParseContent() {
 					if ctx.Type == "text" && ctx.Text != "" {
 						systemMessages = append(systemMessages, dto.ClaudeMediaMessage{
-							Type: "text",
-							Text: kitutil.GetPointer[string](ctx.Text),
+							Type:         "text",
+							Text:         kitutil.GetPointer[string](ctx.Text),
+							CacheControl: append(json.RawMessage(nil), ctx.CacheControl...),
 						})
 					}
 				}
@@ -333,28 +346,45 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 				case "text":
 					if mediaMessage.Text != "" {
 						claudeMediaMessages = append(claudeMediaMessages, dto.ClaudeMediaMessage{
-							Type: "text",
-							Text: kitutil.GetPointer[string](mediaMessage.Text),
+							Type:         "text",
+							Text:         kitutil.GetPointer[string](mediaMessage.Text),
+							CacheControl: append(json.RawMessage(nil), mediaMessage.CacheControl...),
 						})
 					}
 				default:
+					if mediaMessage.Type != dto.ContentTypeImageURL && mediaMessage.Type != dto.ContentTypeFile {
+						return nil, types.NewErrorWithStatusCode(errors.New("messages.content media type is not supported by Claude"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
+					}
+					if mediaMessage.Type == dto.ContentTypeFile {
+						file := mediaMessage.GetFile()
+						if file != nil && file.FileId != "" {
+							return nil, types.NewErrorWithStatusCode(errors.New("messages.content.file.file_id cannot be converted to Claude"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
+						}
+					}
 					source := mediaMessage.ToFileSource()
 					if source == nil {
-						continue
+						return nil, types.NewErrorWithStatusCode(errors.New("messages.content media source is missing or invalid"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
 					}
 					base64Data, mimeType, err := relaymedia.ResolveBase64Data(c, source, "formatting image for Claude")
 					if err != nil {
-						return nil, fmt.Errorf("get file data failed: %s", err.Error())
+						var typed *types.NewAPIError
+						if errors.As(err, &typed) {
+							return nil, types.NewErrorWithStatusCode(errors.New("content media resolution failed"), typed.GetErrorCode(), typed.StatusCode, types.ErrOptionWithSkipRetry())
+						}
+						return nil, errors.New("content media resolution failed")
 					}
 					claudeMediaMessage := dto.ClaudeMediaMessage{
+						CacheControl: append(json.RawMessage(nil), mediaMessage.CacheControl...),
 						Source: &dto.ClaudeMessageSource{
 							Type: "base64",
 						},
 					}
-					if strings.HasPrefix(mimeType, "application/pdf") {
+					if mimeType == "application/pdf" {
 						claudeMediaMessage.Type = "document"
-					} else {
+					} else if mimeType == "image/jpeg" || mimeType == "image/png" || mimeType == "image/gif" || mimeType == "image/webp" {
 						claudeMediaMessage.Type = "image"
+					} else {
+						return nil, types.NewErrorWithStatusCode(errors.New("messages.content media MIME type is not supported by Claude"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
 					}
 
 					claudeMediaMessage.Source.MediaType = mimeType

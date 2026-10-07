@@ -216,9 +216,10 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
+	requests := newDrainingHandler(server)
 	srv := &http.Server{
 		Addr:    common.HTTPListenAddress(port),
-		Handler: server,
+		Handler: requests,
 	}
 
 	go func() {
@@ -240,12 +241,9 @@ func main() {
 	shutdownTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_TIMEOUT_SECONDS", 120)) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		common.SysError(fmt.Sprintf("server forced to shutdown: %v", err))
-	}
-	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
-	if common.DataExportEnabled {
-		model.SaveQuotaDataCache()
+	if err := shutdownAccounting(ctx, srv, requests); err != nil {
+		common.FatalLog("shutdown incomplete; accounting may require reconciliation: " + err.Error())
+		return
 	}
 	common.SysLog("server exited")
 }

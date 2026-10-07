@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -139,6 +140,9 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	var httpResp *http.Response
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
+		if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+			return nil, types.NewErrorWithStatusCode(requestErr, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 	if resp == nil {

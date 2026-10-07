@@ -44,8 +44,8 @@ import {
   type RequestCondition,
   type RequestRuleGroup,
   type RequestRuleTrace,
-  type TierCondition,
 } from '../lib/billing-expr'
+import { getExpressionBillingLabel } from '../lib/dynamic-price'
 
 type DynamicPricingBreakdownProps = {
   billingExpr: string | null | undefined
@@ -103,16 +103,20 @@ function formatTokenHint(value: string | number): string {
 }
 
 function formatConditionSummary(
-  conditions: TierCondition[],
+  tier: ParsedTier,
   t: (key: string) => string
 ): string {
-  return conditions
-    .map((c) => {
-      const varLabel = t(VAR_LABELS[c.var] || c.var)
-      const hint = formatTokenHint(c.value)
-      return `${varLabel} ${OP_LABELS[c.op] || c.op} ${hint || c.value}`
-    })
-    .filter(Boolean)
+  if (tier.displayConditions?.length) {
+    return tier.displayConditions
+      .map((condition) => describeCondition(condition, t))
+      .join(' && ')
+  }
+  if (tier.conditionText) return tier.conditionText
+  return tier.conditions
+    .map(
+      (condition) =>
+        `${t(VAR_LABELS[condition.var] || condition.var)} ${OP_LABELS[condition.op] || condition.op} ${formatTokenHint(condition.value) || condition.value}`
+    )
     .join(' && ')
 }
 
@@ -124,7 +128,18 @@ function describeCondition(
     const fn = t(TIME_FUNC_LABELS[cond.timeFunc] || cond.timeFunc)
     const tz = cond.timezone || 'UTC'
     if (cond.mode === MATCH_RANGE) {
-      return `${fn} ${cond.rangeStart}:00~${cond.rangeEnd}:00 (${tz})`
+      const start =
+        cond.timeFunc === 'hour'
+          ? `${String(cond.rangeStart).padStart(2, '0')}:00`
+          : cond.rangeStart
+      const end =
+        cond.timeFunc === 'hour'
+          ? `${String(cond.rangeEnd).padStart(2, '0')}:00`
+          : cond.rangeEnd
+      if (Number(cond.rangeStart) > Number(cond.rangeEnd)) {
+        return `(${fn} ≥ ${start} || ${fn} < ${end}) (${tz})`
+      }
+      return `${fn} [${start}, ${end}) (${tz})`
     }
     const opMap: Record<string, string> = {
       [MATCH_EQ]: '=',
@@ -202,13 +217,16 @@ export function DynamicPricingBreakdown({
 
   const { tiers, ruleGroups } = useMemo(() => {
     const split = splitBillingExprAndRequestRules(expr)
-    const parsedTiers = parseTiersFromExpr(split.billingExpr)
+    const parsedTiers = parseTiersFromExpr(expr)
     const parsedRules =
       requestRules != null
         ? requestRuleGroupsFromTrace(requestRules)
         : tryParseRequestRuleExpr(split.requestRuleExpr || '')
     return {
-      tiers: parsedTiers,
+      tiers:
+        split.requestRuleExpr && !tryParseRequestRuleExpr(split.requestRuleExpr)
+          ? []
+          : parsedTiers,
       ruleGroups: parsedRules || [],
     }
   }, [expr, requestRules])
@@ -268,10 +286,14 @@ export function DynamicPricingBreakdown({
           </span>
           <div>
             <div className='text-foreground text-base font-medium'>
-              {t('Dynamic Pricing')}
+              {t(getExpressionBillingLabel(expr))}
             </div>
             <div className='text-muted-foreground text-xs'>
-              {t('Prices vary by usage tier and request conditions')}
+              {t(
+                getExpressionBillingLabel(expr) === 'Dynamic Pricing'
+                  ? 'Prices vary by usage tier and request conditions'
+                  : 'Prices are defined by this billing expression'
+              )}
             </div>
           </div>
         </div>
@@ -290,7 +312,7 @@ export function DynamicPricingBreakdown({
           </div>
           <div className='space-y-1.5 sm:hidden'>
             {tiers.map((tier) => {
-              const condSummary = formatConditionSummary(tier.conditions, t)
+              const condSummary = formatConditionSummary(tier, t)
               const isMatched =
                 normalizedMatchedTierLabel !== '' &&
                 normalizeTierLabel(tier.label) === normalizedMatchedTierLabel
@@ -384,7 +406,7 @@ export function DynamicPricingBreakdown({
                 ),
                 cellClassName: cn('align-top', compact ? 'py-2' : 'py-2.5'),
                 cell: (tier) => {
-                  const condSummary = formatConditionSummary(tier.conditions, t)
+                  const condSummary = formatConditionSummary(tier, t)
                   const isMatched =
                     normalizedMatchedTierLabel !== '' &&
                     normalizeTierLabel(tier.label) ===

@@ -46,6 +46,9 @@ func AudioHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	resp, err := adaptor.DoRequest(c, info, ioReader)
 	if err != nil {
+		if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+			return types.NewErrorWithStatusCode(requestErr, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+		}
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 	statusCodeMappingStr := c.GetString("status_code_mapping")
@@ -66,6 +69,12 @@ func AudioHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
+	}
+	if outcome := info.StreamOutcome(); info.IsPureDownstreamCancellation() && outcome.CancelledWithoutBillableOutput {
+		if info.Billing != nil {
+			info.Billing.Refund(c)
+		}
+		return nil
 	}
 	if usage.(*dto.Usage).CompletionTokenDetails.AudioTokens > 0 || usage.(*dto.Usage).PromptTokensDetails.AudioTokens > 0 {
 		service.PostAudioConsumeQuota(c, info, usage.(*dto.Usage), "")

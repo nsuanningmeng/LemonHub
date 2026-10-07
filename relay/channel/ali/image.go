@@ -268,7 +268,7 @@ func asyncTaskWait(c *gin.Context, info *relaycommon.RelayInfo, taskID string) (
 	return nil, nil, fmt.Errorf("aliAsyncTaskWait timeout")
 }
 
-func responseAli2OpenAIImage(c *gin.Context, response *AliResponse, originBody []byte, info *relaycommon.RelayInfo, responseFormat string) *dto.ImageResponse {
+func responseAli2OpenAIImage(c *gin.Context, response *AliResponse, originBody []byte, info *relaycommon.RelayInfo, responseFormat string) (*dto.ImageResponse, error) {
 	imageResponse := dto.ImageResponse{
 		Created: info.StartTime.Unix(),
 	}
@@ -276,11 +276,15 @@ func responseAli2OpenAIImage(c *gin.Context, response *AliResponse, originBody [
 	if len(response.Output.Results) > 0 {
 		imageResponse.Data = response.Output.ResultToOpenAIImageDate(c, responseFormat)
 	} else if len(response.Output.Choices) > 0 {
-		imageResponse.Data = response.Output.ChoicesToOpenAIImageDate(c, responseFormat)
+		var err error
+		imageResponse.Data, err = response.Output.ChoicesToOpenAIImageDate(c, responseFormat)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	imageResponse.Metadata = originBody
-	return &imageResponse
+	return &imageResponse, nil
 }
 
 func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*types.NewAPIError, *dto.Usage) {
@@ -329,13 +333,12 @@ func aliImageHandler(a *Adaptor, c *gin.Context, resp *http.Response, info *rela
 		}
 	}
 
-	if a.IsSyncImageModel {
-		logger.LogDebug(c, "ali_sync_image_result: %s", originRespBody)
-	} else {
-		logger.LogDebug(c, "ali_async_image_result: %s", originRespBody)
+	imageResponses, err := responseAli2OpenAIImage(c, aliResponse, originRespBody, info, responseFormat)
+	if err != nil {
+		// Generation has already completed. Retrying would create another task,
+		// so fail the delivery before writing a partial success response.
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry()), nil
 	}
-
-	imageResponses := responseAli2OpenAIImage(c, aliResponse, originRespBody, info, responseFormat)
 	if aliResponse.Usage.ImageCount != 0 {
 		info.PriceData.AddOtherRatio("n", float64(aliResponse.Usage.ImageCount))
 	} else if len(imageResponses.Data) != 0 {

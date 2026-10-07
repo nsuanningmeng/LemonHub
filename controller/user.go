@@ -224,12 +224,19 @@ func Register(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
+	user.Email = model.NormalizeEmail(user.Email)
+	siteId := middleware.GetRequestSiteId(c)
 	if common.EmailVerificationEnabled {
 		if user.Email == "" || user.VerificationCode == "" {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
 			return
 		}
-		if !common.VerifyCodeWithKey(user.Email, user.VerificationCode, common.EmailVerificationPurpose) {
+		verified, verificationErr := common.VerifyCodeWithKey(emailVerificationKey(user.Email, siteId), user.VerificationCode, common.EmailVerificationPurpose)
+		if verificationErr != nil {
+			common.ApiError(c, verificationErr)
+			return
+		}
+		if !verified {
 			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 			return
 		}
@@ -237,7 +244,6 @@ func Register(c *gin.Context) {
 	// Resolve the sub-site from the request Host (0 = main site). Registration,
 	// the existence check, and the post-insert lookup are all scoped to it so the
 	// same username/email can be registered independently on different sub-sites.
-	siteId := middleware.GetRequestSiteId(c)
 	exist, err := model.CheckUserExistOrDeleted(user.Username, user.Email, siteId)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
@@ -1449,12 +1455,8 @@ func EmailBind(c *gin.Context) {
 		common.ApiError(c, errors.New("invalid request body"))
 		return
 	}
-	email := req.Email
+	email := model.NormalizeEmail(req.Email)
 	code := req.Code
-	if !common.VerifyCodeWithKey(email, code, common.EmailVerificationPurpose) {
-		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
-		return
-	}
 	user := model.User{
 		Id: c.GetInt("id"),
 	}
@@ -1465,6 +1467,19 @@ func EmailBind(c *gin.Context) {
 	err := user.FillUserById()
 	if err != nil {
 		common.ApiError(c, err)
+		return
+	}
+	if user.SiteId != middleware.GetRequestSiteId(c) {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "account site mismatch"})
+		return
+	}
+	verified, err := common.VerifyCodeWithKey(emailVerificationKey(email, user.SiteId), code, common.EmailVerificationPurpose)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !verified {
+		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 		return
 	}
 	// The taken-check at code-send time is racy (two users can both pass it and

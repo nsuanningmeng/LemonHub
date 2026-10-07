@@ -46,7 +46,10 @@ afterEach(() => {
   localStorage.clear()
 })
 
-function ExampleAutoDisabledStatusCell(props: { channel: Channel }) {
+function ExampleAutoDisabledStatusCell(props: {
+  channel: Channel
+  column?: string
+}) {
   const table = useReactTable({
     data: [props.channel],
     columns: useChannelsColumns({ enableSelection: false }),
@@ -55,7 +58,7 @@ function ExampleAutoDisabledStatusCell(props: { channel: Channel }) {
   const cell = table
     .getRowModel()
     .rows[0]?.getAllCells()
-    .find((item) => item.column.id === 'status')
+    .find((item) => item.column.id === (props.column ?? 'status'))
 
   return cell ? flexRender(cell.column.columnDef.cell, cell.getContext()) : null
 }
@@ -89,4 +92,35 @@ test('hovering an auto-disabled channel displays its unbroken failure reason wit
   expect(await screen.findByText(reason, { exact: false })).toHaveClass(
     'wrap-anywhere'
   )
+})
+
+test('passthrough tooltip describes the explicit parameter override exception', async () => {
+  const channel = channelSchema.parse({
+    id: 2,
+    type: 1,
+    key: 'local',
+    name: 'Passthrough channel',
+    status: 1,
+    created_time: 1,
+    test_time: 0,
+    response_time: 0,
+    balance_updated_time: 0,
+    setting: JSON.stringify({ pass_through_body_enabled: true }),
+  })
+  const { container } = render(
+    <QueryClientProvider client={queryClient}>
+      <ChannelsProvider>
+        <ExampleAutoDisabledStatusCell channel={channel} column='name' />
+      </ChannelsProvider>
+    </QueryClientProvider>
+  )
+  const trigger = container.querySelector('svg.text-amber-500')
+  expect(trigger).not.toBeNull()
+  if (!trigger) throw new Error('Missing passthrough tooltip trigger')
+  await userEvent.hover(trigger)
+  expect(
+    await screen.findByText(
+      'Forward request bodies unchanged; explicit parameter override rules apply to JSON requests.'
+    )
+  ).toBeInTheDocument()
 })

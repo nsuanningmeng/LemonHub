@@ -84,15 +84,15 @@ describe('API key group table cell', () => {
     const badgeCell = container.querySelector<HTMLElement>(
       '[data-api-key-group-cell="auto"]'
     )
-    expect(badgeCell).toHaveClass('overflow-visible')
+    expect(badgeCell).toHaveClass('overflow-visible', 'flex-wrap')
     expect(badgeCell).not.toHaveClass('overflow-hidden')
 
     const frames = container.querySelectorAll('[data-auto-group-frame]')
     const movingRings = container.querySelectorAll(
       '[data-auto-group-flow-border]'
     )
-    expect(frames.length).toBe(1)
-    expect(movingRings.length).toBe(1)
+    expect(frames.length).toBe(2)
+    expect(movingRings.length).toBe(2)
     for (const frame of frames) {
       expect(frame).toHaveClass(
         'relative',
@@ -122,26 +122,26 @@ describe('API key group table cell', () => {
       <CellHarness group='auto' ratio='Auto' shouldReduceMotion />
     )
 
-    expect(container.querySelectorAll('[data-auto-group-frame]').length).toBe(1)
+    expect(container.querySelectorAll('[data-auto-group-frame]').length).toBe(2)
     expect(
       container.querySelectorAll('[data-auto-group-flow-border]').length
     ).toBe(0)
   })
 
-  test('shows only the cross-group badge when ratio data is unavailable', () => {
+  test('shows Auto without ratio data and only shows Cross-group for enabled retry', () => {
     const { container } = render(
       <CellHarness group='auto' shouldReduceMotion={false} />
     )
 
-    expect(container.querySelectorAll('[data-auto-group-frame]').length).toBe(0)
+    expect(container.querySelectorAll('[data-auto-group-frame]').length).toBe(1)
     expect(
       container.querySelectorAll('[data-auto-group-flow-border]').length
-    ).toBe(0)
+    ).toBe(1)
     expect(container.querySelector('[data-auto-group-effect="ratio"]')).toBe(
       null
     )
-    expect(container).toHaveTextContent('Cross-group')
-    expect(container).not.toHaveTextContent('Auto')
+    expect(container).not.toHaveTextContent('Cross-group')
+    expect(container).toHaveTextContent('Auto')
     expect(container).not.toHaveTextContent('Ratio')
   })
 

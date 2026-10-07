@@ -1,7 +1,9 @@
 package oairesponses
 
 import (
+	"errors"
 	"fmt"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"strings"
 
 	"context"
@@ -9,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	sharedgemini "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/gemini"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/toolpolicy"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 )
 
@@ -84,28 +87,33 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 	if err != nil {
 		return nil, err
 	}
-	for i := range functions {
-		if params, ok := functions[i].Parameters.(map[string]interface{}); ok {
-			if props, hasProps := params["properties"].(map[string]interface{}); hasProps && len(props) == 0 {
-				functions[i].Parameters = nil
-				continue
-			}
-		}
-		functions[i].Parameters = sharedgemini.CleanFunctionParameters(functions[i].Parameters)
+	declarations := make([]dto.GeminiFunctionDeclaration, 0, len(functions))
+	for _, function := range functions {
+		declarations = append(declarations, dto.GeminiFunctionDeclaration{Name: function.Name, Description: function.Description, ParametersJSONSchema: function.Parameters})
 	}
-	if len(functions) > 0 {
-		geminiRequest.SetTools([]dto.GeminiChatTool{
-			{FunctionDeclarations: functions},
-		})
+	if len(declarations) > 0 {
+		geminiRequest.SetTools([]dto.GeminiChatTool{{FunctionDeclarations: declarations}})
 	}
 
 	toolChoice, err := RequestToolChoiceToChat(req.ToolChoice)
 	if err != nil {
 		return nil, err
 	}
-	if toolChoice != nil {
-		geminiRequest.ToolConfig = sharedgemini.OpenAIToolChoiceToConfig(toolChoice)
+	var parallel *bool
+	if len(req.ParallelToolCalls) > 0 {
+		if err := kitutil.Unmarshal(req.ParallelToolCalls, &parallel); err != nil {
+			return nil, toolpolicy.Invalid("parallel_tool_calls")
+		}
 	}
+	policyRequest := dto.GeneralOpenAIRequest{ToolChoice: toolChoice, ParallelTooCalls: parallel}
+	for _, function := range functions {
+		policyRequest.Tools = append(policyRequest.Tools, dto.ToolCallRequest{Type: "function", Function: function})
+	}
+	config, err := toolpolicy.GeminiConfig(policyRequest)
+	if err != nil {
+		return nil, err
+	}
+	geminiRequest.ToolConfig = config
 
 	systemTexts := make([]string, 0)
 	if RawJSONPresent(req.Instructions) {
@@ -141,6 +149,9 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 			appendGeminiContentPart(geminiRequest, "user", part)
 		default:
 			role := responsesGeminiRole(item)
+			if sourceRole, _ := item["role"].(string); strings.TrimSpace(sourceRole) == "developer" {
+				convmeta.ReportConversionDiagnostic(info, convmeta.ConversionDiagnostic{Code: convmeta.DiagnosticDeveloperRoleMerged, Source: types.RelayFormatOpenAIResponses, Target: types.RelayFormatGemini, Field: "input.role"})
+			}
 			parts, err := responsesInputContentToGeminiParts(c, item["content"])
 			if err != nil {
 				return nil, err
@@ -220,16 +231,23 @@ func responsesContentPartToGeminiParts(c context.Context, part map[string]any) (
 		}
 		return []dto.GeminiPart{{Text: text}}, nil
 	case "input_image", "input_file", "input_audio", "input_video":
+		if err := validateCrossProviderMediaSource(part); err != nil {
+			return nil, err
+		}
 		source := ContentPartToFileSource(part)
 		if source == nil {
-			return nil, nil
+			return nil, types.NewErrorWithStatusCode(errors.New("input.content media source is missing or invalid"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
 		}
 		base64Data, mimeType, err := relaymedia.ResolveBase64Data(c, source, "formatting Responses input for Gemini")
 		if err != nil {
-			return nil, fmt.Errorf("get file data from '%s' failed: %w", source.GetIdentifier(), err)
+			var typed *types.NewAPIError
+			if errors.As(err, &typed) {
+				return nil, types.NewErrorWithStatusCode(errors.New("content media resolution failed"), typed.GetErrorCode(), typed.StatusCode, types.ErrOptionWithSkipRetry())
+			}
+			return nil, errors.New("content media resolution failed")
 		}
 		if _, ok := sharedgemini.SupportedMimeTypes[strings.ToLower(mimeType)]; !ok {
-			return nil, fmt.Errorf("mime type is not supported by Gemini: '%s', url: '%s', supported types are: %v", mimeType, source.GetIdentifier(), sharedgemini.SupportedMimeTypesList())
+			return nil, types.NewErrorWithStatusCode(errors.New("input.content media MIME type is not supported by Gemini"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
 		}
 		return []dto.GeminiPart{
 			{

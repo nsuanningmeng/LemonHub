@@ -88,6 +88,7 @@ export interface FlowBuildOptions {
   maskSensitive?: boolean
   // Resolves the label for a token whose record no longer exists (deleted).
   // Lets the caller inject a localized string such as "Deleted (123)".
+  noTokenLabel?: string
   deletedTokenLabel?: (tokenId: number) => string
   otherNodeLabel?: (kind: FlowNodeKind) => string
 }

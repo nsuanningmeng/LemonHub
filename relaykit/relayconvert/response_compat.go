@@ -139,3 +139,11 @@ func FinalizeResponsesToChatStream(state *ResponsesToChatStreamState) []dto.Chat
 func NewResponsesBufferedAccumulator() *ResponsesBufferedAccumulator {
 	return oairesponses.NewResponsesBufferedAccumulator()
 }
+
+func BuildResponsesStreamFailure(id, model string, created int64) ChatToResponsesStreamEvent {
+	return oaichat.BuildResponsesStreamFailure(id, model, created)
+}
+
+func AbortChatCompletionsStreamToResponses(state *ChatToResponsesStreamState) []ChatToResponsesStreamEvent {
+	return oaichat.AbortChatCompletionsStreamToResponses(state)
+}

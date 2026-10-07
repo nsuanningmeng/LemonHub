@@ -12,12 +12,15 @@ const (
 )
 
 type BillingUsage struct {
-	Source              string               `json:"source,omitempty"`
-	Semantic            string               `json:"semantic,omitempty"`
-	Estimated           bool                 `json:"estimated,omitempty"`
-	OpenAIUsage         *Usage               `json:"openai_usage,omitempty"`
-	ClaudeUsage         *ClaudeUsage         `json:"claude_usage,omitempty"`
-	GeminiUsageMetadata *GeminiUsageMetadata `json:"gemini_usage_metadata,omitempty"`
+	// Trusted, in-process evidence from a complete Claude response. Never accept
+	// this flag from upstream/client JSON or expose it as protocol usage.
+	ClaudePreOutputRefusal bool                 `json:"-"`
+	Source                 string               `json:"source,omitempty"`
+	Semantic               string               `json:"semantic,omitempty"`
+	Estimated              bool                 `json:"estimated,omitempty"`
+	OpenAIUsage            *Usage               `json:"openai_usage,omitempty"`
+	ClaudeUsage            *ClaudeUsage         `json:"claude_usage,omitempty"`
+	GeminiUsageMetadata    *GeminiUsageMetadata `json:"gemini_usage_metadata,omitempty"`
 }
 
 func NewClaudeMessagesBillingUsage(usage *ClaudeUsage) *BillingUsage {
@@ -155,6 +158,10 @@ func cloneOpenAIUsage(usage *Usage) *Usage {
 	}
 	clone := *usage
 	clone.BillingUsage = nil
+	if usage.ReasoningTokens != nil {
+		reasoningTokens := *usage.ReasoningTokens
+		clone.ReasoningTokens = &reasoningTokens
+	}
 	if usage.InputTokensDetails != nil {
 		inputTokensDetails := *usage.InputTokensDetails
 		clone.InputTokensDetails = &inputTokensDetails
@@ -184,6 +191,7 @@ func cloneClaudeUsage(usage *ClaudeUsage) *ClaudeUsage {
 }
 
 func cloneGeminiUsageMetadata(metadata GeminiUsageMetadata) GeminiUsageMetadata {
+	metadata.CacheTokensDetails = append([]GeminiPromptTokensDetails{}, metadata.CacheTokensDetails...)
 	metadata.PromptTokensDetails = append([]GeminiPromptTokensDetails{}, metadata.PromptTokensDetails...)
 	metadata.ToolUsePromptTokensDetails = append([]GeminiPromptTokensDetails{}, metadata.ToolUsePromptTokensDetails...)
 	metadata.CandidatesTokensDetails = append([]GeminiPromptTokensDetails{}, metadata.CandidatesTokensDetails...)
@@ -204,6 +212,11 @@ func HasGeminiUsageMetadataTokens(metadata *GeminiUsageMetadata) bool {
 		return true
 	}
 	for _, detail := range metadata.PromptTokensDetails {
+		if detail.TokenCount != 0 {
+			return true
+		}
+	}
+	for _, detail := range metadata.CacheTokensDetails {
 		if detail.TokenCount != 0 {
 			return true
 		}

@@ -26,6 +26,7 @@ export const apiKeySchema = z.object({
   id: z.number(),
   name: z.string(),
   key: z.string(),
+  effective_status: z.number().optional(),
   status: z.number(), // 1: enabled, 2: disabled, 3: expired, 4: exhausted
   remain_quota: z.number(),
   used_quota: z.number(),
@@ -60,7 +61,14 @@ export interface ApiResponse<T = unknown> {
   data?: T
 }
 
+export type ApiKeyStatus = 1 | 2 | 3 | 4
+
+export function getApiKeyEffectiveStatus(apiKey: ApiKey): number {
+  return apiKey.effective_status ?? apiKey.status
+}
+
 export interface GetApiKeysParams {
+  status?: ApiKeyStatus
   p?: number
   size?: number
 }
@@ -77,6 +85,7 @@ export interface GetApiKeysResponse {
 }
 
 export interface SearchApiKeysParams {
+  status?: ApiKeyStatus
   keyword?: string
   token?: string
   p?: number

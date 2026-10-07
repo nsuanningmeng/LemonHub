@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/toolpolicy"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
@@ -115,7 +116,16 @@ func responsesRequestFunctionDeclarations(raw []byte) ([]dto.FunctionRequest, er
 		if name == "" {
 			continue
 		}
+		var strict *bool
+		if value, exists := tool["strict"]; exists && value != nil {
+			flag, ok := value.(bool)
+			if !ok {
+				return nil, toolpolicy.Invalid("tools.strict")
+			}
+			strict = &flag
+		}
 		functions = append(functions, dto.FunctionRequest{
+			Strict:      strict,
 			Name:        name,
 			Description: kitutil.Interface2String(tool["description"]),
 			Parameters:  tool["parameters"],

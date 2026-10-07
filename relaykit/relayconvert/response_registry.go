@@ -1095,3 +1095,24 @@ func asGeminiChatResponse(response any) (*dto.GeminiChatResponse, error) {
 		return nil, fmt.Errorf("expected Gemini chat response, got %T", response)
 	}
 }
+
+// AbortStreamResponse emits a failure only for the terminal Responses converter;
+// preceding converters are not finalized and cannot synthesize completion.
+func AbortStreamResponse(state *ResponseStreamState) ([]ResponseResult, error) {
+	if state == nil || state.To != types.RelayFormatOpenAIResponses {
+		return nil, errors.New("Responses stream state is required")
+	}
+	if len(state.stepStates) == 0 {
+		return nil, errors.New("Responses conversion state is unavailable")
+	}
+	terminal, ok := state.stepStates[len(state.stepStates)-1].(*ChatToResponsesStreamState)
+	if !ok {
+		return nil, errors.New("Responses conversion state is unavailable")
+	}
+	events := AbortChatCompletionsStreamToResponses(terminal)
+	values := make([]any, 0, len(events))
+	for _, event := range events {
+		values = append(values, event)
+	}
+	return responseStreamResults(state, values, state.Usage()), nil
+}

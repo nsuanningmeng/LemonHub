@@ -14,7 +14,8 @@ import (
 // (tests, external relaykit users) can use *Values.
 // Implementations backed by pointer types must make every method safe on a nil
 // receiver: a typed-nil pointer stored in Meta is still a non-nil interface,
-// and relaykit deliberately does not use reflection to detect that case.
+// and mandatory Meta methods rely on this nil-safe contract. The optional
+// diagnostic observer additionally guards typed-nil values before reporting.
 type Meta interface {
 	GetOriginModelName() string
 	GetUpstreamModelName() string

@@ -75,18 +75,18 @@
     {
       "functionDeclarations": [
         {
-          "description": "Get weather by city",
           "name": "get_weather",
-          "parameters": {
+          "description": "Get weather by city",
+          "parametersJsonSchema": {
             "properties": {
               "city": {
-                "type": "STRING"
+                "type": "string"
               }
             },
             "required": [
               "city"
             ],
-            "type": "OBJECT"
+            "type": "object"
           }
         }
       ]

@@ -68,18 +68,19 @@ const (
 	requestConverterClaudeToResponses = "claude_messages_to_openai_responses"
 	requestConverterGeminiToClaude    = "gemini_generate_content_to_claude_messages"
 	requestConverterGeminiToResponses = "gemini_generate_content_to_openai_responses"
-	requestConverterResponsesToClaude = "openai_responses_to_claude_messages"
+	requestConverterResponsesToClaude = ConverterOpenAIResponsesToClaudeMessages
 )
 
 const (
-	ConverterNone                        = "none"
-	ConverterClaudeMessagesToOpenAIChat  = "anthropic_messages_to_openai_chat_completions"
-	ConverterOpenAIChatToClaudeMessages  = "openai_chat_completions_to_anthropic_messages"
-	ConverterOpenAIChatToOpenAIResponses = "openai_chat_completions_to_openai_responses"
-	ConverterOpenAIResponsesToOpenAIChat = "openai_responses_to_openai_chat_completions"
-	ConverterOpenAIResponsesToGemini     = "openai_responses_to_gemini_generate_content"
-	ConverterGeminiContentToOpenAIChat   = "gemini_generate_content_to_openai_chat_completions"
-	ConverterOpenAIChatToGeminiContent   = "openai_chat_completions_to_gemini_generate_content"
+	ConverterNone                            = "none"
+	ConverterOpenAIResponsesToClaudeMessages = "openai_responses_to_claude_messages"
+	ConverterClaudeMessagesToOpenAIChat      = "anthropic_messages_to_openai_chat_completions"
+	ConverterOpenAIChatToClaudeMessages      = "openai_chat_completions_to_anthropic_messages"
+	ConverterOpenAIChatToOpenAIResponses     = "openai_chat_completions_to_openai_responses"
+	ConverterOpenAIResponsesToOpenAIChat     = "openai_responses_to_openai_chat_completions"
+	ConverterOpenAIResponsesToGemini         = "openai_responses_to_gemini_generate_content"
+	ConverterGeminiContentToOpenAIChat       = "gemini_generate_content_to_openai_chat_completions"
+	ConverterOpenAIChatToGeminiContent       = "openai_chat_completions_to_gemini_generate_content"
 )
 
 func registerBuiltinRequestConverter(spec RequestConverterSpec) {
@@ -412,7 +413,7 @@ func convertChatRequestToResponses(_ context.Context, _ convmeta.Meta, request a
 	return oaichat.ChatCompletionsRequestToResponsesRequest(chatRequest)
 }
 
-func convertClaudeRequestToOpenAI(_ context.Context, info convmeta.Meta, request any) (any, error) {
+func convertClaudeRequestToOpenAI(ctx context.Context, info convmeta.Meta, request any) (any, error) {
 	claudeRequest, ok := request.(*dto.ClaudeRequest)
 	if !ok {
 		if value, ok := request.(dto.ClaudeRequest); ok {
@@ -422,7 +423,7 @@ func convertClaudeRequestToOpenAI(_ context.Context, info convmeta.Meta, request
 	if claudeRequest == nil {
 		return nil, fmt.Errorf("expected Anthropic Messages request, got %T", request)
 	}
-	return claudemessages.ClaudeMessagesRequestToOpenAIChat(*claudeRequest, info)
+	return claudemessages.ClaudeMessagesRequestToOpenAIChatWithContext(ctx, *claudeRequest, info)
 }
 
 func convertOpenAIRequestToClaude(c context.Context, info convmeta.Meta, request any) (any, error) {

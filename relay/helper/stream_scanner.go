@@ -3,6 +3,7 @@ package helper
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -80,6 +81,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		return
 	}
 
+	c.Set("relay_stream_data_written", false)
 	// 无条件新建 StreamStatus
 	info.StreamStatus = relaycommon.NewStreamStatus()
 
@@ -169,15 +171,38 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				select {
 				case <-pingTicker.C:
 					var err error
+					sent := false
 					func() {
 						writeMutex.Lock()
 						defer writeMutex.Unlock()
+						if !StreamDataWritten(c) {
+							return
+						}
 						ExtendWriteDeadline(c)
+						sent = true
 						err = PingData(c)
 					}()
+					if !sent {
+						continue
+					}
 					if err != nil {
 						logger.LogError(c, "ping data error: "+err.Error())
-						info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, err)
+						if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+							info.MarkDownstreamCancelled()
+							info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, requestErr)
+						} else {
+							// Preserve the observed transport fault even if client_gone
+							// already won the legacy diagnostic reason race.
+							writeMutex.Lock()
+							if info.StreamOutcome().UpstreamFailureStatus == 0 {
+								info.MarkUpstreamFailureStatus(http.StatusBadGateway)
+							} else {
+								info.MarkUpstreamFailure()
+							}
+							info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonPingFail, err)
+							writeMutex.Unlock()
+						}
+						stop()
 						return
 					}
 					logger.LogDebug(c, "ping data sent")
@@ -196,7 +221,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		})
 	}
 
-	dataChan := make(chan string, 10)
+	type streamRecord struct {
+		data    string
+		comment bool
+	}
+	dataChan := make(chan streamRecord, 10)
 
 	wg.Add(1)
 	gopool.Go(func() {
@@ -209,13 +238,43 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			wg.Done()
 		}()
 		sr := newStreamResult(info.StreamStatus)
-		for data := range dataChan {
+		for record := range dataChan {
 			sr.reset()
 			func() {
 				writeMutex.Lock()
 				defer writeMutex.Unlock()
 				ExtendWriteDeadline(c)
-				dataHandler(data, sr)
+				if !record.comment {
+					dataHandler(record.data, sr)
+					return
+				}
+				if !StreamDataWritten(c) {
+					return
+				}
+				if requestErr := c.Request.Context().Err(); requestErr != nil {
+					info.MarkDownstreamCancelled()
+					sr.Stop(requestErr)
+					return
+				}
+				const comment = ": keep-alive\n\n"
+				n, err := c.Writer.WriteString(comment)
+				if err == nil && n != len(comment) {
+					err = io.ErrShortWrite
+				}
+				if err != nil {
+					c.Set("relay_stream_write_failed", true)
+				} else {
+					err = FlushWriter(c)
+				}
+				if err != nil {
+					if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+						info.MarkDownstreamCancelled()
+						sr.Stop(requestErr)
+					} else {
+						info.MarkUpstreamFailureStatus(http.StatusBadGateway)
+						sr.Stop(fmt.Errorf("stream heartbeat failed"))
+					}
+				}
 			}()
 			if sr.IsStopped() {
 				return
@@ -249,8 +308,17 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 			ticker.Reset(streamingTimeout)
 			data := scanner.Text()
+			if strings.HasPrefix(data, ":") {
+				select {
+				case dataChan <- streamRecord{comment: true}:
+				case <-ctx.Done():
+					return
+				case <-stopChan:
+					return
+				}
+				continue
+			}
 			logger.LogDebug(c, "stream scanner data: %s", data)
-
 			if len(data) < 6 {
 				continue
 			}
@@ -267,7 +335,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 				info.ReceivedResponseCount++
 
 				select {
-				case dataChan <- data:
+				case dataChan <- streamRecord{data: data}:
 				case <-ctx.Done():
 					return
 				case <-stopChan:
@@ -298,10 +366,17 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	case <-c.Request.Context().Done():
 		// 客户端断开：立即 cleanup 关闭上游 resp.Body，解除 scanner 阻塞并让上游停止生成，
 		// 避免为已放弃的请求继续消费上游 token。
+		info.MarkDownstreamCancelled()
 		info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, c.Request.Context().Err())
 	}
 
 	cleanup()
+	// A callback may confirm queued protocol completion during cancellation
+	// cleanup. Readers and callbacks are joined before correcting diagnostics.
+	outcome := info.StreamOutcome()
+	if outcome.UpstreamCompleted && !outcome.UpstreamFailed {
+		info.StreamStatus.CorrectCompletedCancellationAfterJoin()
+	}
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {
 		logger.LogInfo(c, fmt.Sprintf("stream ended: %s", info.StreamStatus.Summary()))
 	} else {

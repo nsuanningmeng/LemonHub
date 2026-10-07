@@ -3,9 +3,12 @@ package helper
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -18,6 +21,9 @@ func FlushWriter(c *gin.Context) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("flush panic recovered: %v", r)
+			if c != nil {
+				c.Set("relay_stream_write_failed", true)
+			}
 		}
 	}()
 
@@ -29,13 +35,12 @@ func FlushWriter(c *gin.Context) (err error) {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
-	flusher, ok := c.Writer.(http.Flusher)
-	if !ok {
-		return errors.New("streaming error: flusher not found")
+	c.Writer.WriteHeaderNow()
+	err = http.NewResponseController(c.Writer).Flush()
+	if err != nil {
+		c.Set("relay_stream_write_failed", true)
 	}
-
-	flusher.Flush()
-	return nil
+	return err
 }
 
 func requestContextDone(c *gin.Context) bool {
@@ -58,53 +63,95 @@ func SetEventStreamHeaders(c *gin.Context) {
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 }
 
-func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
-	if requestContextDone(c) {
-		return nil
-	}
-
-	jsonData, err := common.Marshal(resp)
-	if err != nil {
-		common.SysError("error marshalling stream response: " + err.Error())
-	} else {
-		c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonData)})
-	}
-	_ = FlushWriter(c)
-	return nil
-}
-
-func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
-	if requestContextDone(c) {
-		return
-	}
-
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", data)})
-	_ = FlushWriter(c)
-}
-
-func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data string) error {
-	if requestContextDone(c) {
-		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
-	}
-
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s", data)})
-	return FlushWriter(c)
-}
-
-func StringData(c *gin.Context, str string) error {
+func renderStreamData(c *gin.Context, data string) error {
 	if c == nil || c.Writer == nil {
 		return errors.New("context or writer is nil")
 	}
-
 	if requestContextDone(c) {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
+	err := (common.CustomEvent{Data: data}).Render(c.Writer)
+	if err != nil {
+		c.Set("relay_stream_write_failed", true)
+	}
+	return err
+}
 
-	c.Render(-1, common.CustomEvent{Data: "data: " + str})
-	return FlushWriter(c)
+// MarkStreamDataWritten records a validated business frame after its checked
+// write and flush succeeded. Headers, comments and terminal sentinels do not
+// establish readiness. Protocol handlers that write directly must call this.
+func MarkStreamDataWritten(c *gin.Context) {
+	if c != nil && !common.GetContextKeyBool(c, constant.ContextKeyResponseFailed) {
+		c.Set("relay_stream_data_written", true)
+	}
+}
+func StreamDataWritten(c *gin.Context) bool {
+	return c != nil && c.GetBool("relay_stream_data_written")
+}
+
+func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
+	jsonData, err := common.Marshal(resp)
+	if err != nil {
+		return fmt.Errorf("error marshalling stream response: %w", err)
+	}
+	if err := renderStreamData(c, fmt.Sprintf("event: %s\n", resp.Type)); err != nil {
+		return err
+	}
+	if err := renderStreamData(c, "data: "+string(jsonData)); err != nil {
+		return err
+	}
+	if err := FlushWriter(c); err != nil {
+		return err
+	}
+	if resp.Type != "error" && resp.Type != "message_stop" {
+		MarkStreamDataWritten(c)
+	}
+	return nil
+}
+
+func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) error {
+	if err := renderStreamData(c, fmt.Sprintf("event: %s\n", resp.Type)); err != nil {
+		return err
+	}
+	if err := renderStreamData(c, fmt.Sprintf("data: %s\n", data)); err != nil {
+		return err
+	}
+	if err := FlushWriter(c); err != nil {
+		return err
+	}
+	if resp.Type != "error" && resp.Type != "message_stop" {
+		MarkStreamDataWritten(c)
+	}
+	return nil
+}
+
+func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data string) error {
+	if err := renderStreamData(c, fmt.Sprintf("event: %s\n", resp.Type)); err != nil {
+		return err
+	}
+	if err := renderStreamData(c, fmt.Sprintf("data: %s", data)); err != nil {
+		return err
+	}
+	if err := FlushWriter(c); err != nil {
+		return err
+	}
+	if resp.Type != "error" && resp.Type != "response.failed" && resp.Type != "response.completed" && resp.Type != "response.incomplete" && resp.Type != "response.cancelled" && resp.Type != "response.canceled" && resp.Type != "response.done" && resp.Type != "response.error" {
+		MarkStreamDataWritten(c)
+	}
+	return nil
+}
+
+func StringData(c *gin.Context, str string) error {
+	if err := renderStreamData(c, "data: "+str); err != nil {
+		return err
+	}
+	if err := FlushWriter(c); err != nil {
+		return err
+	}
+	if strings.TrimSpace(str) != "" && strings.TrimSpace(str) != "[DONE]" {
+		MarkStreamDataWritten(c)
+	}
+	return nil
 }
 
 func PingData(c *gin.Context) error {
@@ -116,8 +163,12 @@ func PingData(c *gin.Context) error {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
-	if _, err := c.Writer.Write([]byte(": PING\n\n")); err != nil {
+	if n, err := c.Writer.Write([]byte(": PING\n\n")); err != nil {
+		c.Set("relay_stream_write_failed", true)
 		return fmt.Errorf("write ping data failed: %w", err)
+	} else if n != len(": PING\n\n") {
+		c.Set("relay_stream_write_failed", true)
+		return io.ErrShortWrite
 	}
 	return FlushWriter(c)
 }
@@ -133,8 +184,8 @@ func ObjectData(c *gin.Context, object interface{}) error {
 	return StringData(c, string(jsonData))
 }
 
-func Done(c *gin.Context) {
-	_ = StringData(c, "[DONE]")
+func Done(c *gin.Context) error {
+	return StringData(c, "[DONE]")
 }
 
 func WssString(c *gin.Context, ws *websocket.Conn, str string) error {

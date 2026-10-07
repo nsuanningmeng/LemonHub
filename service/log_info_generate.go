@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -108,6 +109,12 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 
 	AppendChannelAffinityAdminInfo(ctx, adminInfo)
 
+	if diagnostics := relayInfo.ConversionDiagnostics(); len(diagnostics) > 0 {
+		adminInfo["conversion_diagnostics"] = diagnostics
+	}
+	for _, diagnostic := range relayInfo.TakeConversionDiagnosticsForLogging() {
+		logger.LogWarn(ctx, fmt.Sprintf("request conversion: code=%s source=%s target=%s field=%s: %s", diagnostic.Code, diagnostic.Source, diagnostic.Target, diagnostic.Field, diagnostic.Message))
+	}
 	other["admin_info"] = adminInfo
 	appendRequestPath(ctx, relayInfo, other)
 	appendRequestConversionChain(relayInfo, other)
@@ -126,8 +133,14 @@ func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]
 }
 
 func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
-	if relayInfo == nil || other == nil || !relayInfo.IsStream || relayInfo.StreamStatus == nil {
+	if relayInfo == nil || other == nil || relayInfo.StreamStatus == nil {
 		return
+	}
+	if !relayInfo.IsStream {
+		request, ok := relayInfo.Request.(*dto.AudioRequest)
+		if !ok || request.StreamFormat != "audio" {
+			return
+		}
 	}
 	ss := relayInfo.StreamStatus
 	status := "ok"
@@ -183,6 +196,9 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 		// Compute "this request" subscription consumed + remaining
 		consumed := relayInfo.SubscriptionPreConsumed + relayInfo.SubscriptionPostDelta
 		usedFinal := relayInfo.SubscriptionAmountUsedAfterPreConsume + relayInfo.SubscriptionPostDelta
+		if relayInfo.SubscriptionSettlementApplied {
+			usedFinal = relayInfo.SubscriptionAmountUsedAfterSettlement
+		}
 		if consumed < 0 {
 			consumed = 0
 		}
@@ -198,11 +214,8 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 			other["subscription_used"] = usedFinal
 			other["subscription_remain"] = remain
 		}
-		if consumed > 0 {
-			other["subscription_consumed"] = consumed
-		}
-		// Wallet quota is not deducted when billed from subscription.
-		other["wallet_quota_deducted"] = 0
+		other["subscription_consumed"] = consumed
+		other["wallet_quota_deducted"] = relayInfo.SubscriptionWalletQuota
 	}
 }
 
@@ -319,5 +332,22 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 		if len(result.RequestRules) > 0 {
 			other["request_rules"] = result.RequestRules
 		}
+	}
+}
+
+// appendTaskKeyAudit uses the submission snapshot only: current channel keys
+// may have been rotated or reordered before a later settlement or refund.
+func appendTaskKeyAudit(other map[string]interface{}, task *model.Task) {
+	if other == nil || task == nil || task.PrivateData.IsMultiKey == nil || !*task.PrivateData.IsMultiKey {
+		return
+	}
+	admin, ok := other["admin_info"].(map[string]interface{})
+	if !ok {
+		admin = make(map[string]interface{})
+		other["admin_info"] = admin
+	}
+	admin["is_multi_key"] = true
+	if index := task.PrivateData.KeyIndex; index != nil && *index >= 0 {
+		admin["multi_key_index"] = *index
 	}
 }

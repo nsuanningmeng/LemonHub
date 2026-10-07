@@ -1,6 +1,11 @@
 package openai
 
 import (
+	"errors"
+	"fmt"
+	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/gin-gonic/gin"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -155,4 +160,68 @@ func (a *responsesUsageAccumulator) finish() *dto.Usage {
 	}
 	a.usage = usage
 	return usage
+}
+
+// Only actual upstream faults override a downstream cancellation. A body close
+// caused by cancellation can itself produce context.Canceled while cleaning up.
+func observeResponsesStreamEnd(c *gin.Context, info *relaycommon.RelayInfo) {
+	status := info.StreamStatus
+	if status == nil {
+		return
+	}
+	markFailure := func() {
+		info.MarkUpstreamFailure()
+		if info.StreamOutcome().UpstreamFailureStatus == 0 {
+			info.MarkUpstreamFailureStatus(http.StatusBadGateway)
+		}
+	}
+	requestErr := c.Request.Context().Err()
+	actualCancellation := requestErr != nil && errors.Is(status.EndError, requestErr)
+	switch status.EndReason {
+	case relaycommon.StreamEndReasonTimeout, relaycommon.StreamEndReasonPanic:
+		markFailure()
+	case relaycommon.StreamEndReasonPingFail:
+		if !actualCancellation || c.GetBool("relay_stream_write_failed") {
+			markFailure()
+		}
+	case relaycommon.StreamEndReasonScannerErr:
+		if !actualCancellation {
+			markFailure()
+		}
+	}
+}
+func responsesCancellationUsage(c *gin.Context, a *responsesUsageAccumulator) (*dto.Usage, bool) {
+	outcome := a.info.StreamOutcome()
+	if outcome.UpstreamFailed || outcome.UpstreamCompleted || outcome.OtherUpstreamTerminal {
+		return nil, false
+	}
+	if c.Request.Context().Err() == nil && !outcome.DownstreamCancelled {
+		return nil, false
+	}
+	a.info.MarkDownstreamCancelled()
+	if !a.generated && a.usage == nil {
+		a.info.MarkCancelledWithoutBillableOutput()
+	}
+	return a.finish(), true
+}
+func responsesStreamEndError() *types.NewAPIError {
+	return types.NewOpenAIError(fmt.Errorf("upstream Responses stream ended unsuccessfully"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+}
+
+func responsesStreamWriteError(c *gin.Context, err error) *types.NewAPIError {
+	if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+		return types.NewErrorWithStatusCode(fmt.Errorf("downstream stream write cancelled: %w", requestErr), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+	}
+	return types.NewOpenAIError(fmt.Errorf("downstream stream write failed"), types.ErrorCodeBadResponse, http.StatusInternalServerError)
+}
+func responsesConvertedWriteFailure(c *gin.Context, a *responsesUsageAccumulator, err error) (*dto.Usage, *types.NewAPIError) {
+	if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+		if a.info.StreamOutcome().UpstreamCompleted {
+			return a.finish(), nil
+		}
+		if usage, cancelled := responsesCancellationUsage(c, a); cancelled {
+			return usage, nil
+		}
+	}
+	return nil, responsesStreamWriteError(c, err)
 }

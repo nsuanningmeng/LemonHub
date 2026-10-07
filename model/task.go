@@ -112,6 +112,8 @@ func (m Properties) Value() (driver.Value, error) {
 
 type TaskPrivateData struct {
 	Key            string `json:"key,omitempty"`
+	IsMultiKey     *bool  `json:"is_multi_key,omitempty"`
+	KeyIndex       *int   `json:"key_index,omitempty"`
 	UpstreamTaskID string `json:"upstream_task_id,omitempty"` // 上游真实 task ID
 	ResultURL      string `json:"result_url,omitempty"`       // 任务成功后的结果 URL（视频地址等）
 	// 计费上下文：用于异步退款/差额结算（轮询阶段读取）
@@ -260,9 +262,12 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	properties := Properties{}
 	privateData := TaskPrivateData{}
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
-		if relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeGemini ||
-			relayInfo.ChannelMeta.ChannelType == constant.ChannelTypeVertexAi {
-			privateData.Key = relayInfo.ChannelMeta.ApiKey
+		privateData.Key = relayInfo.ChannelMeta.ApiKey
+		multi := relayInfo.ChannelMeta.ChannelIsMultiKey
+		privateData.IsMultiKey = &multi
+		if multi {
+			index := relayInfo.ChannelMeta.ChannelMultiKeyIndex
+			privateData.KeyIndex = &index
 		}
 		if relayInfo.UpstreamModelName != "" {
 			properties.UpstreamModelName = relayInfo.UpstreamModelName
@@ -740,4 +745,22 @@ func (t *Task) ToOpenAIVideo() *dto.OpenAIVideo {
 	openAIVideo.CompletedAt = t.UpdatedAt
 	openAIVideo.SetMetadata("url", t.GetResultURL())
 	return openAIVideo
+}
+
+// ResolveTaskCredential uses submission provenance before current channel credentials.
+// Legacy multi-key tasks cannot safely identify their submitting credential.
+func ResolveTaskCredential(task *Task, channel *Channel) (string, error) {
+	if task == nil {
+		return "", errors.New("task credential unavailable")
+	}
+	if task.PrivateData.Key != "" {
+		return task.PrivateData.Key, nil
+	}
+	if task.PrivateData.IsMultiKey != nil && *task.PrivateData.IsMultiKey {
+		return "", errors.New("task credential provenance unavailable")
+	}
+	if channel == nil || channel.ChannelInfo.IsMultiKey || channel.Key == "" {
+		return "", errors.New("task credential provenance unavailable")
+	}
+	return channel.Key, nil
 }

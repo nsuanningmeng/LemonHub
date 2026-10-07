@@ -30,7 +30,7 @@ func RunExprWithRequest(exprStr string, params TokenParams, request RequestInput
 	if err != nil {
 		return 0, TraceResult{}, err
 	}
-	return runProgram(entry.prog, entry.requestRules, params, request)
+	return runProgram(entry.prog, entry.requestRules, entry.bodyRequired, params, request)
 }
 
 // RunExprByHash is like RunExpr but accepts a pre-computed hash for the cache
@@ -45,10 +45,13 @@ func RunExprByHashWithRequest(exprStr, hash string, params TokenParams, request 
 	if err != nil {
 		return 0, TraceResult{}, err
 	}
-	return runProgram(entry.prog, entry.requestRules, params, request)
+	return runProgram(entry.prog, entry.requestRules, entry.bodyRequired, params, request)
 }
 
-func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, params TokenParams, request RequestInput) (float64, TraceResult, error) {
+func runProgram(prog *vm.Program, requestRules []RequestRuleTrace, bodyRequired bool, params TokenParams, request RequestInput) (float64, TraceResult, error) {
+	if !bodyRequired {
+		request.Body = nil
+	}
 	trace := TraceResult{
 		RequestRules: append([]RequestRuleTrace(nil), requestRules...),
 	}

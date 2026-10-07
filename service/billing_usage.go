@@ -235,3 +235,80 @@ func addGeminiInputTokenDetail(details *dto.InputTokenDetails, detail dto.Gemini
 		details.TextTokens += detail.TokenCount
 	}
 }
+
+// cachedGeminiInputMediaTokens returns only the provable cache/media overlap.
+// Gemini prompt modality counts include cached tokens; tool-use prompt counts
+// describe additional inputs and must not be discounted by the prompt cache.
+// Preserve the original Usage and snapshot: callers remove this overlap only
+// when cache tokens are separately priced.
+func cachedGeminiInputMediaTokens(usage *dto.Usage) (imageTokens, audioTokens int) {
+	if usage == nil || usage.BillingUsage == nil || usage.BillingUsage.GeminiUsageMetadata == nil {
+		return 0, 0
+	}
+	metadata := usage.BillingUsage.GeminiUsageMetadata
+	if metadata.PromptTokenCount <= 0 || metadata.CachedContentTokenCount <= 0 ||
+		metadata.CachedContentTokenCount > metadata.PromptTokenCount || metadata.ToolUsePromptTokenCount < 0 {
+		return 0, 0
+	}
+
+	var promptImages, promptAudio int
+	promptModalities := make(map[string]int, len(metadata.PromptTokensDetails))
+	remaining := metadata.PromptTokenCount
+	for _, detail := range metadata.PromptTokensDetails {
+		// Subtract before accumulating so even malicious int-sized counts cannot
+		// overflow. Inconsistent modality data must never invent a discount.
+		if detail.TokenCount < 0 || detail.TokenCount > remaining {
+			return 0, 0
+		}
+		remaining -= detail.TokenCount
+		promptModalities[detail.Modality] += detail.TokenCount
+		switch detail.Modality {
+		case "IMAGE":
+			promptImages += detail.TokenCount
+		case "AUDIO":
+			promptAudio += detail.TokenCount
+		}
+	}
+
+	if len(metadata.CacheTokensDetails) == 0 {
+		// Without a breakdown, a partial cache can contain text, images or
+		// audio in unknown proportions. Only a fully cached original prompt
+		// proves that all its media is cached; do not include tool-use media.
+		if metadata.CachedContentTokenCount != metadata.PromptTokenCount {
+			return 0, 0
+		}
+		imageTokens, audioTokens = promptImages, promptAudio
+	} else {
+		unreportedPromptTokens := remaining
+		remaining = metadata.CachedContentTokenCount
+		for _, detail := range metadata.CacheTokensDetails {
+			if detail.TokenCount < 0 || detail.TokenCount > remaining {
+				return 0, 0
+			}
+			remaining -= detail.TokenCount
+			if detail.TokenCount > promptModalities[detail.Modality] {
+				// A prompt breakdown may omit other modalities. Their cached
+				// counts must fit within the unreported prompt remainder.
+				unreported := detail.TokenCount - promptModalities[detail.Modality]
+				if unreported > unreportedPromptTokens {
+					return 0, 0
+				}
+				unreportedPromptTokens -= unreported
+				promptModalities[detail.Modality] = 0
+			} else {
+				promptModalities[detail.Modality] -= detail.TokenCount
+			}
+			switch detail.Modality {
+			case "IMAGE":
+				imageTokens += detail.TokenCount
+			case "AUDIO":
+				audioTokens += detail.TokenCount
+			}
+		}
+	}
+	if imageTokens > promptImages || audioTokens > promptAudio ||
+		imageTokens > usage.PromptTokensDetails.ImageTokens || audioTokens > usage.PromptTokensDetails.AudioTokens {
+		return 0, 0
+	}
+	return imageTokens, audioTokens
+}

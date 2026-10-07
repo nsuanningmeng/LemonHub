@@ -94,6 +94,26 @@ func removeFunctionResponseID(request *dto.GeminiChatRequest) {
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	if request == nil || info == nil {
+		return nil, types.NewOpenAIError(errors.New("Claude request and relay information are required"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
+	if a.RequestMode == RequestModeGemini {
+		result, err := service.ConvertRequest(c, info, types.RelayFormatGemini, request)
+		if err != nil {
+			return nil, err
+		}
+		geminiRequest, ok := result.Value.(*dto.GeminiChatRequest)
+		if !ok {
+			return nil, fmt.Errorf("expected Gemini generateContent request, got %T", result.Value)
+		}
+		c.Set("request_model", info.UpstreamModelName)
+		// Apply Vertex-specific functionResponse.id compatibility consistently
+		// with native Gemini requests without changing the downstream protocol.
+		return a.ConvertGeminiRequest(c, info, geminiRequest)
+	}
+	if a.RequestMode != RequestModeClaude {
+		return nil, types.NewOpenAIError(errors.New("Claude Messages requests are unsupported for this Vertex model protocol"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
 	if v, ok := claudeModelMap[info.UpstreamModelName]; ok {
 		c.Set("request_model", v)
 	} else {

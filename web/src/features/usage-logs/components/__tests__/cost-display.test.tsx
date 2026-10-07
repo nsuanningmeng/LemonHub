@@ -80,4 +80,56 @@ describe('log cost display', () => {
       screen.getByRole('img', { name: 'Includes tool-call surcharge' })
     ).toHaveAttribute('data-tool-surcharge-indicator', 'true')
   })
+
+  test.each([300000, 0])(
+    'shows separate subscription and wallet amounts when subscription covers %i quota',
+    (subscriptionQuota) => {
+      renderCost({
+        quota: 800000,
+        other: {
+          billing_source: 'subscription',
+          subscription_consumed: subscriptionQuota,
+          wallet_quota_deducted: 800000 - subscriptionQuota,
+          tool_surcharges: [{ name: 'lookup_customer', count: 1, price: 5 }],
+        },
+      })
+
+      expect(
+        normalizedText(
+          screen.getByRole('group', { name: 'Subscription' }).textContent
+        )
+      ).toContain(normalizedText(formatLogQuota(subscriptionQuota)))
+      expect(
+        normalizedText(
+          screen.getByRole('group', { name: 'Wallet' }).textContent
+        )
+      ).toContain(normalizedText(formatLogQuota(800000 - subscriptionQuota)))
+      expect(
+        screen.getByRole('img', { name: 'Includes tool-call surcharge' })
+      ).toBeVisible()
+      expect(
+        screen.getByRole('group', { name: 'Billing Details' })
+      ).toHaveClass('flex-col')
+      expect(screen.getByRole('group', { name: 'Wallet' })).toHaveClass(
+        'flex-wrap'
+      )
+    }
+  )
+
+  test.each([undefined, 0])(
+    'keeps the subscription-only display when wallet deduction is %s',
+    (walletQuota) => {
+      renderCost({
+        quota: 800000,
+        other: {
+          billing_source: 'subscription',
+          subscription_consumed: 800000,
+          wallet_quota_deducted: walletQuota,
+        },
+      })
+
+      expect(screen.getByText('Subscription')).toBeVisible()
+      expect(screen.queryByText('Wallet')).not.toBeInTheDocument()
+    }
+  )
 })

@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -78,11 +79,17 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	adaptor.Init(info)
 	var requestBody io.Reader
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled {
-		storage, err := common.GetBodyStorage(c)
-		if err != nil {
-			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+		body, closer, apiErr := newPassthroughRequestBody(c, info)
+		if apiErr != nil {
+			if apiErr.GetErrorCode() == types.ErrorCodeReadRequestBodyFailed {
+				apiErr.StatusCode = http.StatusInternalServerError
+			}
+			return apiErr
 		}
-		requestBody = common.NewReplayableBodyReader(storage)
+		if closer != nil {
+			defer closer.Close()
+		}
+		requestBody = body
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
 		if err != nil {
@@ -121,6 +128,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	var httpResp *http.Response
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
+		if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+			return types.NewErrorWithStatusCode(requestErr, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
+		}
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}
 
@@ -142,6 +152,13 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		// reset status code 重置状态码
 		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 		return newAPIError
+	}
+
+	if outcome := info.StreamOutcome(); info.IsPureDownstreamCancellation() && outcome.CancelledWithoutBillableOutput {
+		if info.Billing != nil {
+			info.Billing.Refund(c)
+		}
+		return nil
 	}
 
 	usageDto := usage.(*dto.Usage)

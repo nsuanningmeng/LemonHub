@@ -9,7 +9,20 @@
   "messages": [
     {
       "role": "user",
-      "content": []
+      "content": [
+        {
+          "type": "text",
+          "text": "What is in this image?"
+        },
+        {
+          "type": "image",
+          "source": {
+            "type": "base64",
+            "media_type": "image/png",
+            "data": "aGVsbG8="
+          }
+        }
+      ]
     },
     {
       "role": "assistant",

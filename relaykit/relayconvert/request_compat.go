@@ -12,7 +12,7 @@ import (
 )
 
 func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info convmeta.Meta) (*dto.GeneralOpenAIRequest, error) {
-	return claudemessages.ClaudeMessagesRequestToOpenAIChat(claudeRequest, info)
+	return claudemessages.ClaudeMessagesRequestToOpenAIChatWithContext(context.Background(), claudeRequest, info)
 }
 
 func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, textRequest dto.GeneralOpenAIRequest) (*dto.ClaudeRequest, error) {

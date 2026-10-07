@@ -36,6 +36,22 @@ import type {
 // Admin Plan Management
 // ============================================================================
 
+export async function getPaymentCompliance(): Promise<{
+  confirmed: boolean
+  terms_version: string
+}> {
+  const response = await api.get<
+    ApiResponse<{ confirmed: boolean; terms_version: string }>
+  >('/api/subscription/admin/payment-compliance')
+  if (
+    !response.data.success ||
+    typeof response.data.data?.confirmed !== 'boolean'
+  ) {
+    throw new Error('Unable to load payment compliance status. Please retry.')
+  }
+  return response.data.data
+}
+
 export async function getAdminPlans(): Promise<ApiResponse<PlanRecord[]>> {
   const res = await api.get('/api/subscription/admin/plans')
   return res.data

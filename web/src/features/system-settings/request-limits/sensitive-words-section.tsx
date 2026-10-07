@@ -46,6 +46,7 @@ import { useUpdateOption } from '../hooks/use-update-option'
 const sensitiveSchema = z.object({
   CheckSensitiveEnabled: z.boolean(),
   CheckSensitiveOnPromptEnabled: z.boolean(),
+  SensitiveWordsWholeWordEnabled: z.boolean(),
   SensitiveWords: z.string().optional(),
 })
 
@@ -139,6 +140,31 @@ export function SensitiveWordsSection({
 
           <FormField
             control={form.control}
+            name='SensitiveWordsWholeWordEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>
+                    {t('Match English keywords as whole words')}
+                  </FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name='SensitiveWords'
             render={({ field }) => (
               <FormItem>
@@ -151,6 +177,9 @@ export function SensitiveWordsSection({
                   />
                 </FormControl>
                 <FormDescription>
+                  {t(
+                    'Matching ignores case. By default, keywords also match inside longer words.'
+                  )}{' '}
                   {t(
                     'Each line represents one keyword. Leave blank to disable the list but keep the switch states.'
                   )}

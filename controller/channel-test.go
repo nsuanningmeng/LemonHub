@@ -79,6 +79,9 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 }
 
 func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) (tr testResult) {
+	return testChannelWithKeyProbe(ctx, channel, testUserID, testModel, endpointType, isStream, nil)
+}
+func testChannelWithKeyProbe(ctx context.Context, channel *model.Channel, testUserID int, testModel, endpointType string, isStream bool, probeIdentity *string) (tr testResult) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -141,10 +144,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 
 		if strings.Contains(strings.ToLower(testModel), "rerank") {
 			requestPath = "/v1/rerank"
-		}
-
-		// 先判断是否为 Embedding 模型
-		if strings.Contains(strings.ToLower(testModel), "embedding") ||
+		} else if strings.Contains(strings.ToLower(testModel), "embedding") ||
 			strings.HasPrefix(testModel, "m3e") || // m3e 系列模型
 			strings.Contains(testModel, "bge-") || // bge 系列模型
 			strings.Contains(testModel, "embed") ||
@@ -187,7 +187,12 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	group, _ := model.GetUserGroup(testUserID, false)
 	c.Set("group", group)
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, testModel)
+	var newAPIError *types.NewAPIError
+	if probeIdentity == nil {
+		newAPIError = middleware.SetupContextForSelectedChannel(c, channel, testModel)
+	} else {
+		newAPIError = middleware.SetupContextForChannelHealthProbe(c, channel, testModel, *probeIdentity)
+	}
 	if newAPIError != nil {
 		return testResult{
 			context:     c,
@@ -522,6 +527,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	model.RecordConsumeLog(c, testUserID, model.RecordConsumeLogParams{
 		ChannelId:        channel.Id,
 		PromptTokens:     usage.PromptTokens,
+		InputTokensTotal: service.UsageInputTokensForStatistics(info, usage),
 		CompletionTokens: usage.CompletionTokens,
 		ModelName:        info.OriginModelName,
 		TokenName:        "模型测试",
@@ -555,6 +561,9 @@ func attachTestBillingRequestInput(info *relaycommon.RelayInfo, request dto.Requ
 }
 
 func settleTestQuota(info *relaycommon.RelayInfo, priceData hosttypes.PriceData, usage *dto.Usage) (int, *billingexpr.TieredResult) {
+	if service.TextBillingExemptionReason(usage) != "" {
+		return 0, nil
+	}
 	if usage != nil && info != nil && info.TieredBillingSnapshot != nil {
 		isClaudeUsageSemantic := usage.UsageSemantic == "anthropic" || info.GetFinalRequestRelayFormat() == types.RelayFormatClaude
 		usedVars := billingexpr.UsedVars(info.TieredBillingSnapshot.ExprString)
@@ -573,17 +582,17 @@ func settleTestQuota(info *relaycommon.RelayInfo, priceData hosttypes.PriceData,
 		if info != nil && info.QuotaClamp == nil && clamp != nil {
 			info.QuotaClamp = clamp
 		}
-		quota, clamp = common.QuotaRoundChecked(float64(baseQuota) * priceData.ModelRatio)
+		quota, clamp = common.QuotaRoundChecked(float64(baseQuota) * priceData.ModelRatio * priceData.GroupRatioInfo.GroupRatio)
 		if info != nil && info.QuotaClamp == nil && clamp != nil {
 			info.QuotaClamp = clamp
 		}
-		if priceData.ModelRatio != 0 && quota <= 0 {
+		if priceData.ModelRatio != 0 && priceData.GroupRatioInfo.GroupRatio != 0 && quota <= 0 {
 			quota = 1
 		}
 		return quota, nil
 	}
 
-	quota, clamp := common.QuotaFromFloatChecked(priceData.ModelPrice * common.QuotaPerUnit)
+	quota, clamp := common.QuotaFromFloatChecked(priceData.ModelPrice * common.QuotaPerUnit * priceData.GroupRatioInfo.GroupRatio)
 	if info != nil && info.QuotaClamp == nil && clamp != nil {
 		info.QuotaClamp = clamp
 	}
@@ -593,6 +602,9 @@ func settleTestQuota(info *relaycommon.RelayInfo, priceData hosttypes.PriceData,
 func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData hosttypes.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) map[string]interface{} {
 	other := service.GenerateTextOtherInfo(c, info, priceData.ModelRatio, priceData.GroupRatioInfo.GroupRatio, priceData.CompletionRatio,
 		usage.PromptTokensDetails.CachedTokens, priceData.CacheRatio, priceData.ModelPrice, priceData.GroupRatioInfo.GroupSpecialRatio)
+	if reason := service.TextBillingExemptionReason(usage); reason != "" {
+		other["billing_exempt_reason"] = reason
+	}
 	if tieredResult != nil {
 		service.InjectTieredBillingInfo(other, info, tieredResult)
 	}
@@ -1026,6 +1038,15 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 		return summary
 	}
 	channel = currentChannel
+	if channel.ChannelInfo.IsMultiKey {
+		identities := channel.AutoDisabledKeyProbeIdentities()
+		if channel.Status == common.ChannelStatusAutoDisabled && len(identities) > 0 {
+			return testAutoDisabledChannelKeys(ctx, channel, testUserID, disableThreshold, identities)
+		}
+		if channel.Status != common.ChannelStatusEnabled {
+			return summary
+		}
+	}
 	isChannelEnabled := channel.Status == common.ChannelStatusEnabled
 	tik := time.Now()
 	result := testChannel(ctx, channel, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(channel))
@@ -1083,11 +1104,51 @@ func testChannelForHealthCheck(ctx context.Context, channel *model.Channel, test
 	}
 
 	if result.localErr == nil && result.context != nil && !isChannelEnabled && service.ShouldEnableChannel(newAPIError, currentChannel.Status) {
-		service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name)
-		summary.Enabled++
+		if service.EnableChannel(channel.Id, common.GetContextKeyString(result.context, constant.ContextKeyChannelKey), channel.Name, ctx) {
+			summary.Enabled++
+		}
 	}
 
 	channel.UpdateResponseTime(milliseconds)
+	return summary
+}
+
+// Recovery keys are independent probes: a successful sibling must not recover a
+// failed key, and every queued identity is revalidated before dispatch.
+func testAutoDisabledChannelKeys(ctx context.Context, channel *model.Channel, testUserID int, disableThreshold int64, identities []string) channelTestSummary {
+	summary := channelTestSummary{}
+	for _, identity := range identities {
+		if ctx.Err() != nil {
+			break
+		}
+		current, err := model.GetChannelById(channel.Id, true)
+		if err != nil || current.Status == common.ChannelStatusManuallyDisabled {
+			break
+		}
+		if _, _, err := current.GetAutoDisabledKeyForProbe(identity); err != nil {
+			continue
+		}
+		tik := time.Now()
+		result := testChannelWithKeyProbe(ctx, current, testUserID, "", "", shouldUseStreamForAutomaticChannelTest(current), &identity)
+		milliseconds := time.Since(tik).Milliseconds()
+		if ctx.Err() != nil {
+			break
+		}
+		summary.Tested++
+		if result.localErr != nil || result.newAPIError != nil {
+			summary.Failed++
+			continue
+		}
+		if common.AutomaticDisableChannelEnabled && milliseconds > disableThreshold {
+			summary.Failed++
+			continue
+		}
+		summary.Succeeded++
+		if result.context != nil && service.ShouldEnableChannel(nil, common.ChannelStatusAutoDisabled) && service.EnableChannel(current.Id, identity, current.Name, ctx) {
+			summary.Enabled++
+		}
+		current.UpdateResponseTime(milliseconds)
+	}
 	return summary
 }
 

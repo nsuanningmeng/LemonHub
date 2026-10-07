@@ -355,6 +355,7 @@ export function FlowCharts(props: FlowChartsProps) {
         topNodeLimit,
         overflowMode,
         maskSensitive,
+        noTokenLabel: t('No API token'),
         deletedTokenLabel: (tokenId) => t('Deleted ({{id}})', { id: tokenId }),
         otherNodeLabel: (kind) => t(FLOW_OTHER_NODE_LABEL_KEYS[kind]),
       }),

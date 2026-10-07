@@ -8,6 +8,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,6 +70,13 @@ func TestTokenWritesRequireGroupSelection(t *testing.T) {
 }
 
 func TestAddTokenNormalizesExplicitGroupsAndEnforcesLimit(t *testing.T) {
+	oldUsable, oldRatios := setting.UserUsableGroups2JSONString(), ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP","a":"a","b":"b","c":"c","d":"d","e":"e","f":"f","g":"g","h":"h","i":"i"}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1,"a":1,"b":1,"c":1,"d":1,"e":1,"f":1,"g":1,"h":1,"i":1}`))
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(oldUsable))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldRatios))
+	})
 	for _, test := range []struct {
 		name    string
 		group   string
@@ -102,6 +111,7 @@ func TestAddTokenNormalizesExplicitGroupsAndEnforcesLimit(t *testing.T) {
 }
 
 func TestLegacyTokenCanBeDisabledAndRepairedBeforeEnabling(t *testing.T) {
+	configureTokenAutoGroupsTest(t, "5", `["default","vip"]`)
 	require.NoError(t, i18n.Init())
 	db := setupTokenControllerTestDB(t)
 	token := seedToken(t, db, 1, "legacy", "legacy-group-key")

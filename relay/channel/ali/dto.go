@@ -1,6 +1,7 @@
 package ali
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/QuantumNous/new-api/logger"
@@ -100,37 +101,39 @@ type AliOutput struct {
 	} `json:"choices,omitempty"`
 }
 
-func (o *AliOutput) ChoicesToOpenAIImageDate(c *gin.Context, responseFormat string) []dto.ImageData {
+func (o *AliOutput) ChoicesToOpenAIImageDate(c *gin.Context, responseFormat string) ([]dto.ImageData, error) {
 	var imageData []dto.ImageData
-	if len(o.Choices) > 0 {
-		for _, choice := range o.Choices {
-			var data dto.ImageData
-			for _, content := range choice.Message.Content {
-				if content.Image != "" {
-					if strings.HasPrefix(content.Image, "http") {
-						var b64Json string
-						if responseFormat == "b64_json" {
-							_, b64, err := service.GetImageFromUrl(content.Image)
-							if err != nil {
-								logger.LogError(c, "get_image_data_failed: "+err.Error())
-								continue
-							}
-							b64Json = b64
-						}
-						data.Url = content.Image
-						data.B64Json = b64Json
-					} else {
-						data.B64Json = content.Image
+	for _, choice := range o.Choices {
+		// Preserve the existing choice-wide last text for every image, whether
+		// that text appears before or after the images.
+		var revisedPrompt string
+		for _, content := range choice.Message.Content {
+			if content.Image == "" && content.Text != "" {
+				revisedPrompt = content.Text
+			}
+		}
+		for _, content := range choice.Message.Content {
+			if content.Image == "" {
+				continue
+			}
+			data := dto.ImageData{RevisedPrompt: revisedPrompt}
+			if strings.HasPrefix(content.Image, "http") {
+				data.Url = content.Image
+				if responseFormat == "b64_json" {
+					_, b64, err := service.GetImageFromUrl(content.Image)
+					if err != nil {
+						return nil, errors.New("failed to download Ali image")
 					}
-				} else if content.Text != "" {
-					data.RevisedPrompt = content.Text
+					data.B64Json = b64
 				}
+			} else {
+				data.B64Json = content.Image
 			}
 			imageData = append(imageData, data)
 		}
 	}
 
-	return imageData
+	return imageData, nil
 }
 
 func (o *AliOutput) ResultToOpenAIImageDate(c *gin.Context, responseFormat string) []dto.ImageData {

@@ -7,7 +7,9 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/toolpolicy"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/samber/lo"
 )
 
@@ -234,10 +236,24 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 					"input_audio": part.InputAudio,
 				})
 			case dto.ContentTypeFile:
-				contentParts = append(contentParts, map[string]any{
-					"type": "input_file",
-					"file": part.File,
-				})
+				file := part.GetFile()
+				if file == nil {
+					return nil, types.NewErrorWithStatusCode(errors.New("messages.content.file: invalid file"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
+				}
+				if (file.FileData == "" && file.FileId == "") || (file.FileData != "" && file.FileId != "") {
+					return nil, types.NewErrorWithStatusCode(errors.New("messages.content.file: expected exactly one file source"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
+				}
+				item := map[string]any{"type": "input_file"}
+				if file.FileData != "" {
+					item["file_data"] = file.FileData
+				}
+				if file.FileName != "" {
+					item["filename"] = file.FileName
+				}
+				if file.FileId != "" {
+					item["file_id"] = file.FileId
+				}
+				contentParts = append(contentParts, item)
 			case dto.ContentTypeVideoUrl:
 				contentParts = append(contentParts, map[string]any{
 					"type":      "input_video",
@@ -291,12 +307,11 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 		for _, tool := range req.Tools {
 			switch tool.Type {
 			case "function":
-				tools = append(tools, map[string]any{
-					"type":        "function",
-					"name":        tool.Function.Name,
-					"description": tool.Function.Description,
-					"parameters":  tool.Function.Parameters,
-				})
+				function := map[string]any{"type": "function", "name": tool.Function.Name, "description": tool.Function.Description, "parameters": tool.Function.Parameters}
+				if tool.Function.Strict != nil {
+					function["strict"] = *tool.Function.Strict
+				}
+				tools = append(tools, function)
 			default:
 				// Best-effort: keep original tool shape for unknown types.
 				var m map[string]any
@@ -324,6 +339,19 @@ func ChatCompletionsRequestToResponsesRequest(req *dto.GeneralOpenAIRequest) (*d
 			}
 			if m == nil {
 				toolChoiceRaw, _ = kitutil.Marshal(v)
+			} else if t, _ := m["type"].(string); t == "allowed_tools" {
+				choice, err := toolpolicy.OpenAIChoice(m)
+				if err != nil {
+					return nil, err
+				}
+				if err := toolpolicy.ValidateChoiceTools(choice, req.Tools); err != nil {
+					return nil, err
+				}
+				allowed := make([]map[string]any, 0, len(choice.Names))
+				for _, name := range choice.Names {
+					allowed = append(allowed, map[string]any{"type": "function", "name": name})
+				}
+				toolChoiceRaw, _ = kitutil.Marshal(map[string]any{"type": "allowed_tools", "mode": choice.Mode, "tools": allowed})
 			} else if t, _ := m["type"].(string); t == "function" {
 				// Chat: {"type":"function","function":{"name":"..."}}
 				// Responses: {"type":"function","name":"..."}

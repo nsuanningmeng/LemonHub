@@ -90,6 +90,7 @@ const jsonString = z.string().refine((value) => {
 const schema = z.object({
   global: z.object({
     pass_through_request_enabled: z.boolean(),
+    claude_pre_output_refusal_free_enabled: z.boolean(),
     thinking_model_blacklist: jsonString,
     chat_completions_to_responses_policy: jsonString,
   }),
@@ -104,6 +105,7 @@ type GlobalModelSettingsFormInput = z.input<typeof schema>
 
 type FlatGlobalModelSettings = {
   'global.pass_through_request_enabled': boolean
+  'global.claude_pre_output_refusal_free_enabled': boolean
   'global.thinking_model_blacklist': string
   'global.chat_completions_to_responses_policy': string
   'general_setting.ping_interval_enabled': boolean
@@ -115,6 +117,8 @@ const flattenGlobalValues = (
 ): FlatGlobalModelSettings => ({
   'global.pass_through_request_enabled':
     values.global.pass_through_request_enabled,
+  'global.claude_pre_output_refusal_free_enabled':
+    values.global.claude_pre_output_refusal_free_enabled,
   'global.thinking_model_blacklist': normalizeJsonText(
     values.global.thinking_model_blacklist,
     '[]'
@@ -195,7 +199,32 @@ export function GlobalSettingsCard({ defaultValues }: GlobalSettingsCardProps) {
                   <FormLabel>{t('Enable Request Passthrough')}</FormLabel>
                   <FormDescription>
                     {t(
-                      'Forward requests directly to upstream providers without any post-processing.'
+                      'Forward request bodies unchanged; explicit parameter override rules apply to JSON requests.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='global.claude_pre_output_refusal_free_enabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>
+                    {t('Do not charge for Claude refusals before output')}
+                  </FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When enabled, confirmed Claude refusals before any output are free. Disabled by default because compatible providers may still charge.'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>

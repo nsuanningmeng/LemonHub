@@ -23,8 +23,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func passwordResetVerificationKey(email string, siteId int) string {
+func emailVerificationKey(email string, siteId int) string {
 	return fmt.Sprintf("%d:%s", siteId, model.NormalizeEmail(email))
+}
+
+func passwordResetVerificationKey(email string, siteId int) string {
+	return emailVerificationKey(email, siteId)
 }
 
 func passwordResetLink(c *gin.Context, email string, token string) string {
@@ -295,7 +299,7 @@ func GetHomePageContent(c *gin.Context) {
 }
 
 func SendEmailVerification(c *gin.Context) {
-	email := c.Query("email")
+	email := model.NormalizeEmail(c.Query("email"))
 	if err := common.Validate.Var(email, "required,email"); err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -316,7 +320,7 @@ func SendEmailVerification(c *gin.Context) {
 	if common.EmailDomainRestrictionEnabled {
 		allowed := false
 		for _, domain := range common.EmailDomainWhitelist {
-			if domainPart == domain {
+			if strings.EqualFold(domainPart, domain) {
 				allowed = true
 				break
 			}
@@ -358,13 +362,21 @@ func SendEmailVerification(c *gin.Context) {
 		return
 	}
 	code := common.GenerateVerificationCode(6)
-	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
+	verificationKey := emailVerificationKey(email, middleware.GetRequestSiteId(c))
+	if err := common.RegisterVerificationCodeWithKey(verificationKey, code, common.EmailVerificationPurpose); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
 	content := fmt.Sprintf("<p>您好，你正在进行%s邮箱验证。</p>"+
 		"<p>您的验证码为: <strong>%s</strong></p>"+
 		"<p>验证码 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, code, common.VerificationValidMinutes)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
+		// Compare-and-consume only this send's code, preserving a concurrent resend.
+		if _, cleanupErr := common.VerifyCodeWithKey(verificationKey, code, common.EmailVerificationPurpose); cleanupErr != nil {
+			logger.LogError(c.Request.Context(), "failed to revoke undelivered email verification code")
+		}
 		service.RecordEmailSendFailure(email, err)
 		common.ApiError(c, err)
 		return
@@ -391,7 +403,14 @@ func SendPasswordResetEmail(c *gin.Context) {
 	siteId := middleware.GetRequestSiteId(c)
 	if model.IsEmailAlreadyTaken(email, siteId) && !model.IsEmailHardBounced(email) {
 		code := common.GenerateVerificationCode(0)
-		common.RegisterVerificationCodeWithKey(passwordResetVerificationKey(email, siteId), code, common.PasswordResetPurpose)
+		verificationKey := passwordResetVerificationKey(email, siteId)
+		if err := common.RegisterVerificationCodeWithKey(verificationKey, code, common.PasswordResetPurpose); err != nil {
+			// Preserve the existing account-enumeration protection while refusing to
+			// send a reset link whose storage has not been confirmed.
+			logger.LogError(c.Request.Context(), "failed to store password reset verification code")
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+			return
+		}
 		link := passwordResetLink(c, email, code)
 		subject := fmt.Sprintf("%s密码重置", common.SystemName)
 		content := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
@@ -400,6 +419,9 @@ func SendPasswordResetEmail(c *gin.Context) {
 			"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, link, link, common.VerificationValidMinutes)
 		err := common.SendEmail(subject, email, content)
 		if err != nil {
+			if _, cleanupErr := common.VerifyCodeWithKey(verificationKey, code, common.PasswordResetPurpose); cleanupErr != nil {
+				logger.LogError(c.Request.Context(), "failed to revoke undelivered password reset verification code")
+			}
 			service.RecordEmailSendFailure(email, err)
 			logger.LogError(c.Request.Context(), fmt.Sprintf("failed to send password reset email to %s: %s", email, err.Error()))
 		}
@@ -428,7 +450,12 @@ func ResetPassword(c *gin.Context) {
 	}
 	siteId := middleware.GetRequestSiteId(c)
 	verificationKey := passwordResetVerificationKey(req.Email, siteId)
-	if !common.VerifyCodeWithKey(verificationKey, req.Token, common.PasswordResetPurpose) {
+	verified, err := common.VerifyCodeWithKey(verificationKey, req.Token, common.PasswordResetPurpose)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !verified {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "重置链接非法或已过期",
@@ -443,7 +470,6 @@ func ResetPassword(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.DeleteKey(verificationKey, common.PasswordResetPurpose)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

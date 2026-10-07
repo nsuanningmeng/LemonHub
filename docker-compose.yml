@@ -19,6 +19,9 @@ services:
     image: ghcr.io/nsuanningmeng/lemonhub:latest # LemonHub fork (new-api 二开)；上游镜像为 calciumion/new-api:latest
     container_name: new-api
     restart: always
+    # Keep this longer than SHUTDOWN_TIMEOUT_SECONDS (default 120) so Docker
+    # does not SIGKILL in-flight settlement/refunds before their final flush.
+    stop_grace_period: 130s
     command: --log-dir /app/logs
     ports:
       - "3000:3000"

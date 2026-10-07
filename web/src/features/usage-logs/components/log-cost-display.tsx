@@ -118,8 +118,52 @@ function SubscriptionBadge(props: { quota: number }) {
 }
 
 export function LogCostDisplay(props: LogCostDisplayProps) {
+  const { t } = useTranslation()
   const isSubscription = props.other?.billing_source === 'subscription'
   const showToolSurcharge = hasToolSurcharge(props.other)
+  const subscriptionQuota = props.other?.subscription_consumed ?? props.quota
+  const walletQuota = props.other?.wallet_quota_deducted ?? 0
+  const hasWalletDeduction =
+    isSubscription &&
+    props.other?.subscription_consumed != null &&
+    walletQuota > 0
+
+  if (hasWalletDeduction) {
+    return (
+      <TooltipProvider>
+        <div className='inline-flex items-start gap-1'>
+          <div
+            role='group'
+            aria-label={t('Billing Details')}
+            className='flex flex-col gap-1'
+          >
+            <div
+              role='group'
+              aria-label={t('Subscription')}
+              className='flex flex-wrap items-center gap-1'
+            >
+              <SubscriptionBadge quota={subscriptionQuota} />
+              <QuotaBadge quota={subscriptionQuota} />
+            </div>
+            <div
+              role='group'
+              aria-label={t('Wallet')}
+              className='flex flex-wrap items-center gap-1'
+            >
+              <StatusBadge
+                label={t('Wallet')}
+                variant='neutral'
+                size='sm'
+                copyable={false}
+              />
+              <QuotaBadge quota={walletQuota} />
+            </div>
+          </div>
+          {showToolSurcharge ? <ToolSurchargeMarker /> : null}
+        </div>
+      </TooltipProvider>
+    )
+  }
 
   if (!isSubscription && !showToolSurcharge) {
     return (
@@ -133,7 +177,7 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
     <TooltipProvider>
       <div className='inline-flex items-center gap-1'>
         {isSubscription ? (
-          <SubscriptionBadge quota={props.quota} />
+          <SubscriptionBadge quota={subscriptionQuota} />
         ) : (
           <QuotaBadge quota={props.quota} />
         )}

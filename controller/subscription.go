@@ -29,6 +29,15 @@ type SubscriptionBalancePayRequest struct {
 
 // ---- User APIs ----
 
+// GetSubscriptionPaymentCompliance exposes only the capability needed by
+// subscription administrators; payment settings remain restricted to root.
+func GetSubscriptionPaymentCompliance(c *gin.Context) {
+	common.ApiSuccess(c, gin.H{
+		"confirmed":     operation_setting.IsPaymentComplianceConfirmed(),
+		"terms_version": operation_setting.CurrentComplianceTermsVersion,
+	})
+}
+
 func GetSubscriptionPlans(c *gin.Context) {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
 		common.ApiSuccess(c, []SubscriptionPlanDTO{})

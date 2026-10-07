@@ -1462,7 +1462,7 @@ function CostEstimator({ effectiveExpr }: EstimatorProps) {
       >
         {result.error ? (
           <span>
-            {t('Expression error')}: {result.error}
+            {t('Expression error')}: {t(result.error)}
           </span>
         ) : (
           <div className='flex items-center gap-2'>

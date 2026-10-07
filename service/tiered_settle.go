@@ -43,6 +43,14 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	ai := nonNegativeTokenCount(usage.PromptTokensDetails.AudioTokens)
 	imgO := nonNegativeTokenCount(usage.CompletionTokenDetails.ImageTokens)
 	ao := nonNegativeTokenCount(usage.CompletionTokenDetails.AudioTokens)
+	if usedVars["cr"] {
+		// When cache has its own price, cached Gemini media belongs to cr,
+		// not to img/ai as well. Without cr those tokens stay in img/ai (or p)
+		// so expressions that do not opt into cache pricing remain unchanged.
+		cachedImages, cachedAudio := cachedGeminiInputMediaTokens(usage)
+		img -= float64(cachedImages)
+		ai -= float64(cachedAudio)
+	}
 
 	// len = total input context length for tier condition evaluation.
 	// Non-Claude: prompt_tokens already includes everything.

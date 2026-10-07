@@ -69,6 +69,10 @@ Powered by [expr-lang/expr](https://github.com/expr-lang/expr). Expressions are 
 | `p * 3 + c * 15` | 500 | 没用 `ao`，音频输出包含在 `c` 里按 $15 计费 |
 | `p * 3 + c * 15 + ao * 50` | 400 | 用了 `ao`，音频 100 从 `c` 中扣除按 $50 计费 |
 
+Gemini 的缓存与输入模态可能重叠：`promptTokensDetails` 包含缓存图片/音频，`cacheTokensDetails` 描述其中已缓存的部分。表达式使用 `cr` 时，这些已缓存的图片/音频归入 `cr`，不再重复计入 `img`/`ai`；未使用 `cr` 时，`img`/`ai` 继续包含缓存部分。例如总输入 1000、缓存 400、图片 600，其中缓存图片 300：只用 `img` 时 `p=400, img=600`；同时用 `cr` 和 `img` 时 `p=300, cr=400, img=300`。原始 usage、日志 token 字段与 `len=1000` 保持不变。
+
+缺少缓存模态明细时，不按比例猜测部分缓存属于哪种模态。只有原始 prompt 全部命中缓存、计数自洽时，才能确定原始 prompt 的全部媒体都已缓存；额外 `toolUsePromptTokensDetails` 仍作为新输入。部分缓存没有模态明细或明细相互冲突时保留原来的模态计价，无法精确去除未知交集。
+
 > **注意：** 这个自动排除仅针对 GPT/OpenAI 格式的 API（prompt_tokens 包含所有子类别）。Claude 格式的 API（input_tokens 本身就只包含纯文本）不做任何减法。系统根据上游返回格式自动判断，表达式作者无需关心。
 
 ### Built-in Functions
@@ -180,10 +184,14 @@ On save, the expression is validated:
 
 When a request arrives and the model uses `tiered_expr` billing:
 1. Loads expression from `billing_setting.GetBillingExpr()`
-2. Builds `RequestInput` (headers + body) for `param()` / `header()` functions
+2. Freezes request headers and checks cached metadata from the compiled AST before building `RequestInput`. Only programs that can access `param()` load the original JSON client body from `BodyStorage`; token-, time-, and header-only expressions neither read the body nor clone a previously captured body for evaluation.
 3. Runs expression with estimated tokens: `RunExprWithRequest(expr, {P, C}, requestInput)`
 4. Converts output to quota: `rawCost / 1,000,000 * QuotaPerUnit`
 5. Creates `BillingSnapshot` and stores it on `RelayInfo`. Expression and request state stay frozen for settlement. An auto-group retry refreshes group-dependent fields from the selected group before the next upstream attempt. If a free initial group skipped pre-consume and the retry selects a paid group, the billing session is created before that attempt. If an existing session moves to a more expensive group, its reservation is raised to that group's estimate before sending; cheaper groups are refunded only after actual usage is settled.
+
+Body capture distinguishes **not requested yet** from **captured but empty**. If a later estimate first needs `param()`, it reads the original client storage using the frozen original content type, not a mapped or converted upstream DTO. Once captured, that canonical body stays available even across an intervening body-free estimate; the body-free evaluation receives no body. Frozen headers are the complete original set, so later additions cannot change `header()` results. The channel-test path captures its synthetic request before model mapping and retains that source for parameter-based billing.
+
+Body dependency metadata also covers indirect calls: `let f = param`, `$env.param`, and aliases of `$env["param"]` need the body. Dynamic environment lookups and an escaping `$env` conservatively need it because they can select `param`; known non-`param` members such as `$env.p` do not. This metadata is separate from the token-variable map and survives cache hits. Compile errors are returned before body IO. This optimization changes neither expression values nor request-rule traces.
 
 ### 4. Settlement (Actual Billing)
 

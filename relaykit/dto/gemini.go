@@ -319,6 +319,15 @@ type GeminiChatSafetySettings struct {
 	Threshold string `json:"threshold"`
 }
 
+// GeminiFunctionDeclaration carries JSON Schema without the OpenAPI subset
+// normalization used by Gemini's separate parameters field.
+type GeminiFunctionDeclaration struct {
+	Name                 string `json:"name"`
+	Description          string `json:"description,omitempty"`
+	ParametersJSONSchema any    `json:"parametersJsonSchema,omitempty"`
+	Parameters           any    `json:"parameters,omitempty"`
+}
+
 type GeminiChatTool struct {
 	GoogleSearch          any `json:"googleSearch,omitempty"`
 	GoogleSearchRetrieval any `json:"googleSearchRetrieval,omitempty"`
@@ -510,6 +519,7 @@ type GeminiUsageMetadata struct {
 	TotalTokenCount            int                         `json:"totalTokenCount"`
 	ThoughtsTokenCount         int                         `json:"thoughtsTokenCount"`
 	CachedContentTokenCount    int                         `json:"cachedContentTokenCount"`
+	CacheTokensDetails         []GeminiPromptTokensDetails `json:"cacheTokensDetails,omitempty"`
 	PromptTokensDetails        []GeminiPromptTokensDetails `json:"promptTokensDetails"`
 	ToolUsePromptTokensDetails []GeminiPromptTokensDetails `json:"toolUsePromptTokensDetails"`
 	CandidatesTokensDetails    []GeminiPromptTokensDetails `json:"candidatesTokensDetails"`

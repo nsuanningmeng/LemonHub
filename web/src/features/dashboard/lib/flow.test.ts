@@ -774,3 +774,26 @@ describe('dashboard flow data', () => {
     expect(highlightedLink.zIndex > dimmedLink.zIndex).toBe(true)
   })
 })
+
+test('token zero is explicitly no API token while nonzero deleted names remain distinct', () => {
+  const base = rows[0]
+  if (!base) throw new Error('Missing flow fixture')
+  const data = buildDashboardFlowData(
+    [
+      { ...base, token_id: 0, token_name: '' },
+      { ...base, token_id: 99, token_name: '' },
+    ],
+    'quota',
+    {
+      role: 'user',
+      noTokenLabel: 'No API token',
+      deletedTokenLabel: (id) => `Deleted (${id})`,
+    }
+  )
+  expect(data.flow.nodes.some((node) => node.label === 'No API token')).toBe(
+    true
+  )
+  expect(data.flow.nodes.some((node) => node.label === 'Deleted (99)')).toBe(
+    true
+  )
+})

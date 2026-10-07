@@ -644,7 +644,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     },
     {
       accessorKey: 'prompt_tokens',
-      header: 'Tokens',
+      header: t('Usage tokens'),
       cell: ({ row }) => {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
@@ -653,7 +653,11 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
 
         const promptTokens = log.prompt_tokens || 0
         const completionTokens = log.completion_tokens || 0
-        if (promptTokens === 0 && completionTokens === 0) {
+        if (
+          promptTokens === 0 &&
+          completionTokens === 0 &&
+          !hasAnyCacheTokens(other)
+        ) {
           return <span className='text-muted-foreground text-xs'>-</span>
         }
 

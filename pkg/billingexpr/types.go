@@ -10,6 +10,9 @@ import (
 type RequestInput struct {
 	Headers map[string]string
 	Body    []byte
+	// BodyCaptured distinguishes a frozen empty body from a body that was never
+	// needed. A preloaded non-nil Body is also considered captured for compatibility.
+	BodyCaptured bool
 }
 
 // TokenParams holds all token dimensions passed into an Expr evaluation.

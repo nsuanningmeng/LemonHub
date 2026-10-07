@@ -329,6 +329,7 @@ type ToolCallRequest struct {
 }
 
 type FunctionRequest struct {
+	Strict      *bool  `json:"strict,omitempty"`
 	Description string `json:"description,omitempty"`
 	Name        string `json:"name"`
 	Parameters  any    `json:"parameters,omitempty"`
@@ -436,18 +437,35 @@ func (m *MediaContent) GetInputAudio() *MessageInputAudio {
 }
 
 func (m *MediaContent) GetFile() *MessageFile {
-	if m.File != nil {
-		if _, ok := m.File.(*MessageFile); ok {
-			return m.File.(*MessageFile)
-		}
-		if itemMap, ok := m.File.(map[string]any); ok {
-			out := &MessageFile{
-				FileName: kitutil.Interface2String(itemMap["file_name"]),
-				FileData: kitutil.Interface2String(itemMap["file_data"]),
-				FileId:   kitutil.Interface2String(itemMap["file_id"]),
+	if file, ok := m.File.(*MessageFile); ok {
+		return file
+	}
+	if fields, ok := m.File.(map[string]any); ok {
+		file := &MessageFile{}
+		for key, value := range fields {
+			if key != "filename" && key != "file_name" && key != "file_data" && key != "file_id" {
+				continue
 			}
-			return out
+			if value == nil {
+				continue
+			}
+			text, ok := value.(string)
+			if !ok {
+				return nil
+			}
+			switch key {
+			case "filename":
+				file.FileName = text
+			case "file_data":
+				file.FileData = text
+			case "file_id":
+				file.FileId = text
+			}
 		}
+		if file.FileName == "" {
+			file.FileName, _ = fields["file_name"].(string)
+		}
+		return file
 	}
 	return nil
 }
@@ -504,7 +522,7 @@ func (m *MediaContent) ToFileSource() types.FileSource {
 type MessageImageUrl struct {
 	Url      string `json:"url"`
 	Detail   string `json:"detail,omitempty"`
-	MimeType string
+	MimeType string `json:"-"`
 }
 
 func (m *MessageImageUrl) IsRemoteImage() bool {
@@ -625,129 +643,87 @@ func (m *Message) ParseContent() []MediaContent {
 	if len(m.parsedContent) > 0 {
 		return m.parsedContent
 	}
-
-	var contentList []MediaContent
-	// 先尝试解析为字符串
-	content, ok := m.Content.(string)
-	if ok {
-		contentList = []MediaContent{{
-			Type: ContentTypeText,
-			Text: content,
-		}}
-		m.parsedContent = contentList
-		return contentList
+	if text, ok := m.Content.(string); ok {
+		return []MediaContent{{Type: ContentTypeText, Text: text}}
 	}
-
-	// 尝试解析为数组
-	//var arrayContent []map[string]interface{}
-
-	arrayContent, ok := m.Content.([]any)
-	if !ok {
-		return contentList
+	var items []any
+	switch content := m.Content.(type) {
+	case []MediaContent:
+		items = make([]any, len(content))
+		for i := range content {
+			items[i] = content[i]
+		}
+	case []any:
+		items = content
+	default:
+		return nil
 	}
-
-	for _, contentItemAny := range arrayContent {
-		mediaItem, ok := contentItemAny.(MediaContent)
-		if ok {
-			contentList = append(contentList, mediaItem)
-			continue
-		}
-
-		contentItem, ok := contentItemAny.(map[string]any)
-		if !ok {
-			continue
-		}
-		contentType, ok := contentItem["type"].(string)
-		if !ok {
-			continue
-		}
-
-		switch contentType {
-		case ContentTypeText:
-			if text, ok := contentItem["text"].(string); ok {
-				contentList = append(contentList, MediaContent{
-					Type: ContentTypeText,
-					Text: text,
-				})
+	contentList := make([]MediaContent, 0, len(items))
+	for _, item := range items {
+		var block MediaContent
+		switch v := item.(type) {
+		case MediaContent:
+			block = v
+		case map[string]any:
+			block.Type, _ = v["type"].(string)
+			if block.Type == "" {
+				continue
 			}
-
-		case ContentTypeImageURL:
-			imageUrl := contentItem["image_url"]
-			temp := &MessageImageUrl{
-				Detail: "high",
-			}
-			switch v := imageUrl.(type) {
-			case string:
-				temp.Url = v
-			case map[string]interface{}:
-				url, ok1 := v["url"].(string)
-				detail, ok2 := v["detail"].(string)
-				if ok2 {
-					temp.Detail = detail
-				}
-				if ok1 {
-					temp.Url = url
-				}
-			}
-			contentList = append(contentList, MediaContent{
-				Type:     ContentTypeImageURL,
-				ImageUrl: temp,
-			})
-
-		case ContentTypeInputAudio:
-			if audioData, ok := contentItem["input_audio"].(map[string]interface{}); ok {
-				data, ok1 := audioData["data"].(string)
-				format, ok2 := audioData["format"].(string)
-				if ok1 && ok2 {
-					temp := &MessageInputAudio{
-						Data:   data,
-						Format: format,
-					}
-					contentList = append(contentList, MediaContent{
-						Type:       ContentTypeInputAudio,
-						InputAudio: temp,
-					})
-				}
-			}
-		case ContentTypeFile:
-			if fileData, ok := contentItem["file"].(map[string]interface{}); ok {
-				fileId, ok3 := fileData["file_id"].(string)
-				if ok3 {
-					contentList = append(contentList, MediaContent{
-						Type: ContentTypeFile,
-						File: &MessageFile{
-							FileId: fileId,
-						},
-					})
-				} else {
-					fileName, ok1 := fileData["filename"].(string)
-					fileDataStr, ok2 := fileData["file_data"].(string)
-					if ok1 && ok2 {
-						contentList = append(contentList, MediaContent{
-							Type: ContentTypeFile,
-							File: &MessageFile{
-								FileName: fileName,
-								FileData: fileDataStr,
-							},
-						})
+			block.Text, _ = v["text"].(string)
+			if marker, exists := v["cache_control"]; exists && marker != nil {
+				switch raw := marker.(type) {
+				case json.RawMessage:
+					block.CacheControl = raw
+				default:
+					encoded, err := kitutil.Marshal(marker)
+					if err == nil {
+						block.CacheControl = encoded
 					}
 				}
 			}
-		case ContentTypeVideoUrl:
-			if videoUrl, ok := contentItem["video_url"].(string); ok {
-				contentList = append(contentList, MediaContent{
-					Type: ContentTypeVideoUrl,
-					VideoUrl: &MessageVideoUrl{
-						Url: videoUrl,
-					},
-				})
+			if block.Type == ContentTypeImageURL {
+				block.ImageUrl = nil
+				switch image := v["image_url"].(type) {
+				case string:
+					block.ImageUrl = &MessageImageUrl{Url: image, Detail: "high"}
+				case map[string]any:
+					url, ok := image["url"].(string)
+					if ok {
+						detail, _ := image["detail"].(string)
+						if detail == "" {
+							detail = "high"
+						}
+						mime, _ := image["mime_type"].(string)
+						block.ImageUrl = &MessageImageUrl{Url: url, Detail: detail, MimeType: mime}
+					}
+				}
 			}
+			if block.Type == ContentTypeInputAudio {
+				block.InputAudio = nil
+				if audio, ok := v["input_audio"].(map[string]any); ok {
+					data, okData := audio["data"].(string)
+					format, okFormat := audio["format"].(string)
+					if okData && okFormat {
+						block.InputAudio = &MessageInputAudio{Data: data, Format: format}
+					}
+				}
+			}
+			if block.Type == ContentTypeFile {
+				block.File = v["file"]
+				block.File = block.GetFile()
+			}
+			if block.Type == ContentTypeVideoUrl {
+				if url, ok := v["video_url"].(string); ok {
+					block.VideoUrl = &MessageVideoUrl{Url: url}
+				}
+			}
+		default:
+			continue
 		}
+		block.CacheControl = append(json.RawMessage(nil), block.CacheControl...)
+		contentList = append(contentList, block)
 	}
-
-	if len(contentList) > 0 {
-		m.parsedContent = contentList
-	}
+	m.parsedContent = contentList
 	return contentList
 }
 
@@ -1009,10 +985,14 @@ func (r *OpenAIResponsesRequest) GetTokenCountMeta() *types.TokenCountMeta {
 					})
 				}
 			} else if input.Type == "input_file" {
-				if input.FileUrl != "" {
+				data := input.FileData
+				if data == "" {
+					data = input.FileUrl
+				}
+				if data != "" {
 					fileMeta = append(fileMeta, &types.FileMeta{
 						FileType: types.FileTypeFile,
-						Source:   types.NewFileSourceFromData(input.FileUrl, ""),
+						Source:   types.NewFileSourceFromData(data, ""),
 					})
 				}
 			} else {
@@ -1022,7 +1002,12 @@ func (r *OpenAIResponsesRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	}
 
 	if len(r.Instructions) > 0 {
-		texts = append(texts, string(r.Instructions))
+		var instructions string
+		if err := kitutil.Unmarshal(r.Instructions, &instructions); err == nil {
+			texts = append(texts, instructions)
+		} else {
+			texts = append(texts, string(r.Instructions))
+		}
 	}
 
 	if len(r.Metadata) > 0 {
@@ -1081,104 +1066,81 @@ type Input struct {
 	Type    string          `json:"type,omitempty"`
 	Role    string          `json:"role,omitempty"`
 	Content json.RawMessage `json:"content,omitempty"`
+	Output  json.RawMessage `json:"output,omitempty"`
 }
 
 type MediaInput struct {
 	Type     string `json:"type"`
 	Text     string `json:"text,omitempty"`
 	FileUrl  string `json:"file_url,omitempty"`
+	FileData string `json:"file_data,omitempty"`
 	ImageUrl string `json:"image_url,omitempty"`
 	Detail   string `json:"detail,omitempty"` // 仅 input_image 有效
 }
 
-// ParseInput parses the Responses API `input` field into a normalized slice of MediaInput.
-// Reference implementation mirrors Message.ParseContent:
-//   - input can be a string, treated as an input_text item
-//   - input can be an array of objects with a `type` field
-//     supported types: input_text, input_image, input_file
+// ParseInput extracts only recognized text and media from Responses input.
+// Provider-local references and opaque reasoning/compaction fields are not text.
 func (r *OpenAIResponsesRequest) ParseInput() []MediaInput {
-	if r.Input == nil {
+	if len(r.Input) == 0 {
 		return nil
 	}
-
-	var mediaInputs []MediaInput
-
-	// Try string first
-	// if str, ok := kitutil.GetJsonType(r.Input); ok {
-	// 	inputs = append(inputs, MediaInput{Type: "input_text", Text: str})
-	// 	return inputs
-	// }
-	if kitutil.GetJsonType(r.Input) == "string" {
-		var str string
-		_ = kitutil.Unmarshal(r.Input, &str)
-		mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: str})
-		return mediaInputs
+	var input any
+	if err := kitutil.Unmarshal(r.Input, &input); err != nil {
+		return nil
 	}
+	var parts []MediaInput
+	appendResponsesMediaInput(input, &parts)
+	return parts
+}
 
-	// Try array of parts
-	if kitutil.GetJsonType(r.Input) == "array" {
-		var inputs []Input
-		_ = kitutil.Unmarshal(r.Input, &inputs)
-		for _, input := range inputs {
-			if kitutil.GetJsonType(input.Content) == "string" {
-				var str string
-				_ = kitutil.Unmarshal(input.Content, &str)
-				mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: str})
+// appendResponsesMediaInput follows protocol content/output containers rather
+// than arbitrary object fields, so encrypted or binary payloads stay opaque.
+func appendResponsesMediaInput(value any, parts *[]MediaInput) {
+	switch input := value.(type) {
+	case string:
+		*parts = append(*parts, MediaInput{Type: "input_text", Text: input})
+	case []any:
+		for _, item := range input {
+			appendResponsesMediaInput(item, parts)
+		}
+	case map[string]any:
+		kind, _ := input["type"].(string)
+		switch kind {
+		case "message", "":
+			// Simplified message objects omit type but must still carry a role.
+			role, _ := input["role"].(string)
+			if kind == "message" || role != "" {
+				appendResponsesMediaInput(input["content"], parts)
 			}
-
-			if kitutil.GetJsonType(input.Content) == "array" {
-				var array []any
-				_ = kitutil.Unmarshal(input.Content, &array)
-				for _, itemAny := range array {
-					// Already parsed MediaContent
-					if media, ok := itemAny.(MediaInput); ok {
-						mediaInputs = append(mediaInputs, media)
-						continue
-					}
-
-					// Generic map
-					item, ok := itemAny.(map[string]any)
-					if !ok {
-						continue
-					}
-
-					typeVal, ok := item["type"].(string)
-					if !ok {
-						continue
-					}
-					switch typeVal {
-					case "input_text":
-						text, _ := item["text"].(string)
-						mediaInputs = append(mediaInputs, MediaInput{Type: "input_text", Text: text})
-					case "input_image":
-						// image_url may be string or object with url field
-						var imageUrl string
-						switch v := item["image_url"].(type) {
-						case string:
-							imageUrl = v
-						case map[string]any:
-							if url, ok := v["url"].(string); ok {
-								imageUrl = url
-							}
-						}
-						mediaInputs = append(mediaInputs, MediaInput{Type: "input_image", ImageUrl: imageUrl})
-					case "input_file":
-						// file_url may be string or object with url field
-						var fileUrl string
-						switch v := item["file_url"].(type) {
-						case string:
-							fileUrl = v
-						case map[string]any:
-							if url, ok := v["url"].(string); ok {
-								fileUrl = url
-							}
-						}
-						mediaInputs = append(mediaInputs, MediaInput{Type: "input_file", FileUrl: fileUrl})
-					}
+		case "function_call_output":
+			appendResponsesMediaInput(input["output"], parts)
+		case "input_text", "output_text", "text":
+			if text, ok := input["text"].(string); ok {
+				*parts = append(*parts, MediaInput{Type: "input_text", Text: text})
+			}
+		case "input_image":
+			part := MediaInput{Type: kind}
+			part.Detail, _ = input["detail"].(string)
+			switch image := input["image_url"].(type) {
+			case string:
+				part.ImageUrl = image
+			case map[string]any:
+				part.ImageUrl, _ = image["url"].(string)
+				if part.Detail == "" {
+					part.Detail, _ = image["detail"].(string)
 				}
 			}
+			*parts = append(*parts, part)
+		case "input_file":
+			part := MediaInput{Type: kind}
+			part.FileData, _ = input["file_data"].(string)
+			switch file := input["file_url"].(type) {
+			case string:
+				part.FileUrl = file
+			case map[string]any:
+				part.FileUrl, _ = file["url"].(string)
+			}
+			*parts = append(*parts, part)
 		}
 	}
-
-	return mediaInputs
 }

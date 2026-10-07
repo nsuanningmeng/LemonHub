@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
@@ -83,10 +83,15 @@ export function RedemptionsPrimaryButtons() {
         title={t('Delete Invalid Redemption Codes?')}
         desc={
           <>
-            {t('This will delete all')} <strong>{t('used')}</strong>,{' '}
-            <strong>{t('disabled')}</strong>
-            {t(', and')} <strong>{t('expired')}</strong>{' '}
-            {t('redemption codes.')}
+            <Trans
+              t={t}
+              i18nKey='This will delete all <used>used</used>, <disabled>disabled</disabled>, and <expired>expired</expired> redemption codes.'
+              components={{
+                used: <strong />,
+                disabled: <strong />,
+                expired: <strong />,
+              }}
+            />
             <br />
             {t('This action cannot be undone.')}
           </>

@@ -1,46 +1,35 @@
 package claude
 
-import "github.com/QuantumNous/new-api/relaykit/dto"
+import (
+	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/toolpolicy"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+)
 
-func MapOpenAIToolChoice(toolChoice any, parallelToolCalls *bool) *dto.ClaudeToolChoice {
-	var claudeToolChoice *dto.ClaudeToolChoice
-
-	if toolChoiceStr, ok := toolChoice.(string); ok {
-		switch toolChoiceStr {
-		case "auto":
-			claudeToolChoice = &dto.ClaudeToolChoice{
-				Type: "auto",
-			}
-		case "required":
-			claudeToolChoice = &dto.ClaudeToolChoice{
-				Type: "any",
-			}
-		case "none":
-			claudeToolChoice = &dto.ClaudeToolChoice{
-				Type: "none",
-			}
-		}
-	} else if toolChoiceMap, ok := toolChoice.(map[string]interface{}); ok {
-		if function, ok := toolChoiceMap["function"].(map[string]interface{}); ok {
-			if toolName, ok := function["name"].(string); ok {
-				claudeToolChoice = &dto.ClaudeToolChoice{
-					Type: "tool",
-					Name: toolName,
-				}
-			}
-		}
+func MapOpenAIToolChoice(value any, parallel *bool) (*dto.ClaudeToolChoice, error) {
+	choice, err := toolpolicy.OpenAIChoice(value)
+	if err != nil {
+		return nil, err
 	}
-
-	if parallelToolCalls != nil {
-		if claudeToolChoice == nil {
-			claudeToolChoice = &dto.ClaudeToolChoice{
-				Type: "auto",
-			}
-		}
-		if claudeToolChoice.Type != "none" {
-			claudeToolChoice.DisableParallelToolUse = !*parallelToolCalls
-		}
+	if choice.Subset && (choice.Mode == "auto" || len(choice.Names) != 1) {
+		return nil, toolpolicy.Invalid("tool_choice.allowed_tools")
 	}
-
-	return claudeToolChoice
+	if choice.Mode == "" && parallel == nil {
+		return nil, nil
+	}
+	mapped := &dto.ClaudeToolChoice{Type: "auto"}
+	switch choice.Mode {
+	case "none":
+		mapped.Type = "none"
+	case "required":
+		mapped.Type = "any"
+	}
+	if len(choice.Names) > 0 {
+		mapped.Type = "tool"
+		mapped.Name = choice.Names[0]
+	}
+	if parallel != nil && mapped.Type != "none" {
+		mapped.DisableParallelToolUse = kitutil.GetPointer(!*parallel)
+	}
+	return mapped, nil
 }

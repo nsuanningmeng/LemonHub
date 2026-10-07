@@ -21,9 +21,26 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { api } from '@/lib/api'
+
+import { apiKeySchema } from '../../../types'
 import { CCSwitchDialog } from '../cc-switch-dialog'
 
 let queryClient: QueryClient
+const token = apiKeySchema.parse({
+  id: 21,
+  name: 'Test key',
+  key: 'masked',
+  status: 1,
+  remain_quota: 100,
+  used_quota: 0,
+  unlimited_quota: false,
+  expired_time: -1,
+  created_time: 0,
+  accessed_time: 0,
+  group: 'default',
+  model_limits_enabled: false,
+})
 
 beforeEach(() => {
   queryClient = new QueryClient({
@@ -35,14 +52,20 @@ afterEach(() => {
   queryClient.clear()
 })
 
-function renderDialog(models = ['gpt-5.4', 'claude-sonnet-4-6']) {
-  queryClient.setQueryData(['user-models-ccswitch'], {
-    success: true,
-    data: models,
-  })
+function renderDialog(
+  models: string[] | Promise<string[]> = ['gpt-5.4', 'claude-sonnet-4-6']
+) {
+  vi.spyOn(api, 'get').mockImplementation(async () => ({
+    data: { data: (await models).map((id) => ({ id })) },
+  }))
   render(
     <QueryClientProvider client={queryClient}>
-      <CCSwitchDialog open onOpenChange={vi.fn()} tokenKey='test-only' />
+      <CCSwitchDialog
+        open
+        onOpenChange={vi.fn()}
+        tokenKey='test-only'
+        token={token}
+      />
     </QueryClientProvider>
   )
 }
@@ -96,7 +119,12 @@ describe('CC Switch model selection', () => {
   })
 
   it('shows an empty result when no models are available and updates an open dropdown when models arrive', async () => {
-    renderDialog([])
+    let releaseModels: ((models: string[]) => void) | undefined
+    renderDialog(
+      new Promise<string[]>((resolve) => {
+        releaseModels = resolve
+      })
+    )
     const user = userEvent.setup()
     await user.click(screen.getByRole('radio', { name: 'Codex' }))
     const input = screen.getByRole('combobox', { name: 'Primary Model' })
@@ -104,10 +132,7 @@ describe('CC Switch model selection', () => {
 
     expect(await screen.findByText('No models found')).toBeVisible()
     await act(async () => {
-      queryClient.setQueryData(['user-models-ccswitch'], {
-        success: true,
-        data: ['gpt-5.4'],
-      })
+      releaseModels?.(['gpt-5.4'])
     })
     await user.click(await screen.findByRole('option', { name: 'gpt-5.4' }))
     await waitFor(() => expect(input).toHaveValue('gpt-5.4'))

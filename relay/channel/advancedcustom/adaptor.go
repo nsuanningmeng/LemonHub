@@ -109,6 +109,12 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		return a.convertOpenAICompatibleResponsesRequest(c, info, request)
 	case relayconvert.ConverterOpenAIResponsesToOpenAIChat:
 		return a.convertCrossProtocolChatRequest(c, info, converter, request)
+	case relayconvert.ConverterOpenAIResponsesToClaudeMessages:
+		result, err := service.ConvertRequestByID(c, info, converter, &request)
+		if err != nil {
+			return nil, err
+		}
+		return result.Value, nil
 	case relayconvert.ConverterOpenAIResponsesToGemini:
 		result, err := service.ConvertRequestByID(c, info, converter, request)
 		if err != nil {
@@ -263,7 +269,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 		return nil, err
 	}
 	if !a.converted && a.converter != relayconvert.ConverterNone {
-		return nil, errors.New("advanced custom converter routes cannot be used with pass-through request body")
+		return nil, types.NewOpenAIError(errors.New("advanced custom converter routes cannot be used with pass-through request body"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 
 	if info.RelayMode == relayconstant.RelayModeAudioTranscription ||
@@ -292,6 +298,12 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		return a.claudeAdaptor.DoResponse(c, resp, info)
 	case relayconvert.ConverterOpenAIChatToGeminiContent:
 		return a.geminiAdaptor.DoResponse(c, resp, info)
+	case relayconvert.ConverterOpenAIResponsesToClaudeMessages:
+		info.FinalRequestRelayFormat = types.RelayFormatClaude
+		if info.IsStream {
+			return claude.ClaudeResponsesStreamHandler(c, resp, info)
+		}
+		return a.claudeAdaptor.DoResponse(c, resp, info)
 	case relayconvert.ConverterOpenAIResponsesToGemini:
 		return a.geminiAdaptor.DoResponse(c, resp, info)
 	case relayconvert.ConverterOpenAIChatToOpenAIResponses:
@@ -490,6 +502,7 @@ func useGeminiStreamGenerateContentURL(parsedURL *url.URL) {
 
 func shouldApplyClaudeHeaders(converter string, info *relaycommon.RelayInfo) bool {
 	return converter == relayconvert.ConverterOpenAIChatToClaudeMessages ||
+		converter == relayconvert.ConverterOpenAIResponsesToClaudeMessages ||
 		(converter == relayconvert.ConverterNone && info != nil && info.RelayFormat == types.RelayFormatClaude)
 }
 

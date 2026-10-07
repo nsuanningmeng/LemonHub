@@ -33,9 +33,10 @@ func (p ChatCompletionsToResponsesPolicy) IsChannelEnabled(channelID int, channe
 }
 
 type GlobalSettings struct {
-	PassThroughRequestEnabled        bool                             `json:"pass_through_request_enabled"`
-	ThinkingModelBlacklist           []string                         `json:"thinking_model_blacklist"`
-	ChatCompletionsToResponsesPolicy ChatCompletionsToResponsesPolicy `json:"chat_completions_to_responses_policy"`
+	PassThroughRequestEnabled         bool                             `json:"pass_through_request_enabled"`
+	ClaudePreOutputRefusalFreeEnabled bool                             `json:"claude_pre_output_refusal_free_enabled"`
+	ThinkingModelBlacklist            []string                         `json:"thinking_model_blacklist"`
+	ChatCompletionsToResponsesPolicy  ChatCompletionsToResponsesPolicy `json:"chat_completions_to_responses_policy"`
 }
 
 // 默认配置

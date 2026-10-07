@@ -68,10 +68,11 @@ func TestRequestConverterRegistryListsSupportedTextConverters(t *testing.T) {
 			},
 		},
 		{
-			converter: requestConverterResponsesToClaude,
-			from:      types.RelayFormatOpenAIResponses,
-			to:        types.RelayFormatClaude,
-			quality:   RequestConverterQualityFair,
+			converter:      requestConverterResponsesToClaude,
+			advancedCustom: true,
+			from:           types.RelayFormatOpenAIResponses,
+			to:             types.RelayFormatClaude,
+			quality:        RequestConverterQualityFair,
 		},
 		{
 			converter:      ConverterOpenAIResponsesToGemini,
@@ -340,26 +341,14 @@ func TestConvertRequestResponsesToGeminiUsesDirectConverter(t *testing.T) {
 
 	tools := geminiReq.GetTools()
 	require.Len(t, tools, 1)
-	functions, err := kitutil.Any2Type[[]dto.FunctionRequest](tools[0].FunctionDeclarations)
+	functions, err := kitutil.Any2Type[[]dto.GeminiFunctionDeclaration](tools[0].FunctionDeclarations)
 	require.NoError(t, err)
 	require.Len(t, functions, 1)
 	assert.Equal(t, "lookup", functions[0].Name)
-	params, ok := functions[0].Parameters.(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "OBJECT", params["type"])
-	assert.NotContains(t, params, "additionalProperties")
-	assert.NotContains(t, params, "propertyNames")
-	properties, ok := params["properties"].(map[string]any)
-	require.True(t, ok)
-	queryParam, ok := properties["q"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "STRING", queryParam["type"])
-	assert.NotContains(t, queryParam, "exclusiveMinimum")
-	filterParam, ok := properties["filters"].(map[string]any)
-	require.True(t, ok)
-	filterItems, ok := filterParam["items"].(map[string]any)
-	require.True(t, ok)
-	assert.NotContains(t, filterItems, "additionalProperties")
+	assert.Nil(t, functions[0].Parameters)
+	var originalTools []map[string]any
+	require.NoError(t, kitutil.Unmarshal(req.Tools, &originalTools))
+	assert.Equal(t, originalTools[0]["parameters"], functions[0].ParametersJSONSchema)
 
 	require.Len(t, geminiReq.Contents, 2)
 	assert.Equal(t, "model", geminiReq.Contents[0].Role)
@@ -572,7 +561,7 @@ func TestConvertRequestResponsesToClaudeUsesDirectConverter(t *testing.T) {
 	require.Len(t, toolResultParts, 1)
 	assert.Equal(t, "tool_result", toolResultParts[0].Type)
 	assert.Equal(t, "call_1", toolResultParts[0].ToolUseId)
-	assert.Equal(t, map[string]any{"ok": true}, toolResultParts[0].Content)
+	assert.JSONEq(t, `{"ok":true}`, toolResultParts[0].Content.(string))
 }
 
 func TestConvertRequestViaResponsesToGeminiStillUsesDirectSteps(t *testing.T) {

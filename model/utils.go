@@ -1,13 +1,14 @@
 package model
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
 )
 
@@ -22,21 +23,81 @@ const (
 
 var batchUpdateStores []map[int]int
 var batchUpdateLocks []sync.Mutex
+var batchUncertainStores []map[int]int
+
+// Access is serialized by batchFlushGate. An uncertain commit is never replayed.
+var batchUncertainError error
+
+// Serialize periodic and final flushes; waiting for the gate is cancellable.
+var batchFlushGate = make(chan struct{}, 1)
+var batchUpdaterMu sync.Mutex
+var batchUpdaterCancel context.CancelFunc
+var batchUpdaterDone chan struct{}
 
 func init() {
 	for i := 0; i < BatchUpdateTypeCount; i++ {
 		batchUpdateStores = append(batchUpdateStores, make(map[int]int))
+		batchUncertainStores = append(batchUncertainStores, make(map[int]int))
 		batchUpdateLocks = append(batchUpdateLocks, sync.Mutex{})
 	}
 }
 
 func InitBatchUpdater() {
-	gopool.Go(func() {
+	batchUpdaterMu.Lock()
+	defer batchUpdaterMu.Unlock()
+	if batchUpdaterDone != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	batchUpdaterCancel = cancel
+	batchUpdaterDone = make(chan struct{})
+	done := batchUpdaterDone
+	interval := time.Duration(common.BatchUpdateInterval) * time.Second
+	if interval <= 0 {
+		interval = time.Second
+	}
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
 		for {
-			time.Sleep(time.Duration(common.BatchUpdateInterval) * time.Second)
-			batchUpdate()
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if ctx.Err() != nil {
+					return
+				}
+				// Stopping the ticker must not cancel an additive SQL write that
+				// may already have committed. Wait for it instead; a shutdown
+				// timeout is reported without starting a concurrent final flush.
+				if err := FlushBatchUpdates(context.Background()); err != nil {
+					common.SysError("batch update failed: " + err.Error())
+				}
+			}
 		}
-	})
+	}()
+}
+
+// StopBatchUpdater stops periodic writes and waits for an in-flight flush to
+// finish or requeue its failed records. Stop accounting producers first, then
+// call FlushBatchUpdates with a live shutdown context to persist the tail.
+func StopBatchUpdater(ctx context.Context) error {
+	batchUpdaterMu.Lock()
+	cancel, done := batchUpdaterCancel, batchUpdaterDone
+	if cancel != nil {
+		cancel()
+	}
+	batchUpdaterMu.Unlock()
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func addNewRecord(type_ int, id int, value int) {
@@ -60,10 +121,32 @@ func addNewRecord(type_ int, id int, value int) {
 func hasPendingBatchUpdate(type_ int, id int) bool {
 	batchUpdateLocks[type_].Lock()
 	defer batchUpdateLocks[type_].Unlock()
-	return batchUpdateStores[type_][id] != 0
+	return batchUpdateStores[type_][id] != 0 || batchUncertainStores[type_][id] != 0
 }
 
 func batchUpdate() {
+	if err := FlushBatchUpdates(context.Background()); err != nil {
+		common.SysError("batch update failed: " + err.Error())
+	}
+}
+
+// FlushBatchUpdates commits one atomic snapshot. Only a confirmed rollback can
+// put deltas back in the retry queue. An uncertain commit/rollback is isolated
+// for reconciliation and blocks automatic replay. Producers must be stopped
+// before this function can be used as the final shutdown flush.
+func FlushBatchUpdates(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case batchFlushGate <- struct{}{}:
+		defer func() { <-batchFlushGate }()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if batchUncertainError != nil {
+		return batchUncertainError
+	}
 	// check if there's any data to update
 	hasData := false
 	for i := 0; i < BatchUpdateTypeCount; i++ {
@@ -77,7 +160,7 @@ func batchUpdate() {
 	}
 
 	if !hasData {
-		return
+		return nil
 	}
 
 	common.SysLog("batch update started")
@@ -89,50 +172,86 @@ func batchUpdate() {
 		batchUpdateLocks[i].Unlock()
 	}
 
-	for i, store := range stores {
-		if i == BatchUpdateTypeUserQuota || i == BatchUpdateTypeUsedQuota || i == BatchUpdateTypeRequestCount {
-			continue
+	batchID := common.GetUUID()
+	// Explicit transaction ownership makes statement failure distinguishable
+	// from commit uncertainty. Inner updates must not commit independently.
+	tx := DB.WithContext(ctx).Session(&gorm.Session{SkipDefaultTransaction: true}).Begin()
+	if tx.Error != nil {
+		requeueBatchUpdates(stores)
+		return fmt.Errorf("batch %s begin: %w", batchID, tx.Error)
+	}
+	if err := applyBatchUpdates(tx, stores); err != nil {
+		if rollbackErr := tx.Rollback().Error; rollbackErr != nil {
+			return quarantineBatchUpdates(batchID, stores, errors.Join(err, fmt.Errorf("rollback outcome unknown: %w", rollbackErr)))
 		}
-		for key, value := range store {
-			switch i {
-			case BatchUpdateTypeTokenQuota:
-				err := increaseTokenQuota(key, value)
-				if err != nil {
-					common.SysLog("failed to batch update token quota: " + err.Error())
-					// The Redis balance already includes this delta. Merge it back
-					// into the live store so a transient database failure cannot
-					// disappear when the cache expires. addNewRecord holds the new
-					// store lock and therefore composes safely with concurrent deltas.
-					addNewRecord(BatchUpdateTypeTokenQuota, key, value)
-				}
-			case BatchUpdateTypeChannelUsedQuota:
-				updateChannelUsedQuota(key, value)
-			}
+		requeueBatchUpdates(stores)
+		return fmt.Errorf("batch %s rolled back: %w", batchID, err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return quarantineBatchUpdates(batchID, stores, fmt.Errorf("commit outcome unknown: %w", err))
+	}
+	common.SysLog("batch update finished: " + batchID)
+	return nil
+}
+
+func requeueBatchUpdates(stores []map[int]int) {
+	for kind, store := range stores {
+		for id, delta := range store {
+			addNewRecord(kind, id, delta)
 		}
 	}
+}
 
+func quarantineBatchUpdates(batchID string, stores []map[int]int, err error) error {
+	for kind, store := range stores {
+		batchUpdateLocks[kind].Lock()
+		batchUncertainStores[kind] = store
+		batchUpdateLocks[kind].Unlock()
+	}
+	batchUncertainError = fmt.Errorf("batch %s requires reconciliation; automatic replay disabled: %w", batchID, err)
+	// Keep the exact deltas in the operator log as well as in memory. This is
+	// diagnostic evidence, not a durable exactly-once recovery journal.
+	deltas, _ := common.Marshal(map[string]any{
+		"user_quota":         stores[BatchUpdateTypeUserQuota],
+		"token_quota":        stores[BatchUpdateTypeTokenQuota],
+		"user_used_quota":    stores[BatchUpdateTypeUsedQuota],
+		"channel_used_quota": stores[BatchUpdateTypeChannelUsedQuota],
+		"request_count":      stores[BatchUpdateTypeRequestCount],
+	})
+	common.SysError(fmt.Sprintf("%v; pending_deltas=%s", batchUncertainError, deltas))
+	return batchUncertainError
+}
+
+func applyBatchUpdates(tx *gorm.DB, stores []map[int]int) error {
+	for id, delta := range stores[BatchUpdateTypeTokenQuota] {
+		if err := increaseTokenQuota(tx, id, delta); err != nil {
+			return fmt.Errorf("token %d quota: %w", id, err)
+		}
+	}
+	for id, delta := range stores[BatchUpdateTypeChannelUsedQuota] {
+		if err := updateChannelUsedQuota(tx, id, delta); err != nil {
+			return fmt.Errorf("channel %d usage: %w", id, err)
+		}
+	}
 	userQuotaStore := stores[BatchUpdateTypeUserQuota]
 	usedQuotaStore := stores[BatchUpdateTypeUsedQuota]
 	requestCountStore := stores[BatchUpdateTypeRequestCount]
-
 	userIDs := make(map[int]struct{}, len(userQuotaStore)+len(usedQuotaStore)+len(requestCountStore))
-	for key := range userQuotaStore {
-		userIDs[key] = struct{}{}
+	for id := range userQuotaStore {
+		userIDs[id] = struct{}{}
 	}
-	for key := range usedQuotaStore {
-		userIDs[key] = struct{}{}
+	for id := range usedQuotaStore {
+		userIDs[id] = struct{}{}
 	}
-	for key := range requestCountStore {
-		userIDs[key] = struct{}{}
+	for id := range requestCountStore {
+		userIDs[id] = struct{}{}
 	}
-	for key := range userIDs {
-		if err := updateUserQuotaUsedQuotaAndRequestCount(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key]); err != nil {
-			addNewRecord(BatchUpdateTypeUserQuota, key, userQuotaStore[key])
-			addNewRecord(BatchUpdateTypeUsedQuota, key, usedQuotaStore[key])
-			addNewRecord(BatchUpdateTypeRequestCount, key, requestCountStore[key])
+	for id := range userIDs {
+		if err := updateUserQuotaUsedQuotaAndRequestCount(tx, id, userQuotaStore[id], usedQuotaStore[id], requestCountStore[id]); err != nil {
+			return fmt.Errorf("user %d accounting: %w", id, err)
 		}
 	}
-	common.SysLog("batch update finished")
+	return nil
 }
 
 func RecordExist(err error) (bool, error) {

@@ -28,6 +28,7 @@ import { DEFAULT_TOKEN_UNIT } from '../constants'
 import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
+  getExpressionBillingLabel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
@@ -118,12 +119,17 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               </span>
             </span>
           ))}
+          {dynamicSummary.conditionText && (
+            <span className='text-muted-foreground text-xs'>
+              {dynamicSummary.conditionText}
+            </span>
+          )}
         </>
       )
     } else {
       priceSummary = (
         <span className='text-muted-foreground text-sm'>
-          {t('Dynamic Pricing')}
+          {t(getExpressionBillingLabel(props.model.billing_expr || ''))}
         </span>
       )
     }

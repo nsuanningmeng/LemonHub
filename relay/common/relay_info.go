@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -134,6 +135,10 @@ type RelayInfo struct {
 	SubscriptionPreConsumed int64
 	// SubscriptionPostDelta is the post-consume delta applied to amount_used (quota units; can be negative).
 	SubscriptionPostDelta int64
+	// Final receipt keeps subscription usage and wallet overflow separate.
+	SubscriptionWalletQuota               int64
+	SubscriptionSettlementApplied         bool
+	SubscriptionAmountUsedAfterSettlement int64
 	// SubscriptionPlanId / SubscriptionPlanTitle are used for logging/UI display.
 	SubscriptionPlanId    int
 	SubscriptionPlanTitle string
@@ -167,12 +172,16 @@ type RelayInfo struct {
 
 	// RequestConversionChain records request format conversions in order, e.g.
 	// ["openai", "openai_responses"] or ["openai", "claude"].
-	RequestConversionChain []types.RelayFormat
+	RequestConversionChain      []types.RelayFormat
+	conversionDiagnostics       []convmeta.ConversionDiagnostic
+	conversionDiagnosticsLogged bool
 	// 最终请求到上游的格式。可由 adaptor 显式设置；
 	// 若为空，调用 GetFinalRequestRelayFormat 会回退到 RequestConversionChain 的最后一项或 RelayFormat。
 	FinalRequestRelayFormat types.RelayFormat
 
-	StreamStatus *StreamStatus
+	StreamStatus    *StreamStatus
+	streamOutcomeMu sync.Mutex
+	streamOutcome   StreamOutcome
 
 	// convOptions caches the converter settings snapshot (see ConvOptions).
 	convOptions *convmeta.Options
@@ -231,6 +240,11 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	}
 
 	info.ChannelMeta = channelMeta
+	// Parameter operations belong to one channel attempt. A retry must start
+	// from this channel's configured headers, never the previous credentials.
+	info.UseRuntimeHeadersOverride = false
+	info.RuntimeHeadersOverride = nil
+	info.ParamOverrideAudit = nil
 
 	// Channel identity feeds the converter options snapshot (e.g.
 	// OpenRouterDialect); drop the cache so a cross-channel retry rebuilds it.
@@ -1159,4 +1173,140 @@ func RemoveGeminiDisabledFields(jsonData []byte) ([]byte, error) {
 		return jsonData, nil
 	}
 	return jsonDataAfter, nil
+}
+
+// RecordConversionDiagnostic accepts only static protocol descriptions. Storage
+// belongs to one relay attempt, and duplicate reports from repeated hops collapse.
+func (info *RelayInfo) RecordConversionDiagnostic(diagnostic convmeta.ConversionDiagnostic) {
+	if info == nil {
+		return
+	}
+	diagnostic, ok := convmeta.NormalizeConversionDiagnostic(diagnostic)
+	if !ok {
+		return
+	}
+	for _, existing := range info.conversionDiagnostics {
+		if existing == diagnostic {
+			return
+		}
+	}
+	if len(info.conversionDiagnostics) >= 16 {
+		return
+	}
+	info.conversionDiagnostics = append(info.conversionDiagnostics, diagnostic)
+}
+
+func (info *RelayInfo) ConversionDiagnostics() []convmeta.ConversionDiagnostic {
+	if info == nil {
+		return nil
+	}
+	return append([]convmeta.ConversionDiagnostic(nil), info.conversionDiagnostics...)
+}
+
+// TakeConversionDiagnosticsForLogging prevents duplicate backend warnings when
+// multiple consume metadata builders inspect the same successful attempt.
+func (info *RelayInfo) TakeConversionDiagnosticsForLogging() []convmeta.ConversionDiagnostic {
+	if info == nil || info.conversionDiagnosticsLogged || len(info.conversionDiagnostics) == 0 {
+		return nil
+	}
+	info.conversionDiagnosticsLogged = true
+	return info.ConversionDiagnostics()
+}
+
+func (info *RelayInfo) ResetConversionDiagnostics() {
+	if info == nil {
+		return
+	}
+	info.conversionDiagnostics = nil
+	info.conversionDiagnosticsLogged = false
+}
+
+// StreamOutcome records per-attempt protocol and downstream facts separately
+// from settlement policy. Read its snapshot only after handler cleanup joins.
+type StreamOutcome struct {
+	UpstreamCompleted              bool
+	UpstreamFailed                 bool
+	UpstreamFailureStatus          int
+	OtherUpstreamTerminal          bool
+	DownstreamCancelled            bool
+	CancelledWithoutBillableOutput bool
+}
+
+func (info *RelayInfo) ResetStreamOutcome() {
+	if info == nil {
+		return
+	}
+	info.streamOutcomeMu.Lock()
+	defer info.streamOutcomeMu.Unlock()
+	info.streamOutcome = StreamOutcome{}
+}
+func (info *RelayInfo) MarkUpstreamCompleted() {
+	if info == nil {
+		return
+	}
+	info.streamOutcomeMu.Lock()
+	defer info.streamOutcomeMu.Unlock()
+	info.streamOutcome.UpstreamCompleted = true
+}
+func (info *RelayInfo) MarkUpstreamFailure() {
+	if info == nil {
+		return
+	}
+	info.streamOutcomeMu.Lock()
+	defer info.streamOutcomeMu.Unlock()
+	info.streamOutcome.UpstreamFailed = true
+}
+func (info *RelayInfo) MarkDownstreamCancelled() {
+	if info == nil {
+		return
+	}
+	info.streamOutcomeMu.Lock()
+	defer info.streamOutcomeMu.Unlock()
+	info.streamOutcome.DownstreamCancelled = true
+}
+func (info *RelayInfo) MarkCancelledWithoutBillableOutput() {
+	if info == nil {
+		return
+	}
+	info.streamOutcomeMu.Lock()
+	defer info.streamOutcomeMu.Unlock()
+	info.streamOutcome.DownstreamCancelled = true
+	info.streamOutcome.CancelledWithoutBillableOutput = true
+}
+func (info *RelayInfo) StreamOutcome() StreamOutcome {
+	if info == nil {
+		return StreamOutcome{}
+	}
+	info.streamOutcomeMu.Lock()
+	defer info.streamOutcomeMu.Unlock()
+	return info.streamOutcome
+}
+func (info *RelayInfo) IsPureDownstreamCancellation() bool {
+	outcome := info.StreamOutcome()
+	return outcome.DownstreamCancelled && !outcome.UpstreamFailed && !outcome.UpstreamCompleted && !outcome.OtherUpstreamTerminal
+}
+
+// MarkUpstreamFailureStatus accepts only a status classified locally (after
+// operator mapping), never an arbitrary numeric provider error code.
+func (info *RelayInfo) MarkUpstreamFailureStatus(status int) {
+	if info == nil {
+		return
+	}
+	info.streamOutcomeMu.Lock()
+	defer info.streamOutcomeMu.Unlock()
+	info.streamOutcome.UpstreamFailed = true
+	if status >= 100 && status <= 599 {
+		info.streamOutcome.UpstreamFailureStatus = status
+	}
+}
+
+// MarkOtherUpstreamTerminal records incomplete/cancelled source termination
+// without changing its existing success/failure or settlement classification.
+func (info *RelayInfo) MarkOtherUpstreamTerminal() {
+	if info == nil {
+		return
+	}
+	info.streamOutcomeMu.Lock()
+	defer info.streamOutcomeMu.Unlock()
+	info.streamOutcome.OtherUpstreamTerminal = true
 }

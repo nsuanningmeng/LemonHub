@@ -95,6 +95,12 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	case relayconstant.RelayModeEmbeddings:
 		return ollamaEmbeddingHandler(c, info, resp)
 	default:
+		if info.RelayFormat != "" && info.RelayFormat != types.RelayFormatOpenAI && info.RelayFormat != types.RelayFormatClaude {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+			return nil, types.NewErrorWithStatusCode(errors.New("unsupported Ollama response format"), types.ErrorCodeBadResponse, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
 		if info.IsStream {
 			return ollamaStreamHandler(c, info, resp)
 		}

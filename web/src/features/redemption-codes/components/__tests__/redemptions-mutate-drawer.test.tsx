@@ -312,3 +312,60 @@ describe('redemption drawer', () => {
     expect(updates[0]?.quota).toBe(1000001)
   })
 })
+
+test('quota can be cleared before entering a new valid amount without coercing blank to zero', async () => {
+  const original = redemption(1)
+  const updates: unknown[] = []
+  apiClient.get = async () => ({ data: { success: true, data: original } })
+  apiClient.put = async (_url, data) => {
+    updates.push(data)
+    return { data: { success: true } }
+  }
+  await renderDrawer(original)
+  await waitForLoadedForm()
+  const input = getControlByLabel('Quota (USD)')
+  changeInput(input, '')
+  expect(input.value).toBe('')
+  submitForm()
+  await new Promise<void>((resolve) => queueMicrotask(resolve))
+  expect(updates).toEqual([])
+  changeInput(input, '2.5')
+  submitForm()
+  await waitFor(() => expect(updates).toHaveLength(1))
+  expect(updates[0]).toMatchObject({ quota: 1250000 })
+})
+
+test.each(['', '-1', 'NaN'])(
+  'invalid quota %j still prevents saving',
+  async (value) => {
+    const original = redemption(1)
+    const updates: unknown[] = []
+    apiClient.get = async () => ({ data: { success: true, data: original } })
+    apiClient.put = async (_url, data) => {
+      updates.push(data)
+      return { data: { success: true } }
+    }
+    await renderDrawer(original)
+    await waitForLoadedForm()
+    const input = getControlByLabel('Quota (USD)')
+    changeInput(input, value)
+    submitForm()
+    await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+    expect(updates).toEqual([])
+  }
+)
+test('zero quota retains its existing valid business contract', async () => {
+  const original = redemption(1)
+  const updates: unknown[] = []
+  apiClient.get = async () => ({ data: { success: true, data: original } })
+  apiClient.put = async (_url, data) => {
+    updates.push(data)
+    return { data: { success: true } }
+  }
+  await renderDrawer(original)
+  await waitForLoadedForm()
+  changeInput(getControlByLabel('Quota (USD)'), '0')
+  submitForm()
+  await waitFor(() => expect(updates).toHaveLength(1))
+  expect(updates[0]).toMatchObject({ quota: 0 })
+})

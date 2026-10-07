@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -194,6 +195,40 @@ func (channel *Channel) GetKeys() []string {
 	// Otherwise, fall back to splitting by newline
 	keys := strings.Split(strings.Trim(channel.Key, "\n"), "\n")
 	return keys
+}
+
+// GetAutoDisabledKeyForProbe selects a unique credential only for internal health
+// recovery. Ordinary requests must continue using GetNextEnabledKey.
+func (channel *Channel) GetAutoDisabledKeyForProbe(identity string) (string, int, *types.NewAPIError) {
+	if channel == nil || !channel.ChannelInfo.IsMultiKey || channel.Status == common.ChannelStatusManuallyDisabled {
+		return "", 0, types.NewError(errors.New("channel is not eligible for key recovery"), types.ErrorCodeChannelNoAvailableKey, types.ErrOptionWithSkipRetry())
+	}
+	index := -1
+	for i, key := range channel.GetKeys() {
+		if key == identity {
+			if index >= 0 {
+				return "", 0, types.NewError(errors.New("ambiguous recovery key"), types.ErrorCodeChannelNoAvailableKey, types.ErrOptionWithSkipRetry())
+			}
+			index = i
+		}
+	}
+	if index < 0 || channel.ChannelInfo.MultiKeyStatusList[index] != common.ChannelStatusAutoDisabled {
+		return "", 0, types.NewError(errors.New("key is not eligible for recovery"), types.ErrorCodeChannelNoAvailableKey, types.ErrOptionWithSkipRetry())
+	}
+	return identity, index, nil
+}
+
+func (channel *Channel) AutoDisabledKeyProbeIdentities() []string {
+	if channel == nil || !channel.ChannelInfo.IsMultiKey || channel.Status == common.ChannelStatusManuallyDisabled {
+		return nil
+	}
+	var identities []string
+	for _, key := range channel.GetKeys() {
+		if _, _, err := channel.GetAutoDisabledKeyForProbe(key); err == nil {
+			identities = append(identities, key)
+		}
+	}
+	return identities
 }
 
 func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
@@ -725,6 +760,83 @@ func hasEnabledMultiKey(keys []string, statusList map[int]int) bool {
 	return false
 }
 
+// RecoverAutoDisabledChannelKey applies only a successful health probe. Resolve
+// credential identity against a fresh row locked within the update transaction.
+// Concurrent administrator updates serialize on that row; SQLite write conflicts
+// fail closed. Administrator status updates keep their separate contract.
+func RecoverAutoDisabledChannelKey(channelId int, identity string, probeContext ...context.Context) bool {
+	ctx := context.Background()
+	if len(probeContext) > 0 && probeContext[0] != nil {
+		ctx = probeContext[0]
+	}
+	if ctx.Err() != nil {
+		return false
+	}
+	if common.MemoryCacheEnabled {
+		channelStatusLock.Lock()
+		defer channelStatusLock.Unlock()
+	}
+	pollingLock := GetChannelPollingLock(channelId)
+	pollingLock.Lock()
+	defer pollingLock.Unlock()
+	changed := false
+	err := DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var channel Channel
+		if err := lockForUpdate(tx).First(&channel, channelId).Error; err != nil {
+			return err
+		}
+		if channel.Status == common.ChannelStatusManuallyDisabled {
+			return nil
+		}
+		recoveredIndex := -1
+		if channel.ChannelInfo.IsMultiKey {
+			var probeErr *types.NewAPIError
+			_, recoveredIndex, probeErr = channel.GetAutoDisabledKeyForProbe(identity)
+			if probeErr != nil {
+				return nil
+			}
+		} else if channel.Status != common.ChannelStatusAutoDisabled || channel.Key != identity {
+			return nil
+		}
+		oldKey, oldStatus := channel.Key, channel.Status
+		if channel.ChannelInfo.IsMultiKey {
+			handlerMultiKeyUpdate(&channel, identity, common.ChannelStatusEnabled, "")
+			delete(channel.ChannelInfo.MultiKeyDisabledReason, recoveredIndex)
+			delete(channel.ChannelInfo.MultiKeyDisabledTime, recoveredIndex)
+		} else {
+			channel.Status = common.ChannelStatusEnabled
+			info := channel.GetOtherInfo()
+			info["status_reason"] = ""
+			info["status_time"] = common.GetTimestamp()
+			channel.SetOtherInfo(info)
+		}
+		query := tx.Model(&Channel{}).Where(map[string]any{"id": channelId, "key": oldKey, "status": oldStatus})
+		updates := map[string]any{"status": channel.Status}
+		if channel.ChannelInfo.IsMultiKey {
+			updates["channel_info"] = channel.ChannelInfo
+		} else {
+			updates["other_info"] = channel.OtherInfo
+		}
+		result := query.Updates(updates)
+		if result.Error != nil {
+			return result.Error
+		}
+		changed = result.RowsAffected > 0
+		if changed && oldStatus != channel.Status {
+			return tx.Model(&Ability{}).Where("channel_id = ?", channelId).Update("enabled", channel.Status == common.ChannelStatusEnabled).Error
+		}
+		return nil
+	})
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to recover channel key: channel_id=%d", channelId))
+		return false
+	}
+	if common.MemoryCacheEnabled {
+		refreshChannelStatusCache(channelId)
+	}
+	return changed
+}
+
 func UpdateChannelStatus(channelId int, usingKey string, status int, reason string) bool {
 	return updateChannelStatus(channelId, usingKey, status, reason, false)
 }
@@ -909,14 +1021,15 @@ func UpdateChannelUsedQuota(id int, quota int) {
 		addNewRecord(BatchUpdateTypeChannelUsedQuota, id, quota)
 		return
 	}
-	updateChannelUsedQuota(id, quota)
+	_ = updateChannelUsedQuota(DB, id, quota)
 }
 
-func updateChannelUsedQuota(id int, quota int) {
-	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
+func updateChannelUsedQuota(db *gorm.DB, id int, quota int) error {
+	err := db.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update channel used quota: channel_id=%d, delta_quota=%d, error=%v", id, quota, err))
 	}
+	return err
 }
 
 func DeleteChannelByStatus(status int64) (int64, error) {

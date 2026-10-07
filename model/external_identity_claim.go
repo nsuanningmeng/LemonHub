@@ -1747,14 +1747,12 @@ func externalIdentitySubjectIndexIsSiteScoped(db *gorm.DB, name string) (bool, e
 		)
 	}
 	if db.Dialector.Name() == "postgres" {
-		unconditional, err := postgresIdentityIndexIsUnconditional(
+		return postgresIdentityIndexIsFullUnique(
 			db,
 			ExternalIdentityClaim{}.TableName(),
 			name,
+			[]string{"provider", "site_id", "subject"},
 		)
-		if err != nil || !unconditional {
-			return false, err
-		}
 	}
 
 	indexes, err := db.Migrator().GetIndexes(&ExternalIdentityClaim{})
@@ -1845,6 +1843,48 @@ WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`
 		return nil, err
 	}
 	return columns, nil
+}
+
+// GORM's PostgreSQL GetIndexes aggregates attribute names without preserving
+// index-key order. Read indkey with ordinality instead of mistaking physical
+// table-column order for index order. indnkeyatts exists only on PostgreSQL 11+,
+// so read it through the catalog row's JSON representation with a 9.6 fallback.
+// INCLUDE attributes must never be mistaken for columns of the unique key.
+func postgresIdentityIndexIsFullUnique(db *gorm.DB, tableName, indexName string, expectedColumns []string) (bool, error) {
+	if db == nil || db.Dialector.Name() != "postgres" {
+		return false, errors.New("PostgreSQL identity index inspection requires a PostgreSQL database")
+	}
+	var columns []struct {
+		Name          string `gorm:"column:column_name"`
+		Unique        bool   `gorm:"column:is_unique"`
+		KeyCount      int    `gorm:"column:key_count"`
+		Unconditional bool   `gorm:"column:unconditional"`
+		PlainColumns  bool   `gorm:"column:plain_columns"`
+	}
+	if err := db.Raw(
+		`SELECT attribute.attname AS column_name, ix.indisunique AS is_unique,
+COALESCE((to_jsonb(ix)->>'indnkeyatts')::int, ix.indnatts::int) AS key_count,
+ix.indpred IS NULL AS unconditional, ix.indexprs IS NULL AS plain_columns
+FROM pg_catalog.pg_index ix
+JOIN pg_catalog.pg_class relation ON relation.oid = ix.indrelid
+JOIN pg_catalog.pg_class index_relation ON index_relation.oid = ix.indexrelid
+CROSS JOIN LATERAL unnest(ix.indkey::smallint[]) WITH ORDINALITY AS key_column(attnum, position)
+LEFT JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = relation.oid AND attribute.attnum = key_column.attnum
+WHERE relation.oid = pg_catalog.to_regclass(CAST(? AS text)) AND index_relation.relname = ?
+ORDER BY key_column.position`, tableName, indexName,
+	).Scan(&columns).Error; err != nil {
+		return false, err
+	}
+	if len(expectedColumns) == 0 || len(columns) != len(expectedColumns) {
+		return false, nil
+	}
+	for position, column := range columns {
+		if !column.Unique || !column.Unconditional || !column.PlainColumns ||
+			column.KeyCount != len(expectedColumns) || column.Name != expectedColumns[position] {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func postgresIdentityIndexIsUnconditional(db *gorm.DB, tableName string, indexName string) (bool, error) {

@@ -1,12 +1,16 @@
 package claudemessages
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/toolpolicy"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 const (
@@ -23,6 +27,10 @@ type openRouterRequestReasoning struct {
 }
 
 func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info convmeta.Meta) (*dto.GeneralOpenAIRequest, error) {
+	return ClaudeMessagesRequestToOpenAIChatWithContext(context.Background(), claudeRequest, info)
+}
+
+func ClaudeMessagesRequestToOpenAIChatWithContext(ctx context.Context, claudeRequest dto.ClaudeRequest, info convmeta.Meta) (*dto.GeneralOpenAIRequest, error) {
 	openAIRequest := dto.GeneralOpenAIRequest{
 		Model:       claudeRequest.Model,
 		Temperature: claudeRequest.Temperature,
@@ -41,6 +49,25 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 	}
 
 	isOpenRouter := convmeta.OptionsOf(info).OpenRouterDialect
+	// Standard OpenAI accepts these explicit shared effort levels. Thinking
+	// budgets do not define an equivalent effort and are never bucketed here.
+	// OpenRouter retains its existing verbosity/nested-reasoning dialect below.
+	if !isOpenRouter && len(claudeRequest.OutputConfig) > 0 {
+		var outputConfig struct {
+			Effort *string `json:"effort"`
+		}
+		if err := kitutil.Unmarshal(claudeRequest.OutputConfig, &outputConfig); err != nil {
+			return nil, types.NewErrorWithStatusCode(errors.New("output_config.effort: invalid effort configuration"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
+		}
+		if outputConfig.Effort != nil {
+			switch *outputConfig.Effort {
+			case "low", "medium", "high":
+				openAIRequest.ReasoningEffort = *outputConfig.Effort
+			default:
+				return nil, types.NewErrorWithStatusCode(errors.New("output_config.effort: unsupported effort for OpenAI conversion"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
+			}
+		}
+	}
 	if isOpenRouter {
 		if effort := claudeRequest.GetEfforts(); effort != "" {
 			effortBytes, _ := kitutil.Marshal(effort)
@@ -72,21 +99,48 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 		}
 	}
 
-	if len(claudeRequest.StopSequences) == 1 {
-		openAIRequest.Stop = claudeRequest.StopSequences[0]
-	} else if len(claudeRequest.StopSequences) > 1 {
+	if len(claudeRequest.StopSequences) > 0 {
 		openAIRequest.Stop = claudeRequest.StopSequences
 	}
 
-	tools, _ := kitutil.Any2Type[[]dto.Tool](claudeRequest.Tools)
+	tools, err := kitutil.Any2Type[[]dto.Tool](claudeRequest.Tools)
+	if err != nil {
+		return nil, toolpolicy.Invalid("tools")
+	}
+	if claudeRequest.ToolChoice != nil {
+		choice, err := kitutil.Any2Type[dto.ClaudeToolChoice](claudeRequest.ToolChoice)
+		if err != nil {
+			return nil, toolpolicy.Invalid("tool_choice")
+		}
+		switch choice.Type {
+		case "auto", "none":
+			openAIRequest.ToolChoice = choice.Type
+		case "any":
+			openAIRequest.ToolChoice = "required"
+		case "tool":
+			if choice.Name == "" {
+				return nil, toolpolicy.Invalid("tool_choice.name")
+			}
+			openAIRequest.ToolChoice = map[string]any{"type": "function", "function": map[string]any{"name": choice.Name}}
+		default:
+			return nil, toolpolicy.Invalid("tool_choice.type")
+		}
+		if choice.DisableParallelToolUse != nil {
+			openAIRequest.ParallelTooCalls = kitutil.GetPointer(!*choice.DisableParallelToolUse)
+		}
+	}
 	openAITools := make([]dto.ToolCallRequest, 0)
 	for _, claudeTool := range tools {
+		if err := toolpolicy.ValidateClaudeCallers(claudeTool.AllowedCallers); err != nil {
+			return nil, err
+		}
 		openAITool := dto.ToolCallRequest{
 			Type: "function",
 			Function: dto.FunctionRequest{
 				Name:        claudeTool.Name,
 				Description: claudeTool.Description,
 				Parameters:  claudeTool.InputSchema,
+				Strict:      claudeTool.Strict,
 			},
 		}
 		openAITools = append(openAITools, openAITool)
@@ -133,91 +187,100 @@ func ClaudeMessagesRequestToOpenAIChat(claudeRequest dto.ClaudeRequest, info con
 		}
 	}
 
-	type unnamedToolResult struct {
-		index int
-		id    string
-	}
 	toolNames := make(map[string]string)
-	var unnamedToolResults []unnamedToolResult
-	for _, claudeMessage := range claudeRequest.Messages {
-		openAIMessage := dto.Message{
-			Role: claudeMessage.Role,
+	for _, message := range claudeRequest.Messages {
+		if message.IsStringContent() {
+			continue
 		}
+		content, err := message.ParseContent()
+		if err != nil {
+			return nil, invalidClaudeMedia("messages.content", "malformed content blocks")
+		}
+		for _, block := range content {
+			if block.Type == "tool_use" {
+				if _, exists := toolNames[block.Id]; exists {
+					continue
+				}
+				toolNames[block.Id] = block.Name
+			}
+		}
+	}
+	var pendingMedia []dto.MediaContent
+	flushMedia := func() {
+		if len(pendingMedia) > 0 {
+			message := dto.Message{Role: "user"}
+			message.SetMediaContent(pendingMedia)
+			openAIMessages = append(openAIMessages, message)
+			pendingMedia = nil
+		}
+	}
+	for messageIndex, claudeMessage := range claudeRequest.Messages {
 		if claudeMessage.IsStringContent() {
-			openAIMessage.SetStringContent(claudeMessage.GetStringContent())
-		} else {
-			content, err := claudeMessage.ParseContent()
-			if err != nil {
-				return nil, err
-			}
-			var toolCalls []dto.ToolCallRequest
-			mediaMessages := make([]dto.MediaContent, 0, len(content))
-
-			for _, mediaMsg := range content {
-				if _, exists := toolNames[mediaMsg.Id]; !exists {
-					toolNames[mediaMsg.Id] = mediaMsg.Name
-				}
-				switch mediaMsg.Type {
-				case "text", "input_text":
-					message := dto.MediaContent{
-						Type:         "text",
-						Text:         mediaMsg.GetText(),
-						CacheControl: mediaMsg.CacheControl,
-					}
-					mediaMessages = append(mediaMessages, message)
-				case "image":
-					imageData := fmt.Sprintf("data:%s;base64,%s", mediaMsg.Source.MediaType, mediaMsg.Source.Data)
-					mediaMessage := dto.MediaContent{
-						Type:     "image_url",
-						ImageUrl: &dto.MessageImageUrl{Url: imageData},
-					}
-					mediaMessages = append(mediaMessages, mediaMessage)
-				case "tool_use":
-					toolCall := dto.ToolCallRequest{
-						ID:   mediaMsg.Id,
-						Type: "function",
-						Function: dto.FunctionRequest{
-							Name:      mediaMsg.Name,
-							Arguments: requestToJSONString(mediaMsg.Input),
-						},
-					}
-					toolCalls = append(toolCalls, toolCall)
-				case "tool_result":
-					toolName := mediaMsg.Name
-					if toolName == "" {
-						unnamedToolResults = append(unnamedToolResults, unnamedToolResult{index: len(openAIMessages), id: mediaMsg.ToolUseId})
-					}
-					oaiToolMessage := dto.Message{
-						Role:       "tool",
-						Name:       &toolName,
-						ToolCallId: mediaMsg.ToolUseId,
-					}
-					if mediaMsg.IsStringContent() {
-						oaiToolMessage.SetStringContent(mediaMsg.GetStringContent())
-					} else {
-						mediaContents := mediaMsg.ParseMediaContent()
-						encodedJSON, _ := kitutil.Marshal(mediaContents)
-						oaiToolMessage.SetStringContent(string(encodedJSON))
-					}
-					openAIMessages = append(openAIMessages, oaiToolMessage)
-				}
-			}
-
-			if len(toolCalls) > 0 {
-				openAIMessage.SetToolCalls(toolCalls)
-			}
-			if len(mediaMessages) > 0 && len(toolCalls) == 0 {
-				openAIMessage.SetMediaContent(mediaMessages)
+			flushMedia()
+			message := dto.Message{Role: claudeMessage.Role}
+			message.SetStringContent(claudeMessage.GetStringContent())
+			openAIMessages = append(openAIMessages, message)
+			continue
+		}
+		content, err := claudeMessage.ParseContent()
+		if err != nil {
+			return nil, invalidClaudeMedia("messages.content", "malformed content blocks")
+		}
+		hasResults := false
+		for _, block := range content {
+			if block.Type == "tool_result" {
+				hasResults = true
 			}
 		}
-		if len(openAIMessage.ParseContent()) > 0 || len(openAIMessage.ToolCalls) > 0 {
-			openAIMessages = append(openAIMessages, openAIMessage)
+		if claudeMessage.Role != "user" || !hasResults {
+			flushMedia()
+		}
+		message := dto.Message{Role: claudeMessage.Role}
+		var parts []dto.MediaContent
+		var calls []dto.ToolCallRequest
+		for blockIndex, block := range content {
+			path := fmt.Sprintf("messages[%d].content[%d]", messageIndex, blockIndex)
+			switch block.Type {
+			case "tool_use":
+				calls = append(calls, dto.ToolCallRequest{ID: block.Id, Type: "function", Function: dto.FunctionRequest{Name: block.Name, Arguments: requestToJSONString(block.Input)}})
+			case "tool_result":
+				text, mediaParts, err := claudeToolResultContent(ctx, block.Content, path+".content")
+				if err != nil {
+					return nil, err
+				}
+				name := block.Name
+				if name == "" {
+					name = toolNames[block.ToolUseId]
+				}
+				result := dto.Message{Role: "tool", Name: &name, ToolCallId: block.ToolUseId}
+				result.SetStringContent(text)
+				openAIMessages = append(openAIMessages, result)
+				parts = append(parts, mediaParts...)
+			case "thinking", "redacted_thinking":
+				// Thinking/signature compatibility is unchanged.
+			default:
+				part, err := claudeContentPart(ctx, block, path)
+				if err != nil {
+					return nil, err
+				}
+				parts = append(parts, part)
+			}
+		}
+		if hasResults && claudeMessage.Role == "user" {
+			pendingMedia = append(pendingMedia, parts...)
+			continue
+		}
+		if len(calls) > 0 {
+			message.SetToolCalls(calls)
+		}
+		if len(parts) > 0 {
+			message.SetMediaContent(parts)
+		}
+		if len(parts) > 0 || len(calls) > 0 {
+			openAIMessages = append(openAIMessages, message)
 		}
 	}
-
-	for _, result := range unnamedToolResults {
-		*openAIMessages[result.index].Name = toolNames[result.id]
-	}
+	flushMedia()
 
 	openAIRequest.Messages = openAIMessages
 	return &openAIRequest, nil

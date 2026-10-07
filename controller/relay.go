@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -99,6 +100,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			} else {
 				newAPIError.SetMessage(common.MessageWithRequestId(maskMappedModelName(c, newAPIError.Error()), requestId))
 			}
+			if relayFormat != types.RelayFormatOpenAIRealtime && c.Writer.Written() {
+				emitCommittedRelayError(c, relayFormat, newAPIError)
+				return
+			}
+			if relayFormat != types.RelayFormatOpenAIRealtime {
+				c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+				for _, name := range []string{"Transfer-Encoding", "Connection", "X-Accel-Buffering"} {
+					c.Writer.Header().Del(name)
+				}
+				delete(c.Keys, "event_stream_headers_set")
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -146,7 +158,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		contains, words := service.CheckSensitiveText(meta.CombineText)
 		if contains {
 			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
+			newAPIError = types.NewErrorWithStatusCode(errors.New("request contains content blocked by the configured sensitive-word policy"), types.ErrorCodeSensitiveWordsDetected, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			return
 		}
 	}
@@ -194,6 +206,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		RequestPath: c.Request.URL.Path,
 		Retry:       common.GetPointer(0),
 	}
+	clientIsStream := relayInfo.IsStream
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
 
@@ -238,9 +251,21 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
 
+		// Uncommitted SSE headers from a failed attempt must not label a retry's JSON.
+		if !c.Writer.Written() {
+			for _, name := range []string{"Content-Type", "Transfer-Encoding", "Connection", "X-Accel-Buffering"} {
+				c.Writer.Header().Del(name)
+			}
+			delete(c.Keys, "event_stream_headers_set")
+		}
+
 		// A successful retry must not inherit the previous attempt's outcome.
 		common.SetContextKey(c, constant.ContextKeyResponseFailed, false)
+		relayInfo.IsStream = clientIsStream
+		common.SetContextKey(c, constant.ContextKeyIsStream, clientIsStream)
 		relayInfo.StreamStatus = nil
+		relayInfo.ResetStreamOutcome()
+		relayInfo.ResetConversionDiagnostics()
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
 			newAPIError = relay.WssHelper(c, relayInfo)
@@ -250,6 +275,48 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = geminiRelayHandler(c, relayInfo)
 		default:
 			newAPIError = relayHandler(c, relayInfo)
+		}
+
+		if newAPIError != nil {
+			// A context ending later cannot erase a previously classified upstream error.
+			requestErr := c.Request.Context().Err()
+			confirmedStreamFailure := false
+			if status := relayInfo.StreamStatus; status != nil {
+				switch status.EndReason {
+				case relaycommon.StreamEndReasonTimeout, relaycommon.StreamEndReasonPanic:
+					confirmedStreamFailure = true
+				case relaycommon.StreamEndReasonScannerErr, relaycommon.StreamEndReasonHandlerStop:
+					confirmedStreamFailure = status.EndError != nil && (requestErr == nil || !errors.Is(status.EndError, requestErr))
+				}
+			}
+			if confirmedStreamFailure || relayInfo.StreamOutcome().UpstreamFailed || requestErr == nil || !errors.Is(newAPIError, requestErr) {
+				relayInfo.MarkUpstreamFailureStatus(newAPIError.StatusCode)
+			} else {
+				// HandlerStop may win the scanner select before its context branch.
+				// The wrapped request cause independently confirms downstream cancellation.
+				relayInfo.MarkDownstreamCancelled()
+			}
+		}
+
+		if relayInfo.IsPureDownstreamCancellation() {
+			// Only explicit downstream cancellation facts can neutralize this attempt.
+			// A failed upstream protocol/transport outcome takes priority in the facts.
+			if newAPIError != nil && relayInfo.Billing != nil {
+				relayInfo.Billing.Refund(c)
+			}
+			newAPIError = nil
+			relayInfo.LastError = nil
+			other := map[string]interface{}{
+				"error_type": "downstream_cancelled", "status_code": 499,
+				"admin_info": map[string]interface{}{"stream_outcome": "downstream_cancelled"},
+			}
+			if c.Request != nil && c.Request.URL != nil {
+				other["request_path"] = c.Request.URL.Path
+			}
+			model.RecordErrorLog(c, relayInfo.UserId, relayInfo.ChannelId, relayInfo.OriginModelName,
+				c.GetString("token_name"), "downstream_cancelled", relayInfo.TokenId,
+				int(time.Since(relayInfo.StartTime).Seconds()), relayInfo.IsStream, relayInfo.UsingGroup, other)
+			return
 		}
 
 		if newAPIError == nil {
@@ -285,8 +352,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		// Only whitelisted HTTP errors lower the success rate; other errors
 		// contribute successful samples. An empty whitelist counts every error.
 		success := !perf_metrics_setting.ShouldCountErrorAsFailure(newAPIError.StatusCode)
+		sample := perfmetrics.BuildRelaySample(relayInfo, success, 0, time.Now())
+		sample.Success = success // This path already classified the final mapped HTTP status.
 		gopool.Go(func() {
-			perfmetrics.RecordRelaySample(relayInfo, success, 0)
+			perfmetrics.Record(sample)
 		})
 	}
 }
@@ -364,7 +433,72 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 	return channel, nil
 }
 
+// emitCommittedRelayError is the single owner of the failed stream's error event.
+// An already committed non-stream response or a broken/cancelled connection is closed.
+func emitCommittedRelayError(c *gin.Context, format types.RelayFormat, relayErr *types.NewAPIError) {
+	if c == nil || c.Writer == nil || c.Request == nil || c.Request.Context().Err() != nil || len(c.Errors) != 0 || c.GetBool("relay_stream_write_failed") {
+		return
+	}
+	if c.GetBool("relay_committed_error_sent") || c.GetBool("relay_stream_error_emitted") || !strings.Contains(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+		return
+	}
+	c.Set("relay_committed_error_sent", true)
+	upstream := relayErr.ToOpenAIError()
+	var payload any = gin.H{"error": upstream}
+	event := ""
+	switch format {
+	case types.RelayFormatClaude:
+		event = "error"
+		payload = gin.H{"type": "error", "error": relayErr.ToClaudeError()}
+	case types.RelayFormatOpenAIResponses:
+		event = "error"
+		var code any
+		switch value := upstream.Code.(type) {
+		case string:
+			code = value
+		case float64, float32, int, int32, int64, uint, uint32, uint64, json.Number:
+			code = fmt.Sprint(value)
+		}
+		payload = gin.H{"type": "error", "code": code, "message": upstream.Message, "param": nil}
+	case types.RelayFormatGemini:
+		status := "UNKNOWN"
+		switch relayErr.StatusCode {
+		case 400:
+			status = "INVALID_ARGUMENT"
+		case 401:
+			status = "UNAUTHENTICATED"
+		case 403:
+			status = "PERMISSION_DENIED"
+		case 429:
+			status = "RESOURCE_EXHAUSTED"
+		case 503:
+			status = "UNAVAILABLE"
+		case 502:
+			status = "INTERNAL"
+		}
+		payload = gin.H{"error": gin.H{"code": relayErr.StatusCode, "status": status, "message": upstream.Message}}
+	}
+	data, err := common.Marshal(payload)
+	if err != nil {
+		return
+	}
+	frame := "data: " + string(data) + "\n\n"
+	if event != "" {
+		frame = "event: " + event + "\n" + frame
+	}
+	if n, err := c.Writer.WriteString(frame); err != nil || n != len(frame) {
+		c.Set("relay_stream_write_failed", true)
+		return
+	}
+	if err := helper.FlushWriter(c); err != nil {
+		c.Set("relay_stream_write_failed", true)
+	}
+}
+
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+	if c != nil && c.Writer != nil && c.Writer.Written() {
+		return false
+	}
 	if openaiErr == nil {
 		return false
 	}

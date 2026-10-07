@@ -129,10 +129,52 @@ func NormalizeGroupString(s string) string {
 	return strings.Join(t.GetGroups(), ",")
 }
 
-func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
+// EffectiveStatus reports current availability without overwriting stored enable/disable intent.
+// Legacy system-disabled states remain disabled until an explicit enable operation.
+func (token *Token) EffectiveStatus(now int64) int {
+	if token.Status != common.TokenStatusEnabled {
+		return token.Status
+	}
+	if token.ExpiredTime != -1 && token.ExpiredTime < now {
+		return common.TokenStatusExpired
+	}
+	if !token.UnlimitedQuota && token.RemainQuota <= 0 {
+		return common.TokenStatusExhausted
+	}
+	return common.TokenStatusEnabled
+}
+
+// TokenStatusFilter shares one time boundary between page rows, totals and response status.
+// A zero Status means no availability filter.
+type TokenStatusFilter struct {
+	Status int
+	Now    int64
+}
+
+func applyTokenStatusFilter(query *gorm.DB, filters []TokenStatusFilter) *gorm.DB {
+	if len(filters) == 0 || filters[0].Status == 0 {
+		return query
+	}
+	filter := filters[0]
+	// Nullable legacy fields scan into Go zero values; SQL must use the same semantics.
+	switch filter.Status {
+	case common.TokenStatusEnabled:
+		return query.Where("status = ? AND (COALESCE(expired_time, 0) = -1 OR COALESCE(expired_time, 0) >= ?) AND (unlimited_quota = ? OR remain_quota > 0)", common.TokenStatusEnabled, filter.Now, true)
+	case common.TokenStatusDisabled:
+		return query.Where("status = ?", common.TokenStatusDisabled)
+	case common.TokenStatusExpired:
+		return query.Where("(status = ? OR (status = ? AND COALESCE(expired_time, 0) != -1 AND COALESCE(expired_time, 0) < ?))", common.TokenStatusExpired, common.TokenStatusEnabled, filter.Now)
+	case common.TokenStatusExhausted:
+		return query.Where("(status = ? OR (status = ? AND (COALESCE(expired_time, 0) = -1 OR COALESCE(expired_time, 0) >= ?) AND (unlimited_quota = ? OR unlimited_quota IS NULL) AND (remain_quota <= 0 OR remain_quota IS NULL)))", common.TokenStatusExhausted, common.TokenStatusEnabled, filter.Now, false)
+	default:
+		return query.Where("1 = 0")
+	}
+}
+
+func GetAllUserTokens(userId int, startIdx int, num int, filters ...TokenStatusFilter) ([]*Token, error) {
 	var tokens []*Token
 	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	err = applyTokenStatusFilter(DB.Where("user_id = ?", userId), filters).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	return tokens, err
 }
 
@@ -182,7 +224,7 @@ func validateLikePattern(input string) error {
 
 const searchHardLimit = 100
 
-func SearchUserTokens(userId int, keyword string, token string, offset int, limit int) (tokens []*Token, total int64, err error) {
+func SearchUserTokens(userId int, keyword string, token string, offset int, limit int, filters ...TokenStatusFilter) (tokens []*Token, total int64, err error) {
 	// model 层强制截断
 	if limit <= 0 || limit > searchHardLimit {
 		limit = searchHardLimit
@@ -209,7 +251,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := applyTokenStatusFilter(DB.Model(&Token{}).Where("user_id = ?", userId), filters)
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -255,23 +297,9 @@ func ValidateUserToken(key string) (token *Token, err error) {
 			return token, ErrTokenInvalid
 		}
 		if token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
-			if !common.RedisEnabled {
-				token.Status = common.TokenStatusExpired
-				err := token.SelectUpdate()
-				if err != nil {
-					common.SysLog("failed to update token status" + err.Error())
-				}
-			}
 			return token, ErrTokenInvalid
 		}
 		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
-			if !common.RedisEnabled {
-				token.Status = common.TokenStatusExhausted
-				err := token.SelectUpdate()
-				if err != nil {
-					common.SysLog("failed to update token status" + err.Error())
-				}
-			}
 			return token, ErrTokenInvalid
 		}
 		return token, nil
@@ -412,8 +440,8 @@ func IncreaseTokenQuota(tokenId int, key string, quota int) (err error) {
 	return applyTokenQuotaDelta(tokenId, key, quota)
 }
 
-func increaseTokenQuota(id int, quota int) (err error) {
-	err = DB.Model(&Token{}).Where("id = ?", id).Updates(
+func increaseTokenQuota(db *gorm.DB, id int, quota int) (err error) {
+	err = db.Model(&Token{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
 			"remain_quota":  gorm.Expr("remain_quota + ?", quota),
 			"used_quota":    gorm.Expr("used_quota - ?", quota),
@@ -442,9 +470,9 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 }
 
 // CountUserTokens returns total number of tokens for the given user, used for pagination
-func CountUserTokens(userId int) (int64, error) {
+func CountUserTokens(userId int, filters ...TokenStatusFilter) (int64, error) {
 	var total int64
-	err := DB.Model(&Token{}).Where("user_id = ?", userId).Count(&total).Error
+	err := applyTokenStatusFilter(DB.Model(&Token{}).Where("user_id = ?", userId), filters).Count(&total).Error
 	return total, err
 }
 

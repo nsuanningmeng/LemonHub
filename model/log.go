@@ -71,6 +71,7 @@ type Log struct {
 	ModelName         string `json:"model_name" gorm:"index;index:index_username_model_name,priority:1;default:''"`
 	Quota             int    `json:"quota" gorm:"default:0"`
 	PromptTokens      int    `json:"prompt_tokens" gorm:"default:0"`
+	InputTokensTotal  *int64 `json:"input_tokens_total,omitempty" gorm:"type:bigint"` // Inclusive statistics input; nil preserves legacy raw semantics.
 	CompletionTokens  int    `json:"completion_tokens" gorm:"default:0"`
 	UseTime           int    `json:"use_time" gorm:"default:0"`
 	IsStream          bool   `json:"is_stream"`
@@ -372,6 +373,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 type RecordConsumeLogParams struct {
 	ChannelId        int                    `json:"channel_id"`
 	PromptTokens     int                    `json:"prompt_tokens"`
+	InputTokensTotal *int64                 `json:"input_tokens_total,omitempty"`
 	CompletionTokens int                    `json:"completion_tokens"`
 	ModelName        string                 `json:"model_name"`
 	TokenName        string                 `json:"token_name"`
@@ -413,6 +415,11 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		}
 	}
 	otherStr := common.MapToJsonStr(params.Other)
+	inputTokens := int64(params.PromptTokens)
+	if params.InputTokensTotal != nil {
+		inputTokens = common.SumTokenCountsForStatistics(*params.InputTokensTotal)
+		params.InputTokensTotal = &inputTokens
+	}
 	log := &Log{
 		SiteId:           common.GetContextKeyInt(c, constant.ContextKeySiteId),
 		UserId:           userId,
@@ -421,6 +428,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		Type:             LogTypeConsume,
 		Content:          params.Content,
 		PromptTokens:     params.PromptTokens,
+		InputTokensTotal: params.InputTokensTotal,
 		CompletionTokens: params.CompletionTokens,
 		TokenName:        params.TokenName,
 		ModelName:        params.ModelName,
@@ -451,7 +459,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			ModelName: params.ModelName,
 			Quota:     params.Quota,
 			CreatedAt: createdAt,
-			TokenUsed: params.PromptTokens + params.CompletionTokens,
+			TokenUsed: common.SumTokenCountsForStatistics(inputTokens, int64(params.CompletionTokens)),
 			UseGroup:  params.Group,
 			TokenID:   params.TokenId,
 			ChannelID: params.ChannelId,
@@ -670,9 +678,9 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	Quota int   `json:"quota"`
+	Rpm   int   `json:"rpm"`
+	Tpm   int64 `json:"tpm"`
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, siteScope int) (stat Stat, err error) {
@@ -692,7 +700,7 @@ func sumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, " + tokenStatisticsSumSQL() + " tpm")
 	if userId > 0 {
 		tx = tx.Where("user_id = ?", userId)
 		rpmTpmQuery = rpmTpmQuery.Where("user_id = ?", userId)
@@ -746,10 +754,14 @@ func sumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	}
 	var rateStat struct {
 		Rpm int
-		Tpm int
+		Tpm int64
 	}
-	if err := rpmTpmQuery.Scan(&rateStat).Error; err != nil {
-		common.SysError("failed to query rpm/tpm stat: " + err.Error())
+	rateErr := rpmTpmQuery.Session(&gorm.Session{}).Scan(&rateStat).Error
+	if sqliteTokenStatisticsOverflow(rateErr) {
+		rateStat.Tpm, rateStat.Rpm, rateErr = sumTokenStatisticsRows(rpmTpmQuery.Session(&gorm.Session{NewDB: false}))
+	}
+	if rateErr != nil {
+		common.SysError("failed to query rpm/tpm stat: " + rateErr.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
 	stat.Rpm = rateStat.Rpm
@@ -758,8 +770,8 @@ func sumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	return stat, nil
 }
 
-func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0)")
+func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string) (token int64) {
+	tx := LOG_DB.Table("logs").Select(tokenStatisticsSumSQL())
 	if username != "" {
 		tx = tx.Where("username = ?", username)
 	}
@@ -775,7 +787,15 @@ func SumUsedToken(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	if modelName != "" {
 		tx = tx.Where("model_name = ?", modelName)
 	}
-	tx.Where("type = ?", LogTypeConsume).Scan(&token)
+	tx = tx.Where("type = ?", LogTypeConsume)
+	err := tx.Session(&gorm.Session{}).Scan(&token).Error
+	if sqliteTokenStatisticsOverflow(err) {
+		token, _, err = sumTokenStatisticsRows(tx.Session(&gorm.Session{NewDB: false}))
+	}
+	if err != nil {
+		common.SysError("failed to query token statistics: " + err.Error())
+		return 0
+	}
 	return token
 }
 

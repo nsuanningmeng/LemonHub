@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/tooltip'
 
 import {
-  // AutoGroupBadge,
+  AutoGroupBadge,
   GroupRatioBadge,
   type GroupRatio,
 } from './auto-group-visuals'
@@ -72,12 +72,18 @@ export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
         render={
           <BadgeCell
             data-api-key-group-cell='auto'
-            className='gap-1.5 overflow-visible text-xs'
+            className='flex-wrap gap-1.5 overflow-visible text-xs'
           />
         }
       >
-        <StatusBadge label={t('Cross-group')} variant='info' copyable={false} />
-        {/*<AutoGroupBadge shouldReduceMotion={props.shouldReduceMotion} />*/}
+        {props.crossGroupRetry && (
+          <StatusBadge
+            label={t('Cross-group')}
+            variant='info'
+            copyable={false}
+          />
+        )}
+        <AutoGroupBadge shouldReduceMotion={props.shouldReduceMotion} />
         <GroupRatioBadge
           ratio={props.ratio}
           isAuto

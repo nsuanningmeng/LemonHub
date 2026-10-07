@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 
@@ -25,6 +27,9 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	var responsesResponse dto.OpenAIResponsesResponse
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+			return nil, types.NewErrorWithStatusCode(requestErr, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 	err = common.Unmarshal(responseBody, &responsesResponse)
@@ -86,39 +91,68 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	accumulator := responsesUsageAccumulator{info: info}
 	imageCounter := &relaycommon.ImageGenerationCallCounter{}
 	imageCommitted := false
+	forwardedSemantic := false
+	sourceTerminal := false
+	responseID := helper.GetResponseID(c)
+	responseModel := info.PublicResponseModelName(info.UpstreamModelName)
+	var responseCreated int64
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
-		// 检查当前数据是否包含 completed 状态和 usage 信息
 		var streamResponse dto.ResponsesStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-			logger.LogError(c, "failed to unmarshal stream response: "+err.Error())
-			sr.Error(err)
+			info.MarkUpstreamFailureStatus(http.StatusBadGateway)
+			sr.Error(fmt.Errorf("invalid upstream Responses stream event"))
+			sr.Stop(nil)
 			return
 		}
-		var responseStatus string
+		completed, otherTerminal, failed := responsesStreamTerminal(&streamResponse, data)
 		if streamResponse.Response != nil {
-			_ = common.Unmarshal(streamResponse.Response.Status, &responseStatus)
+			if streamResponse.Response.ID != "" {
+				responseID = streamResponse.Response.ID
+			}
+			if streamResponse.Response.Model != "" {
+				responseModel = info.PublicResponseModelName(streamResponse.Response.Model)
+			}
+			if streamResponse.Response.CreatedAt != 0 {
+				responseCreated = int64(streamResponse.Response.CreatedAt)
+			}
 		}
-		if streamResponse.Type == "response.failed" || streamResponse.Type == "response.error" || streamResponse.Type == "error" || strings.EqualFold(strings.TrimSpace(responseStatus), "failed") {
-			common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
+		if completed || otherTerminal || failed {
+			sourceTerminal = true
+		}
+		if c.Request.Context().Err() != nil && !completed && !otherTerminal && !failed {
+			info.MarkDownstreamCancelled()
+			return
 		}
 		accumulator.observe(&streamResponse)
-		switch streamResponse.Type {
-		case "response.failed", "response.error", "error":
-			// 终止性错误事件仅在命中泄密关键词时替换，其余原样透传
+		if failed {
+			apiErr := responsesStreamUpstreamError(data)
+			info.MarkUpstreamFailureStatus(apiErr.StatusCode)
+			common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
+			sr.Stop(nil)
+			imageCounter.Reset()
+			imageCounter.Commit(info)
+			imageCommitted = true
 			if overrideText, ok := service.ErrorOverrideForChannelError(info.ChannelSetting, data); ok {
 				logger.LogError(c, "responses stream error event (masked for user): "+common.LocalLogPreview(data))
 				data = maskResponsesErrorEvent(data, overrideText)
 			}
+		} else if completed {
+			info.MarkUpstreamCompleted()
+			sr.Done()
+		} else if otherTerminal {
+			info.MarkOtherUpstreamTerminal()
+			sr.Stop(nil)
 		}
 		publicData, err := info.RewriteModelForPublicResponse(common.StringToByteSlice(data), "model", "response.model")
 		if err != nil {
+			info.MarkUpstreamFailureStatus(http.StatusBadGateway)
 			sr.Error(err)
+			sr.Stop(nil)
 			return
 		}
 		data = string(publicData)
-		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
 			if streamResponse.Response != nil {
@@ -162,7 +196,51 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				}
 			}
 		}
+		if err := helper.ResponseChunkData(c, streamResponse, data); err != nil {
+			sr.Stop(nil)
+			if c.Request.Context().Err() != nil {
+				info.MarkDownstreamCancelled()
+			}
+		} else {
+			if strings.HasPrefix(streamResponse.Type, "response.") {
+				forwardedSemantic = true
+			}
+			if c.Request.Context().Err() != nil {
+				info.MarkDownstreamCancelled()
+			}
+		}
 	})
+	if !sourceTerminal || (info.StreamStatus != nil && info.StreamStatus.EndReason != relaycommon.StreamEndReasonEOF && info.StreamStatus.EndReason != relaycommon.StreamEndReasonDone && info.StreamStatus.EndReason != relaycommon.StreamEndReasonScannerErr) {
+		observeResponsesStreamEnd(c, info)
+	}
+	if c.Request.Context().Err() != nil {
+		outcome := info.StreamOutcome()
+		if !outcome.UpstreamFailed && !outcome.UpstreamCompleted && !outcome.OtherUpstreamTerminal && !imageCommitted && imageCounter.Count() > 0 {
+			imageCounter.Commit(info)
+			imageCommitted = true
+			accumulator.generated = true
+		}
+	}
+	if usage, cancelled := responsesCancellationUsage(c, &accumulator); cancelled {
+		return usage, nil
+	}
+	if forwardedSemantic && !sourceTerminal && c.Request.Context().Err() == nil && !c.GetBool("relay_stream_write_failed") {
+		info.MarkUpstreamFailure()
+		if info.StreamOutcome().UpstreamFailureStatus == 0 {
+			info.MarkUpstreamFailureStatus(http.StatusBadGateway)
+		}
+		common.SetContextKey(c, constant.ContextKeyResponseFailed, true)
+		event := relayconvert.BuildResponsesStreamFailure(responseID, responseModel, responseCreated)
+		data, err := common.Marshal(event.Payload)
+		if err == nil && helper.ResponseChunkData(c, event.Payload, string(data)) == nil {
+			c.Set("relay_stream_error_emitted", true)
+		}
+	}
+	// Native failed/timeout streams historically settle observed usage. Preserve
+	// that endpoint contract while failure facts independently drive reliability.
+	if info.StreamOutcome().UpstreamFailed {
+		return accumulator.finish(), nil
+	}
 
 	return accumulator.finish(), nil
 }
@@ -199,4 +277,55 @@ func maskResponsesErrorEvent(data string, overrideText string) string {
 		return data
 	}
 	return string(masked)
+}
+
+// Explicit status wins over an inconsistent event name. Missing status is
+// accepted for compatible providers, but transport DONE/EOF is not completion.
+func responsesStreamTerminal(event *dto.ResponsesStreamResponse, data string) (completed, otherTerminal, failed bool) {
+	var envelope struct {
+		Error any `json:"error"`
+	}
+	if common.UnmarshalJsonStr(data, &envelope) == nil && ClassifyOpenAIEmbeddedError(envelope.Error) != nil {
+		return false, false, true
+	}
+	if event.Response != nil && ClassifyOpenAIEmbeddedError(event.Response.Error) != nil {
+		return false, false, true
+	}
+	status := ""
+	if event.Response != nil {
+		_ = common.Unmarshal(event.Response.Status, &status)
+	}
+	status = strings.ToLower(strings.TrimSpace(status))
+	if status == "failed" || event.Type == "response.failed" || event.Type == "response.error" || event.Type == "error" {
+		return false, false, true
+	}
+	if status == "incomplete" || status == "cancelled" || status == "canceled" {
+		return false, true, false
+	}
+	switch event.Type {
+	case "response.completed", "response.done":
+		return status == "" || status == "completed", status != "" && status != "completed", false
+	case "response.incomplete", "response.cancelled", "response.canceled":
+		return false, true, false
+	}
+	return false, false, false
+}
+func responsesStreamUpstreamError(data string) *types.NewAPIError {
+	var envelope map[string]any
+	if common.UnmarshalJsonStr(data, &envelope) == nil {
+		if err := ClassifyOpenAIEmbeddedError(envelope["error"]); err != nil {
+			return err
+		}
+		if response, ok := envelope["response"].(map[string]any); ok {
+			if err := ClassifyOpenAIEmbeddedError(response["error"]); err != nil {
+				return err
+			}
+		}
+		if envelope["type"] == "error" {
+			if err := ClassifyOpenAIEmbeddedError(map[string]any{"code": envelope["code"], "message": envelope["message"]}); err != nil {
+				return err
+			}
+		}
+	}
+	return responsesStreamEndError()
 }

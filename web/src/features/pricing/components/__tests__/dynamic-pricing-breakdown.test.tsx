@@ -44,3 +44,78 @@ describe('DynamicPricingBreakdown', () => {
     expect(screen.getByText('2.5x')).toBeInTheDocument()
   })
 })
+
+const timeTierExpression =
+  'hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 18 ? tier("peak", p * 3 + c * 15 + cr * 0.3) : tier("off-peak", p * 1.5 + c * 7.5 + cr * 0.15)'
+
+test.each([false, true])(
+  'time tiers preserve guards and matched tier in compact=%s layouts',
+  (compact) => {
+    render(
+      <DynamicPricingBreakdown
+        billingExpr={timeTierExpression}
+        matchedTierLabel='off-peak'
+        compact={compact}
+      />
+    )
+    expect(
+      screen.getAllByText(/Hour.*09:00.*18:00.*Asia\/Shanghai/)
+    ).toHaveLength(2)
+    expect(screen.getAllByText(/!.*hour.*Asia\/Shanghai/)).toHaveLength(2)
+    expect(screen.getAllByText('Matched')).toHaveLength(2)
+    for (const rate of [3, 15, 0.3, 1.5, 7.5, 0.15]) {
+      expect(screen.getAllByText(`$${rate.toFixed(4)}`)).toHaveLength(2)
+    }
+    expect(
+      screen.queryByText('Special billing expression')
+    ).not.toBeInTheDocument()
+  }
+)
+
+test('unsupported price structures fall back to the complete expression, including conditions', () => {
+  const expression =
+    'hour("UTC") >= 9 ? tier("peak", max(p * 3, 5)) : tier("off", p * 1)'
+  render(<DynamicPricingBreakdown billingExpr={expression} compact />)
+  expect(screen.getByText(expression)).toBeInTheDocument()
+  expect(screen.queryByText('Tiered price table')).not.toBeInTheDocument()
+})
+
+test('a fixed linear expression keeps the breakdown route with a truthful fixed-price heading', () => {
+  render(<DynamicPricingBreakdown billingExpr='tier("base", p * 3 + c * 15)' />)
+  expect(screen.getByText('Token-based')).toBeInTheDocument()
+  expect(
+    screen.getByText('Prices are defined by this billing expression')
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByText('Prices vary by usage tier and request conditions')
+  ).not.toBeInTheDocument()
+})
+
+test('OR paths retain the complete predicate instead of flattening it into an unconditional tier', () => {
+  const condition =
+    'weekday("UTC") == 1 && (hour("UTC") >= 9 && hour("UTC") < 12 || hour("UTC") >= 14 && hour("UTC") < 18)'
+  render(
+    <DynamicPricingBreakdown
+      billingExpr={`${condition} ? tier("work", p * 3) : tier("other", p * 1)`}
+    />
+  )
+  expect(screen.getAllByText(condition)).toHaveLength(2)
+  expect(screen.getAllByText(`!(${condition})`)).toHaveLength(2)
+})
+
+test('unsupported request multipliers preserve the complete raw expression even with a recorded empty trace', () => {
+  const expression = '(tier("base", p * 3)) * mystery(header("x-private"))'
+  render(<DynamicPricingBreakdown billingExpr={expression} requestRules={[]} />)
+  expect(screen.getByText(expression)).toBeInTheDocument()
+  expect(screen.queryByText('Tiered price table')).not.toBeInTheDocument()
+})
+
+test.each(['Local', 'Invalid/Zone', 'asia/shanghai'])(
+  'unsupported tier timezone %s retains the full raw contract',
+  (zone) => {
+    const expression = `hour("${zone}") >= 9 ? tier("peak", p * 3) : tier("off", p * 1)`
+    render(<DynamicPricingBreakdown billingExpr={expression} />)
+    expect(screen.getByText(expression)).toBeInTheDocument()
+    expect(screen.queryByText('Tiered price table')).not.toBeInTheDocument()
+  }
+)

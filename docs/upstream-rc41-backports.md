@@ -79,3 +79,14 @@
 数据库驱动/事务默认值变更仍需三数据库兼容验证。任务插件、scoped access token、Responses WebSocket、表达式定价重构和跨协议 custom tools 涉及本地认证、站点和资金链路，继续按原审查结论单独适配。其余候选的原始冲突数、依赖和建议测试保留在完整审查表中。
 
 本地证据目录：`/workspace/scratch/upstream-audit/`。`implementation-commits.json` 对应上述 28 个源提交；`implementation-*.txt` 记录各组适配和红绿回归；`final-*.log` 记录最终组合验证。审查快照中的 13 项临时验证和旧 lint 结果仅作历史证据，以本记录为准。
+
+### Gemini developer-role compatibility
+
+OpenAI developer messages routed through Gemini conversion retain the existing
+newline merge into `systemInstruction`; Gemini has no equivalent developer role.
+This mapping is recorded using a fixed, redacted description in the administrator
+consume-log metadata `admin_info.conversion_diagnostics` and one backend warning
+per successful attempt. Prompt text and schema values are excluded. Native requests
+and client response bodies/headers keep their existing behavior. Retries clear the
+previous attempt's diagnostic state. Relaykit embedders may implement the optional
+`convmeta.ConversionDiagnosticObserver`; the required `Meta` interface is unchanged.

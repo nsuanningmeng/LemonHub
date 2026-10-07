@@ -640,6 +640,7 @@ export function SubscriptionPlansCard({
           }
         }}
         plan={selectedPlan}
+        activeSubscriptions={activeSubscriptions}
         enableStripe={enableStripe}
         enableCreem={enableCreem}
         enableWaffoPancake={enableWaffoPancake}

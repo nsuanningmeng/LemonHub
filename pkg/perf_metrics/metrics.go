@@ -35,6 +35,13 @@ func BuildRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens in
 	if info == nil || info.ChannelMeta == nil {
 		return Sample{}
 	}
+	outcome := info.StreamOutcome()
+	if outcome.DownstreamCancelled && !outcome.UpstreamFailed && !outcome.UpstreamCompleted && !outcome.OtherUpstreamTerminal {
+		return Sample{}
+	}
+	if outcome.UpstreamFailed && outcome.UpstreamFailureStatus != 0 {
+		success = !perf_metrics_setting.ShouldCountErrorAsFailure(outcome.UpstreamFailureStatus)
+	}
 	hasTtft := info.IsStream && info.HasSendResponse() && !info.FirstResponseTime.After(completedAt)
 	ttftMs := int64(0)
 	if hasTtft {

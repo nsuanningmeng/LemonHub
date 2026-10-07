@@ -525,6 +525,10 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
+	// CREATE IF NOT EXISTS does not evolve existing ClickHouse log tables.
+	if err := LOG_DB.Exec("ALTER TABLE logs ADD COLUMN IF NOT EXISTS input_tokens_total Nullable(Int64)").Error; err != nil {
+		return err
+	}
 	return syncClickHouseLogTTL(ttlDays)
 }
 
@@ -564,6 +568,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	model_name String DEFAULT '',
 	quota Int32 DEFAULT 0,
 	prompt_tokens Int32 DEFAULT 0,
+	input_tokens_total Nullable(Int64),
 	completion_tokens Int32 DEFAULT 0,
 	use_time Int32 DEFAULT 0,
 	is_stream UInt8 DEFAULT 0,

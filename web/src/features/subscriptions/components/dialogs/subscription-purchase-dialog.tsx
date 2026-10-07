@@ -45,8 +45,8 @@ import {
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
 } from '../../api'
-import { formatDuration, formatResetPeriod } from '../../lib'
-import type { PlanRecord } from '../../types'
+import { formatDuration, formatResetPeriod, formatTimestamp } from '../../lib'
+import type { PlanRecord, UserSubscriptionRecord } from '../../types'
 
 interface PaymentMethod {
   type: string
@@ -64,6 +64,7 @@ interface Props {
   epayMethods?: PaymentMethod[]
   purchaseLimit?: number
   purchaseCount?: number
+  activeSubscriptions?: UserSubscriptionRecord[]
   userQuota?: number
   onPurchaseSuccess?: () => void | Promise<void>
 }
@@ -84,6 +85,15 @@ export function SubscriptionPurchaseDialog(props: Props) {
 
   const plan = props.plan?.plan
   if (!plan) return null
+
+  const now = Date.now() / 1000
+  const samePlanSubscriptions = (props.activeSubscriptions ?? []).filter(
+    ({ subscription }) =>
+      subscription.plan_id === plan.id &&
+      subscription.status === 'active' &&
+      subscription.start_time <= now &&
+      subscription.end_time > now
+  )
 
   const hasStripe = props.enableStripe && !!plan.stripe_price_id
   const hasCreem = props.enableCreem && !!plan.creem_product_id
@@ -321,6 +331,37 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </div>
         </div>
 
+        <Alert>
+          <AlertDescription className='space-y-2'>
+            <p>
+              {t(
+                'After payment succeeds, a new subscription starts immediately with its own quota. Subscription periods may overlap; this purchase does not extend an existing subscription.'
+              )}
+            </p>
+            <p>
+              {t(
+                'New period: starts after successful payment and lasts {{duration}}. Exact dates are recorded when the subscription is activated.',
+                { duration: formatDuration(plan, t) }
+              )}
+            </p>
+            {samePlanSubscriptions.length > 0 && (
+              <div className='space-y-1'>
+                <p className='font-medium'>
+                  {t('You already have an active subscription to this plan.')}
+                </p>
+                {samePlanSubscriptions.map(({ subscription }) => (
+                  <p key={subscription.id}>
+                    {t('Existing period: {{start}} – {{end}}', {
+                      start: formatTimestamp(subscription.start_time),
+                      end: formatTimestamp(subscription.end_time),
+                    })}
+                  </p>
+                ))}
+              </div>
+            )}
+          </AlertDescription>
+        </Alert>
+
         {limitReached && (
           <Alert variant='destructive'>
             <AlertDescription>
@@ -405,12 +446,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
             {hasEpay && (
               <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
                 <Select
-                  items={[
-                    ...(props.epayMethods || []).map((m) => ({
-                      value: m.type,
-                      label: m.name || m.type,
-                    })),
-                  ]}
+                  items={(props.epayMethods || []).map((m) => ({
+                    value: m.type,
+                    label: m.name || m.type,
+                  }))}
                   value={selectedEpayMethod}
                   onValueChange={(v) => v !== null && setSelectedEpayMethod(v)}
                   disabled={limitReached}

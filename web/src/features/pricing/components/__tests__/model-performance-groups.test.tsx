@@ -284,4 +284,19 @@ describe('model performance groups', () => {
       expect(screen.queryByRole('note')).not.toBeInTheDocument()
     }
   )
+  test('expression group prices preserve every tier predicate instead of presenting unconditional rates', () => {
+    const condition = 'hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 18'
+    props.model.billing_mode = 'tiered_expr'
+    props.model.billing_expr = `${condition} ? tier("peak", p * 3 + c * 15) : tier("off", p * 1 + c * 5)`
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelDetailsContent {...props} />
+      </QueryClientProvider>
+    )
+    const groups = screen.getByText('Pricing by Group').closest('section')
+    expect(groups).not.toBeNull()
+    if (!groups) throw new Error('Missing group pricing section')
+    expect(within(groups).getAllByText(condition)).toHaveLength(3)
+    expect(within(groups).getAllByText(`!(${condition})`)).toHaveLength(3)
+  })
 })

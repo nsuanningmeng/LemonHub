@@ -40,7 +40,7 @@ func ChatCompletionsResponseToResponsesResponse(resp *dto.OpenAITextResponse, id
 	out := &dto.OpenAIResponsesResponse{
 		ID:        id,
 		Object:    "response",
-		CreatedAt: chatCreatedAt(resp.Created),
+		CreatedAt: dto.IntValue(chatCreatedAt(resp.Created)),
 		Status:    []byte(`"completed"`),
 		Model:     resp.Model,
 		Output:    make([]dto.ResponsesOutput, 0),
@@ -77,7 +77,7 @@ func ChatCompletionsResponseToResponsesResponse(resp *dto.OpenAITextResponse, id
 			Type:   responsesOutputTypeReasoning,
 			ID:     fmt.Sprintf("%s_reasoning_0", id),
 			Status: responseOutputStatus(out),
-			Content: []dto.ResponsesOutputContent{
+			Summary: []dto.ResponsesReasoningSummaryPart{
 				{
 					Type: "summary_text",
 					Text: reasoning,
@@ -87,6 +87,9 @@ func ChatCompletionsResponseToResponsesResponse(resp *dto.OpenAITextResponse, id
 	}
 
 	for i, toolCall := range choice.Message.ParseToolCalls() {
+		if (toolCall.Type == "" || toolCall.Type == "function") && strings.TrimSpace(toolCall.Function.Name) == "" {
+			continue
+		}
 		toolOutput, err := chatToolCallToResponsesOutput(toolCall, id, i, responseOutputStatus(out))
 		if err != nil {
 			return nil, nil, err
@@ -111,6 +114,7 @@ func ResponsesStatusFromChatFinishReason(finishReason string) (string, *dto.Inco
 func UsageFromChatUsage(src *dto.Usage) *dto.Usage {
 	usage := &dto.Usage{}
 	if src == nil {
+		usage.OutputTokensDetails = &dto.OutputTokenDetails{}
 		return usage
 	}
 	usage.UsageSemantic = src.UsageSemantic
@@ -142,12 +146,11 @@ func UsageFromChatUsage(src *dto.Usage) *dto.Usage {
 		details := src.PromptTokensDetails
 		usage.InputTokensDetails = &details
 	}
-	if src.CompletionTokenDetails.ReasoningTokens != 0 ||
-		src.CompletionTokenDetails.TextTokens != 0 ||
-		src.CompletionTokenDetails.AudioTokens != 0 ||
-		src.CompletionTokenDetails.ImageTokens != 0 {
-		usage.CompletionTokenDetails = src.CompletionTokenDetails
-	}
+	details := src.CompletionTokenDetails
+	details.ReasoningTokens = src.ChatReasoningTokens()
+	usage.CompletionTokenDetails = details
+	usage.OutputTokensDetails = &details
+
 	usage.ClaudeCacheCreation5mTokens = src.ClaudeCacheCreation5mTokens
 	usage.ClaudeCacheCreation1hTokens = src.ClaudeCacheCreation1hTokens
 	return usage

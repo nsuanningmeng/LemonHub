@@ -250,12 +250,46 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 		}
 		return err
 	}
+	keys := []string{}
+	groups := map[string][]string{}
+	var firstErr error
+	for _, id := range taskIds {
+		key, resolveErr := model.ResolveTaskCredential(taskM[id], ch)
+		if resolveErr != nil {
+			if firstErr == nil {
+				firstErr = resolveErr
+			}
+			continue
+		}
+		if _, exists := groups[key]; !exists {
+			keys = append(keys, key)
+		}
+		groups[key] = append(groups[key], id)
+	}
+	for _, key := range keys {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		groupTasks := make(map[string]*model.Task, len(groups[key]))
+		for _, id := range groups[key] {
+			groupTasks[id] = taskM[id]
+		}
+		if groupErr := updateSunoTaskGroup(ctx, ch, key, groups[key], groupTasks); groupErr != nil && firstErr == nil {
+			firstErr = groupErr
+		}
+	}
+	return firstErr
+}
+
+func updateSunoTaskGroup(ctx context.Context, ch *model.Channel, key string, taskIds []string, taskM map[string]*model.Task) error {
+	channelId := ch.Id
 	adaptor := GetTaskAdaptorFunc(constant.TaskPlatformSuno)
 	if adaptor == nil {
 		return errors.New("adaptor not found")
 	}
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: ch.GetBaseURL(), ApiKey: key, ChannelType: ch.Type}})
 	proxy := ch.GetSetting().Proxy
-	resp, err := adaptor.FetchTask(*ch.BaseURL, ch.Key, map[string]any{
+	resp, err := adaptor.FetchTask(ch.GetBaseURL(), key, map[string]any{
 		"ids": taskIds,
 	}, proxy)
 	if err != nil {
@@ -426,12 +460,6 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 	if adaptor == nil {
 		return fmt.Errorf("video adaptor not found")
 	}
-	info := &relaycommon.RelayInfo{}
-	info.ChannelMeta = &relaycommon.ChannelMeta{
-		ChannelBaseUrl: cacheGetChannel.GetBaseURL(),
-	}
-	info.ApiKey = cacheGetChannel.Key
-	adaptor.Init(info)
 	disablePollingSleep := cacheGetChannel.GetOtherSettings().DisableTaskPollingSleep
 	for i, taskId := range taskIds {
 		if ctx.Err() != nil {
@@ -469,12 +497,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		logger.LogError(ctx, fmt.Sprintf("Task %s not found in taskM", taskId))
 		return fmt.Errorf("task %s not found", taskId)
 	}
-	key := ch.Key
-
-	privateData := task.PrivateData
-	if privateData.Key != "" {
-		key = privateData.Key
+	key, err := model.ResolveTaskCredential(task, ch)
+	if err != nil {
+		return err
 	}
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: baseURL, ApiKey: key, ChannelType: ch.Type}})
 	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
 		"task_id": task.GetUpstreamTaskID(),
 		"action":  task.Action,

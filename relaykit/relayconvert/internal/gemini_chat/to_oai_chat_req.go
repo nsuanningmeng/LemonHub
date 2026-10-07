@@ -1,6 +1,7 @@
 package geminichat
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/jsonutil"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
 func GeminiGenerateContentRequestToOpenAIChat(geminiRequest *dto.GeminiChatRequest, info convmeta.Meta) (*dto.GeneralOpenAIRequest, error) {
@@ -117,18 +119,25 @@ func GeminiGenerateContentRequestToOpenAIChat(geminiRequest *dto.GeminiChatReque
 			if tool.FunctionDeclarations == nil {
 				continue
 			}
-			functionDeclarations, err := kitutil.Any2Type[[]dto.FunctionRequest](tool.FunctionDeclarations)
+			functionDeclarations, err := kitutil.Any2Type[[]dto.GeminiFunctionDeclaration](tool.FunctionDeclarations)
 			if err != nil {
 				kitutil.LogSystemError(fmt.Sprintf("failed to parse gemini function declarations: %v (type=%T)", err, tool.FunctionDeclarations))
 				continue
 			}
 			for _, function := range functionDeclarations {
+				if function.Parameters != nil && function.ParametersJSONSchema != nil {
+					return nil, types.NewErrorWithStatusCode(errors.New("tools.functionDeclarations must not specify both parameters and parametersJsonSchema"), types.ErrorCodeInvalidRequest, 400, types.ErrOptionWithSkipRetry())
+				}
+				parameters := function.ParametersJSONSchema
+				if parameters == nil {
+					parameters = function.Parameters
+				}
 				openAITool := dto.ToolCallRequest{
 					Type: "function",
 					Function: dto.FunctionRequest{
 						Name:        function.Name,
 						Description: function.Description,
-						Parameters:  function.Parameters,
+						Parameters:  parameters,
 					},
 				}
 				tools = append(tools, openAITool)

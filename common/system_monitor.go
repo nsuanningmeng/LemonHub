@@ -65,6 +65,7 @@ func updateSystemStatus() {
 	if err == nil {
 		status.MemoryUsage = memInfo.UsedPercent
 	}
+	status.MemoryUsage = memoryUsagePercent(status.MemoryUsage)
 
 	// Disk
 	diskInfo := GetDiskSpaceInfo()

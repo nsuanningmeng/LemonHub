@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -20,7 +21,7 @@ type QuotaData struct {
 	TokenID   int    `json:"token_id" gorm:"index;default:0"`
 	ChannelID int    `json:"channel_id" gorm:"index;default:0"`
 	NodeName  string `json:"node_name" gorm:"index;size:64;default:''"`
-	TokenUsed int    `json:"token_used" gorm:"default:0"`
+	TokenUsed int64  `json:"token_used" gorm:"default:0"`
 	Count     int    `json:"count" gorm:"default:0"`
 	Quota     int    `json:"quota" gorm:"default:0"`
 }
@@ -31,7 +32,7 @@ type QuotaDataLogParams struct {
 	ModelName string
 	Quota     int
 	CreatedAt int64
-	TokenUsed int
+	TokenUsed int64
 	UseGroup  string
 	TokenID   int
 	ChannelID int
@@ -69,7 +70,7 @@ func logQuotaDataCache(quotaData *QuotaData) {
 	if ok {
 		cachedQuotaData.Count += count
 		cachedQuotaData.Quota += quota
-		cachedQuotaData.TokenUsed += tokenUsed
+		cachedQuotaData.TokenUsed = common.SumTokenCountsForStatistics(cachedQuotaData.TokenUsed, tokenUsed)
 		quotaData = cachedQuotaData
 	}
 	CacheQuotaData[key] = quotaData
@@ -89,7 +90,7 @@ func LogQuotaData(params QuotaDataLogParams) {
 		NodeName:  params.NodeName,
 		Count:     1,
 		Quota:     params.Quota,
-		TokenUsed: params.TokenUsed,
+		TokenUsed: common.SumTokenCountsForStatistics(params.TokenUsed),
 	}
 
 	CacheQuotaDataLock.Lock()
@@ -131,7 +132,7 @@ func increaseQuotaData(quotaData *QuotaData) {
 		Updates(map[string]interface{}{
 			"count":      gorm.Expr("count + ?", quotaData.Count),
 			"quota":      gorm.Expr("quota + ?", quotaData.Quota),
-			"token_used": gorm.Expr("token_used + ?", quotaData.TokenUsed),
+			"token_used": gorm.Expr("CASE WHEN token_used > ? THEN ? ELSE token_used + ? END", math.MaxInt64-quotaData.TokenUsed, int64(math.MaxInt64), quotaData.TokenUsed),
 		}).Error
 	if err != nil {
 		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))

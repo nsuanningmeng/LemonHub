@@ -115,14 +115,15 @@ func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {
 }
 
 const (
-	advancedCustomConverterNone                        = "none"
-	advancedCustomConverterClaudeMessagesToOpenAIChat  = "anthropic_messages_to_openai_chat_completions"
-	advancedCustomConverterOpenAIChatToClaudeMessages  = "openai_chat_completions_to_anthropic_messages"
-	advancedCustomConverterOpenAIChatToOpenAIResponses = "openai_chat_completions_to_openai_responses"
-	advancedCustomConverterOpenAIResponsesToOpenAIChat = "openai_responses_to_openai_chat_completions"
-	advancedCustomConverterOpenAIResponsesToGemini     = "openai_responses_to_gemini_generate_content"
-	advancedCustomConverterGeminiContentToOpenAIChat   = "gemini_generate_content_to_openai_chat_completions"
-	advancedCustomConverterOpenAIChatToGeminiContent   = "openai_chat_completions_to_gemini_generate_content"
+	advancedCustomConverterNone                            = "none"
+	advancedCustomConverterClaudeMessagesToOpenAIChat      = "anthropic_messages_to_openai_chat_completions"
+	advancedCustomConverterOpenAIChatToClaudeMessages      = "openai_chat_completions_to_anthropic_messages"
+	advancedCustomConverterOpenAIChatToOpenAIResponses     = "openai_chat_completions_to_openai_responses"
+	advancedCustomConverterOpenAIResponsesToOpenAIChat     = "openai_responses_to_openai_chat_completions"
+	advancedCustomConverterOpenAIResponsesToClaudeMessages = "openai_responses_to_claude_messages"
+	advancedCustomConverterOpenAIResponsesToGemini         = "openai_responses_to_gemini_generate_content"
+	advancedCustomConverterGeminiContentToOpenAIChat       = "gemini_generate_content_to_openai_chat_completions"
+	advancedCustomConverterOpenAIChatToGeminiContent       = "openai_chat_completions_to_gemini_generate_content"
 )
 
 const (
@@ -379,6 +380,7 @@ func IsAdvancedCustomConverterAllowed(converter string) bool {
 		advancedCustomConverterOpenAIChatToOpenAIResponses,
 		advancedCustomConverterOpenAIResponsesToOpenAIChat,
 		advancedCustomConverterOpenAIResponsesToGemini,
+		advancedCustomConverterOpenAIResponsesToClaudeMessages,
 		advancedCustomConverterGeminiContentToOpenAIChat,
 		advancedCustomConverterOpenAIChatToGeminiContent:
 		return true
@@ -580,7 +582,7 @@ func validateAdvancedCustomConverterPath(index int, incomingPath string, convert
 		if incomingPath == "/v1/responses" {
 			return nil
 		}
-	case advancedCustomConverterOpenAIResponsesToGemini:
+	case advancedCustomConverterOpenAIResponsesToGemini, advancedCustomConverterOpenAIResponsesToClaudeMessages:
 		if incomingPath == "/v1/responses" {
 			return nil
 		}

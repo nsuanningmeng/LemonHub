@@ -258,8 +258,9 @@ func TestSettleTestQuotaSaturationIsAudited(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
 	priceData := types.PriceData{
-		UsePrice:   true,
-		ModelPrice: 1e300,
+		UsePrice:       true,
+		ModelPrice:     1e300,
+		GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1},
 	}
 
 	quota, result := settleTestQuota(info, priceData, &dto.Usage{})

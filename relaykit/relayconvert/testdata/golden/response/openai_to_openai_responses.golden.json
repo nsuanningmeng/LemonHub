@@ -27,15 +27,15 @@
       "id": "chatcmpl-fixed_reasoning_0",
       "status": "completed",
       "role": "",
-      "content": [
+      "content": null,
+      "quality": "",
+      "size": "",
+      "summary": [
         {
           "type": "summary_text",
-          "text": "Deep thought.",
-          "annotations": null
+          "text": "Deep thought."
         }
-      ],
-      "quality": "",
-      "size": ""
+      ]
     },
     {
       "type": "function_call",
@@ -82,6 +82,12 @@
       "text_tokens": 0,
       "audio_tokens": 0,
       "image_tokens": 0
+    },
+    "output_tokens_details": {
+      "text_tokens": 0,
+      "audio_tokens": 0,
+      "image_tokens": 0,
+      "reasoning_tokens": 2
     },
     "claude_cache_creation_5_m_tokens": 0,
     "claude_cache_creation_1_h_tokens": 0

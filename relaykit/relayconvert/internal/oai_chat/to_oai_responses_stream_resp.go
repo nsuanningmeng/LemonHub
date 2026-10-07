@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 )
 
 type ChatToResponsesStreamEvent struct {
@@ -30,6 +31,10 @@ type ChatToResponsesStreamState struct {
 	reasoningStarted  bool
 	reasoningDone     bool
 	finalized         bool
+	finished          bool
+	finishReason      string
+	invalid           bool
+	choiceIndex       *int
 	nextOutputIndex   int
 	toolsByIndex      map[int]*chatToResponsesStreamTool
 	outputOrder       []chatToResponsesOutputRef
@@ -44,6 +49,7 @@ type chatToResponsesStreamTool struct {
 	Name        string
 	Arguments   strings.Builder
 	Done        bool
+	Published   bool
 }
 
 type chatToResponsesOutputRef struct {
@@ -65,8 +71,34 @@ func NewChatToResponsesStreamState(id string, model string) *ChatToResponsesStre
 }
 
 func ChatCompletionsStreamChunkToResponsesEvents(chunk *dto.ChatCompletionsStreamResponse, state *ChatToResponsesStreamState) ([]ChatToResponsesStreamEvent, error) {
-	if chunk == nil || state == nil {
+	if chunk == nil || state == nil || state.finalized {
 		return nil, nil
+	}
+	if state.invalid {
+		return nil, fmt.Errorf("invalid Chat stream conversion state")
+	}
+	finished, finishReason := state.finished, state.finishReason
+	for _, choice := range chunk.Choices {
+		if state.choiceIndex != nil && *state.choiceIndex != choice.Index {
+			state.invalid = true
+			return nil, fmt.Errorf("multiple Chat choices cannot be represented as one Responses stream")
+		}
+		if state.choiceIndex == nil {
+			index := choice.Index
+			state.choiceIndex = &index
+		}
+		if finished && (choice.Delta.GetReasoningContent() != "" || choice.Delta.GetContentString() != "" || len(choice.Delta.ToolCalls) != 0) {
+			state.invalid = true
+			return nil, fmt.Errorf("Chat generation continued after finish")
+		}
+		if choice.FinishReason != nil && strings.TrimSpace(*choice.FinishReason) != "" {
+			reason := strings.TrimSpace(*choice.FinishReason)
+			if finished && reason != finishReason {
+				state.invalid = true
+				return nil, fmt.Errorf("Chat finish reason changed after finish")
+			}
+			finished, finishReason = true, reason
+		}
 	}
 	if state.ID == "" {
 		state.ID = chunk.Id
@@ -99,11 +131,14 @@ func ChatCompletionsStreamChunkToResponsesEvents(chunk *dto.ChatCompletionsStrea
 		for _, toolCall := range choice.Delta.ToolCalls {
 			toolEvents, err := state.appendToolCallDelta(toolCall)
 			if err != nil {
+				state.invalid = true
 				return nil, err
 			}
 			events = append(events, toolEvents...)
 		}
 		if choice.FinishReason != nil && strings.TrimSpace(*choice.FinishReason) != "" {
+			state.finished = true
+			state.finishReason = strings.TrimSpace(*choice.FinishReason)
 			state.applyFinishReason(*choice.FinishReason)
 			events = append(events, state.doneDeltaEvents()...)
 		}
@@ -114,6 +149,9 @@ func ChatCompletionsStreamChunkToResponsesEvents(chunk *dto.ChatCompletionsStrea
 func FinalizeChatCompletionsStreamToResponses(state *ChatToResponsesStreamState) []ChatToResponsesStreamEvent {
 	if state == nil || state.finalized {
 		return nil
+	}
+	if state.invalid {
+		return AbortChatCompletionsStreamToResponses(state)
 	}
 	events := state.doneDeltaEvents()
 	state.finalized = true
@@ -127,6 +165,21 @@ func FinalizeChatCompletionsStreamToResponses(state *ChatToResponsesStreamState)
 		Response: resp,
 	}))
 	return events
+}
+
+// BuildResponsesStreamFailure describes a relay interruption without exposing source errors.
+func BuildResponsesStreamFailure(id, model string, created int64) ChatToResponsesStreamEvent {
+	return responsesStreamEvent("response.failed", dto.ResponsesStreamResponse{Type: "response.failed", Response: &dto.OpenAIResponsesResponse{ID: id, Object: "response", CreatedAt: dto.IntValue(created), Model: model, Status: []byte(`"failed"`), Output: []dto.ResponsesOutput{}, Error: map[string]string{"code": "server_error", "message": "upstream_stream_interrupted"}}})
+}
+
+// AbortChatCompletionsStreamToResponses closes an unfinished conversion without
+// manufacturing successful content/tool done events. Finalize after abort is inert.
+func AbortChatCompletionsStreamToResponses(state *ChatToResponsesStreamState) []ChatToResponsesStreamEvent {
+	if state == nil || state.finalized {
+		return nil
+	}
+	state.finalized = true
+	return []ChatToResponsesStreamEvent{BuildResponsesStreamFailure(state.ID, state.Model, state.Created)}
 }
 
 func (s *ChatToResponsesStreamState) UsageText() string {
@@ -152,6 +205,7 @@ func (s *ChatToResponsesStreamState) appendTextDelta(delta string) []ChatToRespo
 				Content: []dto.ResponsesOutputContent{},
 			},
 		}))
+		events = append(events, responsesStreamEvent("response.content_part.added", dto.ResponsesStreamResponse{Type: "response.content_part.added", OutputIndex: intPtr(s.textOutputIndex), ContentIndex: intPtr(0), ItemID: s.messageID(), Part: &dto.ResponsesReasoningSummaryPart{Type: "output_text", Text: "", Annotations: kitutil.GetPointer([]interface{}{})}}))
 	}
 	s.text.WriteString(delta)
 	events = append(events, responsesStreamEvent(responsesEventOutputTextDelta, dto.ResponsesStreamResponse{
@@ -179,6 +233,7 @@ func (s *ChatToResponsesStreamState) appendReasoningDelta(delta string) []ChatTo
 				Content: []dto.ResponsesOutputContent{},
 			},
 		}))
+		events = append(events, responsesStreamEvent("response.reasoning_summary_part.added", dto.ResponsesStreamResponse{Type: "response.reasoning_summary_part.added", OutputIndex: intPtr(s.reasoningIndex), SummaryIndex: intPtr(0), ItemID: s.reasoningID(), Part: &dto.ResponsesReasoningSummaryPart{Type: "summary_text", Text: ""}}))
 	}
 	s.reasoning.WriteString(delta)
 	events = append(events, responsesStreamEvent(responsesEventReasoningSummaryDelta, dto.ResponsesStreamResponse{
@@ -197,48 +252,48 @@ func (s *ChatToResponsesStreamState) appendToolCallDelta(toolCall dto.ToolCallRe
 		chatIndex = *toolCall.Index
 	}
 	tool := s.toolsByIndex[chatIndex]
-	events := make([]ChatToResponsesStreamEvent, 0, 2)
 	if tool == nil {
-		tool = &chatToResponsesStreamTool{
-			ChatIndex:   chatIndex,
-			OutputIndex: s.nextIndex("tool", chatIndex),
-			ID:          strings.TrimSpace(toolCall.ID),
-			Name:        strings.TrimSpace(toolCall.Function.Name),
-		}
-		if tool.ID == "" {
-			tool.ID = fmt.Sprintf("%s_call_%d", s.ID, chatIndex)
-		}
+		tool = &chatToResponsesStreamTool{ChatIndex: chatIndex, OutputIndex: -1}
 		s.toolsByIndex[chatIndex] = tool
-		events = append(events, responsesStreamEvent(responsesEventOutputItemAdded, dto.ResponsesStreamResponse{
-			Type:        responsesEventOutputItemAdded,
-			OutputIndex: intPtr(tool.OutputIndex),
-			ItemID:      tool.ID,
-			Item: &dto.ResponsesOutput{
-				Type:      responsesOutputTypeFunctionCall,
-				ID:        tool.ID,
-				Status:    "in_progress",
-				CallId:    tool.ID,
-				Name:      tool.Name,
-				Arguments: []byte(`""`),
-			},
-		}))
 	}
-	if strings.TrimSpace(toolCall.ID) != "" {
-		tool.ID = strings.TrimSpace(toolCall.ID)
+	id, name := strings.TrimSpace(toolCall.ID), strings.TrimSpace(toolCall.Function.Name)
+	if tool.Published && ((id != "" && id != tool.ID) || (name != "" && name != tool.Name)) {
+		return nil, fmt.Errorf("published tool identity cannot change")
 	}
-	if strings.TrimSpace(toolCall.Function.Name) != "" {
-		tool.Name = strings.TrimSpace(toolCall.Function.Name)
+	if !tool.Published {
+		if id != "" {
+			tool.ID = id
+		}
+		if name != "" {
+			tool.Name = name
+		}
 	}
-	if toolCall.Function.Arguments != "" {
-		tool.Arguments.WriteString(toolCall.Function.Arguments)
-		events = append(events, responsesStreamEvent(responsesEventFunctionArgsDelta, dto.ResponsesStreamResponse{
-			Type:        responsesEventFunctionArgsDelta,
-			OutputIndex: intPtr(tool.OutputIndex),
-			ItemID:      tool.ID,
-			Delta:       toolCall.Function.Arguments,
-		}))
+	tool.Arguments.WriteString(toolCall.Function.Arguments)
+	if tool.Name == "" || (!tool.Published && tool.ID == "") {
+		return nil, nil
 	}
-	return events, nil
+	if !tool.Published {
+		return s.publishTool(tool), nil
+	}
+	if toolCall.Function.Arguments == "" {
+		return nil, nil
+	}
+	return []ChatToResponsesStreamEvent{responsesStreamEvent(responsesEventFunctionArgsDelta, dto.ResponsesStreamResponse{Type: responsesEventFunctionArgsDelta, OutputIndex: intPtr(tool.OutputIndex), ItemID: tool.ID, Delta: toolCall.Function.Arguments})}, nil
+}
+
+// Tool identity is published only when complete, or at finish using the legacy
+// generated call id when the upstream never supplied one.
+func (s *ChatToResponsesStreamState) publishTool(tool *chatToResponsesStreamTool) []ChatToResponsesStreamEvent {
+	tool.Published = true
+	if tool.ID == "" {
+		tool.ID = fmt.Sprintf("%s_call_%d", s.ID, tool.ChatIndex)
+	}
+	tool.OutputIndex = s.nextIndex("tool", tool.ChatIndex)
+	events := []ChatToResponsesStreamEvent{responsesStreamEvent(responsesEventOutputItemAdded, dto.ResponsesStreamResponse{Type: responsesEventOutputItemAdded, OutputIndex: intPtr(tool.OutputIndex), ItemID: tool.ID, Item: &dto.ResponsesOutput{Type: responsesOutputTypeFunctionCall, ID: tool.ID, Status: "in_progress", CallId: tool.ID, Name: tool.Name, Arguments: []byte(`""`)}})}
+	if args := tool.Arguments.String(); args != "" {
+		events = append(events, responsesStreamEvent(responsesEventFunctionArgsDelta, dto.ResponsesStreamResponse{Type: responsesEventFunctionArgsDelta, OutputIndex: intPtr(tool.OutputIndex), ItemID: tool.ID, Delta: args}))
+	}
+	return events
 }
 
 func (s *ChatToResponsesStreamState) doneDeltaEvents() []ChatToResponsesStreamEvent {
@@ -248,10 +303,12 @@ func (s *ChatToResponsesStreamState) doneDeltaEvents() []ChatToResponsesStreamEv
 		s.textDone = true
 		events = append(events, responsesStreamEvent("response.output_text.done", dto.ResponsesStreamResponse{
 			Type:         "response.output_text.done",
+			Text:         kitutil.GetPointer(s.text.String()),
 			OutputIndex:  intPtr(s.textOutputIndex),
 			ContentIndex: intPtr(0),
 			ItemID:       s.messageID(),
 		}))
+		events = append(events, responsesStreamEvent("response.content_part.done", dto.ResponsesStreamResponse{Type: "response.content_part.done", OutputIndex: intPtr(s.textOutputIndex), ContentIndex: intPtr(0), ItemID: s.messageID(), Part: &dto.ResponsesReasoningSummaryPart{Type: "output_text", Text: s.text.String(), Annotations: kitutil.GetPointer([]interface{}{})}}))
 		events = append(events, responsesStreamEvent(responsesEventOutputItemDone, dto.ResponsesStreamResponse{
 			Type:        responsesEventOutputItemDone,
 			OutputIndex: intPtr(s.textOutputIndex),
@@ -265,11 +322,9 @@ func (s *ChatToResponsesStreamState) doneDeltaEvents() []ChatToResponsesStreamEv
 			OutputIndex:  intPtr(s.reasoningIndex),
 			SummaryIndex: intPtr(0),
 			ItemID:       s.reasoningID(),
-			Part: &dto.ResponsesReasoningSummaryPart{
-				Type: "summary_text",
-				Text: s.reasoning.String(),
-			},
+			Text:         kitutil.GetPointer(s.reasoning.String()),
 		}))
+		events = append(events, responsesStreamEvent("response.reasoning_summary_part.done", dto.ResponsesStreamResponse{Type: "response.reasoning_summary_part.done", OutputIndex: intPtr(s.reasoningIndex), SummaryIndex: intPtr(0), ItemID: s.reasoningID(), Part: &dto.ResponsesReasoningSummaryPart{Type: "summary_text", Text: s.reasoning.String()}}))
 		events = append(events, responsesStreamEvent(responsesEventOutputItemDone, dto.ResponsesStreamResponse{
 			Type:        responsesEventOutputItemDone,
 			OutputIndex: intPtr(s.reasoningIndex),
@@ -277,12 +332,16 @@ func (s *ChatToResponsesStreamState) doneDeltaEvents() []ChatToResponsesStreamEv
 		}))
 	}
 	for _, tool := range s.sortedTools() {
-		if tool.Done {
+		if !tool.Published && tool.Name != "" {
+			events = append(events, s.publishTool(tool)...)
+		}
+		if !tool.Published || tool.Done {
 			continue
 		}
 		tool.Done = true
 		events = append(events, responsesStreamEvent(responsesEventFunctionArgsDone, dto.ResponsesStreamResponse{
-			Type:        responsesEventFunctionArgsDone,
+			Type:      responsesEventFunctionArgsDone,
+			Arguments: kitutil.GetPointer(tool.Arguments.String()), Name: tool.Name,
 			OutputIndex: intPtr(tool.OutputIndex),
 			ItemID:      tool.ID,
 		}))
@@ -320,7 +379,7 @@ func (s *ChatToResponsesStreamState) finalResponse() *dto.OpenAIResponsesRespons
 	return &dto.OpenAIResponsesResponse{
 		ID:                s.ID,
 		Object:            "response",
-		CreatedAt:         int(s.Created),
+		CreatedAt:         dto.IntValue(s.Created),
 		Status:            []byte(fmt.Sprintf("%q", s.status)),
 		IncompleteDetails: s.incompleteDetails,
 		Model:             s.Model,
@@ -333,7 +392,7 @@ func (s *ChatToResponsesStreamState) createdResponse() *dto.OpenAIResponsesRespo
 	return &dto.OpenAIResponsesResponse{
 		ID:        s.ID,
 		Object:    "response",
-		CreatedAt: int(s.Created),
+		CreatedAt: dto.IntValue(s.Created),
 		Status:    []byte(`"in_progress"`),
 		Model:     s.Model,
 		Output:    []dto.ResponsesOutput{},
@@ -396,7 +455,7 @@ func (s *ChatToResponsesStreamState) reasoningOutput(status string) *dto.Respons
 		Type:   responsesOutputTypeReasoning,
 		ID:     s.reasoningID(),
 		Status: status,
-		Content: []dto.ResponsesOutputContent{
+		Summary: []dto.ResponsesReasoningSummaryPart{
 			{
 				Type: "summary_text",
 				Text: s.reasoning.String(),

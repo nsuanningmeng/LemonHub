@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { PublicLayout } from '@/components/layout'
 import { RichContent } from '@/components/rich-content'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useIframePreferences } from '@/hooks/use-iframe-preferences'
 import { isHttpUrl, isLikelyHtml } from '@/lib/content-format'
 
 import { getAboutContent } from './api'
@@ -123,6 +124,9 @@ export function About() {
   const hasContent = rawContent.length > 0
   const isUrl = hasContent && isHttpUrl(rawContent)
   const contentIsHtml = hasContent && isLikelyHtml(rawContent)
+  const { iframeRef, syncPreferences } = useIframePreferences(
+    isUrl ? rawContent : null
+  )
 
   if (isLoading) {
     return (
@@ -149,7 +153,9 @@ export function About() {
     return (
       <PublicLayout showMainContainer={false}>
         <iframe
+          ref={iframeRef}
           src={rawContent}
+          onLoad={syncPreferences}
           className='h-[calc(100vh-3.5rem)] w-full border-0'
           title={t('About')}
           sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'

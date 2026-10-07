@@ -110,3 +110,14 @@ func (s *StreamStatus) Summary() string {
 	s.mu.Unlock()
 	return b.String()
 }
+
+// CorrectCompletedCancellationAfterJoin is restricted to scanner cleanup after
+// every reader/callback/ping goroutine has joined. It must not run concurrently
+// with status access. Only explicit protocol completion can correct client_gone;
+// EOF, transport DONE, timeout and upstream failures retain their own evidence.
+func (s *StreamStatus) CorrectCompletedCancellationAfterJoin() {
+	if s != nil && s.EndReason == StreamEndReasonClientGone {
+		s.EndReason = StreamEndReasonDone
+		s.EndError = nil
+	}
+}

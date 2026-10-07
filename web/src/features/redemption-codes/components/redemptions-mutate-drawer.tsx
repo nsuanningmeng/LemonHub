@@ -296,11 +296,14 @@ export function RedemptionsMutateDrawer({
                         <Input
                           {...field}
                           type='number'
+                          value={field.value ?? ''}
                           step={quotaStep}
                           placeholder={quotaPlaceholder}
                           onChange={(e) =>
                             field.onChange(
-                              Number.parseFloat(e.target.value) || 0
+                              e.target.value === ''
+                                ? ''
+                                : e.target.valueAsNumber
                             )
                           }
                         />

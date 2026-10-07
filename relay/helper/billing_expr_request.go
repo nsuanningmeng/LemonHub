@@ -10,33 +10,47 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func ResolveIncomingBillingExprRequestInput(c *gin.Context, info *relaycommon.RelayInfo) (billingexpr.RequestInput, error) {
+// ResolveIncomingBillingExprRequestInput prepares one evaluation without changing
+// the canonical capture on info. A body-free evaluation omits even a preloaded
+// body; a later parameter-based estimate can still reuse or complete that capture.
+func ResolveIncomingBillingExprRequestInput(c *gin.Context, info *relaycommon.RelayInfo, needBody bool) (billingexpr.RequestInput, error) {
+	input := billingexpr.RequestInput{}
 	if info != nil && info.BillingRequestInput != nil {
-		input := cloneRequestInput(*info.BillingRequestInput)
-		merged := cloneStringMap(info.RequestHeaders)
-		for k, v := range input.Headers {
-			merged[k] = v
+		frozen := info.BillingRequestInput
+		input.Headers = cloneStringMap(frozen.Headers)
+		if !needBody {
+			return input, nil
 		}
-		input.Headers = merged
+		if frozen.BodyCaptured || frozen.Body != nil {
+			input.Body = append([]byte(nil), frozen.Body...)
+			input.BodyCaptured = true
+			return input, nil
+		}
+	} else if info != nil && info.RequestHeaders != nil {
+		input.Headers = cloneStringMap(info.RequestHeaders)
+	} else if c != nil && c.Request != nil {
+		input.Headers = make(map[string]string, len(c.Request.Header))
+		for key := range c.Request.Header {
+			input.Headers[key] = c.Request.Header.Get(key)
+		}
+	}
+	if !needBody {
 		return input, nil
 	}
 
-	input := billingexpr.RequestInput{}
-	if info != nil {
-		input.Headers = cloneStringMap(info.RequestHeaders)
-	}
-
-	bodyBytes, err := readIncomingBillingExprBody(c)
+	bodyBytes, err := readIncomingBillingExprBody(c, input.Headers)
 	if err != nil {
 		return billingexpr.RequestInput{}, err
 	}
 	input.Body = bodyBytes
+	input.BodyCaptured = true
 	return input, nil
 }
 
 func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[string]string) (billingexpr.RequestInput, error) {
 	input := billingexpr.RequestInput{
-		Headers: cloneStringMap(headers),
+		Headers:      cloneStringMap(headers),
+		BodyCaptured: true,
 	}
 	if request == nil {
 		return input, nil
@@ -50,8 +64,15 @@ func BuildBillingExprRequestInputFromRequest(request dto.Request, headers map[st
 	return input, nil
 }
 
-func readIncomingBillingExprBody(c *gin.Context) ([]byte, error) {
-	if c == nil || c.Request == nil || !isJSONContentType(c.Request.Header.Get("Content-Type")) {
+func readIncomingBillingExprBody(c *gin.Context, headers map[string]string) ([]byte, error) {
+	contentType := ""
+	for key, value := range headers {
+		if strings.EqualFold(key, "Content-Type") {
+			contentType = value
+			break
+		}
+	}
+	if c == nil || c.Request == nil || !isJSONContentType(contentType) {
 		return nil, nil
 	}
 	storage, err := common.GetBodyStorage(c)
@@ -59,16 +80,6 @@ func readIncomingBillingExprBody(c *gin.Context) ([]byte, error) {
 		return nil, err
 	}
 	return storage.Bytes()
-}
-
-func cloneRequestInput(src billingexpr.RequestInput) billingexpr.RequestInput {
-	input := billingexpr.RequestInput{
-		Headers: cloneStringMap(src.Headers),
-	}
-	if len(src.Body) > 0 {
-		input.Body = append([]byte(nil), src.Body...)
-	}
-	return input
 }
 
 func isJSONContentType(contentType string) bool {

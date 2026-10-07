@@ -4174,7 +4174,7 @@ export function ChannelMutateDrawer({
                                       </FormLabel>
                                       <FormDescription>
                                         {t(
-                                          'Pass request body directly to upstream'
+                                          'Forward request bodies unchanged; explicit parameter override rules apply to JSON requests.'
                                         )}
                                       </FormDescription>
                                     </div>

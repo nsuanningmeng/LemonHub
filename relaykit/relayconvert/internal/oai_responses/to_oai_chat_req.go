@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/toolpolicy"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 )
 
@@ -175,8 +176,28 @@ func responsesRequestMessagesToChat(req *dto.OpenAIResponsesRequest) ([]dto.Mess
 			runCalls = nil
 			runIdx = -1
 		}
+		// Chat tool results cannot contain media. Keep all results in their batch
+		// consecutive, then emit their media in one following user message.
+		var toolMedia []any
+		flushToolMedia := func() error {
+			if len(toolMedia) == 0 {
+				return nil
+			}
+			content, err := responsesContentPartsToChatContent(toolMedia)
+			if err != nil {
+				return err
+			}
+			messages = append(messages, dto.Message{Role: "user", Content: content})
+			toolMedia = nil
+			return nil
+		}
 		for _, item := range items {
 			itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
+			if itemType != responsesInputTypeFunctionCallOutput {
+				if err := flushToolMedia(); err != nil {
+					return nil, err
+				}
+			}
 			if itemType == responsesInputTypeFunctionCall || itemType == responsesInputTypeCustomToolCall {
 				var toolCall dto.ToolCallRequest
 				var err error
@@ -198,6 +219,16 @@ func responsesRequestMessagesToChat(req *dto.OpenAIResponsesRequest) ([]dto.Mess
 				continue
 			}
 			flushToolCallRun()
+			if itemType == responsesInputTypeFunctionCallOutput {
+				content, media, err := responsesToolOutputToChat(item["output"])
+				if err != nil {
+					return nil, err
+				}
+				callID := strings.TrimSpace(kitutil.Interface2String(item["call_id"]))
+				messages = append(messages, dto.Message{Role: "tool", ToolCallId: callID, Content: content})
+				toolMedia = append(toolMedia, media...)
+				continue
+			}
 			nextMessages, err := responsesInputItemToChatMessages(item, messages)
 			if err != nil {
 				return nil, err
@@ -205,24 +236,18 @@ func responsesRequestMessagesToChat(req *dto.OpenAIResponsesRequest) ([]dto.Mess
 			messages = nextMessages
 		}
 		flushToolCallRun()
+		if err := flushToolMedia(); err != nil {
+			return nil, err
+		}
 		return messages, nil
 	default:
 		return nil, fmt.Errorf("unsupported responses input type %q", kitutil.GetJsonType(req.Input))
 	}
 }
 
-// responsesInputItemToChatMessages converts a single non-tool-call input item.
-// Function/custom tool-call items are handled by the caller's batching loop (see
-// responsesRequestMessagesToChat) so their tool_calls are marshaled once per run.
+// responsesInputItemToChatMessages converts an ordinary message. Tool calls and
+// function outputs are handled by the caller's batching loop.
 func responsesInputItemToChatMessages(item map[string]any, messages []dto.Message) ([]dto.Message, error) {
-	itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
-	switch itemType {
-	case responsesInputTypeFunctionCallOutput:
-		callID := strings.TrimSpace(kitutil.Interface2String(item["call_id"]))
-		content := responseToolOutputToChatContent(item["output"])
-		return append(messages, dto.Message{Role: "tool", ToolCallId: callID, Content: content}), nil
-	}
-
 	role := strings.TrimSpace(kitutil.Interface2String(item["role"]))
 	if role == "" {
 		role = "user"
@@ -278,28 +303,50 @@ func responsesContentPartsToChatContent(parts []any) (any, error) {
 				"text": text,
 			})
 		case "input_image":
+			imageURL, err := responsesImagePartToChatImageURL(part)
+			if err != nil {
+				return nil, err
+			}
 			onlyText = false
 			chatParts = append(chatParts, map[string]any{
 				"type":      dto.ContentTypeImageURL,
-				"image_url": responsesImagePartToChatImageURL(part),
+				"image_url": imageURL,
 			})
 		case "input_file":
+			file, err := responsesFilePartToChatFile(part)
+			if err != nil {
+				return nil, err
+			}
 			onlyText = false
 			chatParts = append(chatParts, map[string]any{
 				"type": dto.ContentTypeFile,
-				"file": responsesFilePartToChatFile(part),
+				"file": file,
 			})
 		case "input_audio":
+			audio, ok := responsesPartPayload(part, "input_audio").(map[string]any)
+			if !ok {
+				return nil, errors.New("input_audio must contain an object")
+			}
+			for _, key := range []string{"data", "format"} {
+				value, ok := audio[key].(string)
+				if !ok || strings.TrimSpace(value) == "" {
+					return nil, fmt.Errorf("input_audio %s must be a non-empty string", key)
+				}
+			}
 			onlyText = false
 			chatParts = append(chatParts, map[string]any{
 				"type":        dto.ContentTypeInputAudio,
-				"input_audio": responsesPartPayload(part, "input_audio"),
+				"input_audio": audio,
 			})
 		case "input_video":
+			videoURL, err := responsesVideoPartToChatVideoURL(part)
+			if err != nil {
+				return nil, err
+			}
 			onlyText = false
 			chatParts = append(chatParts, map[string]any{
 				"type":      dto.ContentTypeVideoUrl,
-				"video_url": responsesVideoPartToChatVideoURL(part),
+				"video_url": videoURL,
 			})
 		default:
 			onlyText = false
@@ -358,12 +405,21 @@ func responsesRequestToolsToChat(raw json.RawMessage) ([]dto.ToolCallRequest, er
 	for _, tool := range tools {
 		toolType := strings.TrimSpace(kitutil.Interface2String(tool["type"]))
 		if toolType == "function" {
+			var strict *bool
+			if value, exists := tool["strict"]; exists && value != nil {
+				flag, ok := value.(bool)
+				if !ok {
+					return nil, toolpolicy.Invalid("tools.strict")
+				}
+				strict = &flag
+			}
 			out = append(out, dto.ToolCallRequest{
 				Type: "function",
 				Function: dto.FunctionRequest{
 					Name:        strings.TrimSpace(kitutil.Interface2String(tool["name"])),
 					Description: kitutil.Interface2String(tool["description"]),
 					Parameters:  tool["parameters"],
+					Strict:      strict,
 				},
 			})
 			continue
@@ -396,6 +452,17 @@ func responsesRequestToolChoiceToChat(raw json.RawMessage) (any, error) {
 	var choice map[string]any
 	if err := kitutil.Unmarshal(raw, &choice); err != nil {
 		return nil, fmt.Errorf("invalid tool_choice: %w", err)
+	}
+	if kitutil.Interface2String(choice["type"]) == "allowed_tools" {
+		parsed, err := toolpolicy.OpenAIChoice(choice)
+		if err != nil {
+			return nil, err
+		}
+		tools := make([]map[string]any, 0, len(parsed.Names))
+		for _, name := range parsed.Names {
+			tools = append(tools, map[string]any{"type": "function", "function": map[string]any{"name": name}})
+		}
+		return map[string]any{"type": "allowed_tools", "allowed_tools": map[string]any{"mode": parsed.Mode, "tools": tools}}, nil
 	}
 	if kitutil.Interface2String(choice["type"]) == "function" {
 		name := strings.TrimSpace(kitutil.Interface2String(choice["name"]))
@@ -449,51 +516,115 @@ func RequestTextToChatResponseFormat(raw json.RawMessage) (*dto.ResponseFormat, 
 	return responsesRequestTextToChatResponseFormat(raw)
 }
 
-func responsesImagePartToChatImageURL(part map[string]any) any {
-	if imageURL, ok := part["image_url"]; ok {
-		return imageURL
-	}
-	imageURL := map[string]any{}
-	for _, key := range []string{"url", "file_id", "detail"} {
-		if value, ok := part[key]; ok {
-			imageURL[key] = value
+func responsesImagePartToChatImageURL(part map[string]any) (map[string]any, error) {
+	image := map[string]any{}
+	if value, exists := part["image_url"]; exists && value != nil {
+		switch value := value.(type) {
+		case string:
+			image["url"] = value
+		case map[string]any:
+			for key, v := range value {
+				image[key] = v
+			}
+		default:
+			return nil, errors.New("input_image image_url must be a string or object")
 		}
-	}
-	if len(imageURL) == 0 {
-		return part
-	}
-	return imageURL
-}
-
-func responsesFilePartToChatFile(part map[string]any) any {
-	if file, ok := part["file"]; ok {
-		return file
-	}
-	file := map[string]any{}
-	for _, key := range []string{"file_id", "file_data", "filename", "file_url"} {
-		if value, ok := part[key]; ok {
-			file[key] = value
-		}
-	}
-	if len(file) == 0 {
-		return part
-	}
-	return file
-}
-
-func responsesVideoPartToChatVideoURL(part map[string]any) any {
-	if videoURL, ok := part["video_url"]; ok {
-		if videoURLMap, ok := videoURL.(map[string]any); ok {
-			if url := kitutil.Interface2String(videoURLMap["url"]); url != "" {
-				return url
+	} else {
+		for _, key := range []string{"url", "file_id", "detail"} {
+			if value, ok := part[key]; ok {
+				image[key] = value
 			}
 		}
-		return videoURL
 	}
-	if url := kitutil.Interface2String(part["url"]); url != "" {
-		return url
+	for _, key := range []string{"file_id", "detail"} {
+		if image[key] == nil && part[key] != nil {
+			image[key] = part[key]
+		}
 	}
-	return responsesPartPayload(part, "video_url")
+	hasSource := false
+	for _, key := range []string{"url", "file_id"} {
+		if value, exists := image[key]; exists {
+			if value == nil {
+				delete(image, key)
+				continue
+			}
+			source, ok := value.(string)
+			if !ok || strings.TrimSpace(source) == "" {
+				return nil, fmt.Errorf("input_image %s must be a non-empty string", key)
+			}
+			hasSource = true
+		}
+	}
+	if !hasSource {
+		return nil, errors.New("input_image is missing url or file_id")
+	}
+	if detail, exists := image["detail"]; exists {
+		if detail == nil {
+			delete(image, "detail")
+		} else if _, ok := detail.(string); !ok {
+			return nil, errors.New("input_image detail must be a string")
+		}
+	}
+	return image, nil
+}
+
+func responsesFilePartToChatFile(part map[string]any) (map[string]any, error) {
+	file := map[string]any{}
+	if value, exists := part["file"]; exists && value != nil {
+		object, ok := value.(map[string]any)
+		if !ok {
+			return nil, errors.New("input_file file must be an object")
+		}
+		for key, value := range object {
+			file[key] = value
+		}
+	} else {
+		for _, key := range []string{"file_id", "file_data", "filename", "file_url"} {
+			if value, ok := part[key]; ok {
+				file[key] = value
+			}
+		}
+	}
+	hasSource := false
+	for _, key := range []string{"file_id", "file_data", "file_url"} {
+		if value, exists := file[key]; exists {
+			if value == nil {
+				delete(file, key)
+				continue
+			}
+			source, ok := value.(string)
+			if !ok || strings.TrimSpace(source) == "" {
+				return nil, fmt.Errorf("input_file %s must be a non-empty string", key)
+			}
+			hasSource = true
+		}
+	}
+	if !hasSource {
+		return nil, errors.New("input_file is missing file_id, file_data or file_url")
+	}
+	if filename, exists := file["filename"]; exists {
+		if filename == nil {
+			delete(file, "filename")
+		} else if _, ok := filename.(string); !ok {
+			return nil, errors.New("input_file filename must be a string")
+		}
+	}
+	return file, nil
+}
+
+func responsesVideoPartToChatVideoURL(part map[string]any) (string, error) {
+	value, exists := part["video_url"]
+	if !exists || value == nil {
+		value = part["url"]
+	}
+	if object, ok := value.(map[string]any); ok {
+		value = object["url"]
+	}
+	url, ok := value.(string)
+	if !ok || strings.TrimSpace(url) == "" {
+		return "", errors.New("input_video url must be a non-empty string")
+	}
+	return url, nil
 }
 
 func responsesPartPayload(part map[string]any, key string) any {
@@ -537,7 +668,59 @@ func responsesArgumentsString(value any) string {
 	}
 }
 
-func responseToolOutputToChatContent(value any) any {
+// responsesToolOutputToChat extracts only known media. Unknown values remain JSON
+// text in their original order; outputs without media keep their legacy encoding.
+func responsesToolOutputToChat(value any) (string, []any, error) {
+	parts, ok := value.([]any)
+	if !ok {
+		return responseToolOutputToChatContent(value), nil, nil
+	}
+	hasMedia := false
+	for _, rawPart := range parts {
+		if part, ok := rawPart.(map[string]any); ok {
+			switch strings.TrimSpace(kitutil.Interface2String(part["type"])) {
+			case "input_image", "input_file", "input_audio", "input_video":
+				hasMedia = true
+			}
+		}
+		if hasMedia {
+			break
+		}
+	}
+	if !hasMedia {
+		return responseToolOutputToChatContent(value), nil, nil
+	}
+	var media []any
+	var textParts, placeholders []string
+	for _, rawPart := range parts {
+		part, isObject := rawPart.(map[string]any)
+		if isObject {
+			partType := strings.TrimSpace(kitutil.Interface2String(part["type"]))
+			switch partType {
+			case "input_image", "input_file", "input_audio", "input_video":
+				media = append(media, part)
+				placeholders = append(placeholders, "["+strings.TrimPrefix(partType, "input_")+"]")
+				continue
+			case "input_text", "output_text", "text":
+				if text, ok := part["text"].(string); ok {
+					textParts = append(textParts, text)
+					continue
+				}
+			}
+		}
+		encoded, err := kitutil.Marshal(rawPart)
+		if err != nil {
+			return "", nil, fmt.Errorf("invalid function_call_output part: %w", err)
+		}
+		textParts = append(textParts, string(encoded))
+	}
+	if len(textParts) == 0 {
+		textParts = placeholders
+	}
+	return strings.Join(textParts, "\n"), media, nil
+}
+
+func responseToolOutputToChatContent(value any) string {
 	switch v := value.(type) {
 	case nil:
 		return ""

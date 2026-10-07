@@ -19,6 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Complete sentences rendered through Trans.
+  'Type <username/> to confirm',
+  'Pay {{amount}} <saving>• Save {{saved}}</saving>',
+  'This will delete all <used>used</used>, <disabled>disabled</disabled>, and <expired>expired</expired> redemption codes.',
+
   // Header navigation
   'Home',
   'Console',
@@ -529,6 +534,9 @@ export const STATIC_I18N_KEYS = [
   'Detection complete: {{add}} to add, {{remove}} to remove',
   'Batch detection failed',
   'Batch detection complete: {{channels}} channels, {{add}} to add, {{remove}} to remove, {{fails}} failed',
+
+  // Advanced Custom converters
+  'OpenAI Responses to Anthropic Messages',
 
   // Advanced Custom model discovery
   'Only one OpenAI Models route is allowed',

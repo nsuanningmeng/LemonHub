@@ -22,6 +22,7 @@ import { TOKEN_UNIT_DIVISORS } from '../constants'
 import type { PricingModel, TokenUnit } from '../types'
 import {
   BILLING_PRICING_VARS,
+  classifyBillingExpression,
   parseTiersFromExpr,
   splitBillingExprAndRequestRules,
   tryParseRequestRuleExpr,
@@ -55,6 +56,7 @@ export type DynamicPricingSummary = {
   hasRequestRules: boolean
   isSpecialExpression: boolean
   rawExpression: string
+  conditionText: string
   entries: DynamicPriceEntry[]
   primaryEntries: DynamicPriceEntry[]
   secondaryEntries: DynamicPriceEntry[]
@@ -64,6 +66,13 @@ const PRIMARY_DYNAMIC_FIELDS = new Set(['inputPrice', 'outputPrice'])
 
 export function isDynamicPricingModel(model: PricingModel): boolean {
   return model.billing_mode === 'tiered_expr' && Boolean(model.billing_expr)
+}
+
+export function getExpressionBillingLabel(expr: string): string {
+  const kind = classifyBillingExpression(expr)
+  if (kind === 'token') return 'Token-based'
+  if (kind === 'request') return 'Per Request'
+  return 'Dynamic Pricing'
 }
 
 export function getDynamicDisplayGroupRatio(
@@ -109,10 +118,7 @@ export function formatDynamicUnitPrice(
 
 export function getDynamicPricingTiers(model: PricingModel): ParsedTier[] {
   if (!isDynamicPricingModel(model)) return []
-  const { billingExpr } = splitBillingExprAndRequestRules(
-    model.billing_expr || ''
-  )
-  return parseTiersFromExpr(billingExpr)
+  return parseTiersFromExpr(model.billing_expr || '')
 }
 
 export function hasDynamicRequestRules(model: PricingModel): boolean {
@@ -163,6 +169,7 @@ export function getDynamicPricingSummary(
   const tier = tiers[0] || null
   const entries = getDynamicPriceEntries(tier, options)
   const rawExpression = model.billing_expr || ''
+  const { requestRuleExpr } = splitBillingExprAndRequestRules(rawExpression)
 
   return {
     tiers,
@@ -171,6 +178,9 @@ export function getDynamicPricingSummary(
     hasRequestRules: hasDynamicRequestRules(model),
     isSpecialExpression: rawExpression.trim().length > 0 && tiers.length === 0,
     rawExpression,
+    conditionText: [tier?.conditionText, requestRuleExpr]
+      .filter(Boolean)
+      .join(' · '),
     entries,
     primaryEntries: entries.filter((entry) =>
       PRIMARY_DYNAMIC_FIELDS.has(entry.field)

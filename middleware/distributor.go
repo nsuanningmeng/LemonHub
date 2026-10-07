@@ -469,6 +469,15 @@ func getTaskOriginModelName(c *gin.Context) string {
 }
 
 func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) *types.NewAPIError {
+	return setupContextForChannelKey(c, channel, modelName, nil)
+}
+
+// SetupContextForChannelHealthProbe is an internal explicit auto-disabled-key
+// probe. No request parameter enables it and normal routing remains enabled-only.
+func SetupContextForChannelHealthProbe(c *gin.Context, channel *model.Channel, modelName, identity string) *types.NewAPIError {
+	return setupContextForChannelKey(c, channel, modelName, &identity)
+}
+func setupContextForChannelKey(c *gin.Context, channel *model.Channel, modelName string, probeIdentity *string) *types.NewAPIError {
 	c.Set("original_model", modelName) // for retry
 	if channel == nil {
 		return types.NewError(errors.New("channel is nil"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
@@ -493,7 +502,14 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	common.SetContextKey(c, constant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, constant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 
-	key, index, newAPIError := channel.GetNextEnabledKey()
+	var key string
+	var index int
+	var newAPIError *types.NewAPIError
+	if probeIdentity == nil {
+		key, index, newAPIError = channel.GetNextEnabledKey()
+	} else {
+		key, index, newAPIError = channel.GetAutoDisabledKeyForProbe(*probeIdentity)
+	}
 	if newAPIError != nil {
 		return newAPIError
 	}

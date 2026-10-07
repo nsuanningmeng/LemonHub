@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { BILLING_CACHE_VAR_MAP } from './billing-expr'
+import { resolveBillingTimeZone } from './billing-time'
 
 export const CACHE_MODE_TIMED = 'timed'
 export const CACHE_MODE_GENERIC = 'generic'
@@ -234,7 +235,7 @@ export function tryParseVisualConfig(
 
     const cfg = normalizeVisualConfig({ tiers })
     const regenerated = generateExprFromVisualConfig(cfg)
-    if (regenerated.replace(/\s+/g, '') !== body.replace(/\s+/g, '')) {
+    if (regenerated.replaceAll(/\s+/g, '') !== body.replaceAll(/\s+/g, '')) {
       return null
     }
     return cfg
@@ -268,6 +269,70 @@ export type EvalResult = {
   error: string | null
 }
 
+type LocalTimeParts = {
+  hour: number
+  minute: number
+  weekday: number
+  month: number
+  day: number
+}
+
+function createLocalTimeFunctions(
+  now: Date
+): Record<keyof LocalTimeParts, (timezone: string) => number> {
+  const cache = new Map<string, LocalTimeParts>()
+  const getParts = (timezone: string): LocalTimeParts => {
+    const resolved = resolveBillingTimeZone(timezone)
+    if (resolved.kind === 'unsupported') {
+      if (resolved.reason !== 'server-local') {
+        throw new Error(
+          'This time zone cannot be estimated reliably in this browser.'
+        )
+      }
+      throw new Error(
+        'Server-local time cannot be estimated in the browser. Use an IANA time zone.'
+      )
+    }
+    const timeZone = resolved.timeZone
+    const cached = cache.get(timeZone)
+    if (cached) return cached
+
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone,
+      calendar: 'gregory',
+      numberingSystem: 'latn',
+      hourCycle: 'h23',
+      hour: 'numeric',
+      minute: 'numeric',
+      weekday: 'short',
+      month: 'numeric',
+      day: 'numeric',
+    }
+    const formatter = new Intl.DateTimeFormat('en-US', options)
+    const parts = Object.fromEntries(
+      formatter.formatToParts(now).map((part) => [part.type, part.value])
+    )
+    const result = {
+      hour: Number(parts.hour),
+      minute: Number(parts.minute),
+      weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(
+        parts.weekday
+      ),
+      month: Number(parts.month),
+      day: Number(parts.day),
+    }
+    cache.set(timeZone, result)
+    return result
+  }
+  return {
+    hour: (timezone: string): number => getParts(timezone).hour,
+    minute: (timezone: string): number => getParts(timezone).minute,
+    weekday: (timezone: string): number => getParts(timezone).weekday,
+    month: (timezone: string): number => getParts(timezone).month,
+    day: (timezone: string): number => getParts(timezone).day,
+  }
+}
+
 export function evalExprLocally(
   exprStr: string,
   promptTokens: number,
@@ -298,6 +363,7 @@ export function evalExprLocally(
       abs: Math.abs,
       ceil: Math.ceil,
       floor: Math.floor,
+      ...createLocalTimeFunctions(new Date()),
     }
     for (const field of ESTIMATOR_VARS) {
       env[field.var] = extraTokenValues[field.stateKey] || 0

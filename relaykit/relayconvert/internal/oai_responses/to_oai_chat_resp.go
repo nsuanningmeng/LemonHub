@@ -65,7 +65,7 @@ func ResponsesResponseToChatCompletionsResponse(resp *dto.OpenAIResponsesRespons
 
 	usage := UsageFromResponsesUsage(resp.Usage)
 
-	created := resp.CreatedAt
+	created := int(resp.CreatedAt)
 
 	var toolCalls []dto.ToolCallResponse
 	if len(resp.Output) > 0 {
@@ -217,6 +217,12 @@ func ExtractReasoningTextFromResponses(resp *dto.OpenAIResponsesResponse) string
 	var sb strings.Builder
 	for _, out := range resp.Output {
 		if out.Type != responsesOutputTypeReasoning {
+			continue
+		}
+		if len(out.Summary) > 0 {
+			for _, part := range out.Summary {
+				sb.WriteString(part.Text)
+			}
 			continue
 		}
 		for _, c := range out.Content {

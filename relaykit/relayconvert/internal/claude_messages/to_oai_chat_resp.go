@@ -19,6 +19,7 @@ type ClaudeResponseInfo struct {
 	ResponseText strings.Builder
 	Usage        *dto.Usage
 	Done         bool
+	refusal      claudeRefusalEvidence
 }
 
 func StopReasonClaudeToOpenAI(reason string) string {

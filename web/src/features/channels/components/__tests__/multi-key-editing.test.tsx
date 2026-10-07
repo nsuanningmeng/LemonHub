@@ -237,3 +237,16 @@ describe('multi-key channel editing', { timeout: 15000 }, () => {
     }
   )
 })
+
+test('channel passthrough description preserves the explicit override exception', async () => {
+  render(<EditingHarness />)
+  await screen.findByDisplayValue('Existing channel')
+  await userEvent.click(
+    screen.getByRole('button', { name: /^Advanced Settings Request overrides/ })
+  )
+  expect(
+    await screen.findByText(
+      'Forward request bodies unchanged; explicit parameter override rules apply to JSON requests.'
+    )
+  ).toBeInTheDocument()
+})

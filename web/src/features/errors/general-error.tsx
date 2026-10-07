@@ -17,10 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useNavigate, useRouter } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+
+import {
+  claimResourceReload,
+  getResourceBuildId,
+  isResourceLoadError,
+} from './lib/resource-recovery'
 
 const FEEDBACK_URL = 'https://github.com/QuantumNous/new-api/issues'
 
@@ -46,18 +53,38 @@ export function GeneralError({
   const navigate = useNavigate()
   const { history } = useRouter()
   const status = getHttpStatus(error)
+  const resourceFailure = isResourceLoadError(error)
+  useEffect(() => {
+    if (!resourceFailure) return
+    const buildId = getResourceBuildId(document)
+    if (!buildId) return
+    try {
+      if (claimResourceReload(window.sessionStorage, buildId)) {
+        window.location.reload()
+      }
+    } catch {
+      // Access to sessionStorage itself can be blocked. Keep manual recovery.
+    }
+  }, [resourceFailure])
+
   const isRateLimited = status === 429
-  const title = isRateLimited
+  let title = isRateLimited
     ? t('Too many requests')
     : `${t('Oops! Something went wrong')} ${`:')`}`
-  const description = isRateLimited
+  let description = isRateLimited
     ? t('Please wait a moment before trying again.')
     : t('Please try again later.')
+  if (resourceFailure) {
+    title = t('Page resources could not be loaded')
+    description = t(
+      'Check your connection, then reload the page. If the problem continues, contact the administrator.'
+    )
+  }
 
   return (
     <div className={cn('h-svh w-full', className)}>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
-        {!minimal && (
+        {!minimal && !resourceFailure && (
           <h1 className='text-[7rem] leading-tight font-bold'>
             {status ?? 500}
           </h1>
@@ -70,6 +97,11 @@ export function GeneralError({
           <p className='text-muted-foreground text-center text-sm'>
             {t('If this keeps happening, please report it on GitHub Issues.')}
           </p>
+        )}
+        {resourceFailure && (
+          <Button onClick={() => window.location.reload()}>
+            {t('Reload page')}
+          </Button>
         )}
         {!minimal && (
           <div className='mt-6 flex flex-wrap justify-center gap-4'>

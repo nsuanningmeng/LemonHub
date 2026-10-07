@@ -329,3 +329,11 @@ export function useIsSidebarModuleVisible(url: string): boolean {
 
   return isModuleEnabled(url, adminConfig, userConfig)
 }
+
+/** Administrator-only bounds for editing personal preferences. */
+export function useAdminSidebarConfig() {
+  const { status } = useStatus()
+  return parseSidebarConfig(
+    status?.SidebarModulesAdmin as string | null | undefined
+  )
+}

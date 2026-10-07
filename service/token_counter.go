@@ -257,8 +257,8 @@ func EstimateRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *rela
 			continue
 		}
 
-		// 如果文件类型未知且需要获取，通过 MIME 类型检测
-		if file.FileType == "" || (file.Source.IsURL() && shouldFetchFiles) {
+		// 仅未知类型需要先检测；已知图片按 getImageToken 的实际尺寸需求加载。
+		if file.FileType == "" {
 			// 注意：这里我们直接调用 LoadFileSource 而不是 GetMimeType
 			// 因为 GetMimeType 内部可能会调用 GetFileTypeFromUrl (HEAD 请求)
 			// 而我们这里既然要计算 token，通常需要完整数据

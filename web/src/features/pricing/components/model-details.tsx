@@ -63,6 +63,7 @@ import { usePricingData } from '../hooks/use-pricing-data'
 import {
   getDynamicPriceEntries,
   getDynamicPricingSummary,
+  getExpressionBillingLabel,
   getDynamicPricingTiers,
   isDynamicPricingModel,
 } from '../lib/dynamic-price'
@@ -658,6 +659,11 @@ function PriceSection(props: {
     return (
       <section>
         <SectionTitle>{t('Base Price')}</SectionTitle>
+        {dynamicSummary.conditionText && (
+          <p className='text-muted-foreground mb-2 text-xs'>
+            {dynamicSummary.conditionText}
+          </p>
+        )}
         {dynamicSummary.primaryEntries.length > 0 ? (
           <div className='grid grid-cols-2 gap-2'>
             {dynamicSummary.primaryEntries.map((entry) => (
@@ -679,7 +685,7 @@ function PriceSection(props: {
           </div>
         ) : (
           <p className='text-muted-foreground text-sm'>
-            {t('Dynamic Pricing')}
+            {t(getExpressionBillingLabel(props.model.billing_expr || ''))}
           </p>
         )}
         {dynamicSummary.secondaryEntries.length > 0 && (
@@ -999,7 +1005,14 @@ function GroupPricingSection(props: {
                       header: t('Tier'),
                       className: thClass,
                       cellClassName: 'text-muted-foreground py-2.5',
-                      cell: (tier) => tier.label || t('Default'),
+                      cell: (tier) => (
+                        <div>
+                          <div>{tier.label || t('Default')}</div>
+                          {tier.conditionText && (
+                            <div className='text-xs'>{tier.conditionText}</div>
+                          )}
+                        </div>
+                      ),
                     },
                     ...priceFields.map((fieldEntry) => ({
                       id: fieldEntry.field,
@@ -1017,7 +1030,7 @@ function GroupPricingSection(props: {
             )
           })}
           <p className='text-muted-foreground/40 mt-1.5 text-[10px]'>
-            {t('Prices shown per')} {tokenUnitLabel} tokens
+            {t('Prices shown per {{unit}} tokens', { unit: tokenUnitLabel })}
           </p>
         </div>
       </section>
@@ -1108,7 +1121,7 @@ function GroupPricingSection(props: {
       <div className='-mx-4 sm:mx-0'>
         {isTokenBased && (
           <p className='text-muted-foreground/40 mt-1.5 px-4 text-[10px] sm:px-0'>
-            {t('Prices shown per')} {tokenUnitLabel} tokens
+            {t('Prices shown per {{unit}} tokens', { unit: tokenUnitLabel })}
           </p>
         )}
       </div>

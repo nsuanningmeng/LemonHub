@@ -1,6 +1,8 @@
 package openai
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,7 +33,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	data = string(publicData)
 
 	if !forceFormat && !thinkToContent {
-		return helper.StringData(c, data)
+		return writeOpenAIStreamData(c, "data: "+data+"\n\n")
 	}
 
 	var lastStreamResponse dto.ChatCompletionsStreamResponse
@@ -40,7 +42,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	}
 
 	if !thinkToContent {
-		return helper.ObjectData(c, lastStreamResponse)
+		return writeOpenAIChatObject(c, info, lastStreamResponse)
 	}
 
 	hasThinkingContent := false
@@ -68,12 +70,12 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 			}
 			info.ThinkingContentInfo.IsFirstThinkingContent = false
 			info.ThinkingContentInfo.HasSentThinkingContent = true
-			return helper.ObjectData(c, response)
+			return writeOpenAIChatObject(c, info, response)
 		}
 	}
 
 	if lastStreamResponse.Choices == nil || len(lastStreamResponse.Choices) == 0 {
-		return helper.ObjectData(c, lastStreamResponse)
+		return writeOpenAIChatObject(c, info, lastStreamResponse)
 	}
 
 	// Process each choice
@@ -88,7 +90,9 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 				response.Choices[j].Delta.Reasoning = nil
 			}
 			info.ThinkingContentInfo.SendLastThinkingContent = true
-			helper.ObjectData(c, response)
+			if err := writeOpenAIChatObject(c, info, response); err != nil {
+				return err
+			}
 		}
 
 		// Convert reasoning content to regular content if any
@@ -103,7 +107,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 		}
 	}
 
-	return helper.ObjectData(c, lastStreamResponse)
+	return writeOpenAIChatObject(c, info, lastStreamResponse)
 }
 
 func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
@@ -122,79 +126,106 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 	var responseTextBuilder strings.Builder
 	var toolCount int
 	var usage = &dto.Usage{}
-	var lastStreamData string
-	var secondLastStreamData string // 存储倒数第二个stream data，用于音频模型
+
+	var usageStreamData, lastObservedData string
 	seenStreamToolCalls := make(map[string]struct{})
 	var streamFunctionCallNames []string
-
-	// 检查是否为音频模型
-	isAudioModel := strings.Contains(strings.ToLower(model), "audio")
-
+	var fatal *types.NewAPIError
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
-		if lastStreamData != "" {
-			if err := HandleStreamFormat(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent); err != nil {
-				common.SysLog("error handling stream format: " + err.Error())
-				sr.Error(err)
-			}
+		fail := func(err *types.NewAPIError) { fatal = err; sr.Stop(err) }
+		var envelope map[string]any
+		if err := common.UnmarshalJsonStr(data, &envelope); err != nil || envelope == nil {
+			fail(types.NewOpenAIError(fmt.Errorf("invalid upstream stream frame"), types.ErrorCodeBadResponse, http.StatusBadGateway))
+			return
 		}
-		if len(data) > 0 {
-			// 对音频模型，保存倒数第二个stream data
-			if isAudioModel && lastStreamData != "" {
-				secondLastStreamData = lastStreamData
+		if embedded := ClassifyOpenAIEmbeddedError(envelope["error"]); embedded != nil {
+			fail(embedded)
+			return
+		}
+		lastObservedData = data
+		var chunk dto.ChatCompletionsStreamResponse
+		if err := common.UnmarshalJsonStr(data, &chunk); err != nil {
+			fail(types.NewOpenAIError(fmt.Errorf("invalid upstream stream frame"), types.ErrorCodeBadResponse, http.StatusBadGateway))
+			return
+		}
+		if chunk.Id != "" {
+			responseId = chunk.Id
+		}
+		if chunk.Created != 0 {
+			createAt = chunk.Created
+		}
+		if chunk.Model != "" {
+			model = chunk.Model
+		}
+		if chunk.GetSystemFingerprint() != "" {
+			systemFingerprint = chunk.GetSystemFingerprint()
+		}
+		if service.ValidUsage(chunk.Usage) {
+			usage = chunk.Usage
+			containStreamUsage = true
+			usageStreamData = data
+		}
+		collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
+		if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
+			fail(types.NewOpenAIError(fmt.Errorf("invalid upstream stream frame"), types.ErrorCodeBadResponse, http.StatusBadGateway))
+			return
+		}
+		output := data
+		if info.RelayFormat == types.RelayFormatOpenAI && !info.ShouldIncludeUsage {
+			filtered, emit, err := openAIStreamDataWithoutUsage(data)
+			if err != nil {
+				fail(types.NewOpenAIError(fmt.Errorf("invalid upstream stream frame"), types.ErrorCodeBadResponse, http.StatusBadGateway))
+				return
 			}
-
-			lastStreamData = data
-			collectStreamFunctionCallNames(data, seenStreamToolCalls, &streamFunctionCallNames)
-			if err := processTokenData(info.RelayMode, data, &responseTextBuilder, &toolCount); err != nil {
-				logger.LogError(c, "error processing stream token data: "+err.Error())
-				sr.Error(err)
+			if !emit {
+				return
 			}
+			output = filtered
+		}
+		if err := HandleStreamFormat(c, info, output, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent, true); err != nil {
+			if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+				fail(types.NewErrorWithStatusCode(requestErr, types.ErrorCodeBadResponse, http.StatusBadGateway))
+			} else {
+				fail(types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusBadGateway))
+			}
+			return
 		}
 	})
-
-	// 对音频模型，从倒数第二个stream data中提取usage信息
-	if isAudioModel && secondLastStreamData != "" {
-		var streamResp struct {
-			Usage *dto.Usage `json:"usage"`
-		}
-		err := common.Unmarshal([]byte(secondLastStreamData), &streamResp)
-		if err == nil && streamResp.Usage != nil && service.ValidUsage(streamResp.Usage) {
-			usage = streamResp.Usage
-			containStreamUsage = true
-
-			if common.DebugEnabled {
-				logger.LogDebug(c, "Audio model usage extracted from second last SSE: PromptTokens=%d, CompletionTokens=%d, TotalTokens=%d, InputTokens=%d, OutputTokens=%d",
-					usage.PromptTokens, usage.CompletionTokens, usage.TotalTokens,
-					usage.InputTokens, usage.OutputTokens)
-			}
+	// A callback fatal wins even if the scanner recorded DONE while it was queued.
+	if fatal != nil {
+		return nil, fatal
+	}
+	if info.StreamStatus != nil && info.StreamStatus.EndReason == relaycommon.StreamEndReasonClientGone {
+		if requestErr := c.Request.Context().Err(); requestErr != nil {
+			return nil, types.NewErrorWithStatusCode(requestErr, types.ErrorCodeBadResponse, http.StatusBadGateway)
 		}
 	}
-
-	// 处理最后的响应
-	shouldSendLastResp := true
-	if err := handleLastResponse(lastStreamData, &responseId, &createAt, &systemFingerprint, &model, &usage,
-		&containStreamUsage, info, &shouldSendLastResp); err != nil {
-		logger.LogError(c, fmt.Sprintf("error handling last response: %s, lastStreamData: [%s]", err.Error(), lastStreamData))
-	}
-
-	if info.RelayFormat == types.RelayFormatOpenAI {
-		if shouldSendLastResp {
-			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
+	if requestErr := c.Request.Context().Err(); requestErr != nil && info.IsPureDownstreamCancellation() {
+		status := info.StreamStatus
+		if status == nil || (status.EndReason != relaycommon.StreamEndReasonTimeout && status.EndReason != relaycommon.StreamEndReasonPanic && (status.EndError == nil || errors.Is(status.EndError, requestErr))) {
+			return nil, types.NewErrorWithStatusCode(requestErr, types.ErrorCodeBadResponse, http.StatusBadGateway)
 		}
 	}
-
+	if info.StreamStatus != nil && (!info.StreamStatus.IsNormalEnd() || info.StreamStatus.HasErrors()) {
+		return nil, types.NewOpenAIError(fmt.Errorf("upstream stream ended unsuccessfully"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+	}
 	if !containStreamUsage {
 		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		usage.CompletionTokens += toolCount * 7
 	}
-
-	applyUsagePostProcessing(info, usage, common.StringToByteSlice(lastStreamData))
-
+	if usageStreamData == "" {
+		usageStreamData = lastObservedData
+	}
+	applyUsagePostProcessing(info, usage, common.StringToByteSlice(usageStreamData))
+	if err := finalizeObservedOpenAIStream(c, info, responseId, createAt, info.PublicResponseModelName(model), systemFingerprint, usage, containStreamUsage); err != nil {
+		if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+			return nil, types.NewErrorWithStatusCode(requestErr, types.ErrorCodeBadResponse, http.StatusBadGateway)
+		}
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusBadGateway)
+	}
 	for _, name := range streamFunctionCallNames {
 		info.CountBillableToolCall(dto.BuildInCallFunctionCall, name)
 	}
-
-	HandleFinalResponse(c, info, lastStreamData, responseId, createAt, info.PublicResponseModelName(model), systemFingerprint, usage, containStreamUsage)
 
 	return usage, nil
 }
@@ -230,6 +261,9 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	var simpleResponse dto.OpenAITextResponse
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if requestErr := c.Request.Context().Err(); requestErr != nil && errors.Is(err, requestErr) {
+			return nil, types.NewErrorWithStatusCode(requestErr, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
+		}
 		return nil, types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError)
 	}
 	logger.LogDebug(c, "upstream response body: %s", responseBody)
@@ -249,14 +283,17 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		}
 	}
 
+	var envelope map[string]any
+	if err := common.Unmarshal(responseBody, &envelope); err == nil {
+		if embedded := ClassifyOpenAIEmbeddedError(envelope["error"]); embedded != nil {
+			return nil, embedded
+		}
+	}
 	err = common.Unmarshal(responseBody, &simpleResponse)
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
-		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
-	}
 	simpleResponse.Model = info.PublicResponseModelName(simpleResponse.Model)
 	responseBody, err = info.RewriteModelForPublicResponse(responseBody, "model")
 	if err != nil {
@@ -282,7 +319,16 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 
 	usageModified := false
-	if simpleResponse.Usage.PromptTokens == 0 {
+	usageHasTokenFields := false
+	if rawUsage, ok := envelope["usage"].(map[string]any); ok {
+		for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
+			if value, present := rawUsage[key]; present && value != nil {
+				usageHasTokenFields = true
+				break
+			}
+		}
+	}
+	if !usageHasTokenFields && simpleResponse.Usage.PromptTokens == 0 {
 		completionTokens := simpleResponse.Usage.CompletionTokens
 		if completionTokens == 0 {
 			for _, choice := range simpleResponse.Choices {
@@ -344,4 +390,23 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	return &simpleResponse.Usage, nil
+}
+
+func writeOpenAIChatObject(c *gin.Context, info *relaycommon.RelayInfo, value any) error {
+	data, err := common.Marshal(value)
+	if err != nil {
+		return err
+	}
+	if !info.ShouldIncludeUsage {
+		var frame map[string]json.RawMessage
+		if err := common.Unmarshal(data, &frame); err != nil {
+			return err
+		}
+		delete(frame, "usage")
+		data, err = common.Marshal(frame)
+		if err != nil {
+			return err
+		}
+	}
+	return writeOpenAIStreamData(c, "data: "+string(data)+"\n\n")
 }

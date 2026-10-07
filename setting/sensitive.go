@@ -5,6 +5,10 @@ import "strings"
 var CheckSensitiveEnabled = true
 var CheckSensitiveOnPromptEnabled = true
 
+// SensitiveWordsWholeWordEnabled opts ASCII-letter entries into whole-word matching.
+// The default retains the existing case-insensitive substring policy.
+var SensitiveWordsWholeWordEnabled = false
+
 //var CheckSensitiveOnCompletionEnabled = true
 
 // StopOnSensitiveEnabled 如果检测到敏感词，是否立刻停止生成，否则替换敏感词

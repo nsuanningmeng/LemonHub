@@ -138,12 +138,12 @@ func TestResponsesMissingUsageFailureKeepsObservedGeneration(t *testing.T) {
 	}
 }
 
-func TestResponsesIncompleteAndEOFDoNotInventProtocolFailure(t *testing.T) {
+func TestResponsesIncompleteRemainsTerminalAndPartialEOFIsFailure(t *testing.T) {
 	for _, terminal := range []string{"", `{"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}}`} {
 		usage, _, c, _ := runResponsesUsageStream(t,
 			`{"type":"response.output_text.delta","delta":"generated output"}`, terminal,
 		)
-		assert.False(t, common.GetContextKeyBool(c, constant.ContextKeyResponseFailed))
+		assert.Equal(t, terminal == "", common.GetContextKeyBool(c, constant.ContextKeyResponseFailed))
 		assert.Positive(t, usage.TotalTokens)
 	}
 }
