@@ -1660,11 +1660,6 @@ func (user *User) FillUserByLinuxDOId(siteId int) error {
 	return user.fillByExternalIdentity("linux_do_id", user.LinuxDOId, siteId)
 }
 
-func RootUserExists() bool {
-	var user User
-	err := DB.Where("role = ?", common.RoleRootUser).First(&user).Error
-	if err != nil {
-		return false
-	}
-	return true
+func RootUserExists() (bool, error) {
+	return rootUserExistsWithDB(DB)
 }

@@ -5871,6 +5871,9 @@
     "Zoom": "缩放",
     "Match English keywords as whole words": "英文关键词按整词匹配",
     "When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.": "启用后，仅由 A-Z 字母组成的关键词必须匹配完整单词，其他关键词仍按子串匹配。",
-    "Matching ignores case. By default, keywords also match inside longer words.": "匹配不区分大小写。默认情况下，关键词也会匹配较长单词中的片段。"
+    "Matching ignores case. By default, keywords also match inside longer words.": "匹配不区分大小写。默认情况下，关键词也会匹配较长单词中的片段。",
+    "Existing configuration is hidden because you do not have permission to view channel secrets.": "现有配置已隐藏，因为你没有查看渠道机密的权限。",
+    "Leave this field unchanged to preserve it, or replace or clear it explicitly.": "保持此字段不变可保留现有配置，也可以明确替换或清除它。",
+    "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification.": "查看渠道覆盖配置和获准的密钥预览。完整密钥仍需要超级管理员权限和安全验证。"
   }
 }

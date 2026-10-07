@@ -5871,6 +5871,9 @@
     "Zoom": "ズーム",
     "Match English keywords as whole words": "英語キーワードを単語全体で照合",
     "When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.": "有効にすると、A-Z の文字のみで構成されるキーワードは単語全体で照合します。その他のキーワードは引き続き部分一致で照合します。",
-    "Matching ignores case. By default, keywords also match inside longer words.": "大文字と小文字は区別しません。既定では、長い単語の一部に含まれるキーワードも一致します。"
+    "Matching ignores case. By default, keywords also match inside longer words.": "大文字と小文字は区別しません。既定では、長い単語の一部に含まれるキーワードも一致します。",
+    "Existing configuration is hidden because you do not have permission to view channel secrets.": "チャネルの機密情報を表示する権限がないため、既存の設定は非表示です。",
+    "Leave this field unchanged to preserve it, or replace or clear it explicitly.": "既存の設定を保持するにはこのフィールドを変更せず、置き換えや削除を行う場合は明示的に操作してください。",
+    "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification.": "チャネルの上書き設定と許可されたキーのプレビューを表示します。完全なキーには引き続き root 権限とセキュリティ認証が必要です。"
   }
 }

@@ -64,11 +64,28 @@ func parseStatusFilter(statusParam string) int {
 	}
 }
 
-func clearChannelInfo(channel *model.Channel) {
-	if channel.ChannelInfo.IsMultiKey {
-		channel.ChannelInfo.MultiKeyDisabledReason = nil
-		channel.ChannelInfo.MultiKeyDisabledTime = nil
+type channelResponse struct {
+	model.Channel
+	ParamOverrideConfigured  bool `json:"param_override_configured"`
+	HeaderOverrideConfigured bool `json:"header_override_configured"`
+}
+
+// Overrides may contain credentials at arbitrary header names or nested paths.
+// Hide entire configurations in the response without changing persisted values.
+func channelForResponse(channel *model.Channel, canViewSecrets bool) channelResponse {
+	response := channelResponse{Channel: *channel}
+	response.ParamOverrideConfigured = channel.ParamOverride != nil && strings.TrimSpace(*channel.ParamOverride) != ""
+	response.HeaderOverrideConfigured = channel.HeaderOverride != nil && strings.TrimSpace(*channel.HeaderOverride) != ""
+	response.Key = ""
+	if !canViewSecrets {
+		response.ParamOverride = nil
+		response.HeaderOverride = nil
 	}
+	if response.ChannelInfo.IsMultiKey {
+		response.ChannelInfo.MultiKeyDisabledReason = nil
+		response.ChannelInfo.MultiKeyDisabledTime = nil
+	}
+	return response
 }
 
 func applyChannelStatusFilter(query *gorm.DB, statusFilter int) *gorm.DB {
@@ -165,8 +182,10 @@ func GetAllChannels(c *gin.Context) {
 		}
 	}
 
+	canViewSecrets := authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSecretView)
+	responseData := make([]channelResponse, 0, len(channelData))
 	for _, datum := range channelData {
-		clearChannelInfo(datum)
+		responseData = append(responseData, channelForResponse(datum, canViewSecrets))
 	}
 
 	countQuery := buildChannelListQuery(groupFilter, statusFilter, -1)
@@ -184,7 +203,7 @@ func GetAllChannels(c *gin.Context) {
 		typeCounts[r.Type] = r.Count
 	}
 	common.ApiSuccess(c, gin.H{
-		"items":       channelData,
+		"items":       responseData,
 		"total":       total,
 		"page":        pageInfo.GetPage(),
 		"page_size":   pageInfo.GetPageSize(),
@@ -378,15 +397,17 @@ func SearchChannels(c *gin.Context) {
 
 	pagedData := channelData[startIdx:endIdx]
 
+	canViewSecrets := authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSecretView)
+	responseData := make([]channelResponse, 0, len(pagedData))
 	for _, datum := range pagedData {
-		clearChannelInfo(datum)
+		responseData = append(responseData, channelForResponse(datum, canViewSecrets))
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"items":       pagedData,
+			"items":       responseData,
 			"total":       total,
 			"type_counts": typeCounts,
 		},
@@ -405,13 +426,11 @@ func GetChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	if channel != nil {
-		clearChannelInfo(channel)
-	}
+	canViewSecrets := authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSecretView)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    channel,
+		"data":    channelForResponse(channel, canViewSecrets),
 	})
 	return
 }
@@ -1114,12 +1133,16 @@ func UpdateChannel(c *gin.Context) {
 		"name":           channel.Name,
 		"changed_fields": changedFields,
 	})
-	channel.Key = ""
-	clearChannelInfo(&channel.Channel)
+	canViewSecrets := authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSecretView)
+	response := struct {
+		channelResponse
+		MultiKeyMode *string `json:"multi_key_mode"`
+		KeyMode      *string `json:"key_mode"`
+	}{channelForResponse(&channel.Channel, canViewSecrets), channel.MultiKeyMode, channel.KeyMode}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    channel,
+		"data":    response,
 	})
 	return
 }

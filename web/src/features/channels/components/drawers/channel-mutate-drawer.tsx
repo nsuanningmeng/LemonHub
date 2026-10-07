@@ -627,6 +627,14 @@ export function ChannelMutateDrawer({
     ADMIN_PERMISSION_RESOURCES.CHANNEL,
     ADMIN_PERMISSION_ACTIONS.SENSITIVE_WRITE
   )
+  const canViewSecrets = hasPermission(
+    currentUser,
+    ADMIN_PERMISSION_RESOURCES.CHANNEL,
+    ADMIN_PERMISSION_ACTIONS.SECRET_VIEW
+  )
+  const [editedOverrides, setEditedOverrides] = useState<
+    Partial<Record<'param_override' | 'header_override', boolean>>
+  >({})
   const canRevealChannelKey = currentUser?.role === ROLE.SUPER_ADMIN
   const [fetchModelsDialogOpen, setFetchModelsDialogOpen] = useState(false)
   const [channelKey, setChannelKey] = useState<string | null>(null)
@@ -669,7 +677,11 @@ export function ChannelMutateDrawer({
 
   // Fetch channel details if editing
   const { data: channelData, isLoading: isChannelLoading } = useQuery({
-    queryKey: channelsQueryKeys.detail(channelId || 0),
+    queryKey: [
+      ...channelsQueryKeys.detail(channelId || 0),
+      currentUser?.id,
+      canViewSecrets,
+    ],
     queryFn: () => getChannel(channelId || 0),
     enabled: isEditing && Boolean(channelId),
   })
@@ -723,6 +735,14 @@ export function ChannelMutateDrawer({
     resolver: zodResolver(channelFormSchema),
     defaultValues: CHANNEL_FORM_DEFAULT_VALUES,
   })
+
+  const updateOverride = (
+    field: 'param_override' | 'header_override',
+    value: string
+  ) => {
+    setEditedOverrides((previous) => ({ ...previous, [field]: true }))
+    form.setValue(field, value, { shouldDirty: true, shouldValidate: true })
+  }
 
   // Watch form values for conditional rendering
   const multiKeyMode = form.watch('multi_key_mode')
@@ -1027,7 +1047,11 @@ export function ChannelMutateDrawer({
   const overrideRulesConfigured = Boolean(
     hasConfiguredOverrideValue(currentStatusCodeMapping) ||
     hasConfiguredOverrideValue(currentParamOverride) ||
-    hasConfiguredOverrideValue(currentHeaderOverride)
+    hasConfiguredOverrideValue(currentHeaderOverride) ||
+    (!editedOverrides.param_override &&
+      channelData?.data?.param_override_configured) ||
+    (!editedOverrides.header_override &&
+      channelData?.data?.header_override_configured)
   )
   const extraSettingsConfigured = Boolean(
     currentForceFormat ||
@@ -1263,11 +1287,28 @@ export function ChannelMutateDrawer({
 
   // Load channel data into form when editing
   useEffect(() => {
+    if (!open) {
+      return
+    }
+    setEditedOverrides({})
+    if (isEditing && !channelData?.data) {
+      form.setValue('param_override', '')
+      form.setValue('header_override', '')
+    }
     if (isEditing && channelData?.data) {
-      const defaults = transformChannelToFormDefaults(channelData.data)
+      const defaults = transformChannelToFormDefaults({
+        ...channelData.data,
+        param_override: canViewSecrets ? channelData.data.param_override : null,
+        header_override: canViewSecrets
+          ? channelData.data.header_override
+          : null,
+      })
       form.reset(defaults)
       setAdvancedSettingsOpen(
-        readAdvancedSettingsPreference() || hasAdvancedSettingsValues(defaults)
+        readAdvancedSettingsPreference() ||
+          hasAdvancedSettingsValues(defaults) ||
+          channelData.data.param_override_configured === true ||
+          channelData.data.header_override_configured === true
       )
       // Store initial values for comparison
       initialModelsRef.current = parseModelsString(
@@ -1283,7 +1324,7 @@ export function ChannelMutateDrawer({
       initialModelMappingRef.current = ''
       initialStatusCodeMappingRef.current = ''
     }
-  }, [isEditing, channelData, form])
+  }, [isEditing, channelData, form, open, canViewSecrets])
 
   // Handle type change - set default values for specific types
   useEffect(() => {
@@ -1635,6 +1676,7 @@ export function ChannelMutateDrawer({
     isEditing,
     isMultiKeyChannel,
     onSuccess: handleSuccess,
+    editedOverrides,
   })
 
   const isSubmitting = channelMutation.isPending
@@ -1865,6 +1907,7 @@ export function ChannelMutateDrawer({
       onOpenChange(v)
       if (!v) {
         form.reset(CHANNEL_FORM_DEFAULT_VALUES)
+        setEditedOverrides({})
         advancedNavScrollPendingRef.current = false
         setActiveEditorSectionId(CHANNEL_EDITOR_SECTION_IDS.identity)
         setExpandedEditorNavItemId(undefined)
@@ -3927,7 +3970,8 @@ export function ChannelMutateDrawer({
                                           variant='outline'
                                           size='sm'
                                           onClick={() => {
-                                            field.onChange(
+                                            updateOverride(
+                                              'param_override',
                                               JSON.stringify(
                                                 {
                                                   operations: [
@@ -3959,16 +4003,41 @@ export function ChannelMutateDrawer({
                                           type='button'
                                           variant='ghost'
                                           size='sm'
-                                          onClick={() => field.onChange('')}
+                                          onClick={() =>
+                                            updateOverride('param_override', '')
+                                          }
                                         >
                                           {t('Clear')}
                                         </Button>
                                       </div>
                                     </div>
+                                    {isEditing &&
+                                      !canViewSecrets &&
+                                      channelData?.data
+                                        ?.param_override_configured && (
+                                        <FormDescription>
+                                          {t(
+                                            'Existing configuration is hidden because you do not have permission to view channel secrets.'
+                                          )}
+                                          {canEditSensitive && (
+                                            <>
+                                              {' '}
+                                              {t(
+                                                'Leave this field unchanged to preserve it, or replace or clear it explicitly.'
+                                              )}
+                                            </>
+                                          )}
+                                        </FormDescription>
+                                      )}
                                     <FormControl>
                                       <JsonCodeEditor
                                         value={field.value || ''}
-                                        onChange={field.onChange}
+                                        onChange={(value) =>
+                                          updateOverride(
+                                            'param_override',
+                                            value
+                                          )
+                                        }
                                         name={field.name}
                                         onBlur={field.onBlur}
                                         textareaRef={field.ref}
@@ -4005,7 +4074,8 @@ export function ChannelMutateDrawer({
                                           variant='outline'
                                           size='sm'
                                           onClick={() =>
-                                            field.onChange(
+                                            updateOverride(
+                                              'header_override',
                                               JSON.stringify(
                                                 {
                                                   '*': true,
@@ -4028,7 +4098,8 @@ export function ChannelMutateDrawer({
                                           variant='outline'
                                           size='sm'
                                           onClick={() =>
-                                            field.onChange(
+                                            updateOverride(
+                                              'header_override',
                                               JSON.stringify(
                                                 { '*': true },
                                                 null,
@@ -4043,16 +4114,44 @@ export function ChannelMutateDrawer({
                                           type='button'
                                           variant='ghost'
                                           size='sm'
-                                          onClick={() => field.onChange('')}
+                                          onClick={() =>
+                                            updateOverride(
+                                              'header_override',
+                                              ''
+                                            )
+                                          }
                                         >
                                           {t('Clear')}
                                         </Button>
                                       </div>
                                     </div>
+                                    {isEditing &&
+                                      !canViewSecrets &&
+                                      channelData?.data
+                                        ?.header_override_configured && (
+                                        <FormDescription>
+                                          {t(
+                                            'Existing configuration is hidden because you do not have permission to view channel secrets.'
+                                          )}
+                                          {canEditSensitive && (
+                                            <>
+                                              {' '}
+                                              {t(
+                                                'Leave this field unchanged to preserve it, or replace or clear it explicitly.'
+                                              )}
+                                            </>
+                                          )}
+                                        </FormDescription>
+                                      )}
                                     <FormControl>
                                       <JsonCodeEditor
                                         value={field.value || ''}
-                                        onChange={field.onChange}
+                                        onChange={(value) =>
+                                          updateOverride(
+                                            'header_override',
+                                            value
+                                          )
+                                        }
                                         name={field.name}
                                         onBlur={field.onBlur}
                                         textareaRef={field.ref}
@@ -4889,10 +4988,7 @@ export function ChannelMutateDrawer({
           value={form.watch('param_override') || ''}
           onOpenChange={setParamOverrideEditorOpen}
           onSave={(nextValue) => {
-            form.setValue('param_override', nextValue, {
-              shouldDirty: true,
-              shouldValidate: true,
-            })
+            updateOverride('param_override', nextValue)
           }}
         />
       )}

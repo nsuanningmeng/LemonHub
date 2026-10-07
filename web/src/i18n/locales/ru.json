@@ -5871,6 +5871,9 @@
     "Zoom": "Zoom",
     "Match English keywords as whole words": "Искать английские ключевые слова целиком",
     "When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.": "Если включено, ключевые слова только из букв A-Z должны совпадать с целыми словами. Для остальных сохраняется поиск подстрок.",
-    "Matching ignores case. By default, keywords also match inside longer words.": "Регистр не учитывается. По умолчанию ключевые слова также совпадают с частями более длинных слов."
+    "Matching ignores case. By default, keywords also match inside longer words.": "Регистр не учитывается. По умолчанию ключевые слова также совпадают с частями более длинных слов.",
+    "Existing configuration is hidden because you do not have permission to view channel secrets.": "Существующая конфигурация скрыта, поскольку у вас нет разрешения на просмотр секретов канала.",
+    "Leave this field unchanged to preserve it, or replace or clear it explicitly.": "Оставьте это поле без изменений, чтобы сохранить конфигурацию, либо явно замените или очистите её.",
+    "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification.": "Просмотр настроек переопределения канала и разрешённых предпросмотров ключей. Для полных ключей по-прежнему нужны права root и проверка безопасности."
   }
 }

@@ -5871,6 +5871,9 @@
     "Zoom": "縮放",
     "Match English keywords as whole words": "英文關鍵字按整詞比對",
     "When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.": "啟用後，僅由 A-Z 字母組成的關鍵字必須比對完整單字，其他關鍵字仍按子字串比對。",
-    "Matching ignores case. By default, keywords also match inside longer words.": "比對不區分大小寫。預設情況下，關鍵字也會比對較長單字中的片段。"
+    "Matching ignores case. By default, keywords also match inside longer words.": "比對不區分大小寫。預設情況下，關鍵字也會比對較長單字中的片段。",
+    "Existing configuration is hidden because you do not have permission to view channel secrets.": "現有設定已隱藏，因為你沒有檢視管道機密的權限。",
+    "Leave this field unchanged to preserve it, or replace or clear it explicitly.": "保持此欄位不變可保留現有設定，也可以明確取代或清除它。",
+    "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification.": "檢視管道覆寫設定和獲准的金鑰預覽。完整金鑰仍需要超級管理員權限和安全驗證。"
   }
 }

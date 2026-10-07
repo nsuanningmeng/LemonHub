@@ -1,12 +1,10 @@
 package controller
 
 import (
-	"time"
+	"errors"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,150 +23,78 @@ type SetupRequest struct {
 }
 
 func GetSetup(c *gin.Context) {
-	setup := Setup{
-		Status: constant.Setup,
-	}
-	if constant.Setup {
-		c.JSON(200, gin.H{
-			"success": true,
-			"data":    setup,
-		})
+	persisted, err := model.GetSetup()
+	if err != nil {
+		common.ApiErrorMsg(c, "读取初始化状态失败")
 		return
 	}
-	setup.RootInit = model.RootUserExists()
-	setup.DatabaseType = string(common.MainDatabaseType())
-	c.JSON(200, gin.H{
-		"success": true,
-		"data":    setup,
-	})
+	setup := Setup{Status: persisted != nil}
+	if persisted == nil {
+		rootExists, err := model.RootUserExists()
+		if err != nil {
+			common.ApiErrorMsg(c, "读取初始化状态失败")
+			return
+		}
+		setup.RootInit = rootExists
+		setup.Status = rootExists
+		setup.DatabaseType = string(common.MainDatabaseType())
+	}
+	c.JSON(200, gin.H{"success": true, "data": setup})
 }
 
 func PostSetup(c *gin.Context) {
-	// Check if setup is already completed
-	if constant.Setup {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "系统已经初始化完成",
-		})
+	// The process flag can be stale on another node. The database is always the
+	// authority; failures are not equivalent to an uninitialized installation.
+	persisted, err := model.GetSetup()
+	if err != nil {
+		common.ApiErrorMsg(c, "读取初始化状态失败")
 		return
 	}
-
-	// Check if root user already exists
-	rootExists := model.RootUserExists()
+	if persisted != nil {
+		common.ApiErrorMsg(c, "系统已经初始化完成")
+		return
+	}
+	rootExists, err := model.RootUserExists()
+	if err != nil {
+		common.ApiErrorMsg(c, "读取初始化状态失败")
+		return
+	}
+	if rootExists {
+		common.ApiErrorMsg(c, "系统已经初始化完成")
+		return
+	}
 
 	var req SetupRequest
-	err := c.ShouldBindJSON(&req)
-	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "请求参数有误",
-		})
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "请求参数有误")
 		return
 	}
-
-	// If root doesn't exist, validate and create admin account
-	if !rootExists {
-		// Validate username length: max 12 characters to align with model.User validation
-		if len(req.Username) > 12 {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "用户名长度不能超过12个字符",
-			})
-			return
-		}
-		// Validate password
-		if req.Password != req.ConfirmPassword {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "两次输入的密码不一致",
-			})
-			return
-		}
-
-		if len(req.Password) < 8 {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "密码长度至少为8个字符",
-			})
-			return
-		}
-
-		// Create root user
-		hashedPassword, err := common.Password2Hash(req.Password)
-		if err != nil {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "系统错误: " + err.Error(),
-			})
-			return
-		}
-		rootUser := model.User{
-			Username:    req.Username,
-			Password:    hashedPassword,
-			Role:        common.RoleRootUser,
-			Status:      common.UserStatusEnabled,
-			DisplayName: "Root User",
-			AccessToken: nil,
-			Quota:       100000000,
-		}
-		err = model.DB.Create(&rootUser).Error
-		if err != nil {
-			c.JSON(200, gin.H{
-				"success": false,
-				"message": "创建管理员账号失败: " + err.Error(),
-			})
-			return
-		}
-	}
-
-	// Set operation modes
-	operation_setting.SelfUseModeEnabled = req.SelfUseModeEnabled
-	operation_setting.DemoSiteEnabled = req.DemoSiteEnabled
-
-	// Save operation modes to database for persistence
-	err = model.UpdateOption("SelfUseModeEnabled", boolToString(req.SelfUseModeEnabled))
-	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "保存自用模式设置失败: " + err.Error(),
-		})
+	if len(req.Username) > 12 {
+		common.ApiErrorMsg(c, "用户名长度不能超过12个字符")
 		return
 	}
-
-	err = model.UpdateOption("DemoSiteEnabled", boolToString(req.DemoSiteEnabled))
-	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "保存演示站点模式设置失败: " + err.Error(),
-		})
+	if req.Password != req.ConfirmPassword {
+		common.ApiErrorMsg(c, "两次输入的密码不一致")
 		return
 	}
-
-	// Update setup status
-	constant.Setup = true
-
-	setup := model.Setup{
-		Version:       common.Version,
-		InitializedAt: time.Now().Unix(),
-	}
-	err = model.DB.Create(&setup).Error
-	if err != nil {
-		c.JSON(200, gin.H{
-			"success": false,
-			"message": "系统初始化失败: " + err.Error(),
-		})
+	if len(req.Password) < 8 {
+		common.ApiErrorMsg(c, "密码长度至少为8个字符")
 		return
 	}
-
-	c.JSON(200, gin.H{
-		"success": true,
-		"message": "系统初始化成功",
-	})
-}
-
-func boolToString(b bool) string {
-	if b {
-		return "true"
+	hashedPassword, err := common.Password2Hash(req.Password)
+	if err != nil {
+		common.ApiErrorMsg(c, "系统初始化失败")
+		return
 	}
-	return "false"
+	// Repeat both checks in the transaction that claims the marker. No root or
+	// mode becomes durable until all parts of setup commit successfully.
+	if err := model.InitializeSetup(req.Username, hashedPassword, req.SelfUseModeEnabled, req.DemoSiteEnabled); err != nil {
+		if errors.Is(err, model.ErrSetupAlreadyInitialized) {
+			common.ApiErrorMsg(c, "系统已经初始化完成")
+			return
+		}
+		common.ApiErrorMsg(c, "系统初始化失败")
+		return
+	}
+	c.JSON(200, gin.H{"success": true, "message": "系统初始化成功"})
 }

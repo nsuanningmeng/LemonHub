@@ -5871,6 +5871,9 @@
     "Zoom": "Zoom",
     "Match English keywords as whole words": "Khớp toàn bộ từ khóa tiếng Anh",
     "When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.": "Khi bật, từ khóa chỉ gồm các chữ cái A-Z phải khớp toàn bộ từ. Các từ khóa khác vẫn khớp theo chuỗi con.",
-    "Matching ignores case. By default, keywords also match inside longer words.": "Không phân biệt chữ hoa và chữ thường. Theo mặc định, từ khóa cũng khớp với các phần bên trong từ dài hơn."
+    "Matching ignores case. By default, keywords also match inside longer words.": "Không phân biệt chữ hoa và chữ thường. Theo mặc định, từ khóa cũng khớp với các phần bên trong từ dài hơn.",
+    "Existing configuration is hidden because you do not have permission to view channel secrets.": "Cấu hình hiện có bị ẩn vì bạn không có quyền xem thông tin bí mật của kênh.",
+    "Leave this field unchanged to preserve it, or replace or clear it explicitly.": "Giữ nguyên trường này để bảo toàn cấu hình, hoặc chủ động thay thế hay xóa cấu hình đó.",
+    "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification.": "Xem cấu hình ghi đè của kênh và bản xem trước khóa được phép. Khóa đầy đủ vẫn yêu cầu quyền root và xác minh bảo mật."
   }
 }

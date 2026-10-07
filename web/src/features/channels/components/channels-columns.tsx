@@ -694,7 +694,9 @@ export function useChannelsColumns(
           // Regular channel row
           const settings = parseChannelSettings(channel.setting)
           const isPassThrough = settings.pass_through_body_enabled === true
-          const hasParamOverride = Boolean(channel.param_override?.trim())
+          const hasParamOverride =
+            channel.param_override_configured ??
+            Boolean(channel.param_override?.trim())
 
           return (
             <div className='flex max-w-full min-w-0 items-center gap-2'>
@@ -726,7 +728,11 @@ export function useChannelsColumns(
                       <Tooltip>
                         <TooltipTrigger
                           render={
-                            <SlidersHorizontal className='text-info h-3.5 w-3.5 flex-shrink-0' />
+                            <SlidersHorizontal
+                              role='img'
+                              aria-label={t('Override request parameters')}
+                              className='text-info h-3.5 w-3.5 flex-shrink-0'
+                            />
                           }
                         />
                         <TooltipContent side='top'>

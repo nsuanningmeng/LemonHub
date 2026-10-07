@@ -314,7 +314,10 @@ func InitResources() error {
 		return err
 	}
 
-	model.CheckSetup()
+	if err := model.CheckSetup(); err != nil {
+		common.FatalLog("failed to verify installation state")
+		return err
+	}
 
 	// Initialize options, should after model.InitDB()
 	if common.IsMasterNode {

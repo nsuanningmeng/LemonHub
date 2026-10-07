@@ -1,8 +1,6 @@
 package authz
 
 import (
-	"fmt"
-
 	"github.com/QuantumNous/new-api/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -42,18 +40,15 @@ func resetBuiltInRolePolicies(db *gorm.DB) error {
 	return db.Where("ptype = ? AND v0 IN ?", "p", subjects).Delete(&model.CasbinRule{}).Error
 }
 
-func seedDefaultPolicies() error {
-	e := currentEnforcer()
-	if e == nil {
-		return fmt.Errorf("authz enforcer is not initialized")
-	}
-
+// seedDefaultPolicies uses the caller's transaction and never the live enforcer.
+func seedDefaultPolicies(db *gorm.DB) error {
 	for _, spec := range builtInRoles {
 		if spec.Superuser {
 			continue
 		}
 		for _, permission := range PermissionsForRole(spec.Key) {
-			if _, err := e.AddPolicy(RoleSubject(spec.Key), permission.Resource, permission.Action, EffectAllow); err != nil {
+			rule := newRule("p", []string{RoleSubject(spec.Key), permission.Resource, permission.Action, EffectAllow})
+			if err := db.Create(&rule).Error; err != nil {
 				return err
 			}
 		}

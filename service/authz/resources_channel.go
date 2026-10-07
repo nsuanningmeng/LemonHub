@@ -49,7 +49,7 @@ func init() {
 			{
 				Action:         ActionSecretView,
 				LabelKey:       "View channel secrets",
-				DescriptionKey: "Reserved for viewing complete channel keys after secure verification.",
+				DescriptionKey: "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification.",
 			},
 		},
 	})

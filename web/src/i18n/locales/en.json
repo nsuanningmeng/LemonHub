@@ -5871,6 +5871,9 @@
     "Zoom": "Zoom",
     "Match English keywords as whole words": "Match English keywords as whole words",
     "When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.": "When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.",
-    "Matching ignores case. By default, keywords also match inside longer words.": "Matching ignores case. By default, keywords also match inside longer words."
+    "Matching ignores case. By default, keywords also match inside longer words.": "Matching ignores case. By default, keywords also match inside longer words.",
+    "Existing configuration is hidden because you do not have permission to view channel secrets.": "Existing configuration is hidden because you do not have permission to view channel secrets.",
+    "Leave this field unchanged to preserve it, or replace or clear it explicitly.": "Leave this field unchanged to preserve it, or replace or clear it explicitly.",
+    "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification.": "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification."
   }
 }

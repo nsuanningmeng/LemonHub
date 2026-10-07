@@ -12,6 +12,7 @@ import (
 )
 
 var (
+	initMu     sync.Mutex
 	enforcerMu sync.RWMutex
 	enforcer   *casbin.SyncedEnforcer
 )
@@ -30,34 +31,45 @@ e = some(where (p.eft == allow))
 m = r.sub == p.sub && r.obj == p.obj && r.act == p.act && p.eft == "allow"
 `
 
+// Init builds a private complete snapshot. Built-in resets and seeding are one
+// transaction; neither a failed statement nor an uncertain commit publishes it.
 func Init(db *gorm.DB) error {
+	initMu.Lock()
+	defer initMu.Unlock()
+	var candidate *casbin.SyncedEnforcer
+	build := func(policyDB *gorm.DB) error {
+		m, err := casbinmodel.NewModelFromString(modelText)
+		if err != nil {
+			return err
+		}
+		candidate, err = casbin.NewSyncedEnforcer(m, newGormAdapter(policyDB))
+		return err
+	}
 	if common.IsMasterNode {
-		if err := seedBuiltInRoles(db); err != nil {
+		if err := db.Transaction(func(tx *gorm.DB) error {
+			if err := seedBuiltInRoles(tx); err != nil {
+				return err
+			}
+			if err := resetBuiltInRolePolicies(tx); err != nil {
+				return err
+			}
+			if err := seedDefaultPolicies(tx); err != nil {
+				return err
+			}
+			return build(tx)
+		}); err != nil {
 			return err
 		}
-		if err := resetBuiltInRolePolicies(db); err != nil {
-			return err
-		}
-	}
-
-	m, err := casbinmodel.NewModelFromString(modelText)
-	if err != nil {
+	} else if err := build(db); err != nil {
 		return err
 	}
-	e, err := casbin.NewSyncedEnforcer(m, newGormAdapter(db))
-	if err != nil {
-		return err
-	}
-	e.EnableAutoSave(true)
-
+	// Never retain the transaction adapter after its commit.
+	candidate.SetAdapter(newGormAdapter(db))
+	candidate.EnableAutoSave(true)
 	enforcerMu.Lock()
-	enforcer = e
+	enforcer = candidate
 	enforcerMu.Unlock()
-
-	if !common.IsMasterNode {
-		return nil
-	}
-	return seedDefaultPolicies()
+	return nil
 }
 
 func currentEnforcer() *casbin.SyncedEnforcer {

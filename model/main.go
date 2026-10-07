@@ -17,6 +17,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var commonGroupCol string
@@ -77,31 +78,38 @@ func createRootAccountIfNeed() error {
 	return nil
 }
 
-func CheckSetup() {
-	setup := GetSetup()
-	if setup == nil {
-		// No setup record exists, check if we have a root user
-		if RootUserExists() {
-			common.SysLog("system is not initialized, but root user exists")
-			// Create setup record
-			newSetup := Setup{
-				Version:       common.Version,
-				InitializedAt: time.Now().Unix(),
-			}
-			err := DB.Create(&newSetup).Error
-			if err != nil {
-				common.SysLog("failed to create setup record: " + err.Error())
-			}
-			constant.Setup = true
-		} else {
-			common.SysLog("system is not initialized and no root user exists")
-			constant.Setup = false
+func CheckSetup() error {
+	initialized := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		setup, err := getSetupWithDB(tx)
+		if err != nil {
+			return err
 		}
-	} else {
-		// Setup record exists, system is initialized
-		common.SysLog("system is already initialized at: " + time.Unix(setup.InitializedAt, 0).String())
-		constant.Setup = true
+		if setup != nil {
+			initialized = true
+			return nil
+		}
+		rootExists, err := rootUserExistsWithDB(tx)
+		if err != nil {
+			return err
+		}
+		if !rootExists {
+			return nil
+		}
+		// Legacy installations already have a root but no setup marker. The fixed
+		// primary key makes simultaneous startup repairs idempotent across nodes.
+		marker := Setup{ID: 1, Version: common.Version, InitializedAt: time.Now().Unix()}
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&marker).Error; err != nil {
+			return err
+		}
+		initialized = true
+		return nil
+	})
+	if err != nil {
+		return &setupStorageError{cause: err}
 	}
+	constant.Setup = initialized
+	return nil
 }
 
 func isClickHouseDSN(dsn string) bool {

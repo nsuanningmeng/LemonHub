@@ -41,6 +41,9 @@ type UseChannelMutateFormParams = {
   isEditing: boolean
   isMultiKeyChannel: boolean
   onSuccess: () => void
+  editedOverrides: Partial<
+    Record<'param_override' | 'header_override', boolean>
+  >
 }
 
 const SENSITIVE_UPDATE_FIELDS = [
@@ -98,6 +101,11 @@ export function useChannelMutateForm(props: UseChannelMutateFormParams) {
         )
         if (!data.key?.trim()) {
           delete payload.key
+        }
+        for (const field of ['param_override', 'header_override'] as const) {
+          if (!props.editedOverrides[field]) {
+            delete payload[field]
+          }
         }
         if (!canEditSensitive) {
           for (const field of SENSITIVE_UPDATE_FIELDS) {

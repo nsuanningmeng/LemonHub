@@ -5871,6 +5871,9 @@
     "Zoom": "Zoom",
     "Match English keywords as whole words": "Rechercher les mots-clés anglais comme des mots entiers",
     "When enabled, keywords containing only A-Z letters must match whole words. Other keywords still match substrings.": "Lorsque cette option est activée, les mots-clés composés uniquement de lettres A-Z doivent correspondre à des mots entiers. Les autres mots-clés restent recherchés par sous-chaîne.",
-    "Matching ignores case. By default, keywords also match inside longer words.": "La recherche ignore la casse. Par défaut, les mots-clés sont aussi détectés à l’intérieur de mots plus longs."
+    "Matching ignores case. By default, keywords also match inside longer words.": "La recherche ignore la casse. Par défaut, les mots-clés sont aussi détectés à l’intérieur de mots plus longs.",
+    "Existing configuration is hidden because you do not have permission to view channel secrets.": "La configuration existante est masquée car vous n’avez pas l’autorisation de consulter les secrets du canal.",
+    "Leave this field unchanged to preserve it, or replace or clear it explicitly.": "Laissez ce champ inchangé pour conserver la configuration, ou remplacez-la ou effacez-la explicitement.",
+    "View channel override configurations and permitted key previews. Complete keys still require root access and secure verification.": "Consulter les configurations de remplacement du canal et les aperçus de clés autorisés. Les clés complètes nécessitent toujours un accès root et une vérification de sécurité."
   }
 }
