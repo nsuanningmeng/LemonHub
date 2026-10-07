@@ -21,12 +21,13 @@ import { useEffect, useMemo, useRef } from 'react'
 
 import { cn } from '@/lib/utils'
 
-export type HtmlContentVariant = 'inline' | 'isolated'
+export type HtmlContentVariant = 'inline' | 'isolated' | 'document'
 
 interface HtmlContentProps {
   content: string
   className?: string
   variant?: HtmlContentVariant
+  title?: string
 }
 
 const isolatedContentSandbox =
@@ -122,6 +123,49 @@ function sanitizeHtmlContent(
   content: string,
   variant: HtmlContentVariant
 ): string {
+  if (variant === 'document') {
+    // Keep head styles and html/body selectors in their own browsing context.
+    const documentRoot = DOMPurify.sanitize(content, {
+      WHOLE_DOCUMENT: true,
+      RETURN_DOM: true,
+      ADD_TAGS: ['style'],
+      ADD_ATTR: ['target'],
+      FORBID_TAGS: [
+        'base',
+        'embed',
+        'iframe',
+        'link',
+        'meta',
+        'object',
+        'script',
+      ],
+      FORBID_ATTR: ['srcdoc'],
+    }) as HTMLHtmlElement
+
+    documentRoot.querySelectorAll('a[href], area[href]').forEach((link) => {
+      const href = link.getAttribute('href')?.trim() ?? ''
+      if (href.startsWith('#')) {
+        // Bare fragments in srcdoc otherwise resolve against the parent URL.
+        link.setAttribute('href', `about:srcdoc${href}`)
+        link.removeAttribute('target')
+        return
+      }
+
+      // Destination pages must not inherit this frame's script restrictions.
+      link.setAttribute('target', '_blank')
+      const rel = new Set(
+        link.getAttribute('rel')?.split(/\s+/).filter(Boolean) ?? []
+      )
+      rel.delete('opener')
+      rel.add('noopener')
+      rel.add('noreferrer')
+      link.setAttribute('rel', [...rel].join(' '))
+    })
+
+    // An explicit doctype prevents srcdoc from falling back to quirks mode.
+    return `<!doctype html>${documentRoot.outerHTML}`
+  }
+
   if (variant === 'isolated') {
     const html = DOMPurify.sanitize(content, isolatedSanitizeOptions)
 
@@ -189,6 +233,18 @@ export function HtmlContent(props: HtmlContentProps) {
     () => sanitizeHtmlContent(props.content, variant),
     [props.content, variant]
   )
+
+  if (variant === 'document') {
+    return (
+      <iframe
+        title={props.title}
+        srcDoc={html}
+        className={cn('block w-full border-0', props.className)}
+        sandbox='allow-popups allow-popups-to-escape-sandbox'
+        referrerPolicy='no-referrer'
+      />
+    )
+  }
 
   if (variant === 'isolated') {
     return <IsolatedHtmlContent className={props.className} html={html} />
