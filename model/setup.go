@@ -56,6 +56,15 @@ func rootUserExistsWithDB(db *gorm.DB) (bool, error) {
 // together. The existing marker primary key arbitrates empty-database races
 // across processes; locking a nonexistent row alone would not do so.
 func InitializeSetup(username, passwordHash string, selfUse, demo bool) error {
+	optionWriterMu.Lock()
+	defer optionWriterMu.Unlock()
+	return initializeSetup(username, passwordHash, selfUse, demo)
+}
+
+// initializeSetup performs the complete setup transaction and publication.
+// The public entry point serializes local option writers; the database claim
+// inside this primitive also arbitrates independent application processes.
+func initializeSetup(username, passwordHash string, selfUse, demo bool) error {
 	values := []Option{{Key: "SelfUseModeEnabled", Value: strconv.FormatBool(selfUse)}, {Key: "DemoSiteEnabled", Value: strconv.FormatBool(demo)}}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		setup, err := getSetupWithDB(tx)

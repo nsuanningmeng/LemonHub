@@ -11,11 +11,31 @@ type RWMap[K comparable, V any] struct {
 	mutex sync.RWMutex
 }
 
+func decodeRWMap[K comparable, V any](b []byte) (map[K]V, error) {
+	data := make(map[K]V)
+	if err := common.Unmarshal(b, &data); err != nil {
+		return nil, err
+	}
+	if data == nil {
+		data = make(map[K]V)
+	}
+	return data, nil
+}
+
+// ValidateJSON identifies identity-preserving configuration maps.
+func (m *RWMap[K, V]) ValidateJSON(b []byte) error {
+	_, err := decodeRWMap[K, V](b)
+	return err
+}
 func (m *RWMap[K, V]) UnmarshalJSON(b []byte) error {
+	data, err := decodeRWMap[K, V](b)
+	if err != nil {
+		return err
+	}
 	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.data = make(map[K]V)
-	return common.Unmarshal(b, &m.data)
+	m.data = data
+	m.mutex.Unlock()
+	return nil
 }
 
 func (m *RWMap[K, V]) MarshalJSON() ([]byte, error) {
@@ -74,21 +94,22 @@ func (m *RWMap[K, V]) Len() int {
 }
 
 func LoadFromJsonString[K comparable, V any](m *RWMap[K, V], jsonStr string) error {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
-	m.data = make(map[K]V)
-	return common.Unmarshal([]byte(jsonStr), &m.data)
+	return m.UnmarshalJSON([]byte(jsonStr))
 }
 
 func LoadFromJsonStringWithCallback[K comparable, V any](m *RWMap[K, V], jsonStr string, onSuccess func()) error {
+	data, err := decodeRWMap[K, V]([]byte(jsonStr))
+	if err != nil {
+		return err
+	}
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
-	m.data = make(map[K]V)
-	err := common.Unmarshal([]byte(jsonStr), &m.data)
-	if err == nil && onSuccess != nil {
+	m.data = data
+	// Preserve the existing callback-after-commit, under-lock ordering.
+	if onSuccess != nil {
 		onSuccess()
 	}
-	return err
+	return nil
 }
 
 func (m *RWMap[K, V]) MarshalJSONString() string {

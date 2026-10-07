@@ -135,7 +135,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mysql-version: ['5.7', '8.0', '8.4']
+        mysql-version: ['5.7', '8.0', '8.2', '8.4']
     services:
       mysql:
         image: mysql:${{ matrix.mysql-version }}
@@ -163,6 +163,10 @@ jobs:
       MYSQL_SUBSCRIPTION_RECEIPT_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_subscription_receipt_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       MYSQL_LOG_INPUT_MIGRATION_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_log_input_test_ci?charset=utf8mb4&parseTime=True&loc=Local
       MYSQL_SUBSCRIPTION_SETTLEMENT_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_subscription_settlement_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      MYSQL_QUOTA_DATA_DURABILITY_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/lemonhub_quota_data_durability_test_ci?charset=utf8mb4&parseTime=True&loc=Local
+      B23_AUTHZ_MYSQL_DSN: lemonhub:lemonhub-migration-test@tcp(127.0.0.1:3306)/b23_authz_ci?charset=utf8mb4&parseTime=True&loc=Local
+      B23_AUTHZ_MYSQL_ALLOW_SCHEMA: '1'
+      TEST_MYSQL_DISPOSABLE_INSTANCE: '1'
 
     steps:
       - name: Checkout
@@ -186,6 +190,8 @@ jobs:
             CREATE DATABASE lemonhub_log_input_test_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
             CREATE DATABASE lemonhub_subscription_receipt_test_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
             CREATE DATABASE lemonhub_subscription_settlement_test_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+            CREATE DATABASE lemonhub_quota_data_durability_test_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+            CREATE DATABASE b23_authz_ci CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
             GRANT ALL PRIVILEGES ON lemonhub_topup_migration_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_rc25_upgrade_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_token_group_upgrade_test_ci.* TO 'lemonhub'@'%';
@@ -195,7 +201,19 @@ jobs:
             GRANT ALL PRIVILEGES ON lemonhub_log_input_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_subscription_receipt_test_ci.* TO 'lemonhub'@'%';
             GRANT ALL PRIVILEGES ON lemonhub_subscription_settlement_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON lemonhub_quota_data_durability_test_ci.* TO 'lemonhub'@'%';
+            GRANT ALL PRIVILEGES ON b23_authz_ci.* TO 'lemonhub'@'%';
+            GRANT SUPER ON *.* TO 'lemonhub'@'%';
           "
+
+      # SUPER is limited to this disposable CI service. It allows the native
+      # trigger fault fixture with binary logging enabled, and the 5.7-only
+      # large-prefix test restores the GLOBAL value it temporarily changes.
+      - name: Verify failed dashboard writes retain their complete batch
+        run: go test ./model -run '^TestMySQLQuotaDataFlushDurability$' -count=1 -v
+
+      - name: Verify authorization initialization remains atomic on MySQL
+        run: go test ./service/authz -run '^TestAuthzInitializationAtomicMySQL$' -count=1 -v
 
       - name: Verify legacy data, balances, keys, and lossless column migrations
         run: go test ./model -run '^(TestMySQL(RC25UpgradePreservesLegacyData|TopUpMigrationSafety|TokenQuotaMigrationPreservesData|TokenGroupUpgradePreservesExistingKeys|WalletQuotaMigrationPreservesData|MigrationPreflightPreservesWideColumns)|TestPreflightExternalIdentityClaimsMySQLCollation|TestCustomOAuthBindingPreflightUsesClaimCollationMySQL)$' -count=1 -v

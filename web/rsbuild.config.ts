@@ -87,6 +87,26 @@ export default defineConfig(({ envMode }) => {
       buildCache: false,
     },
     tools: {
+      bundlerChain(chain, { CHAIN_ID }) {
+        chain.plugin(CHAIN_ID.PLUGIN.DEFINE).tap((args) => {
+          const definitions = args[0] as Record<string, unknown>
+          const metaEnv = definitions['import.meta.env']
+          if (
+            typeof metaEnv !== 'object' ||
+            metaEnv === null ||
+            Array.isArray(metaEnv)
+          ) {
+            throw new Error('Expected Rsbuild import.meta.env definitions')
+          }
+          definitions['import.meta.env'] = {
+            ...metaEnv,
+            VITE_REACT_APP_VERSION: JSON.stringify(
+              env.rawPublicVars.VITE_REACT_APP_VERSION ?? ''
+            ),
+          }
+          return args
+        })
+      },
       rspack: {
         plugins: [
           tanstackRouter({

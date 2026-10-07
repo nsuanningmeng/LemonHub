@@ -1,6 +1,8 @@
 package model
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"sync/atomic"
@@ -201,8 +203,11 @@ func TestSetupConcurrentEmptyDatabaseHasOneWinner(t *testing.T) {
 		}
 	}))
 	results := make(chan error, 2)
-	go func() { results <- InitializeSetup("root-one", "hash-one", true, false) }()
-	go func() { results <- InitializeSetup("root-two", "hash-two", false, true) }()
+	// Separate processes do not share the local writer mutex. Exercise the
+	// complete primitive directly so both independent SQL transactions still
+	// observe the empty root set and the database claim chooses one winner.
+	go func() { results <- initializeSetup("root-one", "hash-one", true, false) }()
+	go func() { results <- initializeSetup("root-two", "hash-two", false, true) }()
 	for i := 0; i < 2; i++ {
 		select {
 		case <-ready:
@@ -257,4 +262,89 @@ func TestSetupFailurePreservesPreexistingModeOptions(t *testing.T) {
 	assert.Zero(t, markers)
 	assert.False(t, constant.Setup)
 	assert.Equal(t, map[string]string{"sentinel": "unchanged"}, common.OptionMap)
+}
+
+type setupWriterCommitPool struct {
+	*sql.DB
+	committed chan struct{}
+	release   chan struct{}
+	commits   atomic.Int32
+}
+
+func (p *setupWriterCommitPool) BeginTx(ctx context.Context, opts *sql.TxOptions) (gorm.ConnPool, error) {
+	tx, err := p.DB.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &setupWriterCommitTx{Tx: tx, pool: p}, nil
+}
+
+type setupWriterCommitTx struct {
+	*sql.Tx
+	pool *setupWriterCommitPool
+}
+
+func (tx *setupWriterCommitTx) Commit() error {
+	err := tx.Tx.Commit()
+	if err == nil && tx.pool.commits.Add(1) == 1 {
+		close(tx.pool.committed)
+		<-tx.pool.release
+	}
+	return err
+}
+
+func TestSetupOptionWritersKeepCommitPublicationOrder(t *testing.T) {
+	db := setupModelSafetyDB(t)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	pool := &setupWriterCommitPool{DB: sqlDB, committed: make(chan struct{}), release: make(chan struct{})}
+	db.ConnPool, db.Statement.ConnPool = pool, pool
+	setupDone, optionDone := make(chan error, 1), make(chan error, 1)
+	go func() { setupDone <- InitializeSetup("setup-winner", "prehashed-test", true, true) }()
+	select {
+	case <-pool.committed:
+	case <-time.After(5 * time.Second):
+		close(pool.release)
+		t.Fatal("actual setup commit did not complete")
+	}
+	require.Equal(t, "true", requireOptionValue(t, db, "SelfUseModeEnabled"))
+	acquired := optionWriterMu.TryLock()
+	if acquired {
+		optionWriterMu.Unlock()
+	}
+	assert.False(t, acquired, "the setup writer must remain serialized after SQL commit until publication")
+	entered := make(chan struct{})
+	go func() { close(entered); optionDone <- UpdateOption("SelfUseModeEnabled", "false") }()
+	<-entered
+	// If the public guard regresses, force the independently committed option
+	// to finish first, deterministically exposing the old late-publication bug.
+	if acquired {
+		select {
+		case err := <-optionDone:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			close(pool.release)
+			t.Fatal("unguarded option update did not complete")
+		}
+	}
+	close(pool.release)
+	select {
+	case err := <-setupDone:
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("setup acknowledgement did not complete")
+	}
+	if !acquired {
+		select {
+		case err := <-optionDone:
+			require.NoError(t, err)
+		case <-time.After(5 * time.Second):
+			t.Fatal("serialized option update did not complete")
+		}
+	}
+	assert.EqualValues(t, 2, pool.commits.Load())
+	assert.Equal(t, "false", requireOptionValue(t, db, "SelfUseModeEnabled"))
+	assert.Equal(t, "false", common.OptionMap["SelfUseModeEnabled"])
+	assert.False(t, operation_setting.SelfUseModeEnabled)
+	assert.True(t, constant.Setup)
 }

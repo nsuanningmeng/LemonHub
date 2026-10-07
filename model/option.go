@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -19,6 +20,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+var optionWriterMu sync.Mutex
 
 type Option struct {
 	Key   string `json:"key" gorm:"primaryKey"`
@@ -41,6 +44,8 @@ func AllOption() ([]*Option, error) {
 }
 
 func InitOptionMap() error {
+	optionWriterMu.Lock()
+	defer optionWriterMu.Unlock()
 	options, err := AllOption()
 	if err != nil {
 		return err
@@ -285,6 +290,8 @@ func ensureUnsubscribeSecret() error {
 }
 
 func loadOptionsFromDatabase() error {
+	optionWriterMu.Lock()
+	defer optionWriterMu.Unlock()
 	options, err := AllOption()
 	if err != nil {
 		return err
@@ -315,6 +322,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if err := config.GlobalConfig.ValidateOptions(map[string]string{key: value}); err != nil {
+		return err
+	}
 	switch key {
 	case operation_setting.ToolPriceOptionKey:
 		return operation_setting.ValidateToolPricesJSON(value)
@@ -357,6 +367,8 @@ func UpdateOption(key string, value string) error {
 // is touched — safe for callers that must commit a set of related options
 // atomically (e.g. payment gateway binding).
 func UpdateOptionsBulk(values map[string]string) error {
+	optionWriterMu.Lock()
+	defer optionWriterMu.Unlock()
 	if len(values) == 0 {
 		return nil
 	}
@@ -398,12 +410,15 @@ func updateOptionMap(key string, value string) (err error) {
 	}
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
-	common.OptionMap[key] = value
-
-	// 检查是否是模型配置 - 使用更规范的方式处理
-	if handleConfigUpdate(key, value) {
-		return nil // 已由配置系统处理
+	// Publish the raw value only after a layered setter succeeds.
+	if handled, configErr := handleConfigUpdate(key, value); handled {
+		if configErr != nil {
+			return configErr
+		}
+		common.OptionMap[key] = value
+		return nil
 	}
+	common.OptionMap[key] = value
 
 	// 处理传统配置项...
 	if strings.HasSuffix(key, "Permission") {
@@ -781,15 +796,15 @@ func updateOptionMap(key string, value string) (err error) {
 }
 
 // handleConfigUpdate 处理分层配置更新，返回是否已处理
-func handleConfigUpdate(key, value string) bool {
+func handleConfigUpdate(key, value string) (bool, error) {
 	if key == operation_setting.ToolPriceOptionKey {
 		operation_setting.LoadToolPricesFromJSONString(value)
-		return true
+		return true, nil
 	}
 
 	parts := strings.SplitN(key, ".", 2)
 	if len(parts) != 2 {
-		return false // 不是分层配置
+		return false, nil // 不是分层配置
 	}
 
 	configName := parts[0]
@@ -798,14 +813,16 @@ func handleConfigUpdate(key, value string) bool {
 	// 获取配置对象
 	cfg := config.GlobalConfig.Get(configName)
 	if cfg == nil {
-		return false // 未注册的配置
+		return false, nil // 未注册的配置
 	}
 
 	// 更新配置
 	configMap := map[string]string{
 		configKey: value,
 	}
-	config.UpdateConfigFromMap(cfg, configMap)
+	if err := config.UpdateConfigFromMap(cfg, configMap); err != nil {
+		return true, err
+	}
 
 	// 特定配置的后处理
 	if configName == "performance_setting" {
@@ -815,5 +832,5 @@ func handleConfigUpdate(key, value string) bool {
 		ratio_setting.InvalidateExposedDataCache()
 	}
 
-	return true // 已处理
+	return true, nil // 已处理
 }

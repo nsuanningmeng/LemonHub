@@ -10,4 +10,21 @@ docs
 .codex-tmp
 /web/node_modules
 /web/dist
+# Local deployment state and credentials must never enter the build context.
+.env
+.env.*
+**/.env
+**/.env.*
+/data
+/logs
+/mysql_data
+/postgres_data
+/redis_data
+/backups
+/dumps
+/*.db
+/*.db-*
+/*.sqlite
+/*.sqlite3
+/*.sql
 !THIRD-PARTY-LICENSES.md
