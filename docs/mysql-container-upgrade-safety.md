@@ -1,6 +1,8 @@
 # MySQL 与容器升级的数据保留
 
-## B21 最终运行时实测（2026-10-07）
+使用 v0.4.45、MySQL 8.2 和宿主机 `mysql_data` 绑定目录的部署，请先阅读 [MySQL 8.2 生产升级步骤](mysql82-production-upgrade.md)。后续发布的代码审查及实际验收范围见 [v0.4.46 数据安全审计](data-safety-audit-v0.4.46.md)。下列 B21 及更早结果保留为历史证据，不能代替后续发布版本的验收。
+
+## B21 修复轮次的最终运行时实测（2026-10-07，历史记录）
 
 最终生产源码树 `001da08ab912faa23b921faa0324a000e8865bc1` 的本地隔离验收已完成：**35 个实际生命周期比较阶段（27 个同引擎阶段 + 8 个顺序物理升级阶段）、9 个未跳过的原生 SQL 测试均通过**，三个同引擎实例与物理升级实例的独立原始证据复核、专属资源清理均通过。独立复核不是额外的生命周期阶段。下文 B03 和 v0.4.41 的历史结果不代替这次最终源码验收。
 
@@ -128,7 +130,7 @@ go test ./model -run '^(TestMySQLRC25UpgradePreservesLegacyData|TestMySQLTokenQu
    ```sh
    set -euo pipefail
    umask 077
-   docker compose stop new-api
+   docker compose stop -t 130 new-api
    backup="lemonhub-before-upgrade-$(date +%Y%m%d-%H%M%S).sql"
    docker compose exec -T mysql sh -c '
      export MYSQL_PWD="$MYSQL_ROOT_PASSWORD"
@@ -139,7 +141,7 @@ go test ./model -run '^(TestMySQLRC25UpgradePreservesLegacyData|TestMySQLTokenQu
    test -s "$backup"
    ```
 
-   校验备份命令成功，并在独立测试库验证恢复后再继续；仅有一个非空文件不代表备份可恢复。备份包含敏感数据，存放到受控且独立于数据库卷的位置。生产实例有额外参数或受限备份账户时，使用已验证的相应备份命令。
+   130 秒是示例外层时限，应大于实际应用退出预算。第一次停止旧版本前，必须按[排空步骤](mysql82-production-upgrade.md#先排空旧版本的写入)确认旧进程已完成写入；新版本修复不能追溯保护旧进程。校验备份命令成功，并在独立测试库验证恢复后再继续；仅有一个非空文件不代表备份可恢复。备份包含敏感数据，存放到受控且独立于数据库卷的位置。生产实例有额外参数或受限备份账户时，使用已验证的相应备份命令。
 
    恢复演练必须使用独立 MySQL 实例和新卷，等待初始化完成、最终 TCP 服务可查询后再导入。下面的容器名应指向该测试实例；备份中的 `--databases` 会选择原库名，不能把此命令指向生产容器：
 
