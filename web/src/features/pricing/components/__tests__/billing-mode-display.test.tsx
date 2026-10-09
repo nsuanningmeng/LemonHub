@@ -17,8 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
-import { expect, test, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 
@@ -68,29 +69,72 @@ test.each([
   }
 )
 
-test('compact model card shows the actual rate condition while remaining expression-priced', () => {
-  const guard = 'weekday("UTC") == 1 || hour("UTC") < 9'
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+describe('compact model card pricing', () => {
+  let client: QueryClient
+
+  beforeEach(() => {
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: { success: true, data: {} },
+    })
   })
-  const get = vi
-    .spyOn(api, 'get')
-    .mockResolvedValue({ data: { success: true, data: {} } })
-  render(
-    <QueryClientProvider client={client}>
-      <ModelCard
-        model={model(
-          `${guard} ? tier("discount", p * 1 + c * 2) : tier("base", p * 3 + c * 6)`
-        )}
-        onClick={() => {}}
-      />
-    </QueryClientProvider>
+
+  afterEach(() => {
+    client.clear()
+  })
+
+  test.each([
+    {
+      name: 'time-dependent tiers',
+      expression:
+        'weekday("UTC") == 1 || hour("UTC") < 9 ? tier("discount", p * 1 + c * 2) : tier("base", p * 3 + c * 6)',
+      outputPrice: '$2',
+      condition: /weekday\("UTC"\)|hour\("UTC"\)/,
+    },
+    {
+      name: 'long service-tier multipliers',
+      expression:
+        '(len <= 200000 ? tier("standard", p * 1 + c * 3) : tier("long", p * 2 + c * 6)) * (param("service_tier") == "priority" && len <= 272000 ? 2 : 1) * (param("service_tier") == "fast" && len <= 200000 ? 2 : 1) * (param("service_tier") == "flex" ? 0.5 : 1)',
+      outputPrice: '$3',
+      condition: /len <=|service_tier/,
+    },
+  ])(
+    '$name keep prices and a dynamic badge without exposing raw conditions',
+    async ({ expression, outputPrice, condition }) => {
+      const user = userEvent.setup()
+      const onDetails = vi.fn()
+      render(
+        <QueryClientProvider client={client}>
+          <ModelCard model={model(expression)} onClick={onDetails} />
+        </QueryClientProvider>
+      )
+
+      expect(screen.getByText('Input')).toHaveTextContent('Input $1')
+      expect(screen.getByText('Output')).toHaveTextContent(
+        `Output ${outputPrice}`
+      )
+      expect(screen.getByText('Dynamic Pricing')).toBeInTheDocument()
+      expect(screen.queryByText(condition)).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Details' }))
+      expect(onDetails).toHaveBeenCalledOnce()
+    }
   )
-  expect(screen.getByText(guard)).toBeInTheDocument()
-  expect(screen.getByText('Dynamic Pricing')).toBeInTheDocument()
-  cleanup()
-  client.clear()
-  get.mockRestore()
+
+  test('unrecognized pricing keeps the special billing label without exposing its expression', () => {
+    const expression = 'max(p * 3, 5)'
+    render(
+      <QueryClientProvider client={client}>
+        <ModelCard model={model(expression)} onClick={() => {}} />
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByText('Special billing expression')).toBeInTheDocument()
+    expect(screen.getByText('Dynamic Pricing')).toBeInTheDocument()
+    expect(screen.queryByText(expression)).not.toBeInTheDocument()
+  })
 })
 
 test('group/unit/recharge multipliers and cache coefficients retain their existing arithmetic', () => {

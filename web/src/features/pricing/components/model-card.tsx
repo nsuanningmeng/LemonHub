@@ -96,13 +96,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   if (dynamicSummary) {
     if (dynamicSummary.isSpecialExpression) {
       priceSummary = (
-        <span className='min-w-0'>
-          <span className='text-amber-700 dark:text-amber-300'>
-            {t('Special billing expression')}
-          </span>
-          <code className='text-muted-foreground/70 mt-0.5 line-clamp-1 block font-mono text-[11px] break-all'>
-            {dynamicSummary.rawExpression}
-          </code>
+        <span className='text-amber-700 dark:text-amber-300'>
+          {t('Special billing expression')}
         </span>
       )
     } else if (dynamicSummary.primaryEntries.length > 0) {
@@ -119,11 +114,6 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               </span>
             </span>
           ))}
-          {dynamicSummary.conditionText && (
-            <span className='text-muted-foreground text-xs'>
-              {dynamicSummary.conditionText}
-            </span>
-          )}
         </>
       )
     } else {
