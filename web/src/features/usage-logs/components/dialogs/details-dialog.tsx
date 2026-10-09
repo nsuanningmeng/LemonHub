@@ -1090,6 +1090,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <DetailSection label={t('Dynamic Pricing')}>
             <DynamicPricingBreakdown
               compact
+              showRawExpression
               billingExpr={decodeBillingExprB64(other.expr_b64)}
               matchedTierLabel={other.matched_tier}
               requestRules={other.request_rules}

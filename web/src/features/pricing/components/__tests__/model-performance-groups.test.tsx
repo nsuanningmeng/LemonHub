@@ -284,7 +284,7 @@ describe('model performance groups', () => {
       expect(screen.queryByRole('note')).not.toBeInTheDocument()
     }
   )
-  test('expression group prices preserve every tier predicate instead of presenting unconditional rates', () => {
+  test('time-dependent group prices retain tier labels without exposing raw predicates', () => {
     const condition = 'hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 18'
     props.model.billing_mode = 'tiered_expr'
     props.model.billing_expr = `${condition} ? tier("peak", p * 3 + c * 15) : tier("off", p * 1 + c * 5)`
@@ -296,7 +296,69 @@ describe('model performance groups', () => {
     const groups = screen.getByText('Pricing by Group').closest('section')
     expect(groups).not.toBeNull()
     if (!groups) throw new Error('Missing group pricing section')
-    expect(within(groups).getAllByText(condition)).toHaveLength(3)
-    expect(within(groups).getAllByText(`!(${condition})`)).toHaveLength(3)
+    expect(within(groups).queryAllByText(/hour\(/)).toHaveLength(0)
+    expect(within(groups).getAllByText('peak')).toHaveLength(3)
+    expect(within(groups).getAllByText('off')).toHaveLength(3)
+  })
+
+  test('long-context pricing hides base formulas and describes the complementary group tier', () => {
+    props.model.billing_mode = 'tiered_expr'
+    props.model.billing_expr =
+      '(len <= 272000 ? tier("standard", p * 5 + c * 30) : tier("long_context", p * 10 + c * 45)) * (param("service_tier") == "fast" ? 2 : 1)'
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelDetailsContent {...props} />
+      </QueryClientProvider>
+    )
+
+    const base = screen
+      .getByRole('heading', { name: 'Base Price' })
+      .closest('section')
+    if (!base) throw new Error('Missing base pricing section')
+    expect(
+      within(base).queryByText(/len <=|service_tier/)
+    ).not.toBeInTheDocument()
+    expect(within(base).getByText('$5')).toBeInTheDocument()
+    expect(within(base).getByText('$30')).toBeInTheDocument()
+
+    const groups = screen
+      .getByRole('heading', { name: 'Pricing by Group' })
+      .closest('section')
+    if (!groups) throw new Error('Missing group pricing section')
+    expect(within(groups).queryAllByText(/len <=|!\(/)).toHaveLength(0)
+    const table = within(groups).getAllByRole('table')[0]
+    expect(
+      within(table).getByRole('row', { name: /standard/ })
+    ).toHaveTextContent('$5')
+    const longContext = within(table).getByRole('row', { name: /long_context/ })
+    expect(longContext).toHaveTextContent(/Full input length > 272(?:K|000)/)
+    expect(longContext).toHaveTextContent('$10')
+    expect(longContext).toHaveTextContent('$45')
+  })
+
+  test('unsupported pricing retains base and group explanations without raw expressions', () => {
+    props.model.billing_mode = 'tiered_expr'
+    props.model.billing_expr = 'max(p * 3, 5)'
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelDetailsContent {...props} />
+      </QueryClientProvider>
+    )
+
+    for (const title of ['Base Price', 'Pricing by Group']) {
+      const section = screen
+        .getByRole('heading', { name: title })
+        .closest('section')
+      if (!section) throw new Error(`Missing ${title} section`)
+      expect(
+        within(section).getByText('Special billing expression')
+      ).toBeInTheDocument()
+      expect(
+        within(section).queryByText('Raw expression')
+      ).not.toBeInTheDocument()
+      expect(
+        within(section).queryByText(props.model.billing_expr)
+      ).not.toBeInTheDocument()
+    }
   })
 })

@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -30,6 +30,10 @@ import {
 import type { PricingModel } from '../../types'
 import { ModelBillingModeBadge } from '../model-billing-mode-badge'
 import { ModelCard } from '../model-card'
+import { PricingTable } from '../pricing-table'
+
+const serviceTierExpression =
+  '(len <= 200000 ? tier("standard", p * 1 + c * 3) : tier("long", p * 2 + c * 6)) * (param("service_tier") == "priority" && len <= 272000 ? 2 : 1) * (param("service_tier") == "fast" && len <= 200000 ? 2 : 1) * (param("service_tier") == "flex" ? 0.5 : 1)'
 
 function model(expression: string): PricingModel {
   return {
@@ -69,7 +73,7 @@ test.each([
   }
 )
 
-describe('compact model card pricing', () => {
+describe('compact model pricing', () => {
   let client: QueryClient
 
   beforeEach(() => {
@@ -95,8 +99,7 @@ describe('compact model card pricing', () => {
     },
     {
       name: 'long service-tier multipliers',
-      expression:
-        '(len <= 200000 ? tier("standard", p * 1 + c * 3) : tier("long", p * 2 + c * 6)) * (param("service_tier") == "priority" && len <= 272000 ? 2 : 1) * (param("service_tier") == "fast" && len <= 200000 ? 2 : 1) * (param("service_tier") == "flex" ? 0.5 : 1)',
+      expression: serviceTierExpression,
       outputPrice: '$3',
       condition: /len <=|service_tier/,
     },
@@ -134,6 +137,56 @@ describe('compact model card pricing', () => {
     expect(screen.getByText('Special billing expression')).toBeInTheDocument()
     expect(screen.getByText('Dynamic Pricing')).toBeInTheDocument()
     expect(screen.queryByText(expression)).not.toBeInTheDocument()
+  })
+
+  test('table service-tier pricing keeps prices, tier count and row navigation without raw conditions', async () => {
+    const user = userEvent.setup()
+    const onModelClick = vi.fn()
+    render(
+      <QueryClientProvider client={client}>
+        <PricingTable
+          models={[model(serviceTierExpression)]}
+          onModelClick={onModelClick}
+        />
+      </QueryClientProvider>
+    )
+
+    const row = screen.getByRole('row', { name: /test-model/ })
+    const priceCell = within(row).getByRole('cell', {
+      name: /\$1\s*\/\s*\$3/,
+    })
+    expect(within(priceCell).getByText('$1')).toBeInTheDocument()
+    expect(within(priceCell).getByText('$3')).toBeInTheDocument()
+    expect(
+      within(priceCell).getByText('/ 1M tokens · 2 tiers')
+    ).toBeInTheDocument()
+    expect(within(row).getByText('Dynamic Pricing')).toBeInTheDocument()
+
+    await user.click(row)
+    expect(onModelClick).toHaveBeenCalledExactlyOnceWith('test-model')
+    expect(row).not.toHaveTextContent(/len\s*<=|service_tier/)
+  })
+
+  test('table unrecognized pricing keeps the special billing hint without its raw expression', () => {
+    const expression = 'max(p * 3, 5)'
+    render(
+      <QueryClientProvider client={client}>
+        <PricingTable models={[model(expression)]} />
+      </QueryClientProvider>
+    )
+
+    const row = screen.getByRole('row', { name: /test-model/ })
+    const priceCell = within(row).getByRole('cell', {
+      name: /Special billing expression Unable to parse structured pricing/,
+    })
+    expect(
+      within(priceCell).getByText('Special billing expression')
+    ).toBeInTheDocument()
+    expect(
+      within(priceCell).getByText('Unable to parse structured pricing')
+    ).toBeInTheDocument()
+    expect(within(row).getByText('Dynamic Pricing')).toBeInTheDocument()
+    expect(row).not.toHaveTextContent(expression)
   })
 })
 

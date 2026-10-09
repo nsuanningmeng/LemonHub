@@ -136,9 +136,6 @@ export function usePricingColumns(
                 <div className='text-muted-foreground text-[11px]'>
                   {t('Unable to parse structured pricing')}
                 </div>
-                <code className='text-muted-foreground/70 mt-1 line-clamp-2 block font-mono text-[10px] leading-relaxed break-all'>
-                  {dynamicSummary.rawExpression}
-                </code>
               </div>
             )
           }
@@ -154,11 +151,6 @@ export function usePricingColumns(
 
           return (
             <div className='max-w-full min-w-0'>
-              {dynamicSummary.conditionText && (
-                <div className='text-muted-foreground text-xs'>
-                  {dynamicSummary.conditionText}
-                </div>
-              )}
               <span className='font-mono text-sm tabular-nums'>
                 {primaryEntries.map((entry, index) => (
                   <span key={entry.key}>

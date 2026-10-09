@@ -70,6 +70,7 @@ import {
 import { parseTags } from '../lib/filters'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
+import { formatTierCondition } from '../lib/pricing-description'
 import type {
   ModelCapability,
   PriceType,
@@ -643,14 +644,6 @@ function PriceSection(props: {
             <p className='text-muted-foreground mt-1 text-xs'>
               {t('Unable to parse structured pricing')}
             </p>
-            <div className='mt-3'>
-              <div className='text-muted-foreground mb-1 text-[10px] font-medium tracking-wider uppercase'>
-                {t('Raw expression')}
-              </div>
-              <code className='text-muted-foreground bg-background/80 block max-h-28 overflow-auto rounded-md border px-2 py-1.5 font-mono text-xs break-all'>
-                {dynamicSummary.rawExpression}
-              </code>
-            </div>
           </div>
         </section>
       )
@@ -659,11 +652,6 @@ function PriceSection(props: {
     return (
       <section>
         <SectionTitle>{t('Base Price')}</SectionTitle>
-        {dynamicSummary.conditionText && (
-          <p className='text-muted-foreground mb-2 text-xs'>
-            {dynamicSummary.conditionText}
-          </p>
-        )}
         {dynamicSummary.primaryEntries.length > 0 ? (
           <div className='grid grid-cols-2 gap-2'>
             {dynamicSummary.primaryEntries.map((entry) => (
@@ -936,14 +924,6 @@ function GroupPricingSection(props: {
                 'Group prices cannot be expanded because this expression is not a standard tiered pricing expression.'
               )}
             </p>
-            <div className='mt-3'>
-              <div className='text-muted-foreground mb-1 text-[10px] font-medium tracking-wider uppercase'>
-                {t('Raw expression')}
-              </div>
-              <code className='text-muted-foreground bg-background/80 block max-h-28 overflow-auto rounded-md border px-2 py-1.5 font-mono text-xs break-all'>
-                {props.model.billing_expr}
-              </code>
-            </div>
           </div>
         </section>
       )
@@ -1005,14 +985,17 @@ function GroupPricingSection(props: {
                       header: t('Tier'),
                       className: thClass,
                       cellClassName: 'text-muted-foreground py-2.5',
-                      cell: (tier) => (
-                        <div>
-                          <div>{tier.label || t('Default')}</div>
-                          {tier.conditionText && (
-                            <div className='text-xs'>{tier.conditionText}</div>
-                          )}
-                        </div>
-                      ),
+                      cell: (tier) => {
+                        const condition = formatTierCondition(tier, t)
+                        return (
+                          <div>
+                            <div>{tier.label || t('Default')}</div>
+                            {condition && (
+                              <div className='text-xs'>{condition}</div>
+                            )}
+                          </div>
+                        )
+                      },
                     },
                     ...priceFields.map((fieldEntry) => ({
                       id: fieldEntry.field,
