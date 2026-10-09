@@ -225,7 +225,7 @@ LemonHub 保留 new-api 的网关能力，包括：
 | 远程数据库 | MySQL ≥ 5.7.8 或 PostgreSQL ≥ 9.6 |
 | 缓存（推荐） | Redis |
 | 运行引擎 | Docker / Docker Compose |
-| 源码构建 | Go 1.26.8 与 Bun |
+| 源码构建 | Go 1.26.9 与 Bun |
 
 ### 常用环境变量
 

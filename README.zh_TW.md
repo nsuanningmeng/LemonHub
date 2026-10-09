@@ -225,7 +225,7 @@ LemonHub 保留 new-api 的閘道能力，包括：
 | 遠端資料庫 | MySQL ≥ 5.7.8 或 PostgreSQL ≥ 9.6 |
 | 快取（推薦） | Redis |
 | 執行引擎 | Docker / Docker Compose |
-| 從原始碼建置 | Go 1.26.8 與 Bun |
+| 從原始碼建置 | Go 1.26.9 與 Bun |
 
 ### 常用環境變數
 

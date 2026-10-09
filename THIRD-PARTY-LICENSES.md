@@ -54,12 +54,12 @@ Transitive dependencies should be audited before a final external release.
 | backend     | production  | Go        | `github.com/tiktoken-go/tokenizer`                    | `v0.6.2`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/waffo-com/waffo-go`                       | `v1.3.1`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/yapingcat/gomedia`                        | `v0.0.0-20240906162731-17feea57090c` | MIT                                                |
-| backend     | production  | Go        | `golang.org/x/crypto`                                 | `v0.45.0`                            | BSD-3-Clause                                       |
+| backend     | production  | Go        | `golang.org/x/crypto`                                 | `v0.57.0`                            | BSD-3-Clause                                       |
 | backend     | production  | Go        | `golang.org/x/image`                                  | `v0.38.0`                            | BSD-3-Clause                                       |
-| backend     | production  | Go        | `golang.org/x/net`                                    | `v0.47.0`                            | BSD-3-Clause                                       |
-| backend     | production  | Go        | `golang.org/x/sync`                                   | `v0.20.0`                            | BSD-3-Clause                                       |
-| backend     | production  | Go        | `golang.org/x/sys`                                    | `v0.38.0`                            | BSD-3-Clause                                       |
-| backend     | production  | Go        | `golang.org/x/text`                                   | `v0.35.0`                            | BSD-3-Clause                                       |
+| backend     | production  | Go        | `golang.org/x/net`                                    | `v0.60.0`                            | BSD-3-Clause                                       |
+| backend     | production  | Go        | `golang.org/x/sync`                                   | `v0.23.0`                            | BSD-3-Clause                                       |
+| backend     | production  | Go        | `golang.org/x/sys`                                    | `v0.48.0`                            | BSD-3-Clause                                       |
+| backend     | production  | Go        | `golang.org/x/text`                                   | `v0.42.0`                            | BSD-3-Clause                                       |
 | backend     | production  | Go        | `gopkg.in/yaml.v3`                                    | `v3.0.1`                             | Apache-2.0 OR MIT                                  |
 | backend     | production  | Go        | `gorm.io/driver/mysql`                                | `v1.4.3`                             | MIT                                                |
 | backend     | production  | Go        | `gorm.io/driver/postgres`                             | `v1.5.2`                             | MIT                                                |

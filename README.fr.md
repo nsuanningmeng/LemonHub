@@ -226,7 +226,7 @@ Pour les détails sur la passerelle/l'API, reportez-vous à la [documentation ne
 | BD distante | MySQL ≥ 5.7.8 ou PostgreSQL ≥ 9.6 |
 | Cache (recommandé) | Redis |
 | Moteur | Docker / Docker Compose |
-| Compilation depuis les sources | Go 1.26.8 et Bun |
+| Compilation depuis les sources | Go 1.26.9 et Bun |
 
 ### Variables d'environnement courantes
 

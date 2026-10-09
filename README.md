@@ -227,7 +227,7 @@ For gateway/API details, refer to the upstream [new-api documentation](https://d
 | Remote DB | MySQL ≥ 5.7.8 or PostgreSQL ≥ 9.6 |
 | Cache (recommended) | Redis |
 | Engine | Docker / Docker Compose |
-| Source build | Go 1.26.8 and Bun |
+| Source build | Go 1.26.9 and Bun |
 
 ### Common environment variables
 

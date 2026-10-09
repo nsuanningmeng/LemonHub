@@ -225,7 +225,7 @@ LemonHub は new-api のゲートウェイ機能を継承しており、以下�
 | リモート DB | MySQL ≥ 5.7.8 または PostgreSQL ≥ 9.6 |
 | キャッシュ（推奨） | Redis |
 | エンジン | Docker / Docker Compose |
-| ソースからのビルド | Go 1.26.8 と Bun |
+| ソースからのビルド | Go 1.26.9 と Bun |
 
 ### 一般的な環境変数
 
