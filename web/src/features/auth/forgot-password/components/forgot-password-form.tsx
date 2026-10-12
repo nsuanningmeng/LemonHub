@@ -83,7 +83,7 @@ export function ForgotPasswordForm({
       } else {
         toast.error(res?.message || t('Failed to send reset email'))
       }
-    } catch (_error) {
+    } catch {
       // Errors are handled by global interceptor; the request may still have
       // consumed the captcha token, so refresh it here as well.
       setCaptchaToken('')
@@ -116,7 +116,7 @@ export function ForgotPasswordForm({
 
         <Button
           type='submit'
-          className='mt-2'
+          className='mt-2 h-auto min-h-8 [overflow-wrap:anywhere] whitespace-normal'
           disabled={isLoading || isActive || !captchaReady}
         >
           {isActive

@@ -151,3 +151,11 @@ test.each([
     expect(screen.queryByTitle('Contact Us')).toBeNull()
   }
 )
+
+test('a configured URL keeps contact content below navigation and within the remaining viewport', async () => {
+  await renderContact('https://support.example.test/')
+
+  const frame = screen.getByTitle('Contact Us')
+  expect(frame.closest('main')).toHaveClass('pt-16')
+  expect(frame).toHaveClass('w-full', 'h-[calc(100svh-4rem)]')
+})

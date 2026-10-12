@@ -172,10 +172,12 @@ export function OAuthProviders({
                 type='button'
                 disabled={disabled || isLoading || extraDisabled}
                 onClick={onClick}
-                className='h-11 w-full justify-center gap-2 rounded-lg'
+                className='h-auto min-h-11 w-full min-w-0 justify-center gap-2 rounded-lg py-2 whitespace-normal'
               >
                 {icon}
-                {label}
+                <span className='min-w-0 [overflow-wrap:anywhere]'>
+                  {label}
+                </span>
               </Button>
             )
           )}

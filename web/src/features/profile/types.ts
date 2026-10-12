@@ -29,6 +29,24 @@ export interface ApiResponse<T = unknown> {
   data?: T
 }
 
+export interface UsageActivityDay {
+  date: string
+  tokens: number
+}
+
+export interface UsageActivity {
+  timezone: string
+  as_of: string
+  summary: {
+    total_tokens: number
+    peak_daily_tokens: number
+    current_streak_days: number
+    longest_streak_days: number
+    longest_request_seconds: number
+  }
+  daily_usage: UsageActivityDay[]
+}
+
 /**
  * User profile data
  */

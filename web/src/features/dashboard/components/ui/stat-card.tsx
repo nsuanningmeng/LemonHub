@@ -256,7 +256,7 @@ export function StatCard(props: StatCardProps) {
     )
   } else if (props.error) {
     valueContent = (
-      <div className='flex flex-col gap-1'>
+      <div className='flex min-w-0 flex-col gap-1'>
         <div className='text-muted-foreground mt-0.5 font-mono text-base font-bold tracking-tight break-all tabular-nums sm:text-2xl'>
           --
         </div>
@@ -272,8 +272,11 @@ export function StatCard(props: StatCardProps) {
     )
   } else {
     valueContent = (
-      <div className='flex flex-col gap-1'>
-        <div className='text-foreground font-mono text-base font-semibold tracking-tight break-all tabular-nums sm:text-2xl'>
+      <div className='flex min-w-0 flex-col gap-1'>
+        <div
+          className='text-foreground overflow-x-auto font-mono text-base font-semibold tracking-tight whitespace-nowrap tabular-nums @3xl/summary:text-2xl'
+          title={String(props.value)}
+        >
           {props.value}
         </div>
         <p
@@ -300,7 +303,7 @@ export function StatCard(props: StatCardProps) {
   return (
     <div
       className={cn(
-        'group flex flex-col justify-between sm:min-h-32 sm:gap-3',
+        'group flex min-w-0 flex-col justify-between @xl/summary:min-h-32 @xl/summary:gap-3',
         props.compactMobile ? 'gap-1' : 'gap-1.5'
       )}
     >
@@ -325,7 +328,7 @@ export function StatCard(props: StatCardProps) {
 
       {valueContent}
 
-      <div className='hidden sm:block'>{visualization}</div>
+      <div className='hidden @xl/summary:block'>{visualization}</div>
     </div>
   )
 }

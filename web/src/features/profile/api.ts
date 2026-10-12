@@ -22,6 +22,7 @@ import type { LoginSession } from '@/stores/auth-store'
 
 import type {
   ApiResponse,
+  UsageActivity,
   UserProfile,
   UpdateUserRequest,
   UpdateUserSettingsRequest,
@@ -39,6 +40,22 @@ import type {
  */
 export async function getUserProfile(): Promise<ApiResponse<UserProfile>> {
   const res = await api.get('/api/user/self')
+  return res.data
+}
+
+export async function getUsageActivity(
+  timezone: string,
+  signal?: AbortSignal
+): Promise<ApiResponse<UsageActivity>> {
+  const res = await api.get('/api/user/self/activity', {
+    params: { timezone },
+    signal,
+    // React Query owns deduplication; an aborted observer must not share its
+    // request with the next mount (including React Strict Mode remounts).
+    disableDuplicate: true,
+    skipErrorHandler: true,
+    skipBusinessError: true,
+  })
   return res.data
 }
 

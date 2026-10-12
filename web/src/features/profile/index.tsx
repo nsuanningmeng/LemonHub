@@ -34,6 +34,7 @@ import { ProfileSecurityCard } from './components/profile-security-card'
 import { ProfileSettingsCard } from './components/profile-settings-card'
 import { SidebarModulesCard } from './components/sidebar-modules-card'
 import { TwoFACard } from './components/two-fa-card'
+import { UsageActivityCard } from './components/usage-activity-card'
 import { useProfile } from './hooks'
 
 export function Profile() {
@@ -54,13 +55,14 @@ export function Profile() {
           </CardStaggerItem>
 
           <CardStaggerItem>
-            <div className='grid gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.46fr)] xl:items-start'>
-              <div className='space-y-4 sm:space-y-6'>
+            <div className='grid min-w-0 grid-cols-1 gap-4 sm:gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.46fr)] xl:items-start'>
+              <div className='min-w-0 space-y-4 sm:space-y-6'>
                 <ProfileSettingsCard
                   profile={profile}
                   loading={loading}
                   onProfileUpdate={refreshProfile}
                 />
+                <UsageActivityCard />
                 <LanguagePreferencesCard
                   profile={profile}
                   onProfileUpdate={refreshProfile}
@@ -69,7 +71,7 @@ export function Profile() {
                 <LoginSessionsCard />
               </div>
 
-              <div className='space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
+              <div className='min-w-0 space-y-4 sm:space-y-6 xl:sticky xl:top-6'>
                 {checkinEnabled && (
                   <CheckinCalendarCard
                     checkinEnabled={checkinEnabled}

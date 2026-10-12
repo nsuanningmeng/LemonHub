@@ -123,7 +123,7 @@ export function RedemptionsMobileList(props: RedemptionsMobileListProps) {
             )}
           >
             <div className='flex items-start justify-between gap-3'>
-              <div className='min-w-0'>
+              <div className='min-w-0 flex-1'>
                 <div className='truncate text-sm font-semibold'>
                   {redemption.name}
                 </div>
@@ -133,6 +133,7 @@ export function RedemptionsMobileList(props: RedemptionsMobileListProps) {
               </div>
               {expired ? (
                 <StatusBadge
+                  className='shrink-0'
                   label={t('Expired')}
                   variant='warning'
                   copyable={false}
@@ -140,6 +141,7 @@ export function RedemptionsMobileList(props: RedemptionsMobileListProps) {
               ) : (
                 statusConfig && (
                   <StatusBadge
+                    className='shrink-0'
                     label={t(statusConfig.labelKey)}
                     variant={statusConfig.variant}
                     copyable={false}

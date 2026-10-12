@@ -117,7 +117,7 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
   return (
     <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
       <CardContent className='p-3 sm:p-5'>
-        <div className='flex items-center gap-3 text-left sm:gap-4'>
+        <div className='flex items-start gap-3 text-left sm:items-center sm:gap-4'>
           <Avatar className='ring-background h-12 w-12 rounded-xl text-sm ring-2 sm:h-16 sm:w-16 sm:rounded-2xl sm:text-lg sm:ring-4'>
             <AvatarFallback
               className='rounded-xl font-semibold text-white sm:rounded-2xl'
@@ -128,35 +128,44 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
           </Avatar>
 
           <div className='min-w-0 flex-1 space-y-1.5 sm:space-y-3'>
-            <div className='flex min-w-0 items-center gap-2'>
-              <h1 className='truncate text-xl font-semibold tracking-tight sm:text-2xl'>
+            <div className='flex min-w-0 flex-wrap items-center gap-2'>
+              <h1
+                className='w-full max-w-full truncate text-xl font-semibold tracking-tight sm:w-auto sm:text-2xl'
+                title={displayName}
+              >
                 {displayName}
               </h1>
               <StatusBadge
                 label={roleLabel}
                 variant='neutral'
                 copyable={false}
+                className='shrink-0'
               />
               <StatusBadge
                 label={`${t('User ID')} ${profile.id}`}
                 variant='info'
                 copyText={String(profile.id)}
+                className='shrink-0'
               />
             </div>
 
             <div className='text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs sm:gap-x-4 sm:text-sm'>
               <span className='truncate'>@{profile.username}</span>
               {profile.email && (
-                <>
-                  <span>•</span>
-                  <span className='truncate'>{profile.email}</span>
-                </>
+                <span className='inline-flex max-w-full min-w-0 items-center gap-x-2 sm:gap-x-4'>
+                  <span aria-hidden='true'>•</span>
+                  <span className='truncate' title={profile.email}>
+                    {profile.email}
+                  </span>
+                </span>
               )}
               {profile.group && (
-                <>
-                  <span>•</span>
-                  <span className='truncate'>{profile.group}</span>
-                </>
+                <span className='inline-flex max-w-full min-w-0 items-center gap-x-2 sm:gap-x-4'>
+                  <span aria-hidden='true'>•</span>
+                  <span className='truncate' title={profile.group}>
+                    {profile.group}
+                  </span>
+                </span>
               )}
             </div>
           </div>
@@ -166,16 +175,23 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
         <div className='divide-border/60 grid grid-cols-3 divide-x'>
           {stats.map((item) => (
             <div key={item.label} className='min-w-0 px-3 py-3 sm:px-5 sm:py-4'>
-              <div className='flex items-center gap-2'>
-                <IconBadge tone={item.tone} size='stat'>
+              <div className='flex min-h-8 items-start gap-2 sm:min-h-0 sm:items-center'>
+                <IconBadge
+                  tone={item.tone}
+                  size='stat'
+                  className='hidden sm:flex'
+                >
                   <item.icon />
                 </IconBadge>
-                <div className='text-muted-foreground truncate text-xs font-medium tracking-wider uppercase'>
+                <div className='text-muted-foreground min-w-0 text-xs leading-4 font-medium tracking-wider uppercase sm:truncate'>
                   {item.label}
                 </div>
               </div>
 
-              <div className='text-foreground mt-1.5 truncate font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
+              <div
+                className='text-foreground mt-1.5 truncate font-mono text-lg font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'
+                title={item.value}
+              >
                 {item.value}
               </div>
               <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>

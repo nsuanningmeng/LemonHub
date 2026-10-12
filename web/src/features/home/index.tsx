@@ -60,14 +60,16 @@ export function Home() {
             causing inconsistent behavior. This token only permits user-activated
             top-level navigation and does NOT grant same-origin access.
           */}
-          <iframe
-            ref={iframeRef}
-            src={content}
-            className='h-screen w-full border-none'
-            title={t('Custom Home Page')}
-            sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-top-navigation-by-user-activation'
-            onLoad={syncPreferences}
-          />
+          <main className='pt-16'>
+            <iframe
+              ref={iframeRef}
+              src={content}
+              className='block h-[calc(100svh-4rem)] w-full border-none'
+              title={t('Custom Home Page')}
+              sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-top-navigation-by-user-activation'
+              onLoad={syncPreferences}
+            />
+          </main>
         </PublicLayout>
       )
     }

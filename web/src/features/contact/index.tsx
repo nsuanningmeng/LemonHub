@@ -137,13 +137,15 @@ export function Contact() {
     if (isUrl) {
       return (
         <PublicLayout showMainContainer={false}>
-          <iframe
-            src={rawContent}
-            className='h-[calc(100vh-3.5rem)] w-full border-0'
-            title={t('Contact Us')}
-            referrerPolicy='no-referrer'
-            sandbox='allow-scripts allow-forms allow-popups'
-          />
+          <main className='pt-16'>
+            <iframe
+              src={rawContent}
+              className='block h-[calc(100svh-4rem)] w-full border-0'
+              title={t('Contact Us')}
+              referrerPolicy='no-referrer'
+              sandbox='allow-scripts allow-forms allow-popups'
+            />
+          </main>
         </PublicLayout>
       )
     }

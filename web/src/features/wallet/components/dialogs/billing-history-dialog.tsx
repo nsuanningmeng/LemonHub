@@ -191,15 +191,19 @@ export function BillingHistoryDialog({
                     >
                       {/* Header Row */}
                       <div className='flex items-start justify-between gap-2'>
-                        <div className='flex-1 space-y-1'>
+                        <div className='min-w-0 flex-1 space-y-1'>
                           <div className='flex min-w-0 items-center gap-2'>
-                            <code className='text-foreground truncate font-mono text-sm'>
+                            <code
+                              className='text-foreground min-w-0 flex-1 truncate font-mono text-sm'
+                              title={record.trade_no}
+                            >
                               {record.trade_no}
                             </code>
                             <Button
                               variant='ghost'
                               size='sm'
-                              className='h-5 w-5 p-0'
+                              className='h-5 w-5 shrink-0 p-0'
+                              aria-label={t('Copy to clipboard')}
                               onClick={() => copyToClipboard(record.trade_no)}
                             >
                               {copiedText === record.trade_no ? (
@@ -214,6 +218,7 @@ export function BillingHistoryDialog({
                                 variant='neutral'
                                 size='sm'
                                 copyText={String(record.user_id)}
+                                className='shrink-0'
                               />
                             )}
                           </div>
@@ -226,6 +231,7 @@ export function BillingHistoryDialog({
                           variant={statusConfig.variant}
                           showDot
                           copyable={false}
+                          className='shrink-0'
                         />
                       </div>
 

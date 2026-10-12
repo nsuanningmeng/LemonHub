@@ -542,12 +542,12 @@ function ModelHeader(props: { model: PricingModel }) {
     <header className='pb-4'>
       <div className='flex items-center gap-2.5'>
         {modelIcon}
-        <h1 className='font-mono text-xl font-bold tracking-tight sm:text-2xl'>
+        <h1 className='min-w-0 font-mono text-xl font-bold tracking-tight break-all sm:text-2xl'>
           {model.model_name}
         </h1>
         <CopyButton
           value={model.model_name || ''}
-          className='size-6'
+          className='size-6 shrink-0'
           iconClassName='size-3'
           tooltip={t('Copy model name')}
           successTooltip={t('Copied!')}

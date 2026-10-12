@@ -108,7 +108,7 @@ export function ChannelsPrimaryButtons() {
     <>
       <div className='flex items-center gap-2'>
         {/* Desktop: Toggle switches visible */}
-        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 sm:flex'>
+        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 lg:flex'>
           <ListChecks className='text-muted-foreground h-4 w-4' />
           <Label
             htmlFor='channel-batch-mode'
@@ -123,7 +123,7 @@ export function ChannelsPrimaryButtons() {
           />
         </div>
 
-        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 sm:flex'>
+        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 lg:flex'>
           <Tags className='text-muted-foreground h-4 w-4' />
           <Label htmlFor='tag-mode' className='cursor-pointer text-sm'>
             {t('Tag Mode')}
@@ -135,7 +135,7 @@ export function ChannelsPrimaryButtons() {
           />
         </div>
 
-        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 sm:flex'>
+        <div className='hidden items-center gap-2 rounded-md border px-3 py-1.5 lg:flex'>
           <SortAsc className='text-muted-foreground h-4 w-4' />
           <Label htmlFor='id-sort' className='cursor-pointer text-sm'>
             {t('Sort by ID')}
@@ -177,9 +177,9 @@ export function ChannelsPrimaryButtons() {
             <MoreHorizontal className='h-4 w-4' />
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='w-56'>
-            {/* Mobile-only: toggle switches */}
+            {/* Compact layouts: toggle switches */}
             <DropdownMenuCheckboxItem
-              className='sm:hidden'
+              className='lg:hidden'
               checked={batchMode}
               onCheckedChange={handleBatchModeToggle}
             >
@@ -188,7 +188,7 @@ export function ChannelsPrimaryButtons() {
             </DropdownMenuCheckboxItem>
 
             <DropdownMenuCheckboxItem
-              className='sm:hidden'
+              className='lg:hidden'
               checked={enableTagMode}
               onCheckedChange={handleTagModeToggle}
             >
@@ -197,7 +197,7 @@ export function ChannelsPrimaryButtons() {
             </DropdownMenuCheckboxItem>
 
             <DropdownMenuCheckboxItem
-              className='sm:hidden'
+              className='lg:hidden'
               checked={idSort}
               onCheckedChange={handleIdSortToggle}
             >
@@ -205,7 +205,7 @@ export function ChannelsPrimaryButtons() {
               {t('Sort by ID')}
             </DropdownMenuCheckboxItem>
 
-            <DropdownMenuSeparator className='sm:hidden' />
+            <DropdownMenuSeparator className='lg:hidden' />
 
             <DropdownMenuItem
               onClick={() => {

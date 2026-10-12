@@ -152,14 +152,16 @@ export function About() {
   if (isUrl) {
     return (
       <PublicLayout showMainContainer={false}>
-        <iframe
-          ref={iframeRef}
-          src={rawContent}
-          onLoad={syncPreferences}
-          className='h-[calc(100vh-3.5rem)] w-full border-0'
-          title={t('About')}
-          sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'
-        />
+        <main className='pt-16'>
+          <iframe
+            ref={iframeRef}
+            src={rawContent}
+            onLoad={syncPreferences}
+            className='block h-[calc(100svh-4rem)] w-full border-0'
+            title={t('About')}
+            sandbox='allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts'
+          />
+        </main>
       </PublicLayout>
     )
   }
