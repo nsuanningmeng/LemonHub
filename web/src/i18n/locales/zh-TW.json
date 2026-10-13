@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Processing finished": "處理已結束",
+    "Processing finished with failures": "處理已結束（有失敗）",
+    "Processed: {{processed}}/{{total}}": "已處理：{{processed}}/{{total}}",
+    "Attempted: {{attempted}} · Candidates: {{total}}": "已嘗試：{{attempted}} · 候選人數：{{total}}",
+    "Sent: {{count}}": "成功：{{count}}",
+    "Failed: {{count}}": "失敗：{{count}}",
+    "Skipped: {{count}}": "略過：{{count}}",
+    "Skipped: not recorded": "略過：未記錄",
     "Page resources could not be loaded": "無法載入頁面資源",
     "Check your connection, then reload the page. If the problem continues, contact the administrator.": "請檢查網路連線後重新載入頁面。若問題仍然存在，請聯絡管理員。",
     "Reload page": "重新載入頁面",
@@ -2610,7 +2618,7 @@
     "Input price is required before saving dependent prices.": "儲存依賴價格前必須先填寫輸入價格。",
     "Input tokens": "輸入 token",
     "Input Tokens": "輸入 Token",
-  "Total Input Tokens (including cache)": "輸入 Token 總數（含快取）",
+    "Total Input Tokens (including cache)": "輸入 Token 總數（含快取）",
     "Inset": "內嵌",
     "Inspect requests, errors, and billing details": "查看請求、錯誤和收費詳情",
     "Inspect user prompts": "檢查用戶提示",

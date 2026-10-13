@@ -34,6 +34,9 @@ type EmailCampaign struct {
 	TotalCount   int    `json:"total_count"`
 	SentCount    int    `json:"sent_count"`
 	FailCount    int    `json:"fail_count"`
+	// SkipCount is nil for campaigns created before skip accounting existed.
+	// Keep historical progress unknown instead of inferring skips from the total.
+	SkipCount *int `json:"skip_count"`
 	// LastUserId is the durable keyset cursor: the highest user id already processed
 	// by the send loop. A campaign interrupted by a crash/restart resumes from here
 	// instead of re-mailing the whole audience.
@@ -58,6 +61,9 @@ func (c *EmailCampaign) Insert() error {
 	}
 	if c.Source == "" {
 		c.Source = EmailCampaignSourceManual
+	}
+	if c.SkipCount == nil {
+		c.SkipCount = new(int)
 	}
 	return DB.Create(c).Error
 }
@@ -97,12 +103,20 @@ func GetEmailCampaigns(siteScope int, pageInfo *common.PageInfo) ([]*EmailCampai
 // the resume cursor and refreshes updated_at so the recovery sweep never mistakes
 // a live campaign for an orphaned one.
 func (c *EmailCampaign) UpdateProgress() error {
+	if c.SkipCount != nil {
+		// The audience can grow after the initial count. Never report more
+		// processed recipients than the running campaign's total.
+		if processed := c.SentCount + c.FailCount + *c.SkipCount; processed > c.TotalCount {
+			c.TotalCount = processed
+		}
+	}
 	c.UpdatedAt = common.GetTimestamp()
 	updates := map[string]interface{}{
 		"status":       c.Status,
 		"total_count":  c.TotalCount,
 		"sent_count":   c.SentCount,
 		"fail_count":   c.FailCount,
+		"skip_count":   c.SkipCount,
 		"last_user_id": c.LastUserId,
 		"updated_at":   c.UpdatedAt,
 		"finished_at":  c.FinishedAt,
@@ -157,7 +171,7 @@ func marketingRecipientQuery(targetGroup string, targetStatus int, siteScope int
 }
 
 // CountMarketingCandidates returns the number of candidate recipients (before the
-// in-Go opt-out filter), used to populate a campaign's TotalCount upper bound
+// in-Go opt-out filter), used to populate a campaign's initial TotalCount estimate
 // without materializing every user row.
 func CountMarketingCandidates(targetGroup string, targetStatus int, siteScope int) (int64, error) {
 	var total int64

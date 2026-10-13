@@ -89,6 +89,12 @@ func StartEmailCampaign(campaign *model.EmailCampaign, siteScope int) {
 // both fresh campaigns and resumed ones: counters and the keyset cursor come from the
 // (possibly recovered) campaign row, so a resume continues where the crash happened.
 func runEmailCampaign(campaign *model.EmailCampaign, siteScope int) {
+	// Creation handlers copy the campaign before starting the background sender.
+	// Give this worker its own counter so it cannot mutate the response's pointer.
+	if campaign.SkipCount != nil {
+		skipped := *campaign.SkipCount
+		campaign.SkipCount = &skipped
+	}
 	// 1. Mark as sending. This also refreshes updated_at, hiding the campaign from
 	//    the orphan-recovery sweep while this goroutine owns it.
 	campaign.Status = model.EmailCampaignStatusSending
@@ -96,9 +102,9 @@ func runEmailCampaign(campaign *model.EmailCampaign, siteScope int) {
 		common.SysError(fmt.Sprintf("email campaign %d: failed to mark sending: %s", campaign.Id, err.Error()))
 	}
 
-	// 2. Record a TotalCount upper bound via a cheap COUNT (candidates before the
-	//    in-Go opt-out filter), so progress can be shown without loading all users.
-	//    A resumed campaign keeps its original total so progress stays monotonic.
+	// 2. Estimate TotalCount via a cheap COUNT (candidates before the in-Go
+	//    filters), so progress can be shown without loading all users. Resumes keep
+	//    the estimate; successful traversal reconciles it with processed recipients.
 	if campaign.TotalCount == 0 {
 		total, err := model.CountMarketingCandidates(campaign.TargetGroup, campaign.TargetStatus, siteScope)
 		if err != nil {
@@ -191,9 +197,15 @@ func runEmailCampaign(campaign *model.EmailCampaign, siteScope int) {
 			afterId = user.Id
 			campaign.LastUserId = user.Id
 			if !isSafeRecipient(user.Email) || user.GetSetting().MarketingEmailDisabled {
+				if campaign.SkipCount != nil {
+					*campaign.SkipCount += 1
+				}
 				continue
 			}
 			if _, isSuppressed := suppressed[strings.ToLower(strings.TrimSpace(user.Email))]; isSuppressed {
+				if campaign.SkipCount != nil {
+					*campaign.SkipCount += 1
+				}
 				continue
 			}
 			// Per-recipient one-click unsubscribe (RFC 8058): signed token link in
@@ -265,12 +277,21 @@ func runEmailCampaign(campaign *model.EmailCampaign, siteScope int) {
 	} else {
 		campaign.Status = model.EmailCampaignStatusCompleted
 	}
+	if campaign.SkipCount != nil {
+		// Users can enter or leave the candidate set while sending. Once the
+		// full traversal completes, its actual processed count is authoritative.
+		campaign.TotalCount = campaign.SentCount + campaign.FailCount + *campaign.SkipCount
+	}
 	campaign.FinishedAt = common.GetTimestamp()
 	if err := campaign.UpdateProgress(); err != nil {
 		common.SysError(fmt.Sprintf("email campaign %d: failed to persist final status: %s", campaign.Id, err.Error()))
 	}
-	common.SysLog(fmt.Sprintf("email campaign %d finished: status=%s total=%d sent=%d fail=%d",
-		campaign.Id, campaign.Status, campaign.TotalCount, campaign.SentCount, campaign.FailCount))
+	skipped := "unknown"
+	if campaign.SkipCount != nil {
+		skipped = fmt.Sprint(*campaign.SkipCount)
+	}
+	common.SysLog(fmt.Sprintf("email campaign %d finished: status=%s total=%d sent=%d fail=%d skip=%s",
+		campaign.Id, campaign.Status, campaign.TotalCount, campaign.SentCount, campaign.FailCount, skipped))
 }
 
 var (

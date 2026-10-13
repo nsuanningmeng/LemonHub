@@ -4,8 +4,10 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func cleanupEmailCampaigns(t *testing.T) {
@@ -101,6 +103,7 @@ func TestUpdateProgressPersistsResumeCursor(t *testing.T) {
 
 	c.SentCount = 7
 	c.FailCount = 2
+	*c.SkipCount = 3
 	c.LastUserId = 4321
 	require.NoError(t, c.UpdateProgress())
 
@@ -108,6 +111,54 @@ func TestUpdateProgressPersistsResumeCursor(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 7, got.SentCount)
 	assert.Equal(t, 2, got.FailCount)
+	require.NotNil(t, got.SkipCount)
+	assert.Equal(t, 3, *got.SkipCount)
+	assert.Equal(t, 12, got.TotalCount)
 	assert.Equal(t, 4321, got.LastUserId)
 	assert.GreaterOrEqual(t, got.UpdatedAt, c.CreatedAt)
+}
+
+// Existing rows must keep unknown skip counts after migration and progress writes;
+// only newly created campaigns can promise complete skip accounting.
+func TestEmailCampaignSkipCountMigration(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	originalDB := DB
+	t.Cleanup(func() {
+		DB = originalDB
+		assert.NoError(t, sqlDB.Close())
+	})
+
+	type legacyCampaign struct {
+		Id         int
+		TotalCount int
+		SentCount  int
+		FailCount  int
+	}
+	require.NoError(t, db.Table("email_campaigns").AutoMigrate(&legacyCampaign{}))
+	require.NoError(t, db.Table("email_campaigns").Create(&legacyCampaign{
+		Id: 1, TotalCount: 5817, SentCount: 3551,
+	}).Error)
+	require.NoError(t, db.AutoMigrate(&EmailCampaign{}))
+	DB = db
+
+	legacy, err := GetEmailCampaignById(1)
+	require.NoError(t, err)
+	assert.Nil(t, legacy.SkipCount)
+	require.NoError(t, legacy.UpdateProgress())
+	legacy, err = GetEmailCampaignById(1)
+	require.NoError(t, err)
+	assert.Nil(t, legacy.SkipCount)
+	assert.Equal(t, 5817, legacy.TotalCount)
+	assert.Equal(t, 3551, legacy.SentCount)
+
+	fresh := &EmailCampaign{Subject: "new"}
+	require.NoError(t, fresh.Insert())
+	fresh, err = GetEmailCampaignById(fresh.Id)
+	require.NoError(t, err)
+	require.NotNil(t, fresh.SkipCount)
+	assert.Zero(t, *fresh.SkipCount)
 }

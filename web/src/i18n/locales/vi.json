@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Processing finished": "Đã xử lý xong",
+    "Processing finished with failures": "Đã xử lý xong, có lỗi gửi",
+    "Processed: {{processed}}/{{total}}": "Đã xử lý: {{processed}}/{{total}}",
+    "Attempted: {{attempted}} · Candidates: {{total}}": "Đã thử gửi: {{attempted}} · Người nhận tiềm năng: {{total}}",
+    "Sent: {{count}}": "Đã gửi: {{count}}",
+    "Failed: {{count}}": "Thất bại: {{count}}",
+    "Skipped: {{count}}": "Đã bỏ qua: {{count}}",
+    "Skipped: not recorded": "Đã bỏ qua: chưa được ghi nhận",
     "Page resources could not be loaded": "Không thể tải tài nguyên trang",
     "Check your connection, then reload the page. If the problem continues, contact the administrator.": "Hãy kiểm tra kết nối rồi tải lại trang. Nếu sự cố vẫn tiếp diễn, hãy liên hệ quản trị viên.",
     "Reload page": "Tải lại trang",
@@ -2610,7 +2618,7 @@
     "Input price is required before saving dependent prices.": "Cần có giá đầu vào trước khi lưu các giá phụ thuộc.",
     "Input tokens": "Token đầu vào",
     "Input Tokens": "Token đầu vào",
-  "Total Input Tokens (including cache)": "Tổng token đầu vào (bao gồm bộ nhớ đệm)",
+    "Total Input Tokens (including cache)": "Tổng token đầu vào (bao gồm bộ nhớ đệm)",
     "Inset": "Khung trong",
     "Inspect requests, errors, and billing details": "Kiểm tra yêu cầu, lỗi và chi tiết thanh toán",
     "Inspect user prompts": "Kiểm tra lời nhắc của người dùng",

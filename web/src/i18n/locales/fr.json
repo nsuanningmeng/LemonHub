@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Processing finished": "Traitement terminé",
+    "Processing finished with failures": "Traitement terminé avec des échecs",
+    "Processed: {{processed}}/{{total}}": "Traités : {{processed}}/{{total}}",
+    "Attempted: {{attempted}} · Candidates: {{total}}": "Tentatives : {{attempted}} · Destinataires potentiels : {{total}}",
+    "Sent: {{count}}": "Envoyés : {{count}}",
+    "Failed: {{count}}": "Échecs : {{count}}",
+    "Skipped: {{count}}": "Ignorés : {{count}}",
+    "Skipped: not recorded": "Ignorés : non enregistrés",
     "Page resources could not be loaded": "Impossible de charger les ressources de la page",
     "Check your connection, then reload the page. If the problem continues, contact the administrator.": "Vérifiez votre connexion, puis rechargez la page. Si le problème persiste, contactez l’administrateur.",
     "Reload page": "Recharger la page",
@@ -2610,7 +2618,7 @@
     "Input price is required before saving dependent prices.": "Le prix d’entrée est requis avant d’enregistrer les prix dépendants.",
     "Input tokens": "Jetons d’entrée",
     "Input Tokens": "Tokens d'entrée",
-  "Total Input Tokens (including cache)": "Total des tokens d’entrée (cache inclus)",
+    "Total Input Tokens (including cache)": "Total des tokens d’entrée (cache inclus)",
     "Inset": "Encastré",
     "Inspect requests, errors, and billing details": "Inspecter les requêtes, les erreurs et les détails de facturation",
     "Inspect user prompts": "Inspecter les invites utilisateur",

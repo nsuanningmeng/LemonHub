@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Processing finished": "Processing finished",
+    "Processing finished with failures": "Processing finished with failures",
+    "Processed: {{processed}}/{{total}}": "Processed: {{processed}}/{{total}}",
+    "Attempted: {{attempted}} · Candidates: {{total}}": "Attempted: {{attempted}} · Candidates: {{total}}",
+    "Sent: {{count}}": "Sent: {{count}}",
+    "Failed: {{count}}": "Failed: {{count}}",
+    "Skipped: {{count}}": "Skipped: {{count}}",
+    "Skipped: not recorded": "Skipped: not recorded",
     "Page resources could not be loaded": "Page resources could not be loaded",
     "Check your connection, then reload the page. If the problem continues, contact the administrator.": "Check your connection, then reload the page. If the problem continues, contact the administrator.",
     "Reload page": "Reload page",
@@ -2610,7 +2618,7 @@
     "Input price is required before saving dependent prices.": "Input price is required before saving dependent prices.",
     "Input tokens": "Input tokens",
     "Input Tokens": "Input Tokens",
-  "Total Input Tokens (including cache)": "Total Input Tokens (including cache)",
+    "Total Input Tokens (including cache)": "Total Input Tokens (including cache)",
     "Inset": "Inset",
     "Inspect requests, errors, and billing details": "Inspect requests, errors, and billing details",
     "Inspect user prompts": "Inspect user prompts",

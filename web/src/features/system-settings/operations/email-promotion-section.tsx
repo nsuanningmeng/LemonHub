@@ -103,6 +103,8 @@ type EmailCampaign = {
   total_count: number
   sent_count: number
   fail_count: number
+  // Historical campaigns do not have a recorded skipped-recipient count.
+  skip_count?: number | null
   created_at: number
   finished_at: number
 }
@@ -187,7 +189,7 @@ const STATUS_BADGE: Record<
       'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30',
   },
   completed: {
-    label: 'Completed',
+    label: 'Processing finished',
     className:
       'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30',
   },
@@ -579,6 +581,27 @@ export function EmailPromotionSection({
               <TableBody>
                 {campaigns.map((campaign) => {
                   const badge = STATUS_BADGE[campaign.status]
+                  const completedWithFailures =
+                    campaign.status === 'completed' && campaign.fail_count > 0
+                  let progress = t('Processing finished')
+                  if (campaign.skip_count != null) {
+                    progress = t('Processed: {{processed}}/{{total}}', {
+                      processed:
+                        campaign.sent_count +
+                        campaign.fail_count +
+                        campaign.skip_count,
+                      total: campaign.total_count,
+                    })
+                  } else if (campaign.status !== 'completed') {
+                    progress = t(
+                      'Attempted: {{attempted}} · Candidates: {{total}}',
+                      {
+                        attempted: campaign.sent_count + campaign.fail_count,
+                        total: campaign.total_count,
+                      }
+                    )
+                  }
+
                   return (
                     <TableRow key={campaign.id}>
                       <TableCell className='max-w-[16rem] truncate font-medium'>
@@ -590,19 +613,46 @@ export function EmailPromotionSection({
                           : t('Manual')}
                       </TableCell>
                       <TableCell>
-                        <Badge variant='outline' className={badge.className}>
-                          {t(badge.label)}
+                        <Badge
+                          variant='outline'
+                          className={
+                            completedWithFailures
+                              ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                              : badge.className
+                          }
+                        >
+                          {completedWithFailures
+                            ? t('Processing finished with failures')
+                            : t(badge.label)}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <span className='tabular-nums'>
-                          {campaign.sent_count}/{campaign.total_count}
-                        </span>
-                        {campaign.fail_count > 0 ? (
-                          <span className='text-destructive ml-2'>
-                            {t('failed:')} {campaign.fail_count}
+                        <div className='tabular-nums'>{progress}</div>
+                        <div className='text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums'>
+                          <span>
+                            {t('Sent: {{count}}', {
+                              count: campaign.sent_count,
+                            })}
                           </span>
-                        ) : null}
+                          <span
+                            className={
+                              campaign.fail_count > 0
+                                ? 'text-destructive'
+                                : undefined
+                            }
+                          >
+                            {t('Failed: {{count}}', {
+                              count: campaign.fail_count,
+                            })}
+                          </span>
+                          <span>
+                            {campaign.skip_count == null
+                              ? t('Skipped: not recorded')
+                              : t('Skipped: {{count}}', {
+                                  count: campaign.skip_count,
+                                })}
+                          </span>
+                        </div>
                       </TableCell>
                       <TableCell className='text-muted-foreground'>
                         {formatTimestamp(campaign.created_at)}

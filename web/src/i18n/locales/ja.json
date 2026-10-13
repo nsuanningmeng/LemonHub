@@ -1,5 +1,13 @@
 {
   "translation": {
+    "Processing finished": "処理終了",
+    "Processing finished with failures": "処理終了（一部失敗）",
+    "Processed: {{processed}}/{{total}}": "処理済み：{{processed}}/{{total}}",
+    "Attempted: {{attempted}} · Candidates: {{total}}": "送信試行：{{attempted}} · 候補者数：{{total}}",
+    "Sent: {{count}}": "送信成功：{{count}}",
+    "Failed: {{count}}": "失敗：{{count}}",
+    "Skipped: {{count}}": "スキップ：{{count}}",
+    "Skipped: not recorded": "スキップ：未記録",
     "Page resources could not be loaded": "ページのリソースを読み込めませんでした",
     "Check your connection, then reload the page. If the problem continues, contact the administrator.": "接続を確認してページを再読み込みしてください。問題が続く場合は管理者にお問い合わせください。",
     "Reload page": "ページを再読み込み",
@@ -2610,7 +2618,7 @@
     "Input price is required before saving dependent prices.": "依存する価格を保存する前に入力価格が必要です。",
     "Input tokens": "入力トークン",
     "Input Tokens": "入力トークン",
-  "Total Input Tokens (including cache)": "入力トークン合計（キャッシュを含む）",
+    "Total Input Tokens (including cache)": "入力トークン合計（キャッシュを含む）",
     "Inset": "インセット",
     "Inspect requests, errors, and billing details": "リクエスト、エラー、請求詳細を確認",
     "Inspect user prompts": "ユーザープロンプトの検査",
