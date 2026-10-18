@@ -101,6 +101,10 @@ const DEFAULT_FLOW_SANKEY_LABELS: FlowSankeyLabels = {
 
 const DEFAULT_FLOW_CHART_COLOR = '#1664FF'
 
+// Fallback when the caller does not pass the theme's text color.
+const DEFAULT_FLOW_LABEL_COLOR = '#475569'
+const DEFAULT_FLOW_ACTIVE_STROKE = 'rgba(15, 23, 42, 0.7)'
+
 const FLOW_NODE_KINDS: readonly FlowNodeKind[] = [
   'user',
   'node',
@@ -1124,8 +1128,13 @@ export function buildFlowSankeySpec(
   flow: DashboardFlowGraph,
   title: string,
   valueFormatter: (value: number) => string = formatNumber,
-  labels: FlowSankeyLabels = DEFAULT_FLOW_SANKEY_LABELS
+  labels: FlowSankeyLabels = DEFAULT_FLOW_SANKEY_LABELS,
+  // The app theme's text color, so labels and the active node outline match
+  // the surrounding UI in every light/dark mode and theme preset.
+  textColor?: string
 ): VChartSpec {
+  const labelColor = textColor ?? DEFAULT_FLOW_LABEL_COLOR
+  const activeStroke = textColor ?? DEFAULT_FLOW_ACTIVE_STROKE
   return {
     type: 'sankey',
     data: [
@@ -1215,7 +1224,7 @@ export function buildFlowSankeySpec(
       limit: 220,
       interactive: false,
       style: {
-        fill: '#475569',
+        fill: labelColor,
         fontSize: 11,
         fontWeight: 600,
       },
@@ -1232,7 +1241,7 @@ export function buildFlowSankeySpec(
         },
         stroke: (datum: Record<string, unknown>) =>
           sankeyDatumFlag(datum, 'highlighted')
-            ? 'rgba(15, 23, 42, 0.74)'
+            ? activeStroke
             : 'rgba(148, 163, 184, 0.45)',
         lineWidth: (datum: Record<string, unknown>) =>
           sankeyDatumFlag(datum, 'highlighted') ? 1.5 : 1,
@@ -1242,12 +1251,12 @@ export function buildFlowSankeySpec(
       state: {
         hover: {
           fillOpacity: 1,
-          stroke: 'rgba(15, 23, 42, 0.68)',
+          stroke: activeStroke,
           lineWidth: 1.5,
         },
         selected: {
           fillOpacity: 1,
-          stroke: 'rgba(15, 23, 42, 0.68)',
+          stroke: activeStroke,
           lineWidth: 1.5,
         },
         blur: {

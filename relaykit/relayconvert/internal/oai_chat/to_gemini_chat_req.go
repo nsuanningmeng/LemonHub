@@ -190,9 +190,13 @@ func OpenAIChatRequestToGeminiGenerateContent(c context.Context, textRequest dto
 				urlContext = true
 				continue
 			}
+			typed, full, err := sharedgemini.FunctionSchema(tool.Function.Parameters, opts.Gemini.SupportsJSONSchemaFor(upstreamModelName))
+			if err != nil {
+				return nil, err
+			}
 			functions = append(functions, dto.GeminiFunctionDeclaration{
 				Name: tool.Function.Name, Description: tool.Function.Description,
-				ParametersJSONSchema: tool.Function.Parameters,
+				Parameters: typed, ParametersJSONSchema: full,
 			})
 		}
 		geminiTools := geminiRequest.GetTools()
@@ -225,10 +229,8 @@ func OpenAIChatRequestToGeminiGenerateContent(c context.Context, textRequest dto
 		geminiRequest.GenerationConfig.ResponseMimeType = "application/json"
 
 		if len(textRequest.ResponseFormat.JsonSchema) > 0 {
-			var jsonSchema dto.FormatJsonSchema
-			if err := kitutil.Unmarshal(textRequest.ResponseFormat.JsonSchema, &jsonSchema); err == nil {
-				cleanedSchema := sharedgemini.RemoveAdditionalProperties(jsonSchema.Schema, 0)
-				geminiRequest.GenerationConfig.ResponseSchema = cleanedSchema
+			if err := sharedgemini.ApplyResponseSchema(&geminiRequest.GenerationConfig, textRequest.ResponseFormat.JsonSchema, opts.Gemini.SupportsJSONSchemaFor(upstreamModelName)); err != nil {
+				return nil, err
 			}
 		}
 	}

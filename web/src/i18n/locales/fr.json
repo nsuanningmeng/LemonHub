@@ -2280,7 +2280,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Projets liés",
     "footer.defaultCopyright": "Tous droits réservés.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
+    "footer.newapi.projectAttributionSuffix": "Tous droits réservés. Conçu et développé par les contributeurs du projet.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Pour les canaux ajoutés après le 10 mai 2025, pas besoin de supprimer \".\" des noms de modèles lors du déploiement",
     "For individual agents just getting started": "For individual agents just getting started",
     "For operators with steady traffic": "For operators with steady traffic",
@@ -5905,6 +5905,17 @@
     "Selected chart data": "Données du graphique sélectionnées",
     "Selected day": "Jour sélectionné",
     "Use arrow keys to explore dates.": "Utilisez les touches fléchées pour parcourir les dates.",
-    "{{date}}: {{tokens}} tokens": "{{date}} : {{tokens}} jetons"
+    "{{date}}: {{tokens}} tokens": "{{date}} : {{tokens}} jetons",
+    "`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.": "`, `-nothinking` et les suffixes d’effort tels que `-high` lors du routage vers la variante Gemini correcte. Désactivé, les noms de modèle sont envoyés en amont tels quels.",
+    "Adapt `-thinking`, `-nothinking`, and effort suffixes such as `-high` to Anthropic native thinking behavior while keeping billing predictable. When off, model names are sent upstream unchanged.": "Adapter les requêtes avec les suffixes `-thinking`, `-nothinking` et les suffixes d’effort tels que `-high` au comportement de pensée natif d’Anthropic tout en gardant une facturation prévisible. Désactivé, les noms de modèle sont envoyés en amont tels quels.",
+    "Optional. Without it, Google picks the region; with it, requests go to the deployment region below.": "Facultatif. Sans ID, Google choisit la région ; avec un ID, les requêtes vont vers la région de déploiement ci-dessous.",
+    "Vertex AI Project ID": "ID de projet Vertex AI",
+    "e.g., my-project-123": "ex. mon-projet-123",
+    "Input Price: High to Low": "Prix d’entrée : Du plus élevé au plus bas",
+    "Input Price: Low to High": "Prix d’entrée : Du plus bas au plus élevé",
+    "Output Price: High to Low": "Prix de sortie : Du plus élevé au plus bas",
+    "Output Price: Low to High": "Prix de sortie : Du plus bas au plus élevé",
+    "Per-request Price: High to Low": "Prix par requête : Du plus élevé au plus bas",
+    "Per-request Price: Low to High": "Prix par requête : Du plus bas au plus élevé"
   }
 }

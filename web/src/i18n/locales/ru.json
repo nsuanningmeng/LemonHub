@@ -2280,7 +2280,7 @@
     "footer.columns.related.links.oneApi": "Один API",
     "footer.columns.related.title": "Связанные проекты",
     "footer.defaultCopyright": "Все права защищены.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
+    "footer.newapi.projectAttributionSuffix": "Все права защищены. Разработано участниками проекта.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Для каналов, добавленных после 10 мая 2025 г., не нужно удалять \".\" из имён моделей при развёртывании",
     "For individual agents just getting started": "For individual agents just getting started",
     "For operators with steady traffic": "For operators with steady traffic",
@@ -5905,6 +5905,17 @@
     "Selected chart data": "Выбранные данные графика",
     "Selected day": "Выбранный день",
     "Use arrow keys to explore dates.": "Используйте клавиши со стрелками для выбора дат.",
-    "{{date}}: {{tokens}} tokens": "{{date}}: токенов — {{tokens}}"
+    "{{date}}: {{tokens}} tokens": "{{date}}: токенов — {{tokens}}",
+    "`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.": "суффиксы `, `-nothinking` и суффиксы усилия, такие как `-high`, при маршрутизации к правильному варианту Gemini. При отключении имена моделей отправляются вверх по потоку без изменений.",
+    "Adapt `-thinking`, `-nothinking`, and effort suffixes such as `-high` to Anthropic native thinking behavior while keeping billing predictable. When off, model names are sent upstream unchanged.": "Адаптировать запросы с суффиксами `-thinking`, `-nothinking` и суффиксами усилия, такими как `-high`, к собственному режиму размышления Anthropic, сохраняя предсказуемость биллинга. При отключении имена моделей отправляются вверх по потоку без изменений.",
+    "Optional. Without it, Google picks the region; with it, requests go to the deployment region below.": "Необязательно. Без него регион выбирает Google, а с ним запросы отправляются в регион развертывания ниже.",
+    "Vertex AI Project ID": "ID проекта Vertex AI",
+    "e.g., my-project-123": "напр. my-project-123",
+    "Input Price: High to Low": "Цена ввода: от высокой к низкой",
+    "Input Price: Low to High": "Цена ввода: от низкой к высокой",
+    "Output Price: High to Low": "Цена вывода: от высокой к низкой",
+    "Output Price: Low to High": "Цена вывода: от низкой к высокой",
+    "Per-request Price: High to Low": "Цена за запрос: от высокой к низкой",
+    "Per-request Price: Low to High": "Цена за запрос: от низкой к высокой"
   }
 }

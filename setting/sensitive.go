@@ -2,8 +2,8 @@ package setting
 
 import "strings"
 
-var CheckSensitiveEnabled = true
-var CheckSensitiveOnPromptEnabled = true
+var CheckSensitiveEnabled = false
+var CheckSensitiveOnPromptEnabled = false
 
 // SensitiveWordsWholeWordEnabled opts ASCII-letter entries into whole-word matching.
 // The default retains the existing case-insensitive substring policy.
@@ -18,10 +18,7 @@ var StopOnSensitiveEnabled = true
 var StreamCacheQueueLength = 0
 
 // SensitiveWords 敏感词
-// var SensitiveWords []string
-var SensitiveWords = []string{
-	"test_sensitive",
-}
+var SensitiveWords []string
 
 func SensitiveWordsToString() string {
 	return strings.Join(SensitiveWords, "\n")

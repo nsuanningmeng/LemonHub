@@ -36,6 +36,10 @@ func TestVideoProxyKeepsAuthenticatedContentPrivate(t *testing.T) {
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Content-Length", "5")
+		w.Header().Set("Content-Disposition", `inline; filename="video.mp4"`)
+		w.Header().Add("Set-Cookie", "__Host-new_api_refresh=attacker-session; Path=/; Secure; HttpOnly")
+		w.Header().Add("Set-Cookie2", "new_api_refresh=attacker-session; Path=/api/user/auth")
 		w.Header().Set("Cache-Control", "public, max-age=86400")
 		w.Header().Set("CDN-Cache-Control", "public, s-maxage=86400")
 		w.Header().Set("Cloudflare-CDN-Cache-Control", "public, max-age=86400")
@@ -84,6 +88,12 @@ func TestVideoProxyKeepsAuthenticatedContentPrivate(t *testing.T) {
 			assert.Equal(t, "video", recorder.Body.String())
 			assert.Equal(t, "video/mp4", recorder.Header().Get("Content-Type"))
 			assert.Equal(t, "private, no-store", recorder.Header().Get("Cache-Control"))
+			assert.Empty(t, recorder.Header().Values("Set-Cookie"))
+			assert.Empty(t, recorder.Header().Values("Set-Cookie2"))
+			if tc.name == "upstream" {
+				assert.Equal(t, "5", recorder.Header().Get("Content-Length"))
+				assert.Equal(t, `inline; filename="video.mp4"`, recorder.Header().Get("Content-Disposition"))
+			}
 			for _, header := range []string{"CDN-Cache-Control", "Cloudflare-CDN-Cache-Control", "Surrogate-Control", "Expires", "Age", "ETag", "Last-Modified"} {
 				assert.Empty(t, recorder.Header().Get(header), header)
 			}

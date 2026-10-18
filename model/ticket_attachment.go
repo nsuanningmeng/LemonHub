@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
 )
 
 type TicketAttachment struct {
@@ -48,21 +49,32 @@ func GetAttachmentsByMessageIds(messageIds []int) ([]*TicketAttachment, error) {
 	return list, err
 }
 
-// BindAttachmentsToMessage attaches previously-uploaded, still-unbound files
-// (owned by userId) to a freshly created message. Returns the number bound.
-// Ownership + unbound (message_id = 0) constraints prevent hijacking another
-// user's uploads or re-binding an attachment.
-func BindAttachmentsToMessage(attachmentIds []int, ticketId, messageId, userId int) (int64, error) {
+var ErrTicketAttachmentUnavailable = errors.New("one or more ticket attachments are unavailable")
+
+// bindTicketAttachments runs inside the message transaction, after locking its
+// ticket. UPDATE obtains the same attachment row locks as retention cleanup.
+// A partial bind is an error so the caller rolls back the entire message.
+func bindTicketAttachments(tx *gorm.DB, attachmentIds []int, ticket *Ticket, message *TicketMessage) error {
 	if len(attachmentIds) == 0 {
-		return 0, nil
+		return nil
 	}
-	res := DB.Model(&TicketAttachment{}).
-		Where("id IN ? AND user_id = ? AND message_id = 0", attachmentIds, userId).
-		Updates(map[string]interface{}{
-			"ticket_id":  ticketId,
-			"message_id": messageId,
-		})
-	return res.RowsAffected, res.Error
+	query := tx.Model(&TicketAttachment{}).
+		Where("id IN ? AND user_id = ? AND message_id = 0", attachmentIds, message.UserId)
+	if !message.IsAdmin {
+		query = query.Where("site_id = ?", ticket.SiteId)
+	}
+	res := query.Updates(map[string]interface{}{
+		"ticket_id":  ticket.Id,
+		"message_id": message.Id,
+		"site_id":    ticket.SiteId,
+	})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected != int64(len(attachmentIds)) {
+		return ErrTicketAttachmentUnavailable
+	}
+	return nil
 }
 
 // GetTicketAttachments returns all attachments belonging to a ticket.
@@ -141,13 +153,4 @@ func CollectAttachmentsForCleanup(siteScope int, orphanBefore, closedBefore int6
 	}
 
 	return list, nil
-}
-
-// DeleteAttachmentRows removes attachment DB rows by id.
-func DeleteAttachmentRows(ids []int) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	res := DB.Where("id IN ?", ids).Delete(&TicketAttachment{})
-	return res.RowsAffected, res.Error
 }

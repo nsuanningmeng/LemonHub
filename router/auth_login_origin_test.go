@@ -124,8 +124,14 @@ func TestPasswordLoginAcceptsJSONBrowserAndNonBrowserClients(t *testing.T) {
 			require.True(t, result.Success, response.Body.String())
 			_, err := service.ParseAccessToken(result.Data.AccessToken)
 			require.NoError(t, err)
-			require.Len(t, response.Result().Cookies(), 1)
-			assert.Equal(t, service.RefreshCookieName, response.Result().Cookies()[0].Name)
+			cookies := response.Result().Cookies()
+			if test.secure {
+				require.Len(t, cookies, 2)
+				assert.Equal(t, -1, cookies[1].MaxAge, "clear the legacy host-only refresh cookie")
+			} else {
+				require.Len(t, cookies, 1)
+			}
+			assert.Equal(t, service.CurrentRefreshCookieName(), cookies[0].Name)
 		})
 	}
 }

@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { useAuthStore } from '@/stores/auth-store'
+
 import { DEFAULT_CONFIG, DEFAULT_PARAMETER_ENABLED } from '../constants'
 import {
   saveConfig,
@@ -43,6 +45,10 @@ const MESSAGE_SAVE_DEBOUNCE_MS = 500
  * Main state management hook for playground
  */
 export function usePlaygroundState() {
+  // Bind queued writes and unmount flushes to the account that owns this session.
+  const [ownerId] = useState(
+    () => useAuthStore.getState().auth.user?.id ?? null
+  )
   // Load initial state from localStorage
   const [config, setConfig] = useState<PlaygroundConfig>(
     getInitialPlaygroundConfig
@@ -61,28 +67,31 @@ export function usePlaygroundState() {
   const [models, setModels] = useState<ModelOption[]>([])
   const [groups, setGroups] = useState<GroupOption[]>([])
 
-  const persistMessages = useCallback((messagesToSave: Message[]) => {
-    latestMessagesRef.current = messagesToSave
+  const persistMessages = useCallback(
+    (messagesToSave: Message[]) => {
+      latestMessagesRef.current = messagesToSave
 
-    if (!hasLoadedMessagesRef.current) {
-      return
-    }
+      if (!hasLoadedMessagesRef.current) {
+        return
+      }
 
-    if (messagesSaveTimerRef.current !== null) {
-      window.clearTimeout(messagesSaveTimerRef.current)
-    }
+      if (messagesSaveTimerRef.current !== null) {
+        window.clearTimeout(messagesSaveTimerRef.current)
+      }
 
-    messagesSaveTimerRef.current = window.setTimeout(() => {
-      messagesSaveTimerRef.current = null
-      saveMessages(latestMessagesRef.current)
-    }, MESSAGE_SAVE_DEBOUNCE_MS)
-  }, [])
+      messagesSaveTimerRef.current = window.setTimeout(() => {
+        messagesSaveTimerRef.current = null
+        saveMessages(latestMessagesRef.current, ownerId)
+      }, MESSAGE_SAVE_DEBOUNCE_MS)
+    },
+    [ownerId]
+  )
 
   useEffect(() => {
     let cancelled = false
 
     window.setTimeout(() => {
-      const loadedMessages = loadMessages() ?? []
+      const loadedMessages = loadMessages(ownerId) ?? []
       if (cancelled) {
         return
       }
@@ -96,16 +105,16 @@ export function usePlaygroundState() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [ownerId])
 
   useEffect(
     () => () => {
       if (messagesSaveTimerRef.current !== null) {
         window.clearTimeout(messagesSaveTimerRef.current)
-        saveMessages(latestMessagesRef.current)
+        saveMessages(latestMessagesRef.current, ownerId)
       }
     },
-    []
+    [ownerId]
   )
 
   // Update config with automatic save
@@ -113,11 +122,11 @@ export function usePlaygroundState() {
     <K extends keyof PlaygroundConfig>(key: K, value: PlaygroundConfig[K]) => {
       setConfig((prev) => {
         const updated = { ...prev, [key]: value }
-        saveConfig(updated)
+        saveConfig(updated, ownerId)
         return updated
       })
     },
-    []
+    [ownerId]
   )
 
   // Update parameter enabled with automatic save
@@ -125,11 +134,11 @@ export function usePlaygroundState() {
     (key: keyof ParameterEnabled, value: boolean) => {
       setParameterEnabled((prev) => {
         const updated = { ...prev, [key]: value }
-        saveParameterEnabled(updated)
+        saveParameterEnabled(updated, ownerId)
         return updated
       })
     },
-    []
+    [ownerId]
   )
 
   // Update messages with automatic save
@@ -153,9 +162,9 @@ export function usePlaygroundState() {
   const resetConfig = useCallback(() => {
     setConfig(DEFAULT_CONFIG)
     setParameterEnabled(DEFAULT_PARAMETER_ENABLED)
-    saveConfig(DEFAULT_CONFIG)
-    saveParameterEnabled(DEFAULT_PARAMETER_ENABLED)
-  }, [])
+    saveConfig(DEFAULT_CONFIG, ownerId)
+    saveParameterEnabled(DEFAULT_PARAMETER_ENABLED, ownerId)
+  }, [ownerId])
 
   return {
     // State

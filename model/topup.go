@@ -359,7 +359,10 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	return DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
-			return ErrTopUpNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
 		}
 		if expectedPaymentProvider != "" && topUp.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
@@ -442,6 +445,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 
 func Recharge(referenceId string, customerId string, paymentIntent string, callerIp string) (err error) {
 	var cacheGeneration string
+	alreadyDone := false
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
 	}
@@ -464,6 +468,11 @@ func Recharge(referenceId string, customerId string, paymentIntent string, calle
 			return ErrPaymentMethodMismatch
 		}
 
+		switch topUp.Status {
+		case common.TopUpStatusSuccess, common.TopUpStatusRefunded, common.TopUpStatusDisputed:
+			alreadyDone = true
+			return nil
+		}
 		if topUp.Status != common.TopUpStatusPending {
 			return errors.New("充值订单状态错误")
 		}
@@ -494,6 +503,9 @@ func Recharge(referenceId string, customerId string, paymentIntent string, calle
 	if err != nil {
 		common.SysError("topup failed: " + err.Error())
 		return errors.New("充值失败，请稍后重试")
+	}
+	if alreadyDone {
+		return nil
 	}
 	syncCreditUserQuotaCache(topUp.UserId, quota, "stripe topup", cacheGeneration)
 
@@ -576,7 +588,10 @@ func ReverseStripeTopUp(paymentIntent string, refundedMinor int64, chargeMinor i
 		err := DB.Transaction(func(tx *gorm.DB) error {
 			var topUp TopUp
 			if err := tx.Where("payment_intent = ?", paymentIntent).First(&topUp).Error; err != nil {
-				return ErrTopUpNotFound
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					return ErrTopUpNotFound
+				}
+				return err
 			}
 			if topUp.PaymentProvider != PaymentProviderStripe {
 				return ErrPaymentMethodMismatch

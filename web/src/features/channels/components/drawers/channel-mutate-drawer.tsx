@@ -283,6 +283,7 @@ const SENSITIVE_FORM_FIELDS = [
   'advanced_custom',
   'is_enterprise_account',
   'vertex_key_type',
+  'vertex_project_id',
   'aws_key_type',
   'azure_responses_version',
   'force_format',
@@ -637,7 +638,10 @@ export function ChannelMutateDrawer({
   >({})
   const canRevealChannelKey = currentUser?.role === ROLE.SUPER_ADMIN
   const [fetchModelsDialogOpen, setFetchModelsDialogOpen] = useState(false)
-  const [channelKey, setChannelKey] = useState<string | null>(null)
+  const [revealedKey, setRevealedKey] = useState<{
+    owner: object
+    value: string
+  } | null>(null)
   const [isChannelKeyLoading, setIsChannelKeyLoading] = useState(false)
   const [isCodexCredentialRefreshing, setIsCodexCredentialRefreshing] =
     useState(false)
@@ -674,6 +678,18 @@ export function ChannelMutateDrawer({
   const isEditing = Boolean(currentRow)
   const channelId = currentRow?.id ?? null
   const sensitiveLocked = isEditing && !canEditSensitive
+  const keyOwner = useMemo(
+    () => ({
+      open,
+      channelId,
+      userId: currentUser?.id,
+      canRevealChannelKey,
+      canViewSecrets,
+    }),
+    [open, channelId, currentUser?.id, canRevealChannelKey, canViewSecrets]
+  )
+  const keyOwnerRef = useRef<object | null>(keyOwner)
+  const channelKey = revealedKey?.owner === keyOwner ? revealedKey.value : null
 
   // Fetch channel details if editing
   const { data: channelData, isLoading: isChannelLoading } = useQuery({
@@ -718,13 +734,14 @@ export function ChannelMutateDrawer({
   } = useSecureVerification()
 
   useEffect(() => {
-    if (!open) {
-      setChannelKey(null)
-      setIsChannelKeyLoading(false)
-    } else if (channelId) {
-      setChannelKey(null)
+    keyOwnerRef.current = keyOwner
+    setRevealedKey(null)
+    setIsChannelKeyLoading(false)
+    cancelVerification()
+    return () => {
+      keyOwnerRef.current = null
     }
-  }, [open, channelId])
+  }, [keyOwner, cancelVerification])
 
   // Check if this is a multi-key channel
   const isMultiKeyChannel =
@@ -741,6 +758,14 @@ export function ChannelMutateDrawer({
     value: string
   ) => {
     setEditedOverrides((previous) => ({ ...previous, [field]: true }))
+    form.setValue(field, value, { shouldDirty: true, shouldValidate: true })
+  }
+
+  const updateHiddenSensitiveField = (
+    field: 'base_url' | 'proxy' | 'advanced_custom',
+    value: string
+  ) => {
+    form.setValue(`preserve_hidden_${field}`, false)
     form.setValue(field, value, { shouldDirty: true, shouldValidate: true })
   }
 
@@ -782,6 +807,11 @@ export function ChannelMutateDrawer({
     'disable_task_polling_sleep'
   )
   const currentProxy = form.watch('proxy')
+  const preserveHiddenBaseUrl = form.watch('preserve_hidden_base_url')
+  const preserveHiddenProxy = form.watch('preserve_hidden_proxy')
+  const preserveHiddenAdvancedCustom = form.watch(
+    'preserve_hidden_advanced_custom'
+  )
   const currentHttpProtocol = form.watch('http_protocol')
   const currentHttp2ConnectionShards = form.watch('http2_connection_shards')
   const currentSystemPrompt = form.watch('system_prompt')
@@ -832,6 +862,7 @@ export function ChannelMutateDrawer({
         shouldDirty: true,
         shouldValidate: true,
       })
+      form.setValue('preserve_hidden_base_url', false)
       setClipboardConnectionInfo(null)
       toast.success(t('Connection info filled in'))
     },
@@ -992,6 +1023,7 @@ export function ChannelMutateDrawer({
     formErrors.multi_key_type ||
     formErrors.key_mode ||
     formErrors.vertex_key_type ||
+    formErrors.vertex_project_id ||
     formErrors.aws_key_type ||
     formErrors.azure_responses_version
   )
@@ -1005,7 +1037,9 @@ export function ChannelMutateDrawer({
   const identityComplete = Boolean(currentName?.trim() && currentType > 0)
   const credentialsComplete = Boolean(
     (isEditing || currentKey?.trim()) &&
-    (!providerRequiresBaseUrl || currentBaseUrl?.trim()) &&
+    (!providerRequiresBaseUrl ||
+      currentBaseUrl?.trim() ||
+      preserveHiddenBaseUrl) &&
     (!providerRequiresOther || currentOther?.trim())
   )
   const modelsComplete = Boolean(
@@ -1294,6 +1328,9 @@ export function ChannelMutateDrawer({
     if (isEditing && !channelData?.data) {
       form.setValue('param_override', '')
       form.setValue('header_override', '')
+      form.setValue('proxy', '')
+      form.setValue('advanced_custom', '')
+      form.setValue('base_url', '')
     }
     if (isEditing && channelData?.data) {
       const defaults = transformChannelToFormDefaults({
@@ -1308,7 +1345,9 @@ export function ChannelMutateDrawer({
         readAdvancedSettingsPreference() ||
           hasAdvancedSettingsValues(defaults) ||
           channelData.data.param_override_configured === true ||
-          channelData.data.header_override_configured === true
+          channelData.data.header_override_configured === true ||
+          channelData.data.proxy_configured === true ||
+          channelData.data.advanced_custom_configured === true
       )
       // Store initial values for comparison
       initialModelsRef.current = parseModelsString(
@@ -1413,26 +1452,34 @@ export function ChannelMutateDrawer({
 
   const fetchChannelKey = useCallback(
     async (proofToken?: string) => {
-      if (!channelId) {
-        throw new Error('Channel is not selected')
+      if (
+        !channelId ||
+        !open ||
+        !canRevealChannelKey ||
+        keyOwnerRef.current !== keyOwner
+      ) {
+        return
       }
 
       setIsChannelKeyLoading(true)
       try {
         const res = await getChannelKey(channelId, proofToken)
+        if (keyOwnerRef.current !== keyOwner) return
         if (!res.success) {
           throw new Error(res.message || t('Failed to fetch channel key'))
         }
 
         const keyValue = res.data?.key ?? ''
-        setChannelKey(keyValue)
+        setRevealedKey({ owner: keyOwner, value: keyValue })
         toast.success(t('Channel key unlocked'))
         return res
+      } catch (error) {
+        if (keyOwnerRef.current === keyOwner) throw error
       } finally {
-        setIsChannelKeyLoading(false)
+        if (keyOwnerRef.current === keyOwner) setIsChannelKeyLoading(false)
       }
     },
-    [channelId, t]
+    [channelId, t, keyOwner, open, canRevealChannelKey]
   )
 
   const handleRevealKey = useCallback(async () => {
@@ -1525,16 +1572,32 @@ export function ChannelMutateDrawer({
       type,
       key: isEditing ? undefined : form.getValues('key'),
       channel_id: editingAdvancedCustom ? channelId || undefined : undefined,
-      base_url: form.getValues('base_url') || '',
-      advanced_custom: form.getValues('advanced_custom'),
-      header_override: form.getValues('header_override'),
-      proxy: form.getValues('proxy'),
+      base_url: form.getValues('preserve_hidden_base_url')
+        ? undefined
+        : form.getValues('base_url') || '',
+      advanced_custom: form.getValues('preserve_hidden_advanced_custom')
+        ? undefined
+        : form.getValues('advanced_custom'),
+      header_override:
+        isEditing && !editedOverrides.header_override
+          ? undefined
+          : form.getValues('header_override'),
+      proxy: form.getValues('preserve_hidden_proxy')
+        ? undefined
+        : form.getValues('proxy'),
     })
     if (response.success && response.data) {
       return response.data
     }
     throw new Error(response.message || t('No models fetched from upstream'))
-  }, [canEditSensitive, channelId, form, isEditing, t])
+  }, [
+    canEditSensitive,
+    channelId,
+    form,
+    isEditing,
+    t,
+    editedOverrides.header_override,
+  ])
 
   // Handle model operations
   const handleFillRelatedModels = useCallback(() => {
@@ -1684,6 +1747,7 @@ export function ChannelMutateDrawer({
   // Submit handler
   const onSubmit = useCallback(
     async (data: ChannelFormValues) => {
+      if (isEditing && !channelData?.data) return
       // Validate key is required when creating
       if (!isEditing && !data.key?.trim()) {
         form.setError('key', {
@@ -1784,6 +1848,7 @@ export function ChannelMutateDrawer({
     },
     [
       isEditing,
+      channelData?.data,
       sensitiveLocked,
       form,
       confirmMissingModelMappings,
@@ -2188,6 +2253,27 @@ export function ChannelMutateDrawer({
                         )}
 
                         <div className='border-border/60 bg-muted/10 rounded-lg border p-4'>
+                          {preserveHiddenBaseUrl && (
+                            <p className='text-muted-foreground text-sm'>
+                              {t('Base URL')}:{' '}
+                              {t(
+                                'Existing configuration is hidden because you do not have permission to view channel secrets.'
+                              )}
+                              {canEditSensitive && (
+                                <Button
+                                  type='button'
+                                  variant='ghost'
+                                  size='sm'
+                                  aria-label={`${t('Clear')} ${t('Base URL')}`}
+                                  onClick={() =>
+                                    updateHiddenSensitiveField('base_url', '')
+                                  }
+                                >
+                                  {t('Clear')}
+                                </Button>
+                              )}
+                            </p>
+                          )}
                           <fieldset
                             disabled={sensitiveLocked}
                             className='space-y-4 disabled:opacity-60'
@@ -2209,6 +2295,12 @@ export function ChannelMutateDrawer({
                                             'e.g., https://docs-test-001.openai.azure.com'
                                           )}
                                           {...field}
+                                          onChange={(event) =>
+                                            updateHiddenSensitiveField(
+                                              'base_url',
+                                              event.target.value
+                                            )
+                                          }
                                         />
                                       </FormControl>
                                       <FormDescription>
@@ -2287,6 +2379,12 @@ export function ChannelMutateDrawer({
                                           'e.g., https://api.openai.com/v1/chat/completions'
                                         )}
                                         {...field}
+                                        onChange={(event) =>
+                                          updateHiddenSensitiveField(
+                                            'base_url',
+                                            event.target.value
+                                          )
+                                        }
                                       />
                                     </FormControl>
                                     <FormDescription>
@@ -2454,6 +2552,12 @@ export function ChannelMutateDrawer({
                                           'e.g., https://fastgpt.run/api/openapi'
                                         )}
                                         {...field}
+                                        onChange={(event) =>
+                                          updateHiddenSensitiveField(
+                                            'base_url',
+                                            event.target.value
+                                          )
+                                        }
                                       />
                                     </FormControl>
                                     <FormDescription>
@@ -2485,6 +2589,12 @@ export function ChannelMutateDrawer({
                                           'e.g., https://api.example.com (path before /suno)'
                                         )}
                                         {...field}
+                                        onChange={(event) =>
+                                          updateHiddenSensitiveField(
+                                            'base_url',
+                                            event.target.value
+                                          )
+                                        }
                                       />
                                     </FormControl>
                                     <FormDescription>
@@ -2595,6 +2705,33 @@ export function ChannelMutateDrawer({
                                     </FormItem>
                                   )}
                                 />
+                                {vertexKeyType === 'api_key' && (
+                                  <FormField
+                                    control={form.control}
+                                    name='vertex_project_id'
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>
+                                          {t('Vertex AI Project ID')}
+                                        </FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            placeholder={t(
+                                              'e.g., my-project-123'
+                                            )}
+                                            {...field}
+                                          />
+                                        </FormControl>
+                                        <FormDescription>
+                                          {t(
+                                            'Optional. Without it, Google picks the region; with it, requests go to the deployment region below.'
+                                          )}
+                                        </FormDescription>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                )}
                                 {vertexKeyType === 'json' && (
                                   <FormItem>
                                     <FormLabel>
@@ -2741,7 +2878,12 @@ export function ChannelMutateDrawer({
                                           ),
                                         },
                                       ]}
-                                      onValueChange={field.onChange}
+                                      onValueChange={(value) =>
+                                        updateHiddenSensitiveField(
+                                          'base_url',
+                                          value ?? ''
+                                        )
+                                      }
                                       value={
                                         field.value === 'doubao-coding-plan'
                                           ? 'https://ark.cn-beijing.volces.com'
@@ -2794,6 +2936,12 @@ export function ChannelMutateDrawer({
                                           'e.g., https://ark.cn-beijing.volces.com'
                                         )}
                                         {...field}
+                                        onChange={(event) =>
+                                          updateHiddenSensitiveField(
+                                            'base_url',
+                                            event.target.value
+                                          )
+                                        }
                                       />
                                     </FormControl>
                                     <FormDescription>
@@ -2840,6 +2988,12 @@ export function ChannelMutateDrawer({
                                       <Input
                                         placeholder={baseUrlPlaceholder}
                                         {...field}
+                                        onChange={(event) =>
+                                          updateHiddenSensitiveField(
+                                            'base_url',
+                                            event.target.value
+                                          )
+                                        }
                                       />
                                     </FormControl>
                                     <FormDescription>
@@ -2866,8 +3020,9 @@ export function ChannelMutateDrawer({
                                         </FormLabel>
                                         <div className='flex flex-wrap gap-2'>
                                           <Badge variant='secondary'>
-                                            {t('Routes')}:{' '}
-                                            {advancedCustomStats.routeCount}
+                                            {preserveHiddenAdvancedCustom
+                                              ? t('Configured')
+                                              : `${t('Routes')}: ${advancedCustomStats.routeCount}`}
                                           </Badge>
                                           {advancedCustomRouteTypeLabels.map(
                                             (label) => (
@@ -2897,11 +3052,12 @@ export function ChannelMutateDrawer({
                                               }
                                             </Badge>
                                           )}
-                                          {!advancedCustomStats.valid && (
-                                            <Badge variant='destructive'>
-                                              {t('Incomplete')}
-                                            </Badge>
-                                          )}
+                                          {!preserveHiddenAdvancedCustom &&
+                                            !advancedCustomStats.valid && (
+                                              <Badge variant='destructive'>
+                                                {t('Incomplete')}
+                                              </Badge>
+                                            )}
                                         </div>
                                       </div>
                                       <Button
@@ -2919,6 +3075,13 @@ export function ChannelMutateDrawer({
                                     <FormControl>
                                       <input type='hidden' {...field} />
                                     </FormControl>
+                                    {preserveHiddenAdvancedCustom && (
+                                      <FormDescription>
+                                        {t(
+                                          'Existing configuration is hidden because you do not have permission to view channel secrets.'
+                                        )}
+                                      </FormDescription>
+                                    )}
                                     <FormMessage />
                                   </FormItem>
                                 )}
@@ -4325,6 +4488,12 @@ export function ChannelMutateDrawer({
                                         'socks5://user:pass@host:port'
                                       )}
                                       {...field}
+                                      onChange={(event) =>
+                                        updateHiddenSensitiveField(
+                                          'proxy',
+                                          event.target.value
+                                        )
+                                      }
                                     />
                                   </FormControl>
                                   <FormDescription>
@@ -4332,6 +4501,29 @@ export function ChannelMutateDrawer({
                                       'Network proxy for this channel (supports HTTP, HTTPS, SOCKS5, and SOCKS5H)'
                                     )}
                                   </FormDescription>
+                                  {preserveHiddenProxy && (
+                                    <FormDescription>
+                                      {t(
+                                        'Existing configuration is hidden because you do not have permission to view channel secrets.'
+                                      )}
+                                      {canEditSensitive && (
+                                        <Button
+                                          type='button'
+                                          variant='ghost'
+                                          size='sm'
+                                          aria-label={`${t('Clear')} ${t('Proxy Address')}`}
+                                          onClick={() =>
+                                            updateHiddenSensitiveField(
+                                              'proxy',
+                                              ''
+                                            )
+                                          }
+                                        >
+                                          {t('Clear')}
+                                        </Button>
+                                      )}
+                                    </FormDescription>
+                                  )}
                                   <FormMessage />
                                 </FormItem>
                               )}
@@ -4972,7 +5164,11 @@ export function ChannelMutateDrawer({
             >
               {t('Cancel')}
             </SheetClose>
-            <Button form='channel-form' type='submit' disabled={isSubmitting}>
+            <Button
+              form='channel-form'
+              type='submit'
+              disabled={isSubmitting || (isEditing && !channelData?.data)}
+            >
               {isSubmitting && (
                 <Loader2 className='mr-2 h-4 w-4 animate-spin' />
               )}
@@ -4999,10 +5195,7 @@ export function ChannelMutateDrawer({
           value={form.watch('advanced_custom') || ''}
           onOpenChange={setAdvancedCustomEditorOpen}
           onSave={(nextValue) => {
-            form.setValue('advanced_custom', nextValue, {
-              shouldDirty: true,
-              shouldValidate: true,
-            })
+            updateHiddenSensitiveField('advanced_custom', nextValue)
           }}
         />
       )}

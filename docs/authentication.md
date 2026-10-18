@@ -6,11 +6,14 @@
 
 - Access Token 是有效期 15 分钟的 JWT，只保存在浏览器内存中，通过 `Authorization: Bearer <token>` 发送。
 - Refresh Token 是随机不透明值，有效期最长 30 天。浏览器只通过 `HttpOnly`、`SameSite=Strict` Cookie 持有它；服务端仅保存 HMAC 摘要，并在每次刷新时轮换。
+- `SESSION_COOKIE_SECURE=true` 时使用 `__Host-new_api_refresh`（`Secure`、`Path=/`、无 `Domain`），防止同父域站点投放刷新 Cookie。HTTP 本地开发仍使用 `new_api_refresh`、`Path=/api/user/auth`。Secure 模式不读取旧名称，且拒绝重复同名 Cookie；登录和退出时清除旧路径的 Cookie。
 - `user_sessions` 是登录会话控制面，记录设备、IP、登录方式、最后活跃时间、到期时间和撤销状态。数据库中的 Session 状态是最终权威；撤销传播速度取决于下文所述的 Redis 拓扑。
 - 用户的密码、状态、角色或安全因子发生安全相关变化时，`auth_version` 会递增并使旧登录会话失效。订阅带来的分组升降级只刷新授权缓存，不会退出任何登录设备。
 - Redis 缓存保存用户鉴权快照和登录会话快照。版本栅栏和撤销 tombstone 防止旧缓存重新授权；Session 快照使用跟随 `SYNC_FREQUENCY` 的短 TTL，缓存未命中或未启用 Redis 时回退到数据库校验。
 
 `SESSION_SECRET` 用于派生 Access Token、Security Proof、Refresh Token 摘要和 AuthFlow 摘要的不同用途密钥。生产环境及多节点部署必须在所有节点配置相同的高强度随机值；更换该值会使现有登录、临时鉴权流程和 Security Proof 全部失效。
+
+升级到启用 `__Host-` 刷新 Cookie 的版本后，已有 Secure 模式浏览器需要重新登录一次。为防止账号注入，不把旧 Cookie 自动转换成新 Cookie；此次调整不删除用户、余额、令牌、历史会话或其他数据库记录。
 
 ## 多节点 Redis 拓扑
 

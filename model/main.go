@@ -889,6 +889,7 @@ func checkMySQLChineseSupport(db *gorm.DB) error {
 	// Allowed charsets that can store Chinese text
 	allowedCharsets := map[string]string{
 		"utf8mb4": "utf8mb4_",
+		"utf8mb3": "utf8mb3_", // MySQL 8.0+ name for the legacy utf8 alias.
 		"utf8":    "utf8_",
 		"gbk":     "gbk_",
 		"big5":    "big5_",
@@ -920,8 +921,8 @@ func checkMySQLChineseSupport(db *gorm.DB) error {
 
 	// 2) 所有物理表的排序规则（隐含字符集）必须支持中文
 	type tableInfo struct {
-		Name      string
-		Collation *string
+		Name      string  `gorm:"column:TABLE_NAME"`
+		Collation *string `gorm:"column:TABLE_COLLATION"`
 	}
 	var tables []tableInfo
 	if err := db.Raw("SELECT TABLE_NAME, TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE'").Scan(&tables).Error; err != nil {

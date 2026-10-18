@@ -63,7 +63,7 @@ func VideoProxy(c *gin.Context) {
 	}
 	baseURL := channel.GetBaseURL()
 	if baseURL == "" {
-		baseURL = "https://api.openai.com"
+		baseURL = constant.ChannelBaseURLs[channel.Type]
 	}
 
 	var videoURL string
@@ -108,7 +108,6 @@ func VideoProxy(c *gin.Context) {
 			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Gemini video URL")
 			return
 		}
-		req.Header.Set("x-goog-api-key", apiKey)
 	case constant.ChannelTypeVertexAi:
 		videoURL, err = getVertexVideoURL(channel, task)
 		if err != nil {
@@ -158,8 +157,32 @@ func VideoProxy(c *gin.Context) {
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to create proxy request")
 		return
 	}
+	if channel.Type == constant.ChannelTypeGemini {
+		// A task can point at a separately signed storage URL. Channel credentials
+		// belong only to the configured API origin, never to an arbitrary result URI.
+		if apiURL, parseErr := url.Parse(baseURL); parseErr == nil && sameVideoOrigin(req.URL, apiURL) {
+			req.Header.Set("x-goog-api-key", taskKey)
+		}
+	}
+	videoClient := *client
+	videoClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		if len(via) > 0 && !sameVideoOrigin(next.URL, via[0].URL) {
+			// net/http only strips selected standard headers on host changes; custom
+			// provider keys and same-host port/scheme changes need an explicit boundary.
+			next.Header.Del("x-goog-api-key")
+			next.Header.Del("Authorization")
+			next.Header.Del("Referer")
+		}
+		if client.CheckRedirect != nil {
+			return client.CheckRedirect(next, via)
+		}
+		return nil
+	}
 
-	resp, err := client.Do(req)
+	resp, err := videoClient.Do(req)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to fetch video for task %s", taskID))
 		videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to fetch video content")
@@ -175,6 +198,11 @@ func VideoProxy(c *gin.Context) {
 	}
 
 	for key, values := range resp.Header {
+		// The video body is copied unchanged, so its upstream length remains valid.
+		// Apply the shared filter to all other headers, including provider cookies.
+		if !strings.EqualFold(key, "Content-Length") && !service.ShouldCopyUpstreamHeader(c, key, values) {
+			continue
+		}
 		// Upstream cache policy cannot override ownership checks at this endpoint.
 		// CDN-specific headers can take precedence over Cache-Control at an edge.
 		switch http.CanonicalHeaderKey(key) {
@@ -191,6 +219,28 @@ func VideoProxy(c *gin.Context) {
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))
 	}
+}
+
+func sameVideoOrigin(a, b *url.URL) bool {
+	if a == nil || b == nil || a.Hostname() == "" || b.Hostname() == "" ||
+		(a.Scheme != "https" && a.Scheme != "http") || a.Scheme != b.Scheme ||
+		!strings.EqualFold(a.Hostname(), b.Hostname()) {
+		return false
+	}
+	aPort, bPort := a.Port(), b.Port()
+	if aPort == "" {
+		aPort = "80"
+		if a.Scheme == "https" {
+			aPort = "443"
+		}
+	}
+	if bPort == "" {
+		bPort = "80"
+		if b.Scheme == "https" {
+			bPort = "443"
+		}
+	}
+	return aPort == bPort
 }
 
 func writeVideoDataURL(c *gin.Context, dataURL string) error {

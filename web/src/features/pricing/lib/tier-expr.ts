@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { BILLING_CACHE_VAR_MAP } from './billing-expr'
+import { BILLING_CACHE_VAR_MAP, parsePricingExpression } from './billing-expr'
 import { resolveBillingTimeZone } from './billing-time'
+import { evaluatePricingAst, type PricingFunction } from './pricing-evaluator'
 
 export const CACHE_MODE_TIMED = 'timed'
 export const CACHE_MODE_GENERIC = 'generic'
@@ -344,35 +345,56 @@ export function evalExprLocally(
       return { cost: 0, matchedTier: '', error: null }
     }
     let matchedTier = ''
-    const tierFn = (name: string, value: number) => {
-      matchedTier = name
-      return value
-    }
     const cacheReadTokens = extraTokenValues.cacheReadTokens || 0
     const cacheCreateTokens = extraTokenValues.cacheCreateTokens || 0
     const cacheCreate1hTokens = extraTokenValues.cacheCreate1hTokens || 0
     const len =
       promptTokens + cacheReadTokens + cacheCreateTokens + cacheCreate1hTokens
-    const env: Record<string, unknown> = {
-      p: promptTokens,
-      c: completionTokens,
-      len,
-      tier: tierFn,
+    const variables = new Map([
+      ['p', promptTokens],
+      ['c', completionTokens],
+      ['len', len],
+    ])
+    for (const field of ESTIMATOR_VARS) {
+      variables.set(field.var, extraTokenValues[field.stateKey] || 0)
+    }
+    const functions = new Map<string, PricingFunction>([
+      [
+        'tier',
+        {
+          parameters: ['string', 'number'],
+          evaluate: ([name, value]) => {
+            matchedTier = name as string
+            return value as number
+          },
+        },
+      ],
+    ])
+    for (const [name, fn] of Object.entries<(...values: number[]) => number>({
       max: Math.max,
       min: Math.min,
       abs: Math.abs,
       ceil: Math.ceil,
       floor: Math.floor,
-      ...createLocalTimeFunctions(new Date()),
+    })) {
+      functions.set(name, {
+        parameters: ['number'],
+        variadic: name === 'max' || name === 'min',
+        evaluate: (args) => fn(...args.map((value) => value as number)),
+      })
     }
-    for (const field of ESTIMATOR_VARS) {
-      env[field.var] = extraTokenValues[field.stateKey] || 0
+    for (const [name, fn] of Object.entries(
+      createLocalTimeFunctions(new Date())
+    )) {
+      functions.set(name, {
+        parameters: ['string'],
+        evaluate: ([timezone]) => fn(timezone as string),
+      })
     }
-    const fn = new Function(
-      ...Object.keys(env),
-      `"use strict"; return (${exprStr});`
-    )
-    const cost = Number(fn(...Object.values(env))) || 0
+    const cost = evaluatePricingAst(parsePricingExpression(exprStr), {
+      variables,
+      functions,
+    })
     return { cost, matchedTier, error: null }
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)

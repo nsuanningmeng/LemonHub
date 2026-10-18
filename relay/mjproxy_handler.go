@@ -28,10 +28,25 @@ import (
 )
 
 func RelayMidjourneyImage(c *gin.Context) {
-	taskId := c.Param("id")
-	midjourneyTask := model.GetByOnlyMJId(taskId)
-	if midjourneyTask == nil {
-		c.JSON(400, gin.H{
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Referrer-Policy", "no-referrer")
+	c.Header("X-Content-Type-Options", "nosniff")
+	// Upstream content is untrusted, including SVG or an unexpected HTML body.
+	// Direct navigation must never execute it in this application's origin.
+	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+	tokens := c.Request.URL.Query()["token"]
+	if len(tokens) != 1 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "midjourney_image_link_invalid_or_expired"})
+		return
+	}
+	taskID, userID, err := service.ParseMidjourneyImageToken(c.Param("id"), tokens[0])
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "midjourney_image_link_invalid_or_expired"})
+		return
+	}
+	var midjourneyTask model.Midjourney
+	if err := model.DB.Where("id = ? AND user_id = ? AND mj_id = ?", taskID, userID, c.Param("id")).First(&midjourneyTask).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
 			"error": "midjourney_task_not_found",
 		})
 		return
@@ -67,7 +82,12 @@ func RelayMidjourneyImage(c *gin.Context) {
 		})
 		return
 	}
-	resp, err := httpClient.Get(midjourneyTask.ImageUrl)
+	request, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, midjourneyTask.ImageUrl, nil)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "image_url_invalid"})
+		return
+	}
+	resp, err := httpClient.Do(request)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "http_get_image_failed",
@@ -76,7 +96,7 @@ func RelayMidjourneyImage(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(resp.Body)
+		responseBody, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
 		c.JSON(resp.StatusCode, gin.H{
 			"error": string(responseBody),
 		})
@@ -151,9 +171,9 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 	midjourneyTask.FinishTime = originTask.FinishTime
 	midjourneyTask.ImageUrl = ""
 	if originTask.ImageUrl != "" && setting.MjForwardUrlEnabled {
-		midjourneyTask.ImageUrl = system_setting.ServerAddress + "/mj/image/" + originTask.MjId
+		midjourneyTask.ImageUrl = service.MidjourneyImageURL(originTask)
 		if originTask.Status != "SUCCESS" {
-			midjourneyTask.ImageUrl += "?rand=" + strconv.FormatInt(time.Now().UnixNano(), 10)
+			midjourneyTask.ImageUrl += "&rand=" + strconv.FormatInt(time.Now().UnixNano(), 10)
 		}
 	} else {
 		midjourneyTask.ImageUrl = originTask.ImageUrl

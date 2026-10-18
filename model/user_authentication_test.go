@@ -19,6 +19,7 @@ import (
 
 func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&RequestBodyLog{}))
 
 	user := User{Username: "hard-delete-user", Password: "password", TelegramId: "hard-delete-telegram"}
 	require.NoError(t, DB.Create(&user).Error)
@@ -75,6 +76,7 @@ func TestHardDeleteUserFailsClosedWhenAuthFenceCannotPublish(t *testing.T) {
 
 func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.T) {
 	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&RequestBodyLog{}))
 	server := useUserCacheMiniRedis(t)
 
 	user := User{

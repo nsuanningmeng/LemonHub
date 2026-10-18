@@ -143,6 +143,26 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 	if len(systemMessages) > 0 {
 		claudeRequest.System = systemMessages
 	}
+	claudeRequest.Messages = omitTrailingAssistantText(info, types.RelayFormatClaude, claudeRequest.Messages,
+		func(turn dto.ClaudeMessage) bool { return turn.Role == "user" },
+		func(turn dto.ClaudeMessage) bool {
+			if turn.Role != "assistant" {
+				return false
+			}
+			if turn.IsStringContent() {
+				return true
+			}
+			parts, err := turn.ParseContent()
+			if err != nil {
+				return false
+			}
+			for _, part := range parts {
+				if part.Type == "tool_use" {
+					return false
+				}
+			}
+			return true
+		})
 	claudeRequest.Messages = ensureClaudeMessagesStartWithUser(claudeRequest.Messages)
 	// Checked last so every injection path has had its chance to satisfy the
 	// required field.

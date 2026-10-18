@@ -2,8 +2,10 @@ package middleware
 
 import (
 	"context"
+	"github.com/QuantumNous/new-api/setting"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -27,7 +29,7 @@ func newModelRateLimitTestRouter(limiter gin.HandlerFunc) *gin.Engine {
 }
 
 func TestMemoryModelRateLimitFailedRequestReleasesSuccessQuota(t *testing.T) {
-	router := newModelRateLimitTestRouter(memoryRateLimitHandler(60, 0, 1))
+	router := newModelRateLimitTestRouter(memoryRateLimitHandler(strconv.FormatInt(modelRateLimitTestUserID.Add(1), 10), 60, 0, 1))
 	router.GET("/fail", func(c *gin.Context) { c.Status(http.StatusBadGateway) })
 	router.GET("/success", func(c *gin.Context) { c.Status(http.StatusNoContent) })
 
@@ -45,7 +47,7 @@ func TestMemoryModelRateLimitFailedRequestReleasesSuccessQuota(t *testing.T) {
 }
 
 func TestMemoryModelRateLimitZeroSuccessLimitIsDisabled(t *testing.T) {
-	router := newModelRateLimitTestRouter(memoryRateLimitHandler(60, 2, 0))
+	router := newModelRateLimitTestRouter(memoryRateLimitHandler(strconv.FormatInt(modelRateLimitTestUserID.Add(1), 10), 60, 2, 0))
 	router.GET("/", func(c *gin.Context) { c.Status(http.StatusNoContent) })
 
 	for _, expected := range []int{http.StatusNoContent, http.StatusNoContent, http.StatusTooManyRequests} {
@@ -58,10 +60,10 @@ func TestMemoryModelRateLimitZeroSuccessLimitIsDisabled(t *testing.T) {
 func TestModelRateLimitHTTP200ProtocolFailureReleasesSuccessQuota(t *testing.T) {
 	for _, backend := range []string{"memory", "redis"} {
 		t.Run(backend, func(t *testing.T) {
-			limiter := memoryRateLimitHandler(60, 0, 1)
+			limiter := memoryRateLimitHandler(strconv.FormatInt(modelRateLimitTestUserID.Add(1), 10), 60, 0, 1)
 			if backend == "redis" {
 				useRateLimitMiniRedis(t)
-				limiter = redisRateLimitHandler(60, 0, 1)
+				limiter = redisRateLimitHandler(strconv.FormatInt(modelRateLimitTestUserID.Add(1), 10), 60, 0, 1)
 			}
 			router := newModelRateLimitTestRouter(limiter)
 			router.GET("/failed-stream", func(c *gin.Context) {
@@ -86,7 +88,7 @@ func TestModelRateLimitHTTP200ProtocolFailureReleasesSuccessQuota(t *testing.T) 
 }
 
 func TestMemoryModelRateLimitFailureStillConsumesTotalQuota(t *testing.T) {
-	router := newModelRateLimitTestRouter(memoryRateLimitHandler(60, 1, 1))
+	router := newModelRateLimitTestRouter(memoryRateLimitHandler(strconv.FormatInt(modelRateLimitTestUserID.Add(1), 10), 60, 1, 1))
 	router.GET("/", func(c *gin.Context) { c.Status(http.StatusBadGateway) })
 	for _, expected := range []int{http.StatusBadGateway, http.StatusTooManyRequests} {
 		response := httptest.NewRecorder()
@@ -96,7 +98,7 @@ func TestMemoryModelRateLimitFailureStillConsumesTotalQuota(t *testing.T) {
 }
 
 func TestMemoryModelRateLimitReservesInFlightAndReleasesPanic(t *testing.T) {
-	router := newModelRateLimitTestRouter(memoryRateLimitHandler(60, 0, 1))
+	router := newModelRateLimitTestRouter(memoryRateLimitHandler(strconv.FormatInt(modelRateLimitTestUserID.Add(1), 10), 60, 0, 1))
 	started := make(chan struct{})
 	release := make(chan struct{})
 	finished := make(chan struct{})
@@ -151,4 +153,70 @@ func TestModelRedisRateLimitUsesUTCRegardlessOfLocalTimezone(t *testing.T) {
 	allowed, err := checkRedisRateLimit(ctx, redisClient, checkKey, 2, 60)
 	require.NoError(t, err)
 	assert.False(t, allowed, "an existing UTC timestamp inside the window must remain limited on a non-UTC host")
+}
+
+func TestModelRateLimitConfiguredGroupsHaveIndependentBudgets(t *testing.T) {
+	previousEnabled, previousMinutes := setting.ModelRequestRateLimitEnabled, setting.ModelRequestRateLimitDurationMinutes
+	previousTotal, previousSuccess := setting.ModelRequestRateLimitCount, setting.ModelRequestRateLimitSuccessCount
+	previousGroups, previousRedis := setting.ModelRequestRateLimitGroup, common.RedisEnabled
+	t.Cleanup(func() {
+		setting.ModelRequestRateLimitEnabled, setting.ModelRequestRateLimitDurationMinutes = previousEnabled, previousMinutes
+		setting.ModelRequestRateLimitCount, setting.ModelRequestRateLimitSuccessCount = previousTotal, previousSuccess
+		setting.ModelRequestRateLimitGroup, common.RedisEnabled = previousGroups, previousRedis
+	})
+	setting.ModelRequestRateLimitEnabled, setting.ModelRequestRateLimitDurationMinutes = true, 1
+	for _, backend := range []string{"memory", "redis"} {
+		t.Run(backend, func(t *testing.T) {
+			common.RedisEnabled = false
+			if backend == "redis" {
+				useRateLimitMiniRedis(t)
+			}
+			for _, limit := range []string{"total", "success"} {
+				t.Run(limit, func(t *testing.T) {
+					if limit == "total" {
+						setting.ModelRequestRateLimitCount, setting.ModelRequestRateLimitSuccessCount = 1, 0
+						setting.ModelRequestRateLimitGroup = map[string][2]int{"a": {3, 0}, "b": {1, 0}}
+					} else {
+						setting.ModelRequestRateLimitCount, setting.ModelRequestRateLimitSuccessCount = 0, 1
+						setting.ModelRequestRateLimitGroup = map[string][2]int{"a": {0, 3}, "b": {0, 1}}
+					}
+					userID := int(modelRateLimitTestUserID.Add(1)) + 950000
+					router := gin.New()
+					router.GET("/:group", func(c *gin.Context) {
+						c.Set("id", userID)
+						common.SetContextKey(c, constant.ContextKeyTokenGroup, c.Param("group")+",fallback")
+						common.SetContextKey(c, constant.ContextKeyUsingGroup, c.Param("group"))
+					}, ModelRequestRateLimit(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+					for _, step := range []struct {
+						group  string
+						status int
+					}{
+						{"a", 204}, {"a", 204}, {"b", 204}, {"b", 429}, {"a", 204}, {"a", 429},
+						{"c", 204}, {"d", 429},
+					} {
+						assert.Equal(t, step.status, performRateLimitRequest(router, "/"+step.group, "127.0.0.1:1234").Code, step.group)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestMemoryModelRateLimitReturnsExplainedOpenAIError(t *testing.T) {
+	for _, limits := range [][2]int{{1, 0}, {0, 1}} {
+		router := newModelRateLimitTestRouter(memoryRateLimitHandler(strconv.FormatInt(modelRateLimitTestUserID.Add(1), 10), 60, limits[0], limits[1]))
+		router.GET("/", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+		require.Equal(t, http.StatusNoContent, performRateLimitRequest(router, "/", "127.0.0.1:1234").Code)
+		response := performRateLimitRequest(router, "/", "127.0.0.1:1234")
+		require.Equal(t, http.StatusTooManyRequests, response.Code)
+		var body struct {
+			Error struct {
+				Message string `json:"message"`
+				Type    string `json:"type"`
+			} `json:"error"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &body))
+		assert.Contains(t, body.Error.Message, "请求数限制")
+		assert.Equal(t, "new_api_error", body.Error.Type)
+	}
 }

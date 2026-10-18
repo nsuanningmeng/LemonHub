@@ -1,15 +1,17 @@
 package kitutil
 
 import (
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
 )
 
 var (
-	maskURLPattern    = regexp.MustCompile(`(http|https)://[^\s/$.?#].[^\s]*`)
-	maskDomainPattern = regexp.MustCompile(`\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b`)
-	maskIPPattern     = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+	maskURLPattern           = regexp.MustCompile(`(http|https)://[^\s/$.?#].[^\s]*`)
+	maskDomainPattern        = regexp.MustCompile(`\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\b`)
+	maskBracketedIPv6Pattern = regexp.MustCompile(`\[([0-9A-Fa-f:.]*:[0-9A-Fa-f:.]*)(%[^\]\s]*)?\]`)
+	maskIPPattern            = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
 	// maskApiKeyPattern matches patterns like 'api_key:xxx' or "api_key:xxx" to mask the API key value
 	maskApiKeyPattern = regexp.MustCompile(`(['"]?)api_key:([^\s'"]+)(['"]?)`)
 )
@@ -79,7 +81,17 @@ func MaskSensitiveInfo(str string) string {
 		}
 
 		// Mask host with unified logic
-		maskedHost := maskHostForURL(host)
+		maskedHost := maskHostForURL(u.Hostname())
+		if ip := net.ParseIP(u.Hostname()); ip != nil {
+			if ip.To4() == nil {
+				maskedHost = "[***]"
+			} else {
+				maskedHost = "***.***.***.***"
+			}
+		}
+		if port := u.Port(); port != "" {
+			maskedHost += ":" + port
+		}
 
 		result := u.Scheme + "://" + maskedHost
 
@@ -122,6 +134,15 @@ func MaskSensitiveInfo(str string) string {
 	// Mask domain names without protocol (like openai.com, www.openai.com)
 	str = maskDomainPattern.ReplaceAllStringFunc(str, func(domain string) string {
 		return maskHostForPlainDomain(domain)
+	})
+
+	// Network errors may expose the gateway's address as a bracketed IPv6,
+	// including IPv4-mapped addresses and zone identifiers.
+	str = maskBracketedIPv6Pattern.ReplaceAllStringFunc(str, func(value string) string {
+		if net.ParseIP(maskBracketedIPv6Pattern.FindStringSubmatch(value)[1]) != nil {
+			return "[***]"
+		}
+		return value
 	})
 
 	// Mask IP addresses

@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -1216,4 +1217,72 @@ func TestAppendToolSurchargeLogInfoWritesOnlyStructuredFields(t *testing.T) {
 	assert.NotContains(t, other, "file_search")
 	assert.NotContains(t, other, "image_generation_call")
 	assert.NotContains(t, other, "image_generation_call_price")
+}
+
+func TestClaudeCacheOnlyUsageRemainsBillable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name      string
+		usage     dto.ClaudeUsage
+		wantQuota int
+	}{
+		{name: "one-hour cache write", usage: dto.ClaudeUsage{CacheCreationInputTokens: 20000, CacheCreation: &dto.ClaudeCacheCreationUsage{Ephemeral1hInputTokens: 20000}}, wantQuota: 100000},
+		{name: "five-minute cache write", usage: dto.ClaudeUsage{CacheCreationInputTokens: 100, CacheCreation: &dto.ClaudeCacheCreationUsage{Ephemeral5mInputTokens: 100}}, wantQuota: 313},
+		{name: "cache read", usage: dto.ClaudeUsage{CacheReadInputTokens: 100}, wantQuota: 25},
+		{name: "no usage", usage: dto.ClaudeUsage{}, wantQuota: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			info := &relaycommon.RelayInfo{
+				RelayFormat:     types.RelayFormatClaude,
+				OriginModelName: "claude-opus-4-8",
+				PriceData: hosttypes.PriceData{
+					ModelRatio: 2.5, CompletionRatio: 5, CacheRatio: 0.1,
+					CacheCreationRatio: 1.25, CacheCreation5mRatio: 1.25, CacheCreation1hRatio: 2,
+					GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 1},
+				},
+			}
+			usage := &dto.Usage{UsageSemantic: dto.BillingUsageSemanticAnthropic, BillingUsage: dto.NewClaudeMessagesBillingUsage(&tc.usage)}
+			summary := calculateTextQuotaSummary(ctx, info, effectiveBillingUsage(usage))
+			assert.Zero(t, summary.PromptTokens)
+			assert.Zero(t, summary.CompletionTokens)
+			assert.Equal(t, tc.wantQuota, summary.Quota)
+			assert.Equal(t, tc.wantQuota > 0, summary.hasBillableUsage())
+		})
+	}
+}
+
+func TestClaudeCacheOnlyQuotaSettlesReservationAndRefund(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cached int
+		want   int
+		tiered bool
+	}{
+		{"cache read", 100, 25, false}, {"cache read expression", 100, 25, true}, {"explicit zero", 0, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newSubscriptionSessionFixture(t, "subscription_first", 1000, true)
+			assertSubscriptionSessionBalances(t, fixture, 60, 1000, 940, 60)
+			seedChannel(t, 901)
+			fixture.info.ChannelMeta = &relaycommon.ChannelMeta{ChannelId: 901}
+			fixture.info.RelayFormat = types.RelayFormatClaude
+			fixture.info.StartTime = time.Now()
+			fixture.info.PriceData = hosttypes.PriceData{ModelRatio: 2.5, CacheRatio: 0.1, GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 1}}
+			if tc.tiered {
+				fixture.info.TieredBillingSnapshot = makeSnapshot(`tier("cache", cr * 0.5)`, 1, 100, 0)
+			}
+			usage := &dto.Usage{BillingUsage: dto.NewClaudeMessagesBillingUsage(&dto.ClaudeUsage{CacheReadInputTokens: tc.cached})}
+			PostTextConsumeQuota(fixture.ctx, fixture.info, usage, nil)
+			assertSubscriptionSessionBalances(t, fixture, int64(tc.want), 1000, 1000-tc.want, tc.want)
+			assert.False(t, fixture.session.NeedsRefund())
+			log := getLastLog(t)
+			require.NotNil(t, log)
+			assert.Equal(t, tc.want, log.Quota)
+			assert.Equal(t, model.LogTypeConsume, log.Type)
+			assert.Equal(t, int64(tc.want), getChannelUsedQuota(t, 901))
+			require.NoError(t, fixture.session.Settle(tc.want))
+			assertSubscriptionSessionBalances(t, fixture, int64(tc.want), 1000, 1000-tc.want, tc.want)
+		})
+	}
 }

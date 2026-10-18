@@ -15,6 +15,24 @@ import (
 
 const RefreshCookieName = "new_api_refresh"
 
+// CurrentRefreshCookieName keeps HTTP development compatible while preventing
+// sibling domains from injecting a parent-Domain cookie in secure deployments.
+// Browsers require __Host- cookies to be Secure, Path=/, and without Domain.
+func CurrentRefreshCookieName() string {
+	if common.SessionCookieSecure {
+		return "__Host-" + RefreshCookieName
+	}
+	return RefreshCookieName
+}
+
+func ReadRefreshCookie(c *gin.Context) (string, error) {
+	cookies := c.Request.CookiesNamed(CurrentRefreshCookieName())
+	if len(cookies) != 1 || cookies[0].Value == "" {
+		return "", http.ErrNoCookie
+	}
+	return cookies[0].Value, nil
+}
+
 var (
 	ErrLoginSessionInvalid  = errors.New("login session is invalid")
 	ErrLoginSessionRevoked  = errors.New("login session is revoked")
@@ -300,27 +318,42 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	if maxAge < 1 {
 		maxAge = 1
 	}
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     RefreshCookieName,
-		Value:    rawToken,
-		Path:     "/api/user/auth",
-		MaxAge:   maxAge,
-		Expires:  expiresAt,
-		HttpOnly: true,
-		Secure:   common.SessionCookieSecure,
-		SameSite: http.SameSiteStrictMode,
-	})
+	http.SetCookie(c.Writer, refreshCookie(rawToken, maxAge, expiresAt))
+	clearLegacySecureRefreshCookie(c)
 }
 
 func ClearRefreshCookie(c *gin.Context) {
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     RefreshCookieName,
-		Value:    "",
-		Path:     "/api/user/auth",
-		MaxAge:   -1,
-		Expires:  time.Unix(1, 0),
+	http.SetCookie(c.Writer, refreshCookie("", -1, time.Unix(1, 0)))
+	clearLegacySecureRefreshCookie(c)
+}
+
+func refreshCookie(value string, maxAge int, expires time.Time) *http.Cookie {
+	path := "/api/user/auth"
+	if common.SessionCookieSecure {
+		path = "/"
+	}
+	return &http.Cookie{
+		Name:     CurrentRefreshCookieName(),
+		Value:    value,
+		Path:     path,
+		MaxAge:   maxAge,
+		Expires:  expires,
 		HttpOnly: true,
 		Secure:   common.SessionCookieSecure,
+		SameSite: http.SameSiteStrictMode,
+	}
+}
+
+func clearLegacySecureRefreshCookie(c *gin.Context) {
+	if !common.SessionCookieSecure {
+		return
+	}
+	// Do not accept this legacy cookie even for migration: its Domain and Path
+	// are not sent by the browser, so legitimate and injected values cannot be
+	// distinguished. Expire the old host-only cookie after login/logout.
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name: RefreshCookieName, Path: "/api/user/auth", MaxAge: -1,
+		Expires: time.Unix(1, 0), HttpOnly: true, Secure: true,
 		SameSite: http.SameSiteStrictMode,
 	})
 }

@@ -135,6 +135,10 @@ func UpdateOption(c *gin.Context) {
 		})
 		return
 	}
+	if option.Key == "MediaSigningSecret" {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "media signing secret is managed internally"})
+		return
+	}
 	switch option.Value.(type) {
 	case bool:
 		option.Value = common.Interface2String(option.Value.(bool))

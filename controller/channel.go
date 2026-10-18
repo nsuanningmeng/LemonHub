@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -68,6 +69,9 @@ type channelResponse struct {
 	model.Channel
 	ParamOverrideConfigured  bool `json:"param_override_configured"`
 	HeaderOverrideConfigured bool `json:"header_override_configured"`
+	ProxyConfigured          bool `json:"proxy_configured"`
+	AdvancedCustomConfigured bool `json:"advanced_custom_configured"`
+	BaseURLRedacted          bool `json:"base_url_redacted"`
 }
 
 // Overrides may contain credentials at arbitrary header names or nested paths.
@@ -80,6 +84,19 @@ func channelForResponse(channel *model.Channel, canViewSecrets bool) channelResp
 	if !canViewSecrets {
 		response.ParamOverride = nil
 		response.HeaderOverride = nil
+		if channel.Setting != nil {
+			setting, configured := redactChannelConfigField(*channel.Setting, "proxy")
+			response.Setting = &setting
+			response.ProxyConfigured = configured
+		}
+		response.OtherSettings, response.AdvancedCustomConfigured = redactChannelConfigField(channel.OtherSettings, "advanced_custom")
+		if channel.BaseURL != nil && strings.TrimSpace(*channel.BaseURL) != "" {
+			parsed, err := url.Parse(*channel.BaseURL)
+			if err != nil || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+				response.BaseURL = nil
+				response.BaseURLRedacted = true
+			}
+		}
 	}
 	if response.ChannelInfo.IsMultiKey {
 		response.ChannelInfo.MultiKeyDisabledReason = nil
@@ -982,6 +999,33 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	clearChannelReadOnlyFields(&channel, requestData)
+	originChannel, err := model.GetChannelById(channel.Id, true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if !authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSecretView) {
+		if _, provided := requestData["setting"]; provided && channel.Setting != nil {
+			original := ""
+			if originChannel.Setting != nil {
+				original = *originChannel.Setting
+			}
+			setting, mergeErr := preserveOmittedChannelConfigField(*channel.Setting, original, "proxy")
+			if mergeErr != nil {
+				common.ApiError(c, mergeErr)
+				return
+			}
+			channel.Setting = &setting
+		}
+		if _, provided := requestData["settings"]; provided {
+			settings, mergeErr := preserveOmittedChannelConfigField(channel.OtherSettings, originChannel.OtherSettings, "advanced_custom")
+			if mergeErr != nil {
+				common.ApiError(c, mergeErr)
+				return
+			}
+			channel.OtherSettings = settings
+		}
+	}
 
 	// 使用统一的校验函数
 	if err := validateChannel(&channel.Channel, false); err != nil {
@@ -992,14 +1036,6 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	// Preserve existing ChannelInfo to ensure multi-key channels keep correct state even if the client does not send ChannelInfo in the request.
-	originChannel, err := model.GetChannelById(channel.Id, true)
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
 	originProxy := originChannel.GetSetting().Proxy
 	proxyChanged := false
 	if _, settingProvided := requestData["setting"]; settingProvided {

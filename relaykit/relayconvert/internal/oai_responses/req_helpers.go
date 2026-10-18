@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/toolpolicy"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -270,4 +271,23 @@ func responsesPartDataAndMime(part map[string]any, keys ...string) (string, stri
 		}
 	}
 	return "", mimeType
+}
+
+// Responses assistant output is completed history, not a target-protocol
+// prefill. Preserve unresolved calls and assistant-only input.
+func omitTrailingAssistantText[T any](info convmeta.Meta, target types.RelayFormat, turns []T, isUser, isAssistantText func(T) bool) []T {
+	end := len(turns)
+	for end > 0 && isAssistantText(turns[end-1]) {
+		end--
+	}
+	if end == len(turns) || end == 0 || !isUser(turns[end-1]) {
+		return turns
+	}
+	convmeta.ReportConversionDiagnostic(info, convmeta.ConversionDiagnostic{
+		Code:   convmeta.DiagnosticTrailingAssistantOmitted,
+		Source: types.RelayFormatOpenAIResponses,
+		Target: target,
+		Field:  "input",
+	})
+	return turns[:end]
 }

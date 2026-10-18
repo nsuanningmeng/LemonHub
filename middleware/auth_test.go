@@ -291,3 +291,57 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, databaseFailureResponse.Code)
 	assert.Contains(t, databaseFailureResponse.Body.String(), "AUTH_INTERNAL_ERROR")
 }
+
+func TestTokenAuthReadOnlyEnforcesIPWithoutRejectingExpiredQuota(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	// GetTokenByKey uses the model's dialect-specific quoted key column.
+	// Initialize it through the same setup path used by the application.
+	previousLogDB, previousLogType := model.LOG_DB, common.LogDatabaseType()
+	t.Setenv("LOG_SQL_DSN", "")
+	require.NoError(t, model.InitLogDB())
+	t.Cleanup(func() {
+		model.LOG_DB = previousLogDB
+		common.SetLogDatabaseType(previousLogType)
+	})
+	require.NoError(t, model.DB.AutoMigrate(&model.Token{}))
+	user := createMiddlewarePATUser(t, "readonly-token-owner", "readonlyunusedpat")
+	require.NoError(t, model.DB.Model(user).Update("site_id", 23).Error)
+	allowIPs := "192.0.2.0/24"
+	for _, state := range []struct {
+		name   string
+		status int
+	}{
+		{"enabled", common.TokenStatusEnabled}, {"expired", common.TokenStatusExpired},
+		{"exhausted", common.TokenStatusExhausted}, {"disabled", common.TokenStatusDisabled},
+	} {
+		t.Run(state.name, func(t *testing.T) {
+			token := &model.Token{UserId: user.Id, Key: "readonly" + state.name, Name: state.name, Status: state.status,
+				ExpiredTime: time.Now().Add(-time.Hour).Unix(), RemainQuota: 0, AllowIps: &allowIPs}
+			require.NoError(t, model.DB.Create(token).Error)
+			for _, clientIP := range []string{"192.0.2.15:1234", "198.51.100.1:1234"} {
+				router := gin.New()
+				require.NoError(t, router.SetTrustedProxies(nil))
+				handled := false
+				router.GET("/api/usage/token/", TokenAuthReadOnly(), func(c *gin.Context) {
+					handled = true
+					assert.Equal(t, 23, c.GetInt("operator_site_id"))
+					assert.Equal(t, token.Id, c.GetInt("token_id"))
+					c.Status(http.StatusNoContent)
+				})
+				request := httptest.NewRequest(http.MethodGet, "/api/usage/token/", nil)
+				request.RemoteAddr = clientIP
+				request.Header.Set("Authorization", "Bearer sk-"+token.Key)
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, request)
+				want := http.StatusNoContent
+				if state.status == common.TokenStatusDisabled {
+					want = http.StatusUnauthorized
+				} else if clientIP == "198.51.100.1:1234" {
+					want = http.StatusForbidden
+				}
+				assert.Equal(t, want, response.Code)
+				assert.Equal(t, want == http.StatusNoContent, handled)
+			}
+		})
+	}
+}

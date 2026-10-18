@@ -1146,9 +1146,8 @@ func (channel *Channel) GetSetting() dto.ChannelSettings {
 	if channel.Setting != nil && *channel.Setting != "" {
 		err := common.Unmarshal([]byte(*channel.Setting), &setting)
 		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to unmarshal setting: channel_id=%d, error=%v", channel.Id, err))
-			channel.Setting = nil // 清空设置以避免后续错误
-			_ = channel.Save()    // 保存修改
+			common.SysError(fmt.Sprintf("invalid persisted channel setting: channel_id=%d; original value preserved", channel.Id))
+			return dto.ChannelSettings{}
 		}
 	}
 	return setting
@@ -1168,9 +1167,8 @@ func (channel *Channel) GetOtherSettings() dto.ChannelOtherSettings {
 	if channel.OtherSettings != "" {
 		err := common.UnmarshalJsonStr(channel.OtherSettings, &setting)
 		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to unmarshal setting: channel_id=%d, error=%v", channel.Id, err))
-			channel.OtherSettings = "{}" // 清空设置以避免后续错误
-			_ = channel.Save()           // 保存修改
+			common.SysError(fmt.Sprintf("invalid persisted channel settings: channel_id=%d; original value preserved", channel.Id))
+			return dto.ChannelOtherSettings{}
 		}
 	}
 	return setting

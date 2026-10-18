@@ -135,7 +135,13 @@ func TestOAuthLoginConcurrentTabsPreserveBindingsAndIssueValidSessions(t *testin
 		assert.Equal(t, user.Id, authenticatedUser.Id)
 		browser.SetCookies(callbackURL, response.Result().Cookies())
 	}
-	assert.Empty(t, browser.Cookies(callbackURL), "both flow cookies are cleared; the refresh cookie is scoped to a different path")
+	remainingCookies := browser.Cookies(callbackURL)
+	if common.SessionCookieSecure {
+		require.Len(t, remainingCookies, 1, "only the host-protected login cookie remains after both flow cookies are cleared")
+		assert.Equal(t, service.CurrentRefreshCookieName(), remainingCookies[0].Name)
+	} else {
+		assert.Empty(t, remainingCookies, "HTTP development keeps the refresh cookie scoped to its API path")
+	}
 	require.NoError(t, model.DB.Model(&model.UserSession{}).Count(&sessionCount).Error)
 	assert.EqualValues(t, 2, sessionCount)
 

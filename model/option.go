@@ -106,6 +106,7 @@ func InitOptionMap() error {
 	common.OptionMap["MarketingSMTPForceAuthLogin"] = strconv.FormatBool(common.MarketingSMTPForceAuthLogin)
 	common.OptionMap["EmailDeliveryEventToken"] = ""
 	common.OptionMap["UnsubscribeSecret"] = ""
+	common.OptionMap["MediaSigningSecret"] = ""
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["Contact"] = ""
@@ -240,19 +241,23 @@ func InitOptionMap() error {
 	}
 
 	common.OptionMapRWMutex.Unlock()
-	hasPersistedSecret := false
+	persistedSecrets := map[string]bool{"UnsubscribeSecret": false, "MediaSigningSecret": false}
 	for _, option := range options {
 		if err := updateOptionMap(option.Key, option.Value); err != nil {
 			return err
 		}
-		if option.Key == "UnsubscribeSecret" && option.Value != "" {
-			hasPersistedSecret = true
+		if _, secret := persistedSecrets[option.Key]; secret && option.Value != "" {
+			persistedSecrets[option.Key] = true
 		}
 	}
-	if hasPersistedSecret {
-		return nil
+	for _, key := range []string{"UnsubscribeSecret", "MediaSigningSecret"} {
+		if !persistedSecrets[key] {
+			if err := ensurePersistedOptionSecret(key); err != nil {
+				return err
+			}
+		}
 	}
-	return ensureUnsubscribeSecret()
+	return nil
 }
 
 // ensureUnsubscribeSecret bootstraps the persisted secret that signs one-click
@@ -260,6 +265,13 @@ func InitOptionMap() error {
 // like SessionSecret): unsubscribe links are embedded in already-delivered mail
 // and must keep verifying across restarts and on every node.
 func ensureUnsubscribeSecret() error {
+	return ensurePersistedOptionSecret("UnsubscribeSecret")
+}
+
+// ensurePersistedOptionSecret publishes only the database winner. Both media
+// capabilities and delivered unsubscribe links must survive restarts and must
+// verify on every node, including concurrent first startup.
+func ensurePersistedOptionSecret(key string) error {
 	buf := make([]byte, 32)
 	if _, err := rand.Read(buf); err != nil {
 		return err
@@ -269,10 +281,10 @@ func ensureUnsubscribeSecret() error {
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		// Another node may have bootstrapped after the startup snapshot. Never
 		// overwrite its nonempty secret: read the winner under a fresh row lock.
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&Option{Key: "UnsubscribeSecret", Value: candidate}).Error; err != nil {
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&Option{Key: key, Value: candidate}).Error; err != nil {
 			return err
 		}
-		if err := lockForUpdate(tx).Where(&Option{Key: "UnsubscribeSecret"}).First(&persisted).Error; err != nil {
+		if err := lockForUpdate(tx).Where(&Option{Key: key}).First(&persisted).Error; err != nil {
 			return err
 		}
 		if persisted.Value == "" {
@@ -286,7 +298,7 @@ func ensureUnsubscribeSecret() error {
 	if err != nil {
 		return &optionStorageError{cause: err}
 	}
-	return updateOptionMap("UnsubscribeSecret", persisted.Value)
+	return updateOptionMap(key, persisted.Value)
 }
 
 func loadOptionsFromDatabase() error {
@@ -564,6 +576,8 @@ func updateOptionMap(key string, value string) (err error) {
 		common.EmailDeliveryEventToken = value
 	case "UnsubscribeSecret":
 		common.UnsubscribeSecret = value
+	case "MediaSigningSecret":
+		common.MediaSigningSecret = value
 	case "ServerAddress":
 		system_setting.ServerAddress = value
 	case "TrustedRedirectDomains":

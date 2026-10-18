@@ -39,18 +39,21 @@ func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaude
 	}
 	awsClaudeRequest.AnthropicVersion = "bedrock-2023-05-31"
 
-	// check header anthropic-beta
-	anthropicBetaValues := requestHeader.Get("anthropic-beta")
-	if len(anthropicBetaValues) > 0 {
-		var tempArray []string
-		tempArray = strings.Split(anthropicBetaValues, ",")
-		if len(tempArray) > 0 {
-			betaJson, err := json.Marshal(tempArray)
-			if err != nil {
-				return nil, err
+	// Preserve every client header line and ignore whitespace-only entries.
+	var betas []string
+	for _, header := range requestHeader.Values("anthropic-beta") {
+		for _, beta := range strings.Split(header, ",") {
+			if beta = strings.TrimSpace(beta); beta != "" {
+				betas = append(betas, beta)
 			}
-			awsClaudeRequest.AnthropicBeta = betaJson
 		}
+	}
+	if len(betas) > 0 {
+		betaJSON, err := common.Marshal(betas)
+		if err != nil {
+			return nil, err
+		}
+		awsClaudeRequest.AnthropicBeta = betaJSON
 	}
 	logger.LogJson(context.Background(), "json", awsClaudeRequest)
 	return &awsClaudeRequest, nil

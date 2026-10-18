@@ -11,7 +11,6 @@ import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/gin-contrib/gzip"
-	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,10 +35,15 @@ var (
 func SetWebRouter(router *gin.Engine, assets WebAssets) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
 
-	router.Use(gzip.Gzip(gzip.DefaultCompression))
-	router.Use(middleware.GlobalWebRateLimit())
+	compress := gzip.Gzip(gzip.DefaultCompression)
+	router.Use(func(c *gin.Context) {
+		if !middleware.IsFrontendBuildAsset(frontendFS, c.Request.URL.Path) {
+			compress(c)
+		}
+	})
+	router.Use(middleware.GlobalWebRateLimit(frontendFS))
 	router.Use(middleware.Cache())
-	router.Use(static.Serve("/", frontendFS))
+	router.Use(middleware.ServeFrontendFiles(frontendFS))
 	router.NoRoute(func(c *gin.Context) {
 		c.Set(middleware.RouteTagKey, "web")
 		if strings.HasPrefix(c.Request.RequestURI, "/v1") || strings.HasPrefix(c.Request.RequestURI, "/api") || strings.HasPrefix(c.Request.RequestURI, "/assets") {
@@ -49,7 +53,7 @@ func SetWebRouter(router *gin.Engine, assets WebAssets) {
 		c.Header("Cache-Control", "no-cache")
 		// The injected title is per-Host, so a shared cache must key on Host —
 		// otherwise domain A's title HTML could be served to domain B.
-		c.Header("Vary", "Host")
+		c.Writer.Header().Add("Vary", "Host")
 		// The embedded FS routes "/" (and every SPA path) here, so this is the
 		// single place every HTML entry point is served — inject the per-domain
 		// site name into the title before sending.

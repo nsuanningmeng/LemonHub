@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -21,15 +22,19 @@ import (
 // GetFileTypeFromUrl 获取文件类型，返回 mime type， 例如 image/jpeg, image/png, image/gif, image/bmp, image/tiff, application/pdf
 // 如果获取失败，返回 application/octet-stream
 func GetFileTypeFromUrl(c *gin.Context, url string, reason ...string) (string, error) {
-	response, err := DoDownloadRequest(url, []string{"get_mime_type", strings.Join(reason, ", ")}...)
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	response, err := DoDownloadRequestWithContext(ctx, url, []string{"get_mime_type", strings.Join(reason, ", ")}...)
 	if err != nil {
-		common.SysLog(fmt.Sprintf("fail to get file type from url: %s, error: %s", url, err.Error()))
+		common.SysLog(fmt.Sprintf("failed to get remote file type: %s", err.Error()))
 		return "", err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != 200 {
-		logger.LogError(c, fmt.Sprintf("failed to download file from %s, status code: %d", url, response.StatusCode))
+		logger.LogError(c, fmt.Sprintf("failed to download remote file, status code: %d", response.StatusCode))
 		return "", fmt.Errorf("failed to download file, status code: %d", response.StatusCode)
 	}
 

@@ -1,6 +1,6 @@
 # MySQL 与容器升级的数据保留
 
-使用 v0.4.45、MySQL 8.2 和宿主机 `mysql_data` 绑定目录的部署，请先阅读 [MySQL 8.2 生产升级步骤](mysql82-production-upgrade.md)。后续发布的代码审查及实际验收范围见 [v0.4.46 数据安全审计](data-safety-audit-v0.4.46.md)。下列 B21 及更早结果保留为历史证据，不能代替后续发布版本的验收。
+当前 Compose + MySQL 8.2 的应用镜像更新请先阅读[只读部署预检](mysql-compose-upgrade-preflight.md)。使用 v0.4.45 和宿主机 `mysql_data` 绑定目录的历史部署，另见 [MySQL 8.2 生产升级步骤](mysql82-production-upgrade.md)。后续发布的代码审查及实际验收范围见 [v0.4.46 数据安全审计](data-safety-audit-v0.4.46.md)。下列 B21 及更早结果保留为历史证据，不能代替后续发布版本的验收。
 
 ## B21 修复轮次的最终运行时实测（2026-10-07，历史记录）
 

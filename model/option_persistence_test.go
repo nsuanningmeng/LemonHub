@@ -24,13 +24,47 @@ func optionPersistenceDB(t *testing.T) *gorm.DB {
 	common.OptionMap = map[string]string{"review-sentinel": "unchanged"}
 	common.OptionMapRWMutex.Unlock()
 	secret := common.UnsubscribeSecret
+	mediaSecret := common.MediaSigningSecret
 	t.Cleanup(func() {
 		common.OptionMapRWMutex.Lock()
 		common.OptionMap = previous
 		common.OptionMapRWMutex.Unlock()
 		common.UnsubscribeSecret = secret
+		common.MediaSigningSecret = mediaSecret
 	})
 	return db
+}
+
+func TestMediaSigningSecretSurvivesOptionInitializationAndRestart(t *testing.T) {
+	db := optionPersistenceDB(t)
+	require.NoError(t, db.Create(&Option{Key: "UnsubscribeSecret", Value: "existing-mail-secret"}).Error)
+	require.NoError(t, InitOptionMap())
+	persisted := requireOptionValue(t, db, "MediaSigningSecret")
+	assert.Len(t, persisted, 64)
+	assert.Equal(t, persisted, common.MediaSigningSecret)
+	assert.Equal(t, "existing-mail-secret", requireOptionValue(t, db, "UnsubscribeSecret"))
+
+	// A new process loads the exact same winner instead of replacing existing
+	// capabilities or creating a new key on every application image startup.
+	common.MediaSigningSecret = ""
+	require.NoError(t, InitOptionMap())
+	assert.Equal(t, persisted, common.MediaSigningSecret)
+	assert.Equal(t, persisted, requireOptionValue(t, db, "MediaSigningSecret"))
+	assert.Equal(t, "existing-mail-secret", requireOptionValue(t, db, "UnsubscribeSecret"))
+}
+
+func TestMediaSigningSecretBootstrapFailureDoesNotPublish(t *testing.T) {
+	db := optionPersistenceDB(t)
+	common.MediaSigningSecret = "previous-memory-secret"
+	forced := errors.New("media secret storage failed")
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register("test:media_secret_create", func(tx *gorm.DB) {
+		if tx.Statement.Table == "options" {
+			tx.AddError(forced)
+		}
+	}))
+	require.ErrorIs(t, ensurePersistedOptionSecret("MediaSigningSecret"), forced)
+	assert.Equal(t, "previous-memory-secret", common.MediaSigningSecret)
+	requireOptionMissing(t, db, "MediaSigningSecret")
 }
 
 func TestOptionInitializationReadFailureDoesNotReplaceMemoryOrSecret(t *testing.T) {
@@ -265,7 +299,9 @@ func TestOptionBootstrapFailureDoesNotPublishCandidate(t *testing.T) {
 func TestOptionStartupExistingSecretNeedsNoBootstrapWrite(t *testing.T) {
 	db := optionPersistenceDB(t)
 	require.NoError(t, db.Create(&Option{Key: "UnsubscribeSecret", Value: "persisted"}).Error)
+	require.NoError(t, db.Create(&Option{Key: "MediaSigningSecret", Value: "persisted-media"}).Error)
 	common.UnsubscribeSecret = "stale-memory"
+	common.MediaSigningSecret = "stale-media-memory"
 	rejectWrite := func(tx *gorm.DB) {
 		if tx.Statement.Table == "options" {
 			tx.AddError(errors.New("startup must not write an existing secret"))
@@ -276,6 +312,8 @@ func TestOptionStartupExistingSecretNeedsNoBootstrapWrite(t *testing.T) {
 	require.NoError(t, InitOptionMap())
 	assert.Equal(t, "persisted", common.UnsubscribeSecret)
 	assert.Equal(t, "persisted", common.OptionMap["UnsubscribeSecret"])
+	assert.Equal(t, "persisted-media", common.MediaSigningSecret)
+	assert.Equal(t, "persisted-media", common.OptionMap["MediaSigningSecret"])
 }
 
 func TestOptionStorageErrorsKeepDriverValuesPrivate(t *testing.T) {

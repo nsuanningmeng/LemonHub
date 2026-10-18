@@ -103,7 +103,7 @@ test.each([
   async (provider, field, type) => {
     const remove = mockBindingRequests(field)
     render(<UserBindingDialog open userId={7} onOpenChange={() => undefined} />)
-    await screen.findByText(provider)
+    await screen.findByText(provider, { selector: 'span' })
     fireEvent.click(screen.getByRole('button', { name: '' }))
     expect(remove).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Unbind' }))
@@ -127,7 +127,7 @@ test('custom OAuth unbinding keeps the provider-specific endpoint', async () => 
 test('cancelling built-in unbinding does not send a deletion request', async () => {
   const remove = mockBindingRequests('github_id')
   render(<UserBindingDialog open userId={7} onOpenChange={() => undefined} />)
-  await screen.findByText('GitHub')
+  await screen.findByText('GitHub', { selector: 'span' })
   fireEvent.click(screen.getByRole('button', { name: '' }))
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
   await waitFor(() =>

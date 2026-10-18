@@ -228,7 +228,8 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 					},
 				})
 				state.LastMessagesType = convmeta.LastMessageTypeThinking
-			} else if content != "" {
+			}
+			if content != "" {
 				if state.LastMessagesType != convmeta.LastMessageTypeText {
 					stopOpenBlocksAndAdvance()
 				}
@@ -394,7 +395,11 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 						Type:     "thinking_delta",
 						Thinking: &reasoning,
 					}
-				} else {
+					idx := state.Index
+					claudeResponses = append(claudeResponses, &dto.ClaudeResponse{Type: "content_block_delta", Index: &idx, Delta: claudeResponse.Delta})
+					claudeResponse.Delta = nil
+				}
+				if textContent != "" {
 					if state.LastMessagesType != convmeta.LastMessageTypeText {
 						stopOpenBlocksAndAdvance()
 						idx := state.Index

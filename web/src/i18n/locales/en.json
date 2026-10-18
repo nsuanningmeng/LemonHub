@@ -2280,7 +2280,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Related Projects",
     "footer.defaultCopyright": "All rights reserved.",
-    "footer.new\u0061pi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
+    "footer.newapi.projectAttributionSuffix": "All rights reserved. Designed and developed by the project contributors.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment",
     "For individual agents just getting started": "For individual agents just getting started",
     "For operators with steady traffic": "For operators with steady traffic",
@@ -5905,6 +5905,17 @@
     "Selected chart data": "Selected chart data",
     "Selected day": "Selected day",
     "Use arrow keys to explore dates.": "Use arrow keys to explore dates.",
-    "{{date}}: {{tokens}} tokens": "{{date}}: {{tokens}} tokens"
+    "{{date}}: {{tokens}} tokens": "{{date}}: {{tokens}} tokens",
+    "`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.": "`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.",
+    "Adapt `-thinking`, `-nothinking`, and effort suffixes such as `-high` to Anthropic native thinking behavior while keeping billing predictable. When off, model names are sent upstream unchanged.": "Adapt `-thinking`, `-nothinking`, and effort suffixes such as `-high` to Anthropic native thinking behavior while keeping billing predictable. When off, model names are sent upstream unchanged.",
+    "Optional. Without it, Google picks the region; with it, requests go to the deployment region below.": "Optional. Without it, Google picks the region; with it, requests go to the deployment region below.",
+    "Vertex AI Project ID": "Vertex AI Project ID",
+    "e.g., my-project-123": "e.g., my-project-123",
+    "Input Price: High to Low": "Input Price: High to Low",
+    "Input Price: Low to High": "Input Price: Low to High",
+    "Output Price: High to Low": "Output Price: High to Low",
+    "Output Price: Low to High": "Output Price: Low to High",
+    "Per-request Price: High to Low": "Per-request Price: High to Low",
+    "Per-request Price: Low to High": "Per-request Price: Low to High"
   }
 }

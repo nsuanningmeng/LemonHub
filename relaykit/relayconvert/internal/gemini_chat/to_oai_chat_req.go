@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/jsonutil"
+	sharedgemini "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/shared/gemini"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
@@ -39,24 +40,10 @@ func GeminiGenerateContentRequestToOpenAIChat(geminiRequest *dto.GeminiChatReque
 					Text: part.Text,
 				}
 				mediaContents = append(mediaContents, mediaContent)
-			} else if part.InlineData != nil {
-				mediaContent := dto.MediaContent{
-					Type: "image_url",
-					ImageUrl: &dto.MessageImageUrl{
-						Url:      fmt.Sprintf("data:%s;base64,%s", part.InlineData.MimeType, part.InlineData.Data),
-						Detail:   "auto",
-						MimeType: part.InlineData.MimeType,
-					},
-				}
-				mediaContents = append(mediaContents, mediaContent)
-			} else if part.FileData != nil {
-				mediaContent := dto.MediaContent{
-					Type: "image_url",
-					ImageUrl: &dto.MessageImageUrl{
-						Url:      part.FileData.FileUri,
-						Detail:   "auto",
-						MimeType: part.FileData.MimeType,
-					},
+			} else if part.InlineData != nil || part.FileData != nil {
+				mediaContent, err := geminiMediaToChatContent(part.InlineData, part.FileData)
+				if err != nil {
+					return nil, err
 				}
 				mediaContents = append(mediaContents, mediaContent)
 			} else if part.FunctionCall != nil {
@@ -81,7 +68,8 @@ func GeminiGenerateContentRequestToOpenAIChat(geminiRequest *dto.GeminiChatReque
 
 		if len(toolCalls) > 0 {
 			message.SetToolCalls(toolCalls)
-		} else if len(mediaContents) == 1 && mediaContents[0].Type == "text" {
+		}
+		if len(mediaContents) == 1 && mediaContents[0].Type == "text" {
 			message.Content = mediaContents[0].Text
 		} else if len(mediaContents) > 0 {
 			message.SetMediaContent(mediaContents)
@@ -130,7 +118,11 @@ func GeminiGenerateContentRequestToOpenAIChat(geminiRequest *dto.GeminiChatReque
 				}
 				parameters := function.ParametersJSONSchema
 				if parameters == nil {
-					parameters = function.Parameters
+					var dropped []string
+					parameters, dropped = sharedgemini.OpenAPISchemaToJSONSchema(function.Parameters)
+					if len(dropped) > 0 {
+						convmeta.ReportConversionDiagnostic(info, convmeta.ConversionDiagnostic{Code: convmeta.DiagnosticGeminiSchemaNormalized, Source: types.RelayFormatGemini, Target: types.RelayFormatOpenAI, Field: "tools.functionDeclarations.parameters"})
+					}
 				}
 				openAITool := dto.ToolCallRequest{
 					Type: "function",

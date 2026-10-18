@@ -195,23 +195,15 @@ func CreateTicket(c *gin.Context) {
 		LastReplyBy: model.TicketReplyByUser,
 		LastReplyAt: now,
 	}
-	if err := ticket.Insert(); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
 	msg := &model.TicketMessage{
 		TicketId: ticket.Id,
 		UserId:   userId,
 		IsAdmin:  false,
 		Content:  content,
 	}
-	if err := msg.Insert(); err != nil {
+	if err := model.CreateTicketWithMessage(ticket, msg, attachmentIds); err != nil {
 		common.ApiError(c, err)
 		return
-	}
-	if len(attachmentIds) > 0 {
-		_, _ = model.BindAttachmentsToMessage(attachmentIds, ticket.Id, msg.Id, userId)
 	}
 
 	gopool.Go(func() {
@@ -288,14 +280,7 @@ func ReplyTicket(c *gin.Context) {
 		IsAdmin:  false,
 		Content:  content,
 	}
-	if err := msg.Insert(); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if len(attachmentIds) > 0 {
-		_, _ = model.BindAttachmentsToMessage(attachmentIds, ticket.Id, msg.Id, userId)
-	}
-	if err := ticket.MarkReplied(model.TicketReplyByUser, model.TicketStatusOpen); err != nil {
+	if err := model.ReplyToTicket(ticket, msg, attachmentIds); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -466,14 +451,7 @@ func AdminReplyTicket(c *gin.Context) {
 		IsAdmin:  true,
 		Content:  content,
 	}
-	if err := msg.Insert(); err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if len(attachmentIds) > 0 {
-		_, _ = model.BindAttachmentsToMessage(attachmentIds, ticket.Id, msg.Id, adminId)
-	}
-	if err := ticket.MarkReplied(model.TicketReplyByAdmin, model.TicketStatusAwaitingUser); err != nil {
+	if err := model.ReplyToTicket(ticket, msg, attachmentIds); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -522,20 +500,16 @@ func AdminUpdateTicketStatus(c *gin.Context) {
 			common.ApiErrorMsg(c, "invalid status")
 			return
 		}
-		if err := ticket.UpdateStatus(req.Status); err != nil {
-			common.ApiError(c, err)
-			return
-		}
 	}
 	if req.Priority != "" {
 		if !model.IsValidTicketPriority(req.Priority) {
 			common.ApiErrorMsg(c, "invalid priority")
 			return
 		}
-		if err := ticket.UpdatePriority(req.Priority); err != nil {
-			common.ApiError(c, err)
-			return
-		}
+	}
+	if err := ticket.UpdateDetails(req.Status, req.Priority); err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	recordManageAudit(c, "ticket.update", map[string]interface{}{
 		"ticket_id": ticket.Id,
@@ -574,44 +548,14 @@ func AdminCleanupAttachments(c *gin.Context) {
 	}
 
 	scope := middleware.EffectiveSiteScope(c)
-	attachments, err := model.CollectAttachmentsForCleanup(scope, orphanBefore, closedBefore)
+	var purgeBefore int64
+	if req.PurgeClosedTickets {
+		purgeBefore = closedBefore
+	}
+	result, err := service.CleanupTicketData(scope, orphanBefore, closedBefore, purgeBefore)
 	if err != nil {
 		common.ApiError(c, err)
 		return
-	}
-
-	result := model.CleanupResult{}
-	deletedIds := make([]int, 0, len(attachments))
-	for _, a := range attachments {
-		if err := common.DeleteUpload(a.FilePath); err != nil {
-			result.FailedFiles++
-			result.Errors = append(result.Errors, fmt.Sprintf("attachment %d: %s", a.Id, err.Error()))
-			continue
-		}
-		result.DeletedFiles++
-		deletedIds = append(deletedIds, a.Id)
-	}
-	if len(deletedIds) > 0 {
-		rows, err := model.DeleteAttachmentRows(deletedIds)
-		if err != nil {
-			result.Errors = append(result.Errors, "delete rows: "+err.Error())
-		} else {
-			result.DeletedRows = int(rows)
-		}
-	}
-
-	// Optionally purge the long-closed tickets themselves (and their messages) to
-	// bound closed-ticket storage growth. Their attachments were already removed
-	// above under the same closedBefore cutoff.
-	if req.PurgeClosedTickets && closedBefore > 0 {
-		if ticketIds, err := model.GetClosedTicketIdsBefore(scope, closedBefore, 0); err == nil && len(ticketIds) > 0 {
-			if msgs, err := model.DeleteMessagesByTicketIds(ticketIds); err == nil {
-				result.DeletedMessages = int(msgs)
-			}
-			if tk, err := model.DeleteTicketsByIds(ticketIds); err == nil {
-				result.DeletedTickets = int(tk)
-			}
-		}
 	}
 
 	recordManageAudit(c, "ticket.cleanup", map[string]interface{}{

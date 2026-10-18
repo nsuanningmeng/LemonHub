@@ -50,14 +50,16 @@ import {
   type VerificationMethod,
   type VerificationMethods,
 } from '@/features/auth/secure-verification'
-import dayjs from '@/lib/dayjs'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatTimestampRelative } from '@/lib/format'
 
 interface PasskeyCardProps {
   loading: boolean
 }
 
 export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [restrictedMethod, setRestrictedMethod] =
     useState<VerificationMethod | null>(null)
@@ -206,7 +208,7 @@ export function PasskeyCard({ loading: pageLoading }: PasskeyCardProps) {
 
   const formattedLastUsed =
     lastUsed && !Number.isNaN(Date.parse(lastUsed))
-      ? dayjs(lastUsed).fromNow()
+      ? formatTimestampRelative(Date.parse(lastUsed), 'milliseconds', locale)
       : t('Not used yet')
 
   const showUnsupportedNotice = !supported && !enabled

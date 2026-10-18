@@ -67,55 +67,73 @@ func runTicketCleanupOnce() {
 	if days := setting.AttachmentRetentionDays; days > 0 {
 		attClosedBefore = now - int64(days)*86400
 	}
-	if attachments, err := model.CollectAttachmentsForCleanup(model.SiteScopeAll, orphanBefore, attClosedBefore); err != nil {
-		common.SysError(fmt.Sprintf("ticket cleanup: collect attachments failed: %s", err.Error()))
-	} else if len(attachments) > 0 {
-		removed := deleteAttachmentFilesAndRows(attachments)
-		common.SysLog(fmt.Sprintf("ticket cleanup: removed %d attachment(s)", removed))
-	}
-
-	// 2. Closed-ticket purge: remove old closed tickets + their messages + attachments.
+	var purgeBefore int64
 	if days := setting.ClosedTicketRetentionDays; days > 0 {
-		purgeClosedTickets(now - int64(days)*86400)
+		purgeBefore = now - int64(days)*86400
 	}
+	result, err := CleanupTicketData(model.SiteScopeAll, orphanBefore, attClosedBefore, purgeBefore)
+	if err != nil {
+		common.SysError("ticket cleanup failed: " + err.Error())
+		return
+	}
+	for _, failure := range result.Errors {
+		common.SysError("ticket cleanup: " + failure)
+	}
+	common.SysLog(fmt.Sprintf("ticket cleanup: removed %d attachment row(s), %d file(s), %d ticket(s), %d message(s)", result.DeletedRows, result.DeletedFiles, result.DeletedTickets, result.DeletedMessages))
 }
 
-// deleteAttachmentFilesAndRows removes the on-disk files then the DB rows for the
-// given attachments, returning how many were fully removed.
-func deleteAttachmentFilesAndRows(attachments []*model.TicketAttachment) int {
-	deletedIds := make([]int, 0, len(attachments))
-	for _, a := range attachments {
-		if err := common.DeleteUpload(a.FilePath); err != nil {
-			common.SysError(fmt.Sprintf("ticket cleanup: delete file %d failed: %s", a.Id, err.Error()))
+// CleanupTicketData is shared by scheduled and manual cleanup. Candidate scans
+// never authorize deletion: model transactions recheck eligibility and commit
+// metadata removal before any file is deleted.
+func CleanupTicketData(siteScope int, orphanBefore, attachmentClosedBefore, purgeClosedBefore int64) (model.CleanupResult, error) {
+	result := model.CleanupResult{}
+	candidates, err := model.CollectAttachmentsForCleanup(siteScope, orphanBefore, attachmentClosedBefore)
+	if err != nil {
+		return result, err
+	}
+	for _, candidate := range candidates {
+		attachment, err := model.DeleteEligibleTicketAttachment(candidate.Id, siteScope, orphanBefore, attachmentClosedBefore)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("attachment %d metadata: %s", candidate.Id, err.Error()))
 			continue
 		}
-		deletedIds = append(deletedIds, a.Id)
-	}
-	if len(deletedIds) > 0 {
-		if _, err := model.DeleteAttachmentRows(deletedIds); err != nil {
-			common.SysError(fmt.Sprintf("ticket cleanup: delete attachment rows failed: %s", err.Error()))
+		if attachment != nil {
+			result.DeletedRows++
+			removePurgedTicketFiles([]*model.TicketAttachment{attachment}, &result)
 		}
 	}
-	return len(deletedIds)
+	ids, err := model.GetClosedTicketIdsBefore(siteScope, purgeClosedBefore, 0)
+	if err != nil {
+		result.Errors = append(result.Errors, "find closed tickets: "+err.Error())
+		return result, nil
+	}
+	for _, id := range ids {
+		attachments, messages, deleted, err := model.PurgeClosedTicket(id, siteScope, purgeClosedBefore)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("ticket %d metadata: %s", id, err.Error()))
+			continue
+		}
+		if deleted {
+			result.DeletedTickets++
+			result.DeletedMessages += int(messages)
+			result.DeletedRows += len(attachments)
+			removePurgedTicketFiles(attachments, &result)
+		}
+	}
+	return result, nil
 }
 
-// purgeClosedTickets deletes tickets closed before the cutoff along with their
-// messages and any remaining attachments.
-func purgeClosedTickets(closedBefore int64) {
-	ticketIds, err := model.GetClosedTicketIdsBefore(model.SiteScopeAll, closedBefore, 0)
-	if err != nil {
-		common.SysError(fmt.Sprintf("ticket cleanup: collect closed tickets failed: %s", err.Error()))
-		return
+// A filesystem failure leaves an unreferenced file for operator recovery. It
+// must never leave a live message pointing to a file deleted before a DB error.
+func removePurgedTicketFiles(attachments []*model.TicketAttachment, result *model.CleanupResult) {
+	for _, attachment := range attachments {
+		if err := common.DeleteUpload(attachment.FilePath); err != nil {
+			result.FailedFiles++
+			result.Errors = append(result.Errors, fmt.Sprintf("attachment %d file: %s", attachment.Id, err.Error()))
+			continue
+		}
+		result.DeletedFiles++
 	}
-	if len(ticketIds) == 0 {
-		return
-	}
-	if atts, err := model.GetAttachmentsByTicketIds(ticketIds); err == nil && len(atts) > 0 {
-		deleteAttachmentFilesAndRows(atts)
-	}
-	msgs, _ := model.DeleteMessagesByTicketIds(ticketIds)
-	tks, _ := model.DeleteTicketsByIds(ticketIds)
-	common.SysLog(fmt.Sprintf("ticket cleanup: purged %d closed ticket(s), %d message(s)", tks, msgs))
 }
 
 // maxTicketNotifyExcerptRunes bounds how much of a message body is embedded in a

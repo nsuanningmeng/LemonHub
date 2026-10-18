@@ -18,12 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   SORT_OPTIONS,
+  normalizeSortOption,
   FILTER_ALL,
   QUOTA_TYPES,
   QUOTA_TYPE_VALUES,
   ENDPOINT_TYPES,
+  type SortOption,
 } from '../constants'
 import type { PricingModel } from '../types'
+import { getDynamicPricingSummary } from './dynamic-price'
+import { isTokenBasedModel } from './model-helpers'
+import { calculateTokenPrice } from './price'
 
 // ----------------------------------------------------------------------------
 // Filter Utilities
@@ -98,36 +103,69 @@ export function filterByEndpointType(
   )
 }
 
-/**
- * Get model price for sorting
- */
-function getModelPrice(model: PricingModel): number {
-  return model.quota_type === 0 ? model.model_ratio : model.model_price || 0
+type SortPriceKind = 'input' | 'output' | 'request'
+
+const PRICE_SORTS: Partial<
+  Record<SortOption, { kind: SortPriceKind; dir: 1 | -1 }>
+> = {
+  [SORT_OPTIONS.INPUT_PRICE_LOW]: { kind: 'input', dir: 1 },
+  [SORT_OPTIONS.INPUT_PRICE_HIGH]: { kind: 'input', dir: -1 },
+  [SORT_OPTIONS.OUTPUT_PRICE_LOW]: { kind: 'output', dir: 1 },
+  [SORT_OPTIONS.OUTPUT_PRICE_HIGH]: { kind: 'output', dir: -1 },
+  [SORT_OPTIONS.REQUEST_PRICE_LOW]: { kind: 'request', dir: 1 },
+  [SORT_OPTIONS.REQUEST_PRICE_HIGH]: { kind: 'request', dir: -1 },
 }
 
-/**
- * Sort models by specified option
- */
+/** Base USD prices from the same validated coefficients the cards display. */
+function getSortPrice(
+  model: PricingModel,
+  kind: SortPriceKind
+): number | undefined {
+  const summary = getDynamicPricingSummary(model, { tokenUnit: 'M' })
+  let price: number | undefined
+  if (summary) {
+    // Unknown expressions have no sortable price. Never fall back to legacy
+    // ratios for a model whose billing contract is an expression.
+    if (kind === 'request') return undefined
+    const field = kind === 'input' ? 'inputPrice' : 'outputPrice'
+    if (summary.tier?.configuredPriceFields?.includes(field)) {
+      price = Number(summary.tier[field])
+    }
+  } else if (kind === 'request') {
+    price = isTokenBasedModel(model) ? undefined : model.model_price
+  } else if (isTokenBasedModel(model)) {
+    price = calculateTokenPrice(model, kind, 1)
+  }
+  return typeof price === 'number' && Number.isFinite(price) && price >= 0
+    ? price
+    : undefined
+}
+
+/** Sort by the requested price kind, with unavailable prices last in either direction. */
 export function sortModels(
   models: PricingModel[],
   sortBy: string
 ): PricingModel[] {
   const sorted = [...models]
-
-  switch (sortBy) {
-    case SORT_OPTIONS.NAME:
-      sorted.sort((a, b) =>
-        (a.model_name || '').localeCompare(b.model_name || '')
-      )
-      break
-    case SORT_OPTIONS.PRICE_LOW:
-      sorted.sort((a, b) => getModelPrice(a) - getModelPrice(b))
-      break
-    case SORT_OPTIONS.PRICE_HIGH:
-      sorted.sort((a, b) => getModelPrice(b) - getModelPrice(a))
-      break
+  const normalizedSort = normalizeSortOption(sortBy)
+  const priceSort = PRICE_SORTS[normalizedSort]
+  if (priceSort) {
+    const price = new Map(
+      sorted.map((model) => [model, getSortPrice(model, priceSort.kind)])
+    )
+    sorted.sort((a, b) => {
+      const priceA = price.get(a)
+      const priceB = price.get(b)
+      if (priceA === undefined || priceB === undefined) {
+        return Number(priceA === undefined) - Number(priceB === undefined)
+      }
+      return priceSort.dir * (priceA - priceB)
+    })
+  } else if (normalizedSort === SORT_OPTIONS.NAME) {
+    sorted.sort((a, b) =>
+      (a.model_name || '').localeCompare(b.model_name || '')
+    )
   }
-
   return sorted
 }
 
@@ -183,7 +221,7 @@ export function extractAllTags(models: PricingModel[]): string[] {
     }
   })
 
-  return Array.from(tagSet).sort((a, b) => a.localeCompare(b))
+  return [...tagSet].sort((a, b) => a.localeCompare(b))
 }
 
 /**

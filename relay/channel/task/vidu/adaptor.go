@@ -238,6 +238,11 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	// Metadata may add provider options, but cannot replace the selected model
+	// or the duration and resolution validated for this task.
+	r.Model = taskcommon.DefaultString(info.UpstreamModelName, "viduq1")
+	r.Duration = taskcommon.DefaultInt(req.Duration, 5)
+	r.Resolution = taskcommon.DefaultString(req.Size, "1080p")
 	return &r, nil
 }
 

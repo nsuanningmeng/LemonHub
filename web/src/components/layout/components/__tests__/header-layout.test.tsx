@@ -27,6 +27,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
+import { CommandMenu } from '@/components/command-menu'
 import { Search } from '@/components/search'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { SearchProvider } from '@/context/search-provider'
@@ -63,6 +64,7 @@ function HeaderFixture() {
           />
           <Search />
         </Header>
+        <CommandMenu />
       </SearchProvider>
     </SidebarProvider>
   )

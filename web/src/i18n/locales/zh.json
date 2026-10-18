@@ -2280,7 +2280,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相关项目",
     "footer.defaultCopyright": "版权所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
+    "footer.newapi.projectAttributionSuffix": "版权所有，由项目贡献者设计与开发。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "对于 2025 年 5 月 10 日之后添加的渠道，在部署时无需从模型名称中移除 \".\"",
     "For individual agents just getting started": "适合刚起步的个人代理",
     "For operators with steady traffic": "适合有稳定流量的运营者",
@@ -5905,6 +5905,17 @@
     "Selected chart data": "选中的图表数据",
     "Selected day": "选中的日期",
     "Use arrow keys to explore dates.": "使用方向键浏览日期。",
-    "{{date}}: {{tokens}} tokens": "{{date}}：{{tokens}} Token"
+    "{{date}}: {{tokens}} tokens": "{{date}}：{{tokens}} Token",
+    "`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.": "`、`-nothinking` 以及 `-high` 等推理强度后缀，同时路由到正确的 Gemini 变体。关闭后模型名原样发送给上游。",
+    "Adapt `-thinking`, `-nothinking`, and effort suffixes such as `-high` to Anthropic native thinking behavior while keeping billing predictable. When off, model names are sent upstream unchanged.": "将带 `-thinking`、`-nothinking` 以及 `-high` 等推理强度后缀的请求适配为 Anthropic 原生思考请求，并保持计费可预测。关闭后模型名原样发送给上游。",
+    "Optional. Without it, Google picks the region; with it, requests go to the deployment region below.": "可选。不填时由 Google 决定区域；填写后，请求会发往下方的部署区域。",
+    "Vertex AI Project ID": "Vertex AI 项目 ID",
+    "e.g., my-project-123": "例如 my-project-123",
+    "Input Price: High to Low": "输入价格：从高到低",
+    "Input Price: Low to High": "输入价格：从低到高",
+    "Output Price: High to Low": "输出价格：从高到低",
+    "Output Price: Low to High": "输出价格：从低到高",
+    "Per-request Price: High to Low": "按次价格：从高到低",
+    "Per-request Price: Low to High": "按次价格：从低到高"
   }
 }

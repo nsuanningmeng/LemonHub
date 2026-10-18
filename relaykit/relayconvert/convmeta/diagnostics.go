@@ -7,6 +7,8 @@ import (
 )
 
 const DiagnosticDeveloperRoleMerged = "developer_role_merged"
+const DiagnosticTrailingAssistantOmitted = "trailing_assistant_omitted"
+const DiagnosticGeminiSchemaNormalized = "gemini_schema_normalized"
 
 // ConversionDiagnostic describes a compatibility mapping without request data.
 // Only registered codes and their canonical protocol fields may be reported.
@@ -27,6 +29,16 @@ type ConversionDiagnosticObserver interface {
 // NormalizeConversionDiagnostic admits only fixed, redacted compatibility
 // descriptions. Caller-supplied messages never enter logs or consume metadata.
 func NormalizeConversionDiagnostic(d ConversionDiagnostic) (ConversionDiagnostic, bool) {
+	if d.Code == DiagnosticGeminiSchemaNormalized && d.Source == types.RelayFormatGemini && d.Target == types.RelayFormatOpenAI && d.Field == "tools.functionDeclarations.parameters" {
+		d.Message = "Gemini presentation-only schema fields were omitted while converting tool parameters to JSON Schema"
+		return d, true
+	}
+
+	if d.Code == DiagnosticTrailingAssistantOmitted && d.Source == types.RelayFormatOpenAIResponses &&
+		(d.Target == types.RelayFormatClaude || d.Target == types.RelayFormatGemini) && d.Field == "input" {
+		d.Message = "Completed assistant output after the last user message or tool result was omitted to avoid treating Responses history as an assistant prefill"
+		return d, true
+	}
 	validSourceField := (d.Source == types.RelayFormatOpenAI && d.Field == "messages.role") ||
 		(d.Source == types.RelayFormatOpenAIResponses && d.Field == "input.role")
 	if d.Code != DiagnosticDeveloperRoleMerged || d.Target != types.RelayFormatGemini || !validSourceField {

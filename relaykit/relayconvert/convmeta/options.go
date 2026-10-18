@@ -21,8 +21,8 @@ type Options struct {
 }
 
 type ClaudeOptions struct {
-	// ThinkingAdapterEnabled turns "-thinking"-suffixed OpenAI model names
-	// into Claude extended-thinking requests.
+	// ThinkingAdapterEnabled maps supported thinking and effort suffixes to
+	// Claude thinking parameters. Disabled adapters preserve the model name.
 	ThinkingAdapterEnabled bool
 	// ThinkingAdapterBudgetTokensPercentage sizes thinking budget_tokens as a
 	// fraction of max_tokens when the adapter fires.
@@ -39,6 +39,10 @@ type ClaudeOptions struct {
 }
 
 type GeminiOptions struct {
+	// SupportsJSONSchema reports whether the target API accepts parametersJsonSchema
+	// and responseJsonSchema. Nil defaults to true (Gemini v1beta and Vertex).
+	SupportsJSONSchema func(modelName string) bool
+
 	// ThinkingAdapterEnabled maps -thinking/-nothinking/effort suffixes to
 	// Gemini thinkingConfig.
 	ThinkingAdapterEnabled bool
@@ -76,4 +80,8 @@ func (o *GeminiOptions) SafetySettingFor(category string) string {
 
 func (o *Options) ShouldPreserveThinkingSuffix(modelName string) bool {
 	return o != nil && o.PreserveThinkingSuffix != nil && o.PreserveThinkingSuffix(modelName)
+}
+
+func (o *GeminiOptions) SupportsJSONSchemaFor(modelName string) bool {
+	return o == nil || o.SupportsJSONSchema == nil || o.SupportsJSONSchema(modelName)
 }

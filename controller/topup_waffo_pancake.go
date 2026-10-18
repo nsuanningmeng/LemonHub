@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -491,6 +492,10 @@ func WaffoPancakeWebhook(c *gin.Context) {
 				"Waffo Pancake webhook 订阅订单解析失败 event_id=%q order_id=%q client_ip=%s reason=order_resolution_failed",
 				event.ID, event.Data.OrderID, c.ClientIP(),
 			))
+			if errors.Is(err, service.ErrWaffoPancakeOrderLookup) {
+				c.String(http.StatusServiceUnavailable, "retry")
+				return
+			}
 			c.String(http.StatusOK, "OK")
 			return
 		}
@@ -515,6 +520,10 @@ func WaffoPancakeWebhook(c *gin.Context) {
 			"Waffo Pancake webhook 订单解析失败 event_id=%q order_id=%q client_ip=%s reason=order_resolution_failed",
 			event.ID, event.Data.OrderID, c.ClientIP(),
 		))
+		if errors.Is(err, service.ErrWaffoPancakeOrderLookup) {
+			c.String(http.StatusServiceUnavailable, "retry")
+			return
+		}
 		c.String(http.StatusOK, "OK")
 		return
 	}

@@ -64,12 +64,3 @@ func CountTicketMessagesByTicketIds(ticketIds []int) (map[int]int, error) {
 	}
 	return result, nil
 }
-
-// DeleteMessagesByTicketIds hard-deletes all messages belonging to the given tickets.
-func DeleteMessagesByTicketIds(ticketIds []int) (int64, error) {
-	if len(ticketIds) == 0 {
-		return 0, nil
-	}
-	res := DB.Where("ticket_id IN ?", ticketIds).Delete(&TicketMessage{})
-	return res.RowsAffected, res.Error
-}

@@ -72,7 +72,7 @@ test('opening model sort keeps the page interactive and choosing a price order u
   expect(outsideAction).toHaveBeenCalledOnce()
   await user.click(screen.getByRole('button', { name: 'Name' }))
   await user.click(
-    await screen.findByRole('menuitem', { name: 'Price: Low to High' })
+    await screen.findByRole('menuitem', { name: 'Input Price: Low to High' })
   )
-  expect(onSortChange).toHaveBeenCalledWith('price-low')
+  expect(onSortChange).toHaveBeenCalledWith('input-price-low')
 })

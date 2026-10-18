@@ -495,14 +495,24 @@ func (o *SubscriptionOrder) Update() error {
 }
 
 func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
+	order, _ := FindSubscriptionOrderByTradeNo(tradeNo)
+	return order
+}
+
+// FindSubscriptionOrderByTradeNo keeps a database outage distinguishable from
+// a missing order so payment callbacks can request delivery retries.
+func FindSubscriptionOrderByTradeNo(tradeNo string) (*SubscriptionOrder, error) {
 	if tradeNo == "" {
-		return nil
+		return nil, nil
 	}
 	var order SubscriptionOrder
 	if err := DB.Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
-		return nil
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
 	}
-	return &order
+	return &order, nil
 }
 
 // GetReusablePendingSubscriptionOrder returns a previously reserved checkout for
@@ -967,7 +977,10 @@ func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string,
 	var initialOrder SubscriptionOrder
 	if err := DB.Select("user_id", "plan_id", "payment_provider", "status", "plan_snapshot", "purchase_limit_reserved").
 		Where(refCol+" = ?", tradeNo).First(&initialOrder).Error; err != nil {
-		return false, ErrSubscriptionOrderNotFound
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, ErrSubscriptionOrderNotFound
+		}
+		return false, err
 	}
 	if expectedPaymentProvider != "" && initialOrder.PaymentProvider != expectedPaymentProvider {
 		return false, ErrPaymentMethodMismatch
@@ -1006,7 +1019,10 @@ func CompleteSubscriptionOrderWithResult(tradeNo string, providerPayload string,
 
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
-			return ErrSubscriptionOrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrSubscriptionOrderNotFound
+			}
+			return err
 		}
 		if order.UserId != initialOrder.UserId || order.PlanId != initialOrder.PlanId ||
 			order.PurchaseLimitReserved != initialOrder.PurchaseLimitReserved {
@@ -1175,7 +1191,10 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	return DB.Transaction(func(tx *gorm.DB) error {
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
-			return ErrSubscriptionOrderNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrSubscriptionOrderNotFound
+			}
+			return err
 		}
 		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch

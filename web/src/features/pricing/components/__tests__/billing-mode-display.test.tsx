@@ -126,6 +126,24 @@ describe('compact model pricing', () => {
     }
   )
 
+  test.each([
+    ['tier("base", p * 3 + c * 15 + cr * 0.3)', '$0.3'],
+    ['tier("base", cr * 0.5)', '$0.5'],
+  ])(
+    'expression card %s displays cache-read pricing without exposing its formula',
+    (expression, price) => {
+      render(
+        <QueryClientProvider client={client}>
+          <ModelCard model={model(expression)} onClick={() => {}} />
+        </QueryClientProvider>
+      )
+      expect(screen.getByText('Cache Read')).toHaveTextContent(
+        `Cache Read ${price}`
+      )
+      expect(screen.queryByText(expression)).not.toBeInTheDocument()
+    }
+  )
+
   test('unrecognized pricing keeps the special billing label without exposing its expression', () => {
     const expression = 'max(p * 3, 5)'
     render(

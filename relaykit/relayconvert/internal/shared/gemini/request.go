@@ -11,6 +11,30 @@ import (
 )
 
 var SupportedMimeTypes = map[string]bool{
+	"image/gif":                 true,
+	"image/avif":                true,
+	"text/html":                 true,
+	"text/css":                  true,
+	"text/javascript":           true,
+	"text/x-typescript":         true,
+	"text/csv":                  true,
+	"text/markdown":             true,
+	"text/x-python":             true,
+	"text/xml":                  true,
+	"text/rtf":                  true,
+	"application/x-javascript":  true,
+	"application/x-typescript":  true,
+	"application/x-python-code": true,
+	"application/json":          true,
+	"application/x-ipynb+json":  true,
+	"application/rtf":           true,
+	"audio/aac":                 true,
+	"audio/flac":                true,
+	"audio/ogg":                 true,
+	"audio/webm":                true,
+	"video/webm":                true,
+	"video/quicktime":           true,
+
 	"application/pdf": true,
 	"audio/mpeg":      true,
 	"audio/mp3":       true,
@@ -139,10 +163,26 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 			}
 		}
 	} else if _, level, ok := reasoning.TrimEffortSuffix(modelName); ok && level != "" {
-		geminiRequest.GenerationConfig.ThinkingConfig = &dto.GeminiThinkingConfig{
-			IncludeThoughts: true,
-			ThinkingLevel:   level,
+		config := &dto.GeminiThinkingConfig{IncludeThoughts: true}
+		if strings.HasPrefix(modelName, "gemini-2.5-") {
+			budget := 0
+			switch level {
+			case "minimal":
+				budget = 512
+			case "low":
+				budget = 1024
+			case "medium":
+				budget = 8192
+			case "high":
+				budget = 24576
+			case "xhigh", "max":
+				budget = pro25MaxBudget
+			}
+			config.ThinkingBudget = kitutil.GetPointer(clampThinkingBudget(modelName, budget))
+		} else {
+			config.ThinkingLevel = level
 		}
+		geminiRequest.GenerationConfig.ThinkingConfig = config
 		info.SetReasoningEffort(level)
 	}
 }

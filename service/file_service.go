@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -30,16 +31,10 @@ func getContextCacheKey(url string) string {
 	return fmt.Sprintf("file_cache_%s", common.GenerateHMAC(url))
 }
 
-// getBase64ContextCacheKey 生成 base64 context 缓存的 key
-// 使用 length + MIME + 前 128 字符作为输入，避免对整个 base64 数据做 hash
+// getBase64ContextCacheKey includes the complete payload: equal-sized files
+// commonly share a header, but must never reuse one another's decoded content.
 func getBase64ContextCacheKey(data string, mimeType string) string {
-	keyMaterial := fmt.Sprintf("%d:%s:", len(data), mimeType)
-	if len(data) > 128 {
-		keyMaterial += data[:128]
-	} else {
-		keyMaterial += data
-	}
-	return fmt.Sprintf("b64_cache_%s", common.GenerateHMAC(keyMaterial))
+	return fmt.Sprintf("b64_cache_%s_%s", common.GenerateHMAC(data), common.GenerateHMAC(mimeType))
 }
 
 // LoadFileSource 加载文件源数据
@@ -50,7 +45,7 @@ func LoadFileSource(c *gin.Context, source types.FileSource, reason ...string) (
 	}
 
 	if common.DebugEnabled {
-		logger.LogDebug(c, "LoadFileSource starting for: %s", source.GetIdentifier())
+		logger.LogDebug(c, "LoadFileSource starting for source type: %T", source)
 	}
 
 	// 1. 快速检查内部缓存
@@ -161,9 +156,13 @@ func loadFromURL(c *gin.Context, url string, reason ...string) (*types.CachedFil
 	if common.DebugEnabled {
 		logger.LogDebug(c, "loadFromURL: initiating download")
 	}
-	resp, err := DoDownloadRequest(url, reason...)
+	ctx := context.Background()
+	if c != nil && c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	resp, err := DoDownloadRequestWithContext(ctx, url, reason...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download file from %s: %w", url, err)
+		return nil, fmt.Errorf("failed to download file: %w", err)
 	}
 	defer resp.Body.Close()
 

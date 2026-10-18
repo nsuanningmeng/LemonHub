@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"io"
@@ -67,7 +68,7 @@ func TestVideoProxyUsesTaskCredentialSnapshotAndLegacySingleKey(t *testing.T) {
 				calls++
 				if tc.kind == constant.ChannelTypeGemini {
 					seen = r.Header.Get("x-goog-api-key")
-					require.Equal(t, tc.wantKey, r.URL.Query().Get("key"))
+					assert.Empty(t, r.URL.Query().Get("key"), "credentials travel only in the provider header")
 				} else {
 					seen = r.Header.Get("Authorization")
 				}

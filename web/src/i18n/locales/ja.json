@@ -2280,7 +2280,7 @@
     "footer.columns.related.links.oneApi": "1つのAPI",
     "footer.columns.related.title": "関連プロジェクト",
     "footer.defaultCopyright": "すべての権利を留保します。",
-    "footer.new\u0061pi.projectAttributionSuffix": "すべての権利を留保します。プロジェクトコントリビューターにより設計・開発されています。",
+    "footer.newapi.projectAttributionSuffix": "すべての権利を留保します。プロジェクトコントリビューターにより設計・開発されています。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "2025 年 5 月 10 日以降に追加されたチャネルの場合、デプロイ時にモデル名から「.」を削除する必要はありません",
     "For individual agents just getting started": "For individual agents just getting started",
     "For operators with steady traffic": "For operators with steady traffic",
@@ -5905,6 +5905,17 @@
     "Selected chart data": "選択したグラフデータ",
     "Selected day": "選択した日付",
     "Use arrow keys to explore dates.": "矢印キーで日付を切り替えられます。",
-    "{{date}}: {{tokens}} tokens": "{{date}}：{{tokens}} トークン"
+    "{{date}}: {{tokens}} tokens": "{{date}}：{{tokens}} トークン",
+    "`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.": "`、`-nothinking`、および `-high` などの推論強度サフィックスを、正しい Gemini バリアントにルーティングする際に使用します。オフの場合、モデル名はそのまま上流に送信されます。",
+    "Adapt `-thinking`, `-nothinking`, and effort suffixes such as `-high` to Anthropic native thinking behavior while keeping billing predictable. When off, model names are sent upstream unchanged.": "`-thinking`、`-nothinking`、および `-high` などの推論強度サフィックス付きリクエストを Anthropic ネイティブの思考動作に適配し、課金を予測可能に保ちます。オフの場合、モデル名はそのまま上流に送信されます。",
+    "Optional. Without it, Google picks the region; with it, requests go to the deployment region below.": "任意。未入力の場合は Google がリージョンを選びます。入力すると、下のデプロイリージョンにリクエストを送信します。",
+    "Vertex AI Project ID": "Vertex AI プロジェクト ID",
+    "e.g., my-project-123": "例: my-project-123",
+    "Input Price: High to Low": "入力価格：高い順",
+    "Input Price: Low to High": "入力価格：低い順",
+    "Output Price: High to Low": "出力価格：高い順",
+    "Output Price: Low to High": "出力価格：低い順",
+    "Per-request Price: High to Low": "リクエスト単価：高い順",
+    "Per-request Price: Low to High": "リクエスト単価：低い順"
   }
 }

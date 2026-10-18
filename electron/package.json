@@ -155,7 +155,7 @@
     }
   },
   "overrides": {
-    "undici@6": "6.28.1",
+    "undici@6": "6.29.0",
     "global-agent@3": {
       "roarr": "6.0.0"
     }

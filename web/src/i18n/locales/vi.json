@@ -2280,7 +2280,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "Các Dự Án Liên Quan",
     "footer.defaultCopyright": "Bản quyền được bảo lưu.",
-    "footer.new\u0061pi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
+    "footer.newapi.projectAttributionSuffix": "Bản quyền được bảo lưu. Được thiết kế và phát triển bởi các cộng tác viên dự án.",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "Đối với các kênh được thêm sau ngày 10 tháng 5 năm 2025, không cần loại bỏ \".\" khỏi tên mô hình trong quá trình triển khai",
     "For individual agents just getting started": "For individual agents just getting started",
     "For operators with steady traffic": "For operators with steady traffic",
@@ -5905,6 +5905,17 @@
     "Selected chart data": "Dữ liệu biểu đồ đã chọn",
     "Selected day": "Ngày đã chọn",
     "Use arrow keys to explore dates.": "Sử dụng các phím mũi tên để xem các ngày.",
-    "{{date}}: {{tokens}} tokens": "{{date}}: {{tokens}} token"
+    "{{date}}: {{tokens}} tokens": "{{date}}: {{tokens}} token",
+    "`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.": "`, `-nothinking` và các hậu tố mức suy luận như `-high` khi định tuyến đến biến thể Gemini đúng. Khi tắt, tên mô hình được gửi nguyên vẹn lên upstream.",
+    "Adapt `-thinking`, `-nothinking`, and effort suffixes such as `-high` to Anthropic native thinking behavior while keeping billing predictable. When off, model names are sent upstream unchanged.": "Điều chỉnh các yêu cầu có hậu tố `-thinking`, `-nothinking` và các hậu tố mức suy luận như `-high` sang hành vi suy luận gốc của Anthropic trong khi vẫn giữ tính phí dễ dự đoán. Khi tắt, tên mô hình được gửi nguyên vẹn lên upstream.",
+    "Optional. Without it, Google picks the region; with it, requests go to the deployment region below.": "Không bắt buộc. Nếu để trống, Google sẽ tự chọn khu vực; nếu điền, yêu cầu sẽ được gửi đến khu vực triển khai bên dưới.",
+    "Vertex AI Project ID": "ID dự án Vertex AI",
+    "e.g., my-project-123": "vd. du-an-cua-toi-123",
+    "Input Price: High to Low": "Giá đầu vào: Từ cao đến thấp",
+    "Input Price: Low to High": "Giá đầu vào: Thấp đến Cao",
+    "Output Price: High to Low": "Giá đầu ra: Từ cao đến thấp",
+    "Output Price: Low to High": "Giá đầu ra: Thấp đến Cao",
+    "Per-request Price: High to Low": "Giá mỗi yêu cầu: Từ cao đến thấp",
+    "Per-request Price: Low to High": "Giá mỗi yêu cầu: Thấp đến Cao"
   }
 }

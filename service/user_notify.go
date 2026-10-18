@@ -176,13 +176,13 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 	} else {
 		// SSRF防护：验证Bark URL（非Worker模式）
 		if err := ValidateSSRFProtectedFetchURL(finalURL); err != nil {
-			return fmt.Errorf("request reject: %v", err)
+			return fmt.Errorf("request reject: %w", &remoteFetchError{cause: err})
 		}
 
 		// 直接发送请求
 		req, err = http.NewRequest(http.MethodGet, finalURL, nil)
 		if err != nil {
-			return fmt.Errorf("failed to create bark request: %v", err)
+			return fmt.Errorf("failed to create bark request: %w", &remoteFetchError{cause: err})
 		}
 
 		// 设置User-Agent
@@ -192,7 +192,7 @@ func sendBarkNotify(barkURL string, data dto.Notify) error {
 		client := GetSSRFProtectedHTTPClient()
 		resp, err = client.Do(req)
 		if err != nil {
-			return fmt.Errorf("failed to send bark request: %v", err)
+			return fmt.Errorf("failed to send bark request: %w", &remoteFetchError{cause: err})
 		}
 		defer resp.Body.Close()
 
@@ -269,13 +269,13 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 	} else {
 		// SSRF防护：验证Gotify URL（非Worker模式）
 		if err := ValidateSSRFProtectedFetchURL(finalURL); err != nil {
-			return fmt.Errorf("request reject: %v", err)
+			return fmt.Errorf("request reject: %w", &remoteFetchError{cause: err})
 		}
 
 		// 直接发送请求
 		req, err = http.NewRequest(http.MethodPost, finalURL, bytes.NewBuffer(payloadBytes))
 		if err != nil {
-			return fmt.Errorf("failed to create gotify request: %v", err)
+			return fmt.Errorf("failed to create gotify request: %w", &remoteFetchError{cause: err})
 		}
 
 		// 设置请求头
@@ -286,7 +286,7 @@ func sendGotifyNotify(gotifyUrl string, gotifyToken string, priority int, data d
 		client := GetSSRFProtectedHTTPClient()
 		resp, err = client.Do(req)
 		if err != nil {
-			return fmt.Errorf("failed to send gotify request: %v", err)
+			return fmt.Errorf("failed to send gotify request: %w", &remoteFetchError{cause: err})
 		}
 		defer resp.Body.Close()
 

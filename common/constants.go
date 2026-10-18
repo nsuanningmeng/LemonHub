@@ -129,6 +129,10 @@ var EmailDeliveryEventToken = ""
 // the options table so tokens survive restarts and are valid on every node.
 var UnsubscribeSecret = ""
 
+// MediaSigningSecret signs expiring media links. Persisted in the options
+// table so image updates and additional nodes retain outstanding links.
+var MediaSigningSecret = ""
+
 var GitHubClientId = ""
 var GitHubClientSecret = ""
 var LinuxDOClientId = ""
@@ -267,6 +271,10 @@ var (
 	GlobalWebRateLimitEnable   bool
 	GlobalWebRateLimitNum      int
 	GlobalWebRateLimitDuration int64
+
+	GlobalStaticRateLimitEnable   bool
+	GlobalStaticRateLimitNum      int
+	GlobalStaticRateLimitDuration int64
 
 	CriticalRateLimitEnable   bool
 	CriticalRateLimitNum            = 20

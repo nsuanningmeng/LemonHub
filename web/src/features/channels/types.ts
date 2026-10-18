@@ -47,6 +47,7 @@ export const channelSchema = z.object({
   test_time: z.number(),
   response_time: z.number(), // in milliseconds
   base_url: z.string().nullish(),
+  base_url_redacted: z.boolean().optional(),
   other: z.string().default(''),
   balance: z.number().default(0), // in USD
   balance_updated_time: z.number(),
@@ -64,6 +65,8 @@ export const channelSchema = z.object({
   header_override: z.string().nullish(),
   param_override_configured: z.boolean().optional(),
   header_override_configured: z.boolean().optional(),
+  proxy_configured: z.boolean().optional(),
+  advanced_custom_configured: z.boolean().optional(),
   remark: z.string().default(''),
   max_input_tokens: z.number().default(0),
   channel_info: channelInfoSchema.default({
@@ -98,6 +101,7 @@ export interface ChannelSettings {
 export interface ChannelOtherSettings {
   azure_responses_version?: string
   vertex_key_type?: 'json' | 'api_key'
+  vertex_project_id?: string
   openrouter_enterprise?: boolean
   aws_key_type?: 'ak_sk' | 'api_key'
   allow_service_tier?: boolean

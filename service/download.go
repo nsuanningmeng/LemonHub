@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,8 +21,27 @@ type WorkerRequest struct {
 	Body    json.RawMessage   `json:"body,omitempty"`
 }
 
+// remoteFetchError prevents signed URLs, webhook tokens and basic-auth userinfo
+// from escaping through net/http's URL-bearing errors. Keep the cause available
+// to errors.Is/As without including it in log or client-facing error text.
+type remoteFetchError struct {
+	cause error
+}
+
+func (e *remoteFetchError) Error() string {
+	if strings.Contains(e.cause.Error(), "private IP address not allowed") {
+		return "remote request failed: private IP address not allowed"
+	}
+	return "remote request failed"
+}
+func (e *remoteFetchError) Unwrap() error { return e.cause }
+
 // DoWorkerRequest 通过Worker发送请求
 func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
+	return doWorkerRequestWithContext(context.Background(), req)
+}
+
+func doWorkerRequestWithContext(ctx context.Context, req *WorkerRequest) (*http.Response, error) {
 	if !system_setting.EnableWorker() {
 		return nil, fmt.Errorf("worker not enabled")
 	}
@@ -32,7 +52,7 @@ func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
 	// SSRF防护：验证请求URL
 	fetchSetting := system_setting.GetFetchSetting()
 	if err := common.ValidateURLWithFetchSetting(req.URL, fetchSetting.EnableSSRFProtection, fetchSetting.AllowPrivateIp, fetchSetting.DomainFilterMode, fetchSetting.IpFilterMode, fetchSetting.DomainList, fetchSetting.IpList, fetchSetting.AllowedPorts, fetchSetting.ApplyIPFilterForDomain); err != nil {
-		return nil, fmt.Errorf("request reject: %v", err)
+		return nil, fmt.Errorf("request rejected: %w", &remoteFetchError{cause: err})
 	}
 
 	workerUrl := system_setting.WorkerUrl
@@ -46,24 +66,50 @@ func DoWorkerRequest(req *WorkerRequest) (*http.Response, error) {
 		return nil, fmt.Errorf("failed to marshal worker payload: %v", err)
 	}
 
-	return GetHttpClient().Post(workerUrl, "application/json", bytes.NewBuffer(workerPayload))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, workerUrl, bytes.NewBuffer(workerPayload))
+	if err != nil {
+		return nil, &remoteFetchError{cause: err}
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := GetHttpClient().Do(httpReq)
+	if err != nil {
+		return resp, &remoteFetchError{cause: err}
+	}
+	return resp, nil
 }
 
 func DoDownloadRequest(originUrl string, reason ...string) (resp *http.Response, err error) {
+	return DoDownloadRequestWithContext(context.Background(), originUrl, reason...)
+}
+
+// DoDownloadRequestWithContext binds remote file I/O (including Worker requests)
+// to the relay request so disconnected callers do not leave downloads running.
+func DoDownloadRequestWithContext(ctx context.Context, originUrl string, reason ...string) (resp *http.Response, err error) {
+	if err := ctx.Err(); err != nil {
+		return nil, &remoteFetchError{cause: err}
+	}
 	if system_setting.EnableWorker() {
-		common.SysLog(fmt.Sprintf("downloading file from worker: %s, reason: %s", originUrl, strings.Join(reason, ", ")))
+		common.SysLog(fmt.Sprintf("downloading file through worker, reason: %s", strings.Join(reason, ", ")))
 		req := &WorkerRequest{
 			URL: originUrl,
 			Key: system_setting.WorkerValidKey,
 		}
-		return DoWorkerRequest(req)
+		return doWorkerRequestWithContext(ctx, req)
 	} else {
 		// SSRF防护：验证请求URL（非Worker模式）
 		if err := ValidateSSRFProtectedFetchURL(originUrl); err != nil {
-			return nil, fmt.Errorf("request reject: %v", err)
+			return nil, fmt.Errorf("request rejected: %w", &remoteFetchError{cause: err})
 		}
 
-		common.SysLog(fmt.Sprintf("downloading from origin: %s, reason: %s", common.MaskSensitiveInfo(originUrl), strings.Join(reason, ", ")))
-		return GetSSRFProtectedHTTPClient().Get(originUrl)
+		common.SysLog(fmt.Sprintf("downloading file from origin, reason: %s", strings.Join(reason, ", ")))
+		req, requestErr := http.NewRequestWithContext(ctx, http.MethodGet, originUrl, nil)
+		if requestErr != nil {
+			return nil, &remoteFetchError{cause: requestErr}
+		}
+		resp, err = GetSSRFProtectedHTTPClient().Do(req)
+		if err != nil {
+			return resp, &remoteFetchError{cause: err}
+		}
+		return resp, nil
 	}
 }

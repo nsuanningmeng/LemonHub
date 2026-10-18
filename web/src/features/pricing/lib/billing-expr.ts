@@ -240,6 +240,8 @@ export type TierCondition = {
 }
 
 export type ParsedTier = {
+  /** Explicit price terms, including zero; absent terms remain distinct. */
+  configuredPriceFields?: string[]
   label: string
   conditions: TierCondition[]
   /** The complete path to this tier, including preceding false branches. */
@@ -261,7 +263,7 @@ function stripExprVersion(exprStr: string): { version: number; body: string } {
 }
 
 type PricingToken = { text: string; start: number; end: number }
-type PricingNode = { start: number; end: number } & (
+export type PricingNode = { start: number; end: number } & (
   | { kind: 'number'; value: number }
   | { kind: 'string'; value: string }
   | { kind: 'variable'; name: string }
@@ -276,12 +278,13 @@ type PricingNode = { start: number; end: number } & (
     }
 )
 
-// This is a display-only subset, not an implementation of expr-lang. Unknown
-// syntax remains a raw expression; no prefix or embedded tier may be extracted.
+// Shared, deliberately limited syntax for display and the local estimator.
+// Unknown syntax is rejected in full; it is never passed to JavaScript.
 function pricingTokens(source: string): PricingToken[] {
+  if (source.length > 32768) throw new Error('Pricing expression is too large')
   const tokens: PricingToken[] = []
   const token =
-    /(?:"(?:[^"\\]|\\.)*"|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_]\w*|&&|\|\||<=|>=|==|!=|[()+*/?:,!<>-])/y
+    /(?:"(?:[^"\\]|\\.)*"|(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_]\w*|&&|\|\||<=|>=|==|!=|[()+*/%?:,!<>-])/y
   let index = 0
   while (index < source.length) {
     if (/\s/.test(source[index])) {
@@ -292,6 +295,9 @@ function pricingTokens(source: string): PricingToken[] {
     const match = token.exec(source)
     if (!match) throw new Error('Unsupported pricing syntax')
     tokens.push({ text: match[0], start: index, end: token.lastIndex })
+    if (tokens.length > 4096) {
+      throw new Error('Pricing expression is too complex')
+    }
     index = token.lastIndex
   }
   return tokens
@@ -310,6 +316,7 @@ const PRICING_PRECEDENCE: Record<string, number> = {
   '-': 5,
   '*': 6,
   '/': 6,
+  '%': 6,
 }
 
 class PricingParser {
@@ -332,13 +339,14 @@ class PricingParser {
     return token
   }
 
-  private expression(): PricingNode {
-    const condition = this.binary(1)
+  private expression(depth = 0): PricingNode {
+    if (depth > 128) throw new Error('Pricing expression is too deep')
+    const condition = this.binary(1, depth + 1)
     if (this.tokens[this.index]?.text !== '?') return condition
     this.take('?')
-    const yes = this.expression()
+    const yes = this.expression(depth + 1)
     this.take(':')
-    const no = this.expression()
+    const no = this.expression(depth + 1)
     return {
       kind: 'conditional',
       condition,
@@ -349,14 +357,16 @@ class PricingParser {
     }
   }
 
-  private binary(minimum: number): PricingNode {
-    let left = this.primary()
+  private binary(minimum: number, depth: number): PricingNode {
+    let left = this.primary(depth + 1)
     while (true) {
       const op = this.tokens[this.index]?.text
-      const precedence = PRICING_PRECEDENCE[op] || 0
+      const precedence = Object.hasOwn(PRICING_PRECEDENCE, op)
+        ? PRICING_PRECEDENCE[op]
+        : 0
       if (precedence < minimum) return left
       this.take()
-      const right = this.binary(precedence + 1)
+      const right = this.binary(precedence + 1, depth + 1)
       left = {
         kind: 'binary',
         op,
@@ -368,16 +378,17 @@ class PricingParser {
     }
   }
 
-  private primary(): PricingNode {
+  private primary(depth: number): PricingNode {
+    if (depth > 128) throw new Error('Pricing expression is too deep')
     const token = this.take()
     const start = token.start
     if (token.text === '(') {
-      const node = this.expression()
+      const node = this.expression(depth + 1)
       const close = this.take(')')
       return { ...node, start, end: close.end }
     }
     if (['+', '-', '!'].includes(token.text)) {
-      const value = this.primary()
+      const value = this.primary(depth + 1)
       return { kind: 'unary', op: token.text, value, start, end: value.end }
     }
     if (token.text.startsWith('"')) {
@@ -399,15 +410,22 @@ class PricingParser {
     this.take('(')
     const args: PricingNode[] = []
     if (this.tokens[this.index]?.text !== ')') {
-      args.push(this.expression())
+      args.push(this.expression(depth + 1))
       while (this.tokens[this.index]?.text === ',') {
         this.take(',')
-        args.push(this.expression())
+        args.push(this.expression(depth + 1))
       }
     }
     const close = this.take(')')
     return { kind: 'call', name: token.text, args, start, end: close.end }
   }
+}
+
+/** Parses only the supported syntax; callers must validate names before evaluation. */
+export function parsePricingExpression(source: string): PricingNode {
+  const { version, body } = stripExprVersion(source.trim())
+  if (version !== 1) throw new Error('Unsupported pricing expression version')
+  return new PricingParser(pricingTokens(body)).parse()
 }
 
 type LinearPrice = { constant: number; coefficients: Record<string, number> }
@@ -586,7 +604,13 @@ function collectPricingTiers(
   ) {
     return false
   }
-  const tier: ParsedTier = { label: '', conditions: [] }
+  const tier: ParsedTier = {
+    label: '',
+    conditions: [],
+    configuredPriceFields: Object.keys(price.coefficients).map(
+      (key) => BILLING_VAR_KEY_TO_FIELD[key]
+    ),
+  }
   if (node.kind === 'call' && node.args[0].kind === 'string') {
     tier.label = node.args[0].value
   }

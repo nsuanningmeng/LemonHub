@@ -10,7 +10,7 @@ Transitive dependencies should be audited before a final external release.
 
 | Area        | Scope       | Ecosystem | Dependency                                            | Version                              | License                                            |
 |-------------|-------------|-----------|-------------------------------------------------------|--------------------------------------|----------------------------------------------------|
-| backend     | production  | Go        | `github.com/Calcium-Ion/go-epay`                      | `v0.0.4`                             | Proprietary/Internal - owned by project maintainer |
+| backend     | production  | Go        | `github.com/Calcium-Ion/go-epay`                      | `v0.0.5`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/abema/go-mp4`                             | `v1.4.1`                             | MIT                                                |
 | backend     | test        | Go        | `github.com/alicebob/miniredis/v2`                    | `v2.38.0`                            | MIT                                                |
 | backend     | production  | Go        | `github.com/andybalholm/brotli`                       | `v1.1.1`                             | MIT                                                |
@@ -76,14 +76,14 @@ Transitive dependencies should be audited before a final external release.
 | web | production | npm | `@hugeicons/core-free-icons` | `4.2.2` | MIT |
 | web | production | npm | `@hugeicons/react` | `1.1.9` | MIT |
 | web | production | npm | `@lezer/highlight` | `1.2.3` | MIT |
-| web | production | npm | `@lobehub/icons` | `5.14.0` | MIT |
+| web | production | npm | `@lobehub/icons` | `5.22.0` | MIT |
 | web | production | npm | `@tanstack/react-query` | `5.101.2` | MIT |
 | web | production | npm | `@tanstack/react-router` | `1.170.18` | MIT |
 | web | production | npm | `@tanstack/react-table` | `8.21.3` | MIT |
 | web | production | npm | `@tanstack/react-virtual` | `3.14.6` | MIT |
 | web | production | npm | `@visactor/react-vchart` | `2.1.4` | MIT |
 | web | production | npm | `@visactor/vchart` | `2.1.4` | MIT |
-| web | production | npm | `ai` | `7.0.31` | Apache-2.0 |
+| web | production | npm | `ai` | `7.0.136` | Apache-2.0 |
 | web | production | npm | `auto-skeleton-react` | `1.0.5` | MIT |
 | web | production | npm | `axios` | `1.18.1` | MIT |
 | web | production | npm | `class-variance-authority` | `0.7.1` | Apache-2.0 |
@@ -113,13 +113,14 @@ Transitive dependencies should be audited before a final external release.
 | web | production | npm | `shiki` | `4.3.1` | MIT |
 | web | production | npm | `sonner` | `2.0.7` | MIT |
 | web | production | npm | `sse.js` | `2.8.0` | Apache-2.0 |
-| web | production | npm | `stream-markdown-parser` | `1.1.3` | MIT |
+| web | production | npm | `stream-markdown-parser` | `1.2.18` | MIT |
 | web | production | npm | `tailwind-merge` | `3.6.0` | MIT |
 | web | production | npm | `tailwindcss` | `4.3.3` | MIT |
 | web | production | npm | `tokenlens` | `1.3.1` | MIT |
 | web | production | npm | `tw-animate-css` | `1.4.0` | MIT |
 | web | production | npm | `use-stick-to-bottom` | `1.1.6` | MIT |
 | web | production | npm | `vaul` | `1.1.2` | MIT |
+| web | production | npm | `yace` | `1.1.1` | MIT |
 | web | production | npm | `zod` | `4.4.3` | MIT |
 | web | production | npm | `zustand` | `5.0.14` | MIT |
 | web | development | npm | `@rsbuild/core` | `2.1.6` | MIT |

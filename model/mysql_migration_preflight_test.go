@@ -52,6 +52,34 @@ func TestMySQLMigrationPreflightPreservesWideColumns(t *testing.T) {
 		initCol()
 	})
 
+	// MySQL returns metadata column names in uppercase. The startup check must
+	// inspect each table's actual collation, not silently treat unmapped fields
+	// as NULL and assume they inherit the schema's character set.
+	for _, charset := range []struct {
+		name    string
+		allowed bool
+	}{
+		{name: "latin1"},
+		{name: "ascii"},
+		{name: "utf8", allowed: true}, // MySQL 8.0+ reports this alias as utf8mb3.
+		{name: "utf8mb4", allowed: true},
+	} {
+		t.Run("startup table charset/"+charset.name, func(t *testing.T) {
+			require.NoError(t, db.Exec("CREATE TABLE migration_charset_guard (id BIGINT PRIMARY KEY, value VARCHAR(64)) DEFAULT CHARACTER SET "+charset.name).Error)
+			t.Cleanup(func() { require.NoError(t, db.Exec("DROP TABLE migration_charset_guard").Error) })
+			require.NoError(t, db.Exec("INSERT INTO migration_charset_guard VALUES (1, 'preserve-existing-value')").Error)
+			err := checkMySQLChineseSupport(db)
+			if charset.allowed {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "migration_charset_guard")
+			}
+			var value string
+			require.NoError(t, db.Raw("SELECT value FROM migration_charset_guard WHERE id = 1").Scan(&value).Error)
+			assert.Equal(t, "preserve-existing-value", value, "preflight must never rewrite existing data")
+		})
+	}
+
 	for _, sqlMode := range []string{"", "STRICT_ALL_TABLES"} {
 		t.Run("sql_mode="+sqlMode, func(t *testing.T) {
 			require.NoError(t, db.Exec("SET SESSION sql_mode = ?", sqlMode).Error)

@@ -2280,7 +2280,7 @@
     "footer.columns.related.links.oneApi": "One API",
     "footer.columns.related.title": "相關項目",
     "footer.defaultCopyright": "版權所有。",
-    "footer.new\u0061pi.projectAttributionSuffix": "版權所有，由項目貢獻者設計與開發。",
+    "footer.newapi.projectAttributionSuffix": "版權所有，由項目貢獻者設計與開發。",
     "For channels added after May 10, 2025, no need to remove \".\" from model names during deployment": "對於 2025 年 5 月 10 日之後新增的渠道，在部署時無需從模型名稱中移除 \".\"",
     "For individual agents just getting started": "For individual agents just getting started",
     "For operators with steady traffic": "For operators with steady traffic",
@@ -5905,6 +5905,17 @@
     "Selected chart data": "選取的圖表資料",
     "Selected day": "選取的日期",
     "Use arrow keys to explore dates.": "使用方向鍵瀏覽日期。",
-    "{{date}}: {{tokens}} tokens": "{{date}}：{{tokens}} Token"
+    "{{date}}: {{tokens}} tokens": "{{date}}：{{tokens}} Token",
+    "`, `-nothinking`, and effort suffixes such as `-high` while routing to the correct Gemini variant. When off, model names are sent upstream unchanged.": "`、`-nothinking` 以及 `-high` 等推理強度後綴，同時路由到正確的 Gemini 變體。關閉後模型名原樣傳送給上游。",
+    "Adapt `-thinking`, `-nothinking`, and effort suffixes such as `-high` to Anthropic native thinking behavior while keeping billing predictable. When off, model names are sent upstream unchanged.": "將帶 `-thinking`、`-nothinking` 以及 `-high` 等推理強度後綴的請求適配為 Anthropic 原生思考請求，並保持收費可預測。關閉後模型名原樣傳送給上游。",
+    "Optional. Without it, Google picks the region; with it, requests go to the deployment region below.": "可選。不填時由 Google 決定區域；填寫後，請求會送往下方的部署區域。",
+    "Vertex AI Project ID": "Vertex AI 專案 ID",
+    "e.g., my-project-123": "例如 my-project-123",
+    "Input Price: High to Low": "輸入價格：從高到低",
+    "Input Price: Low to High": "輸入價格：從低到高",
+    "Output Price: High to Low": "輸出價格：從高到低",
+    "Output Price: Low to High": "輸出價格：從低到高",
+    "Per-request Price: High to Low": "按次價格：從高到低",
+    "Per-request Price: Low to High": "按次價格：從低到高"
   }
 }

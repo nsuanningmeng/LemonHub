@@ -143,38 +143,14 @@ func GetAllTickets(siteScope int, status, priority, ticketType string, userId in
 	return tickets, total, nil
 }
 
-// UpdateStatus transitions a ticket to a new status, stamping closed_at on close.
+// UpdateStatus transitions a ticket while serializing with retention cleanup.
 func (t *Ticket) UpdateStatus(status string) error {
-	now := common.GetTimestamp()
-	updates := map[string]interface{}{
-		"status":     status,
-		"updated_at": now,
-	}
-	if status == TicketStatusClosed {
-		updates["closed_at"] = now
-	} else {
-		updates["closed_at"] = 0
-	}
-	if err := DB.Model(&Ticket{}).Where("id = ?", t.Id).Updates(updates).Error; err != nil {
-		return err
-	}
-	t.Status = status
-	t.UpdatedAt = now
-	return nil
+	return t.UpdateDetails(status, "")
 }
 
-// UpdatePriority changes a ticket's priority (admin action).
+// UpdatePriority changes a ticket's priority while checking it still exists.
 func (t *Ticket) UpdatePriority(priority string) error {
-	now := common.GetTimestamp()
-	if err := DB.Model(&Ticket{}).Where("id = ?", t.Id).Updates(map[string]interface{}{
-		"priority":   priority,
-		"updated_at": now,
-	}).Error; err != nil {
-		return err
-	}
-	t.Priority = priority
-	t.UpdatedAt = now
-	return nil
+	return t.UpdateDetails("", priority)
 }
 
 // GetClosedTicketIdsBefore returns ids of tickets closed before the cutoff, used by
@@ -198,15 +174,6 @@ func GetClosedTicketIdsBefore(siteScope int, closedBefore int64, limit int) ([]i
 	return ids, nil
 }
 
-// DeleteTicketsByIds hard-deletes ticket rows by id.
-func DeleteTicketsByIds(ids []int) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	res := DB.Where("id IN ?", ids).Delete(&Ticket{})
-	return res.RowsAffected, res.Error
-}
-
 // GetTicketUsersByIds batch-loads minimal user display info (id/username/email),
 // avoiding per-row lookups in the admin ticket list.
 func GetTicketUsersByIds(ids []int) (map[int]*User, error) {
@@ -222,26 +189,4 @@ func GetTicketUsersByIds(ids []int) (map[int]*User, error) {
 		result[u.Id] = u
 	}
 	return result, nil
-}
-
-// MarkReplied updates reply bookkeeping and status after a new message.
-func (t *Ticket) MarkReplied(replyBy string, newStatus string) error {
-	now := common.GetTimestamp()
-	updates := map[string]interface{}{
-		"last_reply_at": now,
-		"last_reply_by": replyBy,
-		"status":        newStatus,
-		"updated_at":    now,
-	}
-	if newStatus != TicketStatusClosed {
-		updates["closed_at"] = 0
-	}
-	if err := DB.Model(&Ticket{}).Where("id = ?", t.Id).Updates(updates).Error; err != nil {
-		return err
-	}
-	t.LastReplyAt = now
-	t.LastReplyBy = replyBy
-	t.Status = newStatus
-	t.UpdatedAt = now
-	return nil
 }

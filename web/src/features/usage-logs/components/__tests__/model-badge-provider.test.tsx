@@ -40,3 +40,12 @@ test('Claude and unknown models preserve their provider display', () => {
   expect(screen.getByText('private-custom-model')).toBeVisible()
   expect(screen.queryByLabelText('OpenAI')).toBeNull()
 })
+
+test.each(['meta-muse-spark', 'Muse-Spark', 'meta/muse-spark'])(
+  '%s uses Meta rather than iFlyTek branding',
+  (modelName) => {
+    render(<ModelBadge modelName={modelName} />)
+    expect(screen.getByLabelText('Meta')).toBeVisible()
+    expect(screen.queryByLabelText('iFlyTek')).toBeNull()
+  }
+)

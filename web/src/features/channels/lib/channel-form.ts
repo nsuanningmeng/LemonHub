@@ -246,6 +246,10 @@ export const channelFormSchema = z
       .optional()
       .refine(isOptionalJsonObject, ERROR_MESSAGES.INVALID_JSON),
     advanced_custom: z.string().optional(),
+    // Local edit state only: omitted secrets must not be serialized as empty.
+    preserve_hidden_base_url: z.boolean().optional(),
+    preserve_hidden_proxy: z.boolean().optional(),
+    preserve_hidden_advanced_custom: z.boolean().optional(),
     other: z.string().optional(),
     // Multi-key options (not sent to backend directly)
     multi_key_mode: z.enum(['single', 'batch', 'multi_to_single']).optional(),
@@ -270,6 +274,7 @@ export const channelFormSchema = z
     // Type-specific settings (stored in settings JSON)
     is_enterprise_account: z.boolean().optional(), // OpenRouter specific
     vertex_key_type: z.enum(['json', 'api_key']).optional(), // Vertex AI specific
+    vertex_project_id: z.string().optional(), // Vertex AI specific (api_key mode only)
     aws_key_type: z.enum(['ak_sk', 'api_key']).optional(), // AWS specific
     azure_responses_version: z.string().optional(), // Azure specific
     // Field passthrough controls (stored in settings JSON)
@@ -289,6 +294,7 @@ export const channelFormSchema = z
   .superRefine((data, ctx) => {
     if (
       [3, 8, 36, 45, CHANNEL_TYPE_NEW_API].includes(data.type) &&
+      !data.preserve_hidden_base_url &&
       !data.base_url?.trim()
     ) {
       addRequiredIssue(
@@ -298,7 +304,10 @@ export const channelFormSchema = z
       )
     }
 
-    if (data.type === CHANNEL_TYPE_ADVANCED_CUSTOM) {
+    if (
+      data.type === CHANNEL_TYPE_ADVANCED_CUSTOM &&
+      !data.preserve_hidden_advanced_custom
+    ) {
       const advancedCustomConfig = parseAdvancedCustomConfig(
         data.advanced_custom
       )
@@ -309,6 +318,7 @@ export const channelFormSchema = z
       }
       if (
         advancedCustomConfigUsesRelativeUpstreamPath(advancedCustomConfig) &&
+        !data.preserve_hidden_base_url &&
         !data.base_url?.trim()
       ) {
         addRequiredIssue(
@@ -445,6 +455,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   // Type-specific settings
   is_enterprise_account: false,
   vertex_key_type: 'json',
+  vertex_project_id: '',
   aws_key_type: 'ak_sk',
   azure_responses_version: '',
   // Field passthrough controls
@@ -515,6 +526,7 @@ export function transformChannelToFormDefaults(
 
   // Parse type-specific settings from settings field
   let vertexKeyType: 'json' | 'api_key' = 'json'
+  let vertexProjectId = ''
   let azureResponsesVersion = ''
   let isEnterpriseAccount = false
   let awsKeyType: 'ak_sk' | 'api_key' = 'ak_sk'
@@ -535,6 +547,7 @@ export function transformChannelToFormDefaults(
     try {
       const parsed = JSON.parse(channel.settings)
       vertexKeyType = parsed.vertex_key_type || 'json'
+      vertexProjectId = parsed.vertex_project_id || ''
       azureResponsesVersion = parsed.azure_responses_version || ''
       isEnterpriseAccount = parsed.openrouter_enterprise === true
       awsKeyType = parsed.aws_key_type || 'ak_sk'
@@ -568,6 +581,11 @@ export function transformChannelToFormDefaults(
     name: channel.name || '',
     type: channel.type,
     base_url: channel.base_url || '',
+    preserve_hidden_base_url: channel.base_url_redacted === true,
+    preserve_hidden_proxy:
+      channel.proxy_configured === true && !extraSettings.proxy,
+    preserve_hidden_advanced_custom:
+      channel.advanced_custom_configured === true && !advancedCustom,
     key: '', // Never populate key from backend for security
     openai_organization: channel.openai_organization || '',
     models: channel.models || '',
@@ -595,6 +613,7 @@ export function transformChannelToFormDefaults(
     // Type-specific settings
     is_enterprise_account: isEnterpriseAccount,
     vertex_key_type: vertexKeyType,
+    vertex_project_id: vertexProjectId,
     azure_responses_version: azureResponsesVersion,
     aws_key_type: awsKeyType,
     allow_service_tier: allowServiceTier,
@@ -619,13 +638,16 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
   const settingObj: Record<string, unknown> = {
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
-    proxy: formData.proxy?.trim() || '',
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
     error_override_enabled: formData.error_override_enabled || false,
     error_override_message: formData.error_override_message || '',
     auto_test_disabled: formData.auto_test_disabled || false,
+  }
+
+  if (!formData.preserve_hidden_proxy) {
+    settingObj.proxy = formData.proxy?.trim() || ''
   }
 
   const protocol = normalizeHttpProtocol(formData.http_protocol)
@@ -663,8 +685,15 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
   // Add vertex_key_type for Vertex AI channels (type 41)
   if (formData.type === 41) {
     settingsObj.vertex_key_type = formData.vertex_key_type || 'json'
-  } else if ('vertex_key_type' in settingsObj) {
+    const vertexProjectId = formData.vertex_project_id?.trim()
+    if (settingsObj.vertex_key_type === 'api_key' && vertexProjectId) {
+      settingsObj.vertex_project_id = vertexProjectId
+    } else {
+      delete settingsObj.vertex_project_id
+    }
+  } else {
     delete settingsObj.vertex_key_type
+    delete settingsObj.vertex_project_id
   }
 
   // Add azure_responses_version for Azure channels (type 3)
@@ -767,7 +796,9 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     }
   }
 
-  if (formData.type === CHANNEL_TYPE_ADVANCED_CUSTOM) {
+  if (formData.preserve_hidden_advanced_custom) {
+    delete settingsObj.advanced_custom
+  } else if (formData.type === CHANNEL_TYPE_ADVANCED_CUSTOM) {
     const advancedCustomConfig = parseAdvancedCustomConfig(
       formData.advanced_custom
     )
@@ -891,6 +922,9 @@ export function transformFormDataToUpdatePayload(
   payload.status_code_mapping = formData.status_code_mapping || ''
   payload.param_override = formData.param_override || ''
   payload.header_override = formData.header_override || ''
+  if (formData.preserve_hidden_base_url) {
+    delete payload.base_url
+  }
 
   return payload
 }

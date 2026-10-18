@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"compress/gzip"
+	"errors"
 	"io"
 	"net/http"
 
@@ -21,6 +22,21 @@ func (rc *readCloser) Close() error {
 		return rc.closeFn()
 	}
 	return nil
+}
+
+type boundedZstdReader struct {
+	decoder  *zstd.Decoder
+	maxBytes int64
+}
+
+func (r *boundedZstdReader) Read(p []byte) (int, error) {
+	n, err := r.decoder.Read(p)
+	if errors.Is(err, zstd.ErrDecoderSizeExceeded) || errors.Is(err, zstd.ErrWindowSizeExceeded) {
+		// Preserve the same 413 classification used by the post-decompression
+		// MaxBytesReader when the decoder rejects an oversized frame internally.
+		return n, &http.MaxBytesError{Limit: r.maxBytes}
+	}
+	return n, err
 }
 
 func DecompressRequestMiddleware() gin.HandlerFunc {
@@ -68,14 +84,20 @@ func DecompressRequestMiddleware() gin.HandlerFunc {
 			})
 			decompressed = true
 		case "zstd":
-			reader, err := zstd.NewReader(origBody)
+			// Limit internal history/window allocation as well as decoded output.
+			// A single synchronous decoder also avoids per-request background workers.
+			reader, err := zstd.NewReader(origBody,
+				zstd.WithDecoderMaxMemory(uint64(maxBytes)),
+				zstd.WithDecoderConcurrency(1),
+			)
 			if err != nil {
 				_ = origBody.Close()
 				c.AbortWithStatus(http.StatusBadRequest)
 				return
 			}
+			defer reader.Close()
 			c.Request.Body = wrapMaxBytes(&readCloser{
-				Reader: reader,
+				Reader: &boundedZstdReader{decoder: reader, maxBytes: maxBytes},
 				closeFn: func() error {
 					reader.Close()
 					return origBody.Close()

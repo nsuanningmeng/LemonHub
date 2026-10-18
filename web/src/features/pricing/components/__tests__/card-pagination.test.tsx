@@ -68,7 +68,7 @@ function FilteredGrid() {
       </button>
       <button
         type='button'
-        onClick={() => filters.setSortBy(SORT_OPTIONS.PRICE_HIGH)}
+        onClick={() => filters.setSortBy(SORT_OPTIONS.INPUT_PRICE_HIGH)}
       >
         Price sort
       </button>
@@ -126,19 +126,24 @@ test.each(['Group filter', 'Vendor filter', 'Tag filter', 'Search filter'])(
   'page five resets to first page after %s and a single Previous click returns from page two',
   async (filter) => {
     const user = await renderGrid()
+    // Pagination controls stay mounted when the displayed card page changes.
+    // Resolve their accessible names once instead of rescanning every card.
+    const nextPage = screen.getByRole('button', { name: 'Next page' })
+    const previousPage = screen.getByRole('button', { name: 'Previous page' })
+    const filterButton = screen.getByRole('button', { name: filter })
     for (let page = 1; page < 5; page++) {
-      await user.click(screen.getByRole('button', { name: 'Next page' }))
+      await user.click(nextPage)
     }
     expect(screen.getByText('Page 5 of 5')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: filter }))
+    await user.click(filterButton)
     await screen.findByText('Page 1 of 2')
     expect(
       screen.getByRole('heading', { name: 'model-001' })
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled()
-    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    expect(previousPage).toBeDisabled()
+    await user.click(nextPage)
     expect(screen.getByText('Page 2 of 2')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Previous page' }))
+    await user.click(previousPage)
     expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
   }
 )
