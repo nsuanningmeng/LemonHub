@@ -52,6 +52,16 @@ func TestMySQLMigrationPreflightPreservesWideColumns(t *testing.T) {
 		initCol()
 	})
 
+	// The schema check runs before table checks. Give this disposable fixture a
+	// Chinese-capable default even on MySQL 5.7 servers that default to latin1.
+	var originalCharset, originalCollation string
+	require.NoError(t, db.Raw(`SELECT DEFAULT_CHARACTER_SET_NAME, DEFAULT_COLLATION_NAME
+FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()`).Row().Scan(&originalCharset, &originalCollation))
+	t.Cleanup(func() {
+		require.NoError(t, db.Exec("ALTER DATABASE `"+selectedDatabase+"` CHARACTER SET "+originalCharset+" COLLATE "+originalCollation).Error)
+	})
+	require.NoError(t, db.Exec("ALTER DATABASE `"+selectedDatabase+"` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci").Error)
+
 	// MySQL returns metadata column names in uppercase. The startup check must
 	// inspect each table's actual collation, not silently treat unmapped fields
 	// as NULL and assume they inherit the schema's character set.
