@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 )
 
@@ -21,7 +23,11 @@ func NotifyRootUser(t string, subject string, content string) {
 // content is the plain-text payload delivered to non-email channels; emailContent
 // (when non-empty) is the HTML rendering used only on the email channel.
 func NotifyRootUserWithEmailContent(t string, subject string, content string, emailContent string) {
-	user := model.GetRootUser().ToBaseUser()
+	root := model.GetRootUser()
+	if root == nil || root.Id == 0 {
+		return
+	}
+	user := root.ToBaseUser()
 	notify := dto.NewNotify(t, subject, content, nil)
 	notify.EmailContent = emailContent
 	if err := NotifyUser(user.Id, user.Email, user.GetSetting(), notify); err != nil {
@@ -29,30 +35,57 @@ func NotifyRootUserWithEmailContent(t string, subject string, content string, em
 	}
 }
 
-func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
-	var users []model.User
-	if err := model.DB.
-		Select("id", "email", "role", "status", "setting").
-		Where("status = ? AND role >= ?", common.UserStatusEnabled, common.RoleAdminUser).
-		Find(&users).Error; err != nil {
-		common.SysLog(fmt.Sprintf("failed to query upstream update notification users: %s", err.Error()))
-		return
-	}
+// NotifyChannelWatchers sends global channel notices only to main-site
+// administrators. Sub-site owners must not receive global upstream details.
+func NotifyChannelWatchers(notifyType string, render func(lang string) (string, string)) {
+	notifyAdmins(notifyType, func(role int, setting dto.UserSetting) bool {
+		if setting.ChannelNotifyEnabled != nil {
+			return *setting.ChannelNotifyEnabled
+		}
+		return role == common.RoleRootUser
+	}, render)
+}
 
-	notification := dto.NewNotify(dto.NotifyTypeChannelUpdate, subject, content, nil)
-	sentCount := 0
-	for _, user := range users {
-		userSetting := user.GetSetting()
-		if !userSetting.UpstreamModelUpdateNotifyEnabled {
-			continue
-		}
-		if err := NotifyUser(user.Id, user.Email, userSetting, notification); err != nil {
-			common.SysLog(fmt.Sprintf("failed to notify user %d for upstream model update: %s", user.Id, err.Error()))
-			continue
-		}
-		sentCount++
+// Keep this API for the existing upstream monitor's message renderer.
+func NotifyUpstreamModelUpdateWatchers(subject string, content string) {
+	sent := notifyAdmins(dto.NotifyTypeChannelUpdate, func(_ int, setting dto.UserSetting) bool {
+		return setting.UpstreamModelUpdateNotifyEnabled
+	}, func(string) (string, string) { return subject, content })
+	common.SysLog(fmt.Sprintf("upstream model update notifications sent: %d", sent))
+}
+
+func notifyAdmins(notifyType string, receives func(int, dto.UserSetting) bool, render func(string) (string, string)) int {
+	var users []model.User
+	if err := model.DB.Select("id", "email", "role", "status", "setting").
+		Where("status = ? AND role IN ? AND site_id = ?", common.UserStatusEnabled, []int{common.RoleAdminUser, common.RoleRootUser}, 0).
+		Find(&users).Error; err != nil {
+		common.SysLog("failed to query administrators to notify")
+		return 0
 	}
-	common.SysLog(fmt.Sprintf("upstream model update notifications sent: %d", sentCount))
+	sent := 0
+	for _, user := range users {
+		var setting dto.UserSetting
+		if user.Setting != "" {
+			if err := common.UnmarshalJsonStr(user.Setting, &setting); err != nil {
+				common.SysLog(fmt.Sprintf("skipped administrator %d with invalid notification settings", user.Id))
+				continue
+			}
+		}
+		if !receives(user.Role, setting) || !authz.Can(user.Id, user.Role, authz.ChannelRead) {
+			continue
+		}
+		subject, content := render(setting.Language)
+		notice := dto.NewNotify(notifyType, subject, content, nil)
+		// Channel names and upstream failure text are untrusted plain text.
+		// Preserve the webhook/Bark/Gotify payload while escaping email HTML.
+		notice.EmailContent = strings.ReplaceAll(html.EscapeString(content), "\n", "<br/>")
+		if err := NotifyUser(user.Id, user.Email, setting, notice); err != nil {
+			common.SysLog(fmt.Sprintf("failed to notify administrator %d: %s", user.Id, err.Error()))
+			continue
+		}
+		sent++
+	}
+	return sent
 }
 
 func NotifyUser(userId int, userEmail string, userSetting dto.UserSetting, data dto.Notify) error {

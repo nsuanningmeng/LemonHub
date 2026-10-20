@@ -150,6 +150,8 @@ func GetStatus(c *gin.Context) {
 		"setup":                       constant.Setup,
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
+		"quota_remind_enabled":        common.QuotaRemindEnabled,
+		"quota_remind_threshold":      common.QuotaRemindThreshold,
 		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
 	}
 

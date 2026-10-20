@@ -3,7 +3,9 @@ package model
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,6 +54,13 @@ func InitOptionMap() error {
 	}
 	// A failed read must never look like a new installation. Validate the entire
 	// snapshot before replacing the map or invoking any stateful setters.
+	emailValues := make(map[string]string)
+	for _, option := range options {
+		emailValues[option.Key] = option.Value
+	}
+	if err := validateEmailOptions(emailValues); err != nil {
+		return errors.New("invalid stored email delivery options")
+	}
 	for _, option := range options {
 		if err := validateOptionValue(option.Key, option.Value); err != nil {
 			return fmt.Errorf("invalid stored option %s", option.Key)
@@ -87,6 +96,9 @@ func InitOptionMap() error {
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)
 	common.OptionMap["EmailDomainWhitelist"] = strings.Join(common.EmailDomainWhitelist, ",")
 	common.OptionMap["SMTPServer"] = ""
+	common.OptionMap["EmailProvider"] = "smtp"
+	common.OptionMap["ResendApiKey"] = ""
+	common.OptionMap["ResendFrom"] = ""
 	common.OptionMap["SMTPFrom"] = ""
 	common.OptionMap["SMTPPort"] = strconv.Itoa(common.SMTPPort)
 	common.OptionMap["SMTPAccount"] = ""
@@ -187,6 +199,7 @@ func InitOptionMap() error {
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
 	common.OptionMap["AffRechargeCommissionPercent"] = strconv.FormatFloat(common.AffRechargeCommissionPercent, 'f', -1, 64)
+	common.OptionMap["QuotaRemindEnabled"] = strconv.FormatBool(common.QuotaRemindEnabled)
 	common.OptionMap["QuotaRemindThreshold"] = strconv.Itoa(common.QuotaRemindThreshold)
 	common.OptionMap["PreConsumedQuota"] = strconv.Itoa(common.PreConsumedQuota)
 	common.OptionMap["ModelRequestRateLimitCount"] = strconv.Itoa(setting.ModelRequestRateLimitCount)
@@ -243,6 +256,9 @@ func InitOptionMap() error {
 	common.OptionMapRWMutex.Unlock()
 	persistedSecrets := map[string]bool{"UnsubscribeSecret": false, "MediaSigningSecret": false}
 	for _, option := range options {
+		if isEmailDeliveryOption(option.Key) {
+			continue
+		}
 		if err := updateOptionMap(option.Key, option.Value); err != nil {
 			return err
 		}
@@ -250,6 +266,7 @@ func InitOptionMap() error {
 			persistedSecrets[option.Key] = true
 		}
 	}
+	publishEmailOptions(emailValues)
 	for _, key := range []string{"UnsubscribeSecret", "MediaSigningSecret"} {
 		if !persistedSecrets[key] {
 			if err := ensurePersistedOptionSecret(key); err != nil {
@@ -310,16 +327,27 @@ func loadOptionsFromDatabase() error {
 	}
 	// Preflight all parseable options so one malformed row cannot clear an
 	// existing setting or leave a partially applied snapshot.
+	emailValues := make(map[string]string)
+	for _, option := range options {
+		emailValues[option.Key] = option.Value
+	}
+	if err := validateEmailOptions(emailValues); err != nil {
+		return errors.New("invalid stored email delivery options")
+	}
 	for _, option := range options {
 		if err := validateOptionValue(option.Key, option.Value); err != nil {
 			return fmt.Errorf("invalid stored option %s", option.Key)
 		}
 	}
 	for _, option := range options {
+		if isEmailDeliveryOption(option.Key) {
+			continue
+		}
 		if err := updateOptionMap(option.Key, option.Value); err != nil {
 			return err
 		}
 	}
+	publishEmailOptions(emailValues)
 	return nil
 }
 
@@ -338,6 +366,12 @@ func validateOptionValue(key string, value string) error {
 		return err
 	}
 	switch key {
+	case "EmailProvider":
+		if value != "smtp" && value != "resend" {
+			return errors.New("Email sending method must be SMTP or Resend")
+		}
+	case "ResendKeyConfigured":
+		return errors.New("Resend key configuration status is read-only")
 	case operation_setting.ToolPriceOptionKey:
 		return operation_setting.ValidateToolPricesJSON(value)
 	case operation_setting.ChannelTestConcurrencyOptionKey:
@@ -384,18 +418,59 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	keys := make([]string, 0, len(values))
+	updatesEmail := false
 	for key, value := range values {
 		if err := validateOptionValue(key, value); err != nil {
 			return err
 		}
+		keys = append(keys, key)
+		updatesEmail = updatesEmail || isEmailDeliveryOption(key)
 	}
+	sort.Strings(keys)
+	var emailValues map[string]string
+	var validationErr error
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		for k, v := range values {
+		if updatesEmail {
+			// Establish and lock the complete bundle in a fixed order, including
+			// previously absent defaults. A process mutex and OptionMap cannot
+			// protect writes from another node during the sync interval.
+			defaults := []Option{
+				{Key: "EmailProvider", Value: "smtp"},
+				{Key: "ResendApiKey"},
+				{Key: "ResendFrom"},
+			}
+			for _, option := range defaults {
+				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&option).Error; err != nil {
+					return err
+				}
+			}
+			var current []Option
+			if err := lockForUpdate(tx).
+				Where(map[string]any{"key": []string{"EmailProvider", "ResendApiKey", "ResendFrom"}}).
+				Order(clause.OrderByColumn{Column: clause.Column{Name: "key"}}).
+				Find(&current).Error; err != nil {
+				return err
+			}
+			emailValues = make(map[string]string, len(current))
+			for _, option := range current {
+				emailValues[option.Key] = option.Value
+			}
+			for key, value := range values {
+				if isEmailDeliveryOption(key) {
+					emailValues[key] = value
+				}
+			}
+			if validationErr = validateEmailOptions(emailValues); validationErr != nil {
+				return validationErr
+			}
+		}
+		for _, k := range keys {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
 			}
-			option.Value = v
+			option.Value = values[k]
 			if err := tx.Save(&option).Error; err != nil {
 				return err
 			}
@@ -403,13 +478,20 @@ func UpdateOptionsBulk(values map[string]string) error {
 		return nil
 	})
 	if err != nil {
+		if validationErr != nil {
+			return validationErr
+		}
 		return &optionStorageError{cause: err}
 	}
 	for k, v := range values {
+		if isEmailDeliveryOption(k) {
+			continue
+		}
 		if err := updateOptionMap(k, v); err != nil {
 			return err
 		}
 	}
+	publishEmailOptions(emailValues)
 	return nil
 }
 
@@ -475,6 +557,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.AutomaticDisableChannelEnabled = boolValue
 		case "AutomaticEnableChannelEnabled":
 			common.AutomaticEnableChannelEnabled = boolValue
+		case "QuotaRemindEnabled":
+			common.QuotaRemindEnabled = boolValue
 		case "ErrorOverrideGlobalEnabled":
 			operation_setting.ErrorOverrideGlobalEnabled = boolValue
 		case "LogConsumeEnabled":
@@ -847,4 +931,29 @@ func handleConfigUpdate(key, value string) (bool, error) {
 	}
 
 	return true, nil // 已处理
+}
+
+// validateEmailOptions accepts a complete database snapshot, including any
+// pending edits. Missing options retain the default SMTP provider.
+func validateEmailOptions(values map[string]string) error {
+	if values["EmailProvider"] == "resend" {
+		return common.ValidateResendConfiguration(values["ResendApiKey"], values["ResendFrom"])
+	}
+	return nil
+}
+
+func isEmailDeliveryOption(key string) bool {
+	return key == "EmailProvider" || key == "ResendApiKey" || key == "ResendFrom"
+}
+
+// Publish related delivery settings together so senders cannot observe a new
+// provider paired with old credentials during a bulk update or periodic reload.
+func publishEmailOptions(values map[string]string) {
+	common.OptionMapRWMutex.Lock()
+	defer common.OptionMapRWMutex.Unlock()
+	for key, value := range values {
+		if isEmailDeliveryOption(key) {
+			common.OptionMap[key] = value
+		}
+	}
 }

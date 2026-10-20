@@ -338,3 +338,18 @@ const (
 	MsgCustomOAuthBindingNotFound   = "custom_oauth.binding_not_found"
 	MsgCustomOAuthProviderIdInvalid = "custom_oauth.provider_id_field_invalid"
 )
+
+// Notification messages use the recipient's saved language.
+const (
+	MsgNotifyQuotaLowTitle             = "notify.quota_low_title"
+	MsgNotifySubscriptionQuotaLowTitle = "notify.subscription_quota_low_title"
+	MsgNotifyQuotaLowBark              = "notify.quota_low_bark"
+	MsgNotifyQuotaLowGotify            = "notify.quota_low_gotify"
+	MsgNotifyQuotaLowEmail             = "notify.quota_low_email"
+	MsgChannelNotifyDisabledSubject    = "channel.notify_disabled_subject"
+	MsgChannelNotifyDisabledContent    = "channel.notify_disabled_content"
+	MsgChannelNotifyEnabledSubject     = "channel.notify_enabled_subject"
+	MsgChannelNotifyEnabledContent     = "channel.notify_enabled_content"
+	MsgChannelTestCompletedSubject     = "channel.test_completed_subject"
+	MsgChannelTestCompletedContent     = "channel.test_completed_content"
+)

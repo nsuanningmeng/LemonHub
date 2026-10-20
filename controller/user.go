@@ -1580,6 +1580,7 @@ func TopUp(c *gin.Context) {
 
 type UpdateUserSettingRequest struct {
 	QuotaWarningType                 string  `json:"notify_type"`
+	QuotaWarningEnabled              *bool   `json:"quota_warning_enabled,omitempty"`
 	QuotaWarningThreshold            float64 `json:"quota_warning_threshold"`
 	WebhookUrl                       string  `json:"webhook_url,omitempty"`
 	WebhookSecret                    string  `json:"webhook_secret,omitempty"`
@@ -1588,6 +1589,7 @@ type UpdateUserSettingRequest struct {
 	GotifyUrl                        string  `json:"gotify_url,omitempty"`
 	GotifyToken                      string  `json:"gotify_token,omitempty"`
 	GotifyPriority                   int     `json:"gotify_priority,omitempty"`
+	ChannelNotifyEnabled             *bool   `json:"channel_notify_enabled,omitempty"`
 	UpstreamModelUpdateNotifyEnabled *bool   `json:"upstream_model_update_notify_enabled,omitempty"`
 	AcceptUnsetModelRatioModel       bool    `json:"accept_unset_model_ratio_model"`
 	RecordIpLog                      bool    `json:"record_ip_log"`
@@ -1608,8 +1610,8 @@ func UpdateUserSetting(c *gin.Context) {
 	}
 
 	// 验证预警阈值
-	if req.QuotaWarningThreshold <= 0 {
-		common.ApiErrorI18n(c, i18n.MsgQuotaThresholdGtZero)
+	if req.QuotaWarningThreshold < 0 || req.QuotaWarningThreshold > float64(common.MaxWalletQuota) {
+		common.ApiErrorI18n(c, i18n.MsgQuotaWarningInvalid)
 		return
 	}
 
@@ -1681,33 +1683,37 @@ func UpdateUserSetting(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	existingSettings := user.GetSetting()
-	upstreamModelUpdateNotifyEnabled := existingSettings.UpstreamModelUpdateNotifyEnabled
-	if user.Role >= common.RoleAdminUser && req.UpstreamModelUpdateNotifyEnabled != nil {
-		upstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
+	// Preserve fields owned by other forms, including language, billing, marketing
+	// preferences and the admin-only request-body recording switch.
+	var settings dto.UserSetting
+	if user.Setting != "" {
+		if err := common.UnmarshalJsonStr(user.Setting, &settings); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgUpdateFailed)
+			return
+		}
 	}
-
-	// 构建设置
-	settings := dto.UserSetting{
-		NotifyType:                       req.QuotaWarningType,
-		QuotaWarningThreshold:            req.QuotaWarningThreshold,
-		UpstreamModelUpdateNotifyEnabled: upstreamModelUpdateNotifyEnabled,
-		AcceptUnsetRatioModel:            req.AcceptUnsetModelRatioModel,
-		RecordIpLog:                      req.RecordIpLog,
-		// Preserve fields this notification form does not manage so saving notification
-		// preferences never clobbers unrelated user settings.
-		BillingPreference:      existingSettings.BillingPreference,
-		SidebarModules:         existingSettings.SidebarModules,
-		Language:               existingSettings.Language,
-		MarketingEmailDisabled: existingSettings.MarketingEmailDisabled,
-		// Admin-controlled (source from existingSettings, NOT the request DTO): the user
-		// must not be able to disable request-body recording an admin enabled on them.
-		RecordRequestBody: existingSettings.RecordRequestBody,
+	settings.NotifyType = req.QuotaWarningType
+	settings.QuotaWarningThreshold = req.QuotaWarningThreshold
+	settings.AcceptUnsetRatioModel = req.AcceptUnsetModelRatioModel
+	settings.RecordIpLog = req.RecordIpLog
+	if req.QuotaWarningEnabled != nil {
+		settings.QuotaWarningEnabled = req.QuotaWarningEnabled
 	}
-	// Marketing/announcement email opt-out toggle (defaults to receiving).
+	if user.Role >= common.RoleAdminUser {
+		if req.UpstreamModelUpdateNotifyEnabled != nil {
+			settings.UpstreamModelUpdateNotifyEnabled = *req.UpstreamModelUpdateNotifyEnabled
+		}
+		if req.ChannelNotifyEnabled != nil {
+			settings.ChannelNotifyEnabled = req.ChannelNotifyEnabled
+		}
+	}
 	if req.MarketingEmailDisabled != nil {
 		settings.MarketingEmailDisabled = *req.MarketingEmailDisabled
 	}
+	// Remove credentials for methods the user no longer selected.
+	settings.WebhookUrl, settings.WebhookSecret = "", ""
+	settings.NotificationEmail, settings.BarkUrl = "", ""
+	settings.GotifyUrl, settings.GotifyToken, settings.GotifyPriority = "", "", 0
 
 	// 如果是webhook类型,添加webhook相关设置
 	if req.QuotaWarningType == dto.NotifyTypeWebhook {

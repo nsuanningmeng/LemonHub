@@ -172,6 +172,7 @@ var AffRechargeCommissionPercent = 5.0
 var ChannelDisableThreshold = 5.0
 var AutomaticDisableChannelEnabled = false
 var AutomaticEnableChannelEnabled = false
+var QuotaRemindEnabled = true
 var QuotaRemindThreshold = 1000
 var PreConsumedQuota = 500
 

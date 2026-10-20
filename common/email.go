@@ -204,8 +204,19 @@ func IsPermanentRecipientRejection(err error) bool {
 }
 
 // SendEmail sends transactional mail (verification codes, password resets,
-// per-user notifications) through the main SMTP settings.
+// per-user notifications) through the selected delivery provider.
 func SendEmail(subject string, receiver string, content string) error {
+	OptionMapRWMutex.RLock()
+	provider, key, from := OptionMap["EmailProvider"], OptionMap["ResendApiKey"], OptionMap["ResendFrom"]
+	OptionMapRWMutex.RUnlock()
+	// Never retry via a second provider: a timeout does not prove non-delivery.
+	switch provider {
+	case "resend":
+		return sendResendEmail(key, from, subject, receiver, content)
+	case "", "smtp":
+	default:
+		return errors.New("Email sending method must be SMTP or Resend")
+	}
 	return sendEmailWithConfig(mainSMTPConfig(), subject, receiver, content, nil)
 }
 

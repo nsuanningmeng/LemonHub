@@ -1,8 +1,8 @@
 package service
 
 import (
+	"context"
 	"fmt"
-	"strconv"
 	"sync"
 	"time"
 
@@ -15,6 +15,7 @@ import (
 var (
 	notifyLimitStore sync.Map
 	cleanupOnce      sync.Once
+	notifyLimitMu    sync.Mutex
 )
 
 type limitCount struct {
@@ -24,6 +25,9 @@ type limitCount struct {
 
 func getDuration() time.Duration {
 	minute := constant.NotificationLimitDurationMinute
+	if minute <= 0 || int64(minute) > int64((1<<63-1)/time.Minute) {
+		minute = 10
+	}
 	return time.Duration(minute) * time.Minute
 }
 
@@ -33,7 +37,8 @@ func startCleanupTask() {
 		for {
 			time.Sleep(time.Hour)
 			now := time.Now()
-			notifyLimitStore.Range(func(key, value interface{}) bool {
+			notifyLimitMu.Lock()
+			notifyLimitStore.Range(func(key, value any) bool {
 				if limit, ok := value.(limitCount); ok {
 					if now.Sub(limit.Timestamp) >= getDuration() {
 						notifyLimitStore.Delete(key)
@@ -41,6 +46,7 @@ func startCleanupTask() {
 				}
 				return true
 			})
+			notifyLimitMu.Unlock()
 		}
 	})
 }
@@ -55,42 +61,28 @@ func CheckNotificationLimit(userId int, notifyType string) (bool, error) {
 }
 
 func checkRedisLimit(userId int, notifyType string) (bool, error) {
-	key := fmt.Sprintf("notify_limit:%d:%s:%s", userId, notifyType, time.Now().Format("2006010215"))
+	ctx := context.Background()
+	key := fmt.Sprintf("notify_limit:%d:%s", userId, notifyType)
 
-	// Get current count
-	count, err := common.RedisGet(key)
-	if err != nil && err.Error() != "redis: nil" {
-		return false, fmt.Errorf("failed to get notification count: %w", err)
-	}
-
-	// If key doesn't exist, initialize it
-	if count == "" {
-		err = common.RedisSet(key, "1", getDuration())
-		return true, err
-	}
-
-	currentCount, _ := strconv.Atoi(count)
-	limit := constant.NotifyLimitCount
-
-	// Check if limit is already reached
-	if currentCount >= limit {
-		return false, nil
-	}
-
-	// Only increment if under limit
-	err = common.RedisIncr(key, 1)
-	if err != nil {
+	// SETNX 只在窗口开始时写入过期时间，INCR 会保留原 TTL；放在同一事务里避免产生永不过期的计数
+	pipe := common.RDB.TxPipeline()
+	pipe.SetNX(ctx, key, 0, getDuration())
+	incr := pipe.Incr(ctx, key)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return false, fmt.Errorf("failed to increment notification count: %w", err)
 	}
 
-	return true, nil
+	count := incr.Val()
+	return count <= int64(constant.NotifyLimitCount), nil
 }
 
 func checkMemoryLimit(userId int, notifyType string) (bool, error) {
 	// Ensure cleanup task is started
 	cleanupOnce.Do(startCleanupTask)
+	notifyLimitMu.Lock()
+	defer notifyLimitMu.Unlock()
 
-	key := fmt.Sprintf("%d:%s:%s", userId, notifyType, time.Now().Format("2006010215"))
+	key := fmt.Sprintf("%d:%s", userId, notifyType)
 	now := time.Now()
 
 	// Get current limit count or initialize new one
