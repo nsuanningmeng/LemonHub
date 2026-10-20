@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-type memoryCgroupMount struct {
+type resourceCgroupMount struct {
 	root       string
 	mountpoint string
 	leaf       string
@@ -24,13 +24,31 @@ func memoryUsagePercent(hostUsedPercent float64) float64 {
 // cgroupMemoryUsage uses the current process's memory hierarchy, not a fixed
 // Docker path. Every visible ancestor retains its own limit and charged usage.
 func cgroupMemoryUsage(hostUsedPercent float64, readFile func(string) ([]byte, error)) float64 {
+	mounts := processCgroupMounts("memory", readFile)
+	var pressure float64
+	constrained := false
+	for _, mount := range mounts {
+		if current, ok := mount.memoryPressure(readFile); ok {
+			pressure = math.Max(pressure, current)
+			constrained = true
+		}
+	}
+	if constrained {
+		return pressure
+	}
+	return hostUsedPercent
+}
+
+// processCgroupMounts maps the current process into visible controller mounts,
+// including non-root cgroups and combined v1 controllers.
+func processCgroupMounts(controller string, readFile func(string) ([]byte, error)) []resourceCgroupMount {
 	cgroups, err := readFile("/proc/self/cgroup")
 	if err != nil {
-		return hostUsedPercent
+		return nil
 	}
 	mountinfo, err := readFile("/proc/self/mountinfo")
 	if err != nil {
-		return hostUsedPercent
+		return nil
 	}
 
 	var v1Path, v2Path string
@@ -41,22 +59,21 @@ func cgroupMemoryUsage(hostUsedPercent float64, readFile func(string) ([]byte, e
 		}
 		if fields[0] == "0" && fields[1] == "" {
 			v2Path = fields[2]
-		} else if hasCgroupController(fields[1], "memory") {
+		} else if hasCgroupController(fields[1], controller) {
 			v1Path = fields[2]
 		}
 	}
-	// On hybrid hosts an explicitly assigned v1 memory controller owns the
-	// memory accounting, even if the process also belongs to a v2 hierarchy.
+	// On hybrid hosts an explicitly assigned v1 controller owns accounting.
 	processPath, v2 := v1Path, false
 	if processPath == "" {
 		processPath, v2 = v2Path, true
 	}
 	if !validCgroupPath(processPath) {
-		return hostUsedPercent
+		return nil
 	}
 
 	unescape := strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
-	var mounts []memoryCgroupMount
+	var mounts []resourceCgroupMount
 	for _, line := range strings.Split(string(mountinfo), "\n") {
 		parts := strings.SplitN(line, " - ", 2)
 		if len(parts) != 2 {
@@ -70,7 +87,7 @@ func cgroupMemoryUsage(hostUsedPercent float64, readFile func(string) ([]byte, e
 			if right[0] != "cgroup2" {
 				continue
 			}
-		} else if right[0] != "cgroup" || !hasCgroupController(right[2], "memory") {
+		} else if right[0] != "cgroup" || !hasCgroupController(right[2], controller) {
 			continue
 		}
 		root, mountpoint := unescape.Replace(left[3]), unescape.Replace(left[4])
@@ -81,23 +98,9 @@ func cgroupMemoryUsage(hostUsedPercent float64, readFile func(string) ([]byte, e
 			continue
 		}
 		leaf := path.Join(mountpoint, strings.TrimPrefix(processPath, root))
-		mounts = append(mounts, memoryCgroupMount{root: root, mountpoint: mountpoint, leaf: leaf, v2: v2})
+		mounts = append(mounts, resourceCgroupMount{root: root, mountpoint: mountpoint, leaf: leaf, v2: v2})
 	}
-	if len(mounts) == 0 {
-		return hostUsedPercent
-	}
-	var pressure float64
-	constrained := false
-	for _, mount := range mounts {
-		if current, ok := mount.memoryPressure(readFile); ok {
-			pressure = math.Max(pressure, current)
-			constrained = true
-		}
-	}
-	if constrained {
-		return pressure
-	}
-	return hostUsedPercent
+	return mounts
 }
 
 func hasCgroupController(controllers, name string) bool {
@@ -117,7 +120,7 @@ func validCgroupPath(value string) bool {
 
 // memoryPressure pairs each applicable limit with THAT cgroup's usage. Using a
 // parent's limit with only the leaf's usage would hide pressure from siblings.
-func (mount memoryCgroupMount) memoryPressure(readFile func(string) ([]byte, error)) (float64, bool) {
+func (mount resourceCgroupMount) memoryPressure(readFile func(string) ([]byte, error)) (float64, bool) {
 	var pressure float64
 	constrained := false
 	for directory := mount.leaf; ; directory = path.Dir(directory) {
@@ -133,7 +136,7 @@ func (mount memoryCgroupMount) memoryPressure(readFile func(string) ([]byte, err
 	}
 }
 
-func (mount memoryCgroupMount) memoryPressureAt(directory string, readFile func(string) ([]byte, error)) (float64, bool) {
+func (mount resourceCgroupMount) memoryPressureAt(directory string, readFile func(string) ([]byte, error)) (float64, bool) {
 	limitFile, usageFile := "memory.limit_in_bytes", "memory.usage_in_bytes"
 	if mount.v2 {
 		limitFile, usageFile = "memory.max", "memory.current"
@@ -172,5 +175,27 @@ func (mount memoryCgroupMount) memoryPressureAt(directory string, readFile func(
 	if limit == 0 {
 		return 100, true // A zero hard limit leaves no memory headroom.
 	}
+	// Reclaimable inactive file cache is not working-set pressure. Retain the
+	// known charged usage if a kernel cannot provide a complete cache reading.
+	statKey := "total_inactive_file"
+	if mount.v2 {
+		statKey = "inactive_file"
+	}
+	if stat, err := readFile(path.Join(directory, "memory.stat")); err == nil {
+		if inactive, ok := cgroupStatUint(stat, statKey); ok {
+			usage -= min(usage, inactive)
+		}
+	}
 	return math.Min(float64(usage)/float64(limit)*100, 100), true
+}
+
+func cgroupStatUint(stat []byte, key string) (uint64, bool) {
+	for _, line := range strings.Split(string(stat), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == key {
+			value, err := strconv.ParseUint(fields[1], 10, 64)
+			return value, err == nil
+		}
+	}
+	return 0, false
 }

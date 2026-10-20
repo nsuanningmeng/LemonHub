@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
@@ -32,7 +33,9 @@ func TestSystemPerformanceCheckMemoryPressure(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			common.SetPerformanceMonitorConfig(common.PerformanceMonitorConfig{Enabled: tt.enabled, MemoryThreshold: tt.threshold})
 			router := gin.New()
-			router.Use(systemPerformanceCheck(func() common.SystemStatus { return common.SystemStatus{MemoryUsage: tt.usage} }))
+			router.Use(systemPerformanceCheck(func() common.SystemStatus {
+				return common.SystemStatus{MemoryUsage: tt.usage, MemoryOverloaded: true, SampledAt: time.Now()}
+			}))
 			called := false
 			router.POST(tt.path, func(c *gin.Context) {
 				called = true
@@ -77,7 +80,12 @@ func TestSystemPerformanceCheckRetainsCPUAndDiskThresholds(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			router := gin.New()
-			router.Use(systemPerformanceCheck(func() common.SystemStatus { return tt.status }))
+			router.Use(systemPerformanceCheck(func() common.SystemStatus {
+				tt.status.SampledAt = time.Now()
+				tt.status.CPUOverloaded = true
+				tt.status.DiskOverloaded = true
+				return tt.status
+			}))
 			router.POST("/v1/chat/completions", func(c *gin.Context) { c.Status(http.StatusNoContent) })
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil))
