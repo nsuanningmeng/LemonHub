@@ -26,7 +26,21 @@ type ModelCategoryRule = {
 // NVIDIA's Nemotron take precedence over the base Llama/Mixtral family name.
 const MODEL_CATEGORY_RULES: readonly ModelCategoryRule[] = [
   { name: 'Perplexity', keywords: ['perplexity', 'sonar-'] },
-  { name: 'NVIDIA', keywords: ['nvidia/', 'nvidia.', 'nemotron'] },
+  {
+    name: 'NVIDIA',
+    keywords: [
+      'nvidia/',
+      'nvidia.',
+      'nemotron',
+      'nv-embed',
+      'nv-rerank',
+      'riva-',
+      'parakeet-',
+      'canary-',
+      'nemoretriever',
+    ],
+  },
+  { name: 'Cloudflare', keywords: ['clef'] },
   {
     name: 'OpenAI',
     keywords: [

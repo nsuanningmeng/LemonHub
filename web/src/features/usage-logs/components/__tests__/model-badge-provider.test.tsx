@@ -49,3 +49,24 @@ test.each(['meta-muse-spark', 'Muse-Spark', 'meta/muse-spark'])(
     expect(screen.queryByLabelText('iFlyTek')).toBeNull()
   }
 )
+
+test.each(['clef', '@cf/clef-1'])(
+  '%s identifies Cloudflare models',
+  (modelName) => {
+    render(<ModelBadge modelName={modelName} />)
+    expect(screen.getByLabelText('Cloudflare')).toBeVisible()
+  }
+)
+
+test.each([
+  'nv-embed-v2',
+  'nv-rerank-qa',
+  'riva-asr',
+  'parakeet-tdt',
+  'canary-1b',
+  'nemoretriever-ocr',
+  'llama-3.1-nemotron',
+])('%s identifies NVIDIA before base model families', (modelName) => {
+  render(<ModelBadge modelName={modelName} />)
+  expect(screen.getByLabelText('NVIDIA')).toBeVisible()
+})

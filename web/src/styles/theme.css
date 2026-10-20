@@ -178,6 +178,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 .dark {
+  color-scheme: dark;
   /* OpenAI-like dark mode with a crisp charcoal canvas. */
   --background: oklch(0.235 0 0);
   --foreground: oklch(0.965 0 0);

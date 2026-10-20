@@ -46,6 +46,24 @@ function resolveModelProvider(modelName: string): ModelProvider | null {
 
   if (
     hasAny([
+      'nvidia/',
+      'nvidia.',
+      'nemotron',
+      'nv-embed',
+      'nv-rerank',
+      'riva-',
+      'parakeet-',
+      'canary-',
+      'nemoretriever',
+    ])
+  ) {
+    return { icon: 'Nvidia.Color', label: 'NVIDIA' }
+  }
+  if (hasAny(['clef'])) {
+    return { icon: 'Cloudflare.Color', label: 'Cloudflare' }
+  }
+  if (
+    hasAny([
       'gpt-',
       'chatgpt-',
       'codex-',
