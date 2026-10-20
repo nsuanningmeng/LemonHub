@@ -112,8 +112,10 @@ export type NotifyType = 'email' | 'webhook' | 'bark' | 'gotify'
 export interface UserSettings {
   /** Notification type */
   notify_type?: NotifyType
-  /** Quota warning threshold */
+  /** Quota warning threshold in quota units; 0 uses the site default */
   quota_warning_threshold?: number
+  /** Receive low balance reminders; absent means on */
+  quota_warning_enabled?: boolean
   /** Webhook URL */
   webhook_url?: string
   /** Webhook secret */
@@ -134,6 +136,8 @@ export interface UserSettings {
   record_ip_log?: boolean
   /** Receive upstream model update notifications (admin only) */
   upstream_model_update_notify_enabled?: boolean
+  /** Receive channel notifications (admin only); absent means on for root */
+  channel_notify_enabled?: boolean
   /** Opt out of promotional / marketing emails (true = do not send) */
   marketing_email_disabled?: boolean
   /** Preferred interface/API response language */
@@ -155,6 +159,8 @@ export interface UpdateUserRequest {
 export interface UpdateUserSettingsRequest {
   notify_type?: string
   quota_warning_threshold?: number
+  /** Receive low balance reminders; absent means on */
+  quota_warning_enabled?: boolean
   webhook_url?: string
   webhook_secret?: string
   notification_email?: string
@@ -165,6 +171,8 @@ export interface UpdateUserSettingsRequest {
   accept_unset_model_ratio_model?: boolean
   record_ip_log?: boolean
   upstream_model_update_notify_enabled?: boolean
+  /** Receive channel notifications (admin only); absent means on for root */
+  channel_notify_enabled?: boolean
   marketing_email_disabled?: boolean
 }
 

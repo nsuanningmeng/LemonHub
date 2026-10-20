@@ -584,4 +584,7 @@ export const STATIC_I18N_KEYS = [
   'This user account is disabled.',
   'Telegram binding failed. Please try again.',
   'Verification scope is missing',
+  'Channel priorities changed. Refresh and try again.',
+  'Invalid channel priority move',
+  'Channel priority is outside the sortable range',
 ] as const

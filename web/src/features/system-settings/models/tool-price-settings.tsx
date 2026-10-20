@@ -42,6 +42,8 @@ const DEFAULT_PRICES: Record<string, number> = {
   file_search: 2.5,
   google_search: 14.0,
   image_generation: 150.0,
+  deepseek_search: 0.75,
+  deepseek_fetch: 0.75,
 }
 
 type ToolPriceRow = {

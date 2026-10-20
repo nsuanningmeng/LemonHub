@@ -25,6 +25,8 @@ import type { UpdateOptionRequest } from '../types'
 
 // Configuration keys that require status refresh
 const STATUS_RELATED_KEYS = new Set([
+  'QuotaRemindEnabled',
+  'QuotaRemindThreshold',
   'HeaderNavModules',
   'SidebarModulesAdmin',
   'Notice',

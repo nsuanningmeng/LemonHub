@@ -199,6 +199,9 @@ export interface SystemStatus {
   perf_success_rate_yellow_threshold?: number
   perf_no_data_as_full?: boolean
   custom_oauth_providers?: CustomOAuthProviderInfo[]
+  quota_remind_enabled?: boolean
+  /** Site default low balance reminder threshold in quota units */
+  quota_remind_threshold?: number
   [key: string]: unknown
 }
 

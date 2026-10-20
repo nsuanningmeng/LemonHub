@@ -61,6 +61,8 @@ export function Profile() {
                   profile={profile}
                   loading={loading}
                   onProfileUpdate={refreshProfile}
+                  quotaRemindEnabled={status?.quota_remind_enabled !== false}
+                  quotaRemindThreshold={status?.quota_remind_threshold ?? 0}
                 />
                 <UsageActivityCard />
                 <LanguagePreferencesCard

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { getGroups as getUserGroups } from '@/features/users/api'
 import { api, type ApiRequestConfig } from '@/lib/api'
 
+import type { PriorityMove, PriorityOrder } from './lib/channel-priority-order'
 import type {
   AddChannelRequest,
   BatchDeleteParams,
@@ -47,6 +48,37 @@ const channelActionConfig = (
   skipBusinessError: true,
   skipErrorHandler: true,
 })
+
+export class ChannelPriorityError extends Error {}
+
+export async function getChannelPriorityOrder(): Promise<PriorityOrder> {
+  const response = await api.get<{
+    success: boolean
+    message?: string
+    data: PriorityOrder
+  }>(
+    '/api/channel/priority/order',
+    channelActionConfig({ disableDuplicate: true })
+  )
+  if (!response.data.success) {
+    throw new ChannelPriorityError(response.data.message || 'Request failed')
+  }
+  return response.data.data
+}
+
+export async function reorderChannelPriority(
+  move: PriorityMove
+): Promise<PriorityOrder> {
+  const response = await api.post<{
+    success: boolean
+    message?: string
+    data: PriorityOrder
+  }>('/api/channel/priority/reorder', move, channelActionConfig())
+  if (!response.data.success) {
+    throw new ChannelPriorityError(response.data.message || 'Request failed')
+  }
+  return response.data.data
+}
 
 export type CodexUsageResponse = {
   success: boolean
