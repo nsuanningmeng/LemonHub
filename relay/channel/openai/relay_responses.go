@@ -56,11 +56,14 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	// compute usage
 	accumulator := responsesUsageAccumulator{info: info}
 	accumulator.observeResponse(&responsesResponse)
+	info.ObserveResponsesHostedWebTools(responseBody)
 	// Count actual tool invocations from Output (not tool declarations).
 	for _, output := range responsesResponse.Output {
 		switch output.Type {
 		case dto.BuildInCallWebSearchCall:
-			info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
+			if info.WebSearchBillingKey == "" && info.WebFetchBillingKey == "" {
+				info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
+			}
 		case dto.BuildInCallFileSearchCall:
 			info.CountBillableToolCall(dto.BuildInCallFileSearchCall, "")
 		case dto.BuildInCallFunctionCall:
@@ -153,6 +156,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			return
 		}
 		data = string(publicData)
+		info.ObserveResponsesHostedWebTools(publicData)
 		switch streamResponse.Type {
 		case "response.completed", "response.done":
 			if streamResponse.Response != nil {
@@ -184,7 +188,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			if streamResponse.Item != nil {
 				switch streamResponse.Item.Type {
 				case dto.BuildInCallWebSearchCall:
-					info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
+					if info.WebSearchBillingKey == "" && info.WebFetchBillingKey == "" {
+						info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
+					}
 				case dto.BuildInCallFileSearchCall:
 					info.CountBillableToolCall(dto.BuildInCallFileSearchCall, "")
 				case dto.BuildInCallFunctionCall:

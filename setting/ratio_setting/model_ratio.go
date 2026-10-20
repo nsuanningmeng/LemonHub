@@ -270,6 +270,8 @@ var defaultModelRatio = map[string]float64{
 }
 
 var defaultModelPrice = map[string]float64{
+	"deepseek-search":                0.00075, // USD per successful request
+	"deepseek-fetch":                 0.00075,
 	"suno_music":                     0.1,
 	"suno_lyrics":                    0.01,
 	"dall-e-3":                       0.04,

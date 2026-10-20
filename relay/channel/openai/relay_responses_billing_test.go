@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -264,4 +265,60 @@ func TestOaiResponsesStreamHandlerDoesNotCountPartialImageEvent(t *testing.T) {
 	)
 
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+}
+
+func TestResponsesHostedWebToolsRetainCompletedCallsWithoutFinalUsage(t *testing.T) {
+	const search = `{"id":"search","type":"web_search_call","status":"completed","action":{"type":"search"}}`
+	const fetch = `{"id":"fetch","type":"web_search_call","status":"completed","action":{"type":"open_page"}}`
+	for _, stream := range []bool{false, true} {
+		for _, terminal := range []bool{false, true} {
+			t.Run(fmt.Sprintf("stream=%t terminal=%t", stream, terminal), func(t *testing.T) {
+				old := constant.StreamingTimeout
+				constant.StreamingTimeout = 30
+				t.Cleanup(func() { constant.StreamingTimeout = old })
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				info := &relaycommon.RelayInfo{OriginModelName: "public-alias", DisablePing: true, ChannelMeta: &relaycommon.ChannelMeta{}, WebSearchBillingKey: "deepseek_search", WebFetchBillingKey: "deepseek_fetch"}
+				body := `{"object":"response","status":"completed","output":[` + search + `,` + fetch + `],"usage":{"input_tokens":1,"output_tokens":1}}`
+				if stream {
+					body = "data: " + `{"type":"response.output_item.done","output_index":0,"item":` + search + "}\n\n"
+					body += "data: " + `{"type":"response.output_item.done","output_index":1,"item":` + fetch + "}\n\n"
+					body += "data: " + `{"type":"response.output_item.done","output_index":2,"item":{"id":"error","type":"web_search_call","status":"failed"}}` + "\n\n"
+					if terminal {
+						body += "data: " + `{"type":"response.completed","response":{"status":"completed","output":[` + search + `,` + fetch + `],"usage":{"input_tokens":1,"output_tokens":1}}}` + "\n\n"
+					}
+				}
+				resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}
+				if stream {
+					_, err := OaiResponsesStreamHandler(c, info, resp)
+					require.Nil(t, err)
+				} else {
+					_, err := OaiResponsesHandler(c, info, resp)
+					require.Nil(t, err)
+				}
+				require.NotNil(t, info.ResponsesUsageInfo)
+				assert.Equal(t, 1, info.BuiltInTools["deepseek_search"].CallCount)
+				assert.Equal(t, 1, info.BuiltInTools["deepseek_fetch"].CallCount)
+				assert.NotContains(t, info.BuiltInTools, dto.BuildInToolWebSearchPreview)
+			})
+		}
+	}
+}
+
+func TestResponsesFailedTerminalRetainsCompletedHostedWebTools(t *testing.T) {
+	old := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = old })
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	info := &relaycommon.RelayInfo{OriginModelName: "public-alias", DisablePing: true, ChannelMeta: &relaycommon.ChannelMeta{}, WebSearchBillingKey: "deepseek_search", WebFetchBillingKey: "deepseek_fetch"}
+	body := `data: {"type":"response.failed","response":{"status":"failed","error":{"type":"server_error","message":"generation failed after search"},"output":[{"id":"s1","type":"web_search_call","status":"completed","action":{"type":"search"}},{"id":"f1","type":"web_search_call","status":"completed","action":{"type":"open_page"}},{"id":"f2","type":"web_search_call","status":"failed","action":{"type":"open_page"}}],"usage":{"input_tokens":1,"output_tokens":1}}}` + "\n\n"
+	resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}
+	usage, apiErr := OaiResponsesStreamHandler(c, info, resp)
+	require.Nil(t, apiErr, "native Responses failures retain observed-usage settlement")
+	require.NotNil(t, usage)
+	assert.True(t, info.StreamOutcome().UpstreamFailed)
+	assert.Equal(t, 1, info.BuiltInTools["deepseek_search"].CallCount)
+	assert.Equal(t, 1, info.BuiltInTools["deepseek_fetch"].CallCount)
+	assert.Equal(t, 1, usage.PromptTokens)
 }

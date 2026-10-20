@@ -83,6 +83,10 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
+	// BillableToolResult is set only after a standalone tool endpoint returns
+	// validated, non-empty content. It is not derived from client JSON.
+	BillableToolResult bool
+
 	TokenId           int
 	TokenKey          string
 	TokenGroup        string
@@ -155,6 +159,11 @@ type RelayInfo struct {
 	UseRuntimeHeadersOverride             bool
 	ParamOverrideAudit                    []string
 
+	// Hosted web tools use the selected upstream's prices, independent of model aliases.
+	WebSearchBillingKey string
+	WebFetchBillingKey  string
+	hostedWebTools      map[string]*hostedWebToolCounter
+
 	PriceData hosttypes.PriceData
 
 	// QuotaClamp is set (non-nil) when a quota conversion saturated at the
@@ -196,6 +205,15 @@ type RelayInfo struct {
 }
 
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
+	// Completed tool calls and their price keys belong to one channel attempt.
+	if info.ResponsesUsageInfo != nil {
+		delete(info.ResponsesUsageInfo.BuiltInTools, info.WebSearchBillingKey)
+		delete(info.ResponsesUsageInfo.BuiltInTools, info.WebFetchBillingKey)
+	}
+	info.WebSearchBillingKey, info.WebFetchBillingKey = "", ""
+	info.hostedWebTools = nil
+	c.Set("claude_web_search_requests", 0)
+	info.BillableToolResult = false
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)
@@ -639,6 +657,9 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 			return GenRelayInfoAlphaSearch(c, request), nil
 		}
 		return nil, errors.New("request is not a AlphaSearchRequest")
+	case types.RelayFormatDeepSeekTools:
+		info = genBaseRelayInfo(c, request)
+		info.RelayFormat = types.RelayFormatDeepSeekTools
 	case types.RelayFormatTask:
 		info = genBaseRelayInfo(c, nil)
 		info.TaskRelayInfo = &TaskRelayInfo{}

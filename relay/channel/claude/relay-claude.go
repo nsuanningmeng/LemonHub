@@ -129,7 +129,6 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 			return nil
 		}
 		response.Model = info.PublicResponseModelName(response.Model)
-
 		countClaudeStreamBillableTools(c, info, &claudeResponse)
 
 		err = helper.ObjectData(c, response)
@@ -140,20 +139,44 @@ func HandleStreamResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 	return nil
 }
 
-func countClaudeStreamBillableTools(c *gin.Context, info *relaycommon.RelayInfo, claudeResponse *dto.ClaudeResponse) {
-	if claudeResponse == nil {
+func countClaudeStreamBillableTools(c *gin.Context, info *relaycommon.RelayInfo, response *dto.ClaudeResponse) {
+	if response == nil {
 		return
 	}
-	if claudeResponse.Type == "content_block_start" &&
-		claudeResponse.ContentBlock != nil &&
-		claudeResponse.ContentBlock.Type == "tool_use" {
-		info.CountBillableToolCall(dto.BuildInCallToolUse, claudeResponse.ContentBlock.Name)
+	if response.Type == "content_block_start" && response.ContentBlock != nil {
+		countClaudeContentBlockTools(info, response.ContentBlock, response.Index)
 	}
-	if claudeResponse.Type == "message_delta" &&
-		claudeResponse.Usage != nil &&
-		claudeResponse.Usage.ServerToolUse != nil &&
-		claudeResponse.Usage.ServerToolUse.WebSearchRequests > 0 {
-		c.Set("claude_web_search_requests", claudeResponse.Usage.ServerToolUse.WebSearchRequests)
+	if response.Type == "message_delta" && response.Usage != nil {
+		recordClaudeServerToolUse(c, info, response.Usage.ServerToolUse)
+	}
+}
+
+func countClaudeContentBlockTools(info *relaycommon.RelayInfo, block *dto.ClaudeMediaMessage, index *int) {
+	switch block.Type {
+	case "tool_use":
+		info.CountBillableToolCall(dto.BuildInCallToolUse, block.Name)
+	case "web_search_tool_result":
+		if _, completed := block.Content.([]any); completed {
+			info.ObserveHostedWebToolResult(info.WebSearchBillingKey, block.ToolUseId, index)
+		}
+	case "web_fetch_tool_result":
+		if content, ok := block.Content.(map[string]any); ok && content["type"] == "web_fetch_result" {
+			info.ObserveHostedWebToolResult(info.WebFetchBillingKey, block.ToolUseId, index)
+		}
+	}
+}
+
+func recordClaudeServerToolUse(c *gin.Context, info *relaycommon.RelayInfo, usage *dto.ClaudeServerToolUse) {
+	if usage == nil {
+		return
+	}
+	if info.WebSearchBillingKey != "" || info.WebFetchBillingKey != "" {
+		info.RecordHostedWebToolUsage(usage.WebSearchRequests, usage.WebFetchRequests)
+		return
+	}
+	// Native Claude billing retains its existing context-based search accounting.
+	if usage.WebSearchRequests > 0 {
+		c.Set("claude_web_search_requests", usage.WebSearchRequests)
 	}
 }
 
@@ -279,14 +302,11 @@ func HandleClaudeResponseData(c *gin.Context, info *relaycommon.RelayInfo, claud
 		}
 	}
 
-	if claudeResponse.Usage != nil && claudeResponse.Usage.ServerToolUse != nil && claudeResponse.Usage.ServerToolUse.WebSearchRequests > 0 {
-		c.Set("claude_web_search_requests", claudeResponse.Usage.ServerToolUse.WebSearchRequests)
+	for i := range claudeResponse.Content {
+		countClaudeContentBlockTools(info, &claudeResponse.Content[i], &i)
 	}
-
-	for _, block := range claudeResponse.Content {
-		if block.Type == "tool_use" {
-			info.CountBillableToolCall(dto.BuildInCallToolUse, block.Name)
-		}
+	if claudeResponse.Usage != nil {
+		recordClaudeServerToolUse(c, info, claudeResponse.Usage.ServerToolUse)
 	}
 
 	service.IOCopyBytesGracefully(c, httpResp, responseData)

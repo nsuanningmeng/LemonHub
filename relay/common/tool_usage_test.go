@@ -1,6 +1,8 @@
 package common
 
 import (
+	"github.com/gin-gonic/gin"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -345,4 +347,43 @@ func TestIsNonBillableResponsesStatus(t *testing.T) {
 	assert.True(t, IsNonBillableResponsesStatus([]byte(`"canceled"`)))
 	assert.False(t, IsNonBillableResponsesStatus([]byte(`"completed"`)))
 	assert.False(t, IsNonBillableResponsesStatus(nil))
+}
+
+func TestHostedWebToolCountsReconcileAndResetOnRetry(t *testing.T) {
+	info := &RelayInfo{WebSearchBillingKey: "deepseek_search", WebFetchBillingKey: "deepseek_fetch"}
+	first, second := 0, 1
+	info.ObserveHostedWebToolResult("deepseek_search", "call1", &first)
+	info.ObserveHostedWebToolResult("deepseek_search", "call1", &first)
+	info.RecordHostedWebToolUsage(3, 2)
+	info.ObserveHostedWebToolResult("deepseek_search", "call2", &second)
+	info.RecordHostedWebToolUsage(1, -1)
+	require.Equal(t, 3, info.BuiltInTools["deepseek_search"].CallCount)
+	require.Equal(t, 2, info.BuiltInTools["deepseek_fetch"].CallCount)
+	info.BuiltInTools["custom"] = &BuildInToolInfo{ToolName: "custom", CallCount: 1}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("claude_web_search_requests", 5)
+	info.InitChannelMeta(c)
+	assert.Empty(t, info.WebSearchBillingKey)
+	assert.Empty(t, info.WebFetchBillingKey)
+	assert.NotContains(t, info.BuiltInTools, "deepseek_search")
+	assert.NotContains(t, info.BuiltInTools, "deepseek_fetch")
+	assert.Equal(t, 1, info.BuiltInTools["custom"].CallCount)
+	assert.Zero(t, c.GetInt("claude_web_search_requests"))
+	info.WebSearchBillingKey = "deepseek_search"
+	info.ObserveHostedWebToolResult("deepseek_search", "call1", &first)
+	assert.Equal(t, 1, info.BuiltInTools["deepseek_search"].CallCount)
+}
+
+func TestResponsesHostedWebToolsRequireCompletedCalls(t *testing.T) {
+	info := &RelayInfo{WebSearchBillingKey: "deepseek_search", WebFetchBillingKey: "deepseek_fetch"}
+	info.ObserveResponsesHostedWebTools([]byte(`{"type":"response.output_item.done","output_index":0,"item":{"id":"search","type":"web_search_call","status":"completed","action":{"type":"search"}}}`))
+	info.ObserveResponsesHostedWebTools([]byte(`{"output":[{"id":"search","type":"web_search_call","status":"completed","action":{"type":"search"}},{"id":"fetch","type":"web_search_call","status":"completed","action":{"type":"open_page"}},{"id":"failed","type":"web_search_call","status":"failed"},{"id":"pending","type":"web_search_call","status":"in_progress"}]}`))
+	info.ObserveResponsesHostedWebTools([]byte(`{"type":"response.completed","response":{"output":[]}}`))
+	require.NotNil(t, info.ResponsesUsageInfo)
+	assert.Equal(t, 1, info.BuiltInTools["deepseek_search"].CallCount)
+	assert.Equal(t, 1, info.BuiltInTools["deepseek_fetch"].CallCount)
+	assert.NotContains(t, info.BuiltInTools, dto.BuildInToolWebSearchPreview)
+	var native RelayInfo
+	native.ObserveResponsesHostedWebTools([]byte(`{"output":[{"type":"web_search_call","status":"completed"}]}`))
+	assert.Nil(t, native.ResponsesUsageInfo)
 }

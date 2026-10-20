@@ -690,3 +690,29 @@ func mustRawMessage(t *testing.T, value any) []byte {
 	require.NoError(t, err)
 	return raw
 }
+
+func TestClaudeToResponsesDefaultsMessageAndToolResultImageDetail(t *testing.T) {
+	var req dto.ClaudeRequest
+	require.NoError(t, kitutil.Unmarshal([]byte(`{"model":"claude-test","messages":[{"role":"user","content":[{"type":"image","source":{"type":"url","url":"https://example.test/message.png"}}]},{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"screenshot","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"image","source":{"type":"url","url":"https://example.test/tool.png"}}]}]}]}`), &req))
+	result, err := ConvertRequest(nil, nil, types.RelayFormatOpenAIResponses, &req)
+	require.NoError(t, err)
+	responses, ok := result.Value.(*dto.OpenAIResponsesRequest)
+	require.True(t, ok)
+	// Other output items may carry string content, so inspect their raw fields.
+	var rawItems []map[string]any
+	require.NoError(t, kitutil.Unmarshal(responses.Input, &rawItems))
+	images := map[string]string{}
+	for _, item := range rawItems {
+		content, ok := item["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, part := range content {
+			block, ok := part.(map[string]any)
+			if ok && block["type"] == "input_image" {
+				images[block["image_url"].(string)] = block["detail"].(string)
+			}
+		}
+	}
+	assert.Equal(t, map[string]string{"https://example.test/message.png": "auto", "https://example.test/tool.png": "auto"}, images)
+}

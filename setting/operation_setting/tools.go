@@ -40,6 +40,8 @@ const (
 // defaults and model-prefix overrides) into the destination. The source is
 // constants, not a mutable package map or operator configuration.
 func seedHardcodedToolPrices(prices map[string]float64) {
+	prices["deepseek_search"] = 0.75
+	prices["deepseek_fetch"] = 0.75
 	prices["web_search"] = defaultWebSearchToolPrice
 	prices["web_search_preview"] = defaultWebSearchPreviewToolPrice
 	prices["file_search"] = defaultFileSearchToolPrice

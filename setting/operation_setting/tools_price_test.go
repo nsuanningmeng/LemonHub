@@ -26,6 +26,8 @@ func TestToolPriceHardcodedFallbacksSurviveMissingOperatorConfig(t *testing.T) {
 	RebuildToolPriceIndex()
 
 	expectedDefaults := map[string]float64{
+		"deepseek_search":    0.75,
+		"deepseek_fetch":     0.75,
 		"web_search":         10,
 		"web_search_preview": 10,
 		"file_search":        2.5,

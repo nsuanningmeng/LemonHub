@@ -2,6 +2,7 @@ package media
 
 import (
 	"errors"
+	"strings"
 	"sync"
 
 	"context"
@@ -43,4 +44,15 @@ func DecodeBase64FileData(base64String string) (string, string, error) {
 		return "", "", errors.New("relayconvert media resolver is not configured")
 	}
 	return resolver(base64String)
+}
+
+// ResponsesImageDetail preserves supported image hints and supplies the required
+// Responses default when the source protocol carries no recognized detail.
+func ResponsesImageDetail(detail string) string {
+	switch normalized := strings.ToLower(strings.TrimSpace(detail)); normalized {
+	case "low", "high", "auto", "original":
+		return normalized
+	default:
+		return "auto"
+	}
 }

@@ -299,3 +299,38 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
 	require.Nil(t, info.Billing)
 }
+
+func TestDeepSeekToolsPricePreservesOperatorOverrides(t *testing.T) {
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	savedRatios := ratio_setting.GroupRatio2JSONString()
+	savedGroupRatios := ratio_setting.GroupGroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedRatios))
+		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(savedGroupRatios))
+	})
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{}`))
+	for _, tc := range []struct {
+		name, prices string
+		wantPrice    float64
+		wantQuota    int
+	}{
+		{"older price map", `{}`, 0.00075, 375},
+		{"explicit free", `{"deepseek-search":0,"deepseek-fetch":0}`, 0, 0},
+		{"operator price", `{"deepseek-search":0.002,"deepseek-fetch":0.002}`, 0.002, 1000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(tc.prices))
+			for _, name := range []string{constant.DeepSeekSearchModel, constant.DeepSeekFetchModel} {
+				ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+				info := &relaycommon.RelayInfo{OriginModelName: name, RelayFormat: types.RelayFormatDeepSeekTools, UsingGroup: "default", UserGroup: "default"}
+				price, err := ModelPriceHelper(ctx, info, 0, &types.TokenCountMeta{})
+				require.NoError(t, err)
+				assert.True(t, price.UsePrice)
+				assert.Equal(t, tc.wantPrice, price.ModelPrice)
+				assert.Equal(t, tc.wantQuota, price.QuotaToPreConsume)
+			}
+		})
+	}
+}

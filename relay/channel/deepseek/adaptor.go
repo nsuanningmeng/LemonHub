@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/gin-gonic/gin"
 )
@@ -54,6 +55,8 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
+	info.WebSearchBillingKey = SearchToolPriceKey
+	info.WebFetchBillingKey = FetchToolPriceKey
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -70,6 +73,10 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 			return fmt.Sprintf("%s/completions", fimBaseUrl), nil
 		case constant.RelayModeResponses:
 			return fmt.Sprintf("%s/responses", info.ChannelBaseUrl), nil
+		case constant.RelayModeToolsSearch:
+			return fmt.Sprintf("%s/v1/tools/search", info.ChannelBaseUrl), nil
+		case constant.RelayModeToolsFetch:
+			return fmt.Sprintf("%s/v1/tools/fetch", info.ChannelBaseUrl), nil
 		default:
 			return fmt.Sprintf("%s/v1/chat/completions", info.ChannelBaseUrl), nil
 		}
@@ -98,6 +105,9 @@ func applyDeepSeekV4OpenAIThinkingSuffix(info *relaycommon.RelayInfo, request *d
 	if info != nil && info.ChannelMeta != nil && info.UpstreamModelName != "" {
 		modelName = info.UpstreamModelName
 	}
+	if model_setting.ShouldPreserveThinkingSuffix(modelName) || info != nil && model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) {
+		return nil
+	}
 	baseModel, thinkingType, effort, ok := reasoning.ParseDeepSeekV4ThinkingSuffix(modelName)
 	if !ok {
 		return nil
@@ -125,22 +135,33 @@ func applyDeepSeekV4ClaudeThinkingSuffix(info *relaycommon.RelayInfo, request *d
 	if info != nil && info.ChannelMeta != nil && info.UpstreamModelName != "" {
 		modelName = info.UpstreamModelName
 	}
+	if model_setting.ShouldPreserveThinkingSuffix(modelName) || info != nil && model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) {
+		return nil
+	}
 	baseModel, thinkingType, effort, ok := reasoning.ParseDeepSeekV4ThinkingSuffix(modelName)
 	if !ok {
 		return nil
 	}
 	request.Model = baseModel
 	request.Thinking = &dto.Thinking{Type: thinkingType}
-	if effort == "" {
-		request.OutputConfig = nil
-	} else {
-		outputConfig, err := common.Marshal(map[string]string{
-			"effort": effort,
-		})
+	// Only change effort; retain structured output and other native settings.
+	outputConfig := make(map[string]any)
+	if len(request.OutputConfig) > 0 && common.GetJsonType(request.OutputConfig) == "object" {
+		if err := common.Unmarshal(request.OutputConfig, &outputConfig); err != nil {
+			return fmt.Errorf("invalid output_config: %w", err)
+		}
+	}
+	delete(outputConfig, "effort")
+	if effort != "" {
+		outputConfig["effort"] = effort
+	}
+	request.OutputConfig = nil
+	if len(outputConfig) > 0 {
+		encoded, err := common.Marshal(outputConfig)
 		if err != nil {
 			return fmt.Errorf("error marshalling output_config: %w", err)
 		}
-		request.OutputConfig = outputConfig
+		request.OutputConfig = encoded
 	}
 	if info != nil {
 		if info.ChannelMeta != nil {
@@ -169,6 +190,9 @@ func applyDeepSeekV4ResponsesThinkingSuffix(info *relaycommon.RelayInfo, request
 	modelName := request.Model
 	if info != nil && info.ChannelMeta != nil && info.UpstreamModelName != "" {
 		modelName = info.UpstreamModelName
+	}
+	if model_setting.ShouldPreserveThinkingSuffix(modelName) || info != nil && model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) {
+		return
 	}
 	baseModel, thinkingType, effort, ok := reasoning.ParseDeepSeekV4ThinkingSuffix(modelName)
 	if ok {

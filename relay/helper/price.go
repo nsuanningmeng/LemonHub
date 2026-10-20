@@ -90,6 +90,12 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 
 func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens int, meta *types.TokenCountMeta) (hosttypes.PriceData, error) {
 	modelPrice, usePrice := ratio_setting.GetModelPrice(info.OriginModelName, false)
+	// Older installations may have a complete saved ModelPrice map predating
+	// these endpoints. Missing entries use the request-price default, while an
+	// explicitly configured price (including zero) remains authoritative.
+	if !usePrice && info.RelayFormat == types.RelayFormatDeepSeekTools {
+		modelPrice, usePrice = ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
+	}
 
 	groupRatioInfo := HandleGroupRatio(c, info)
 

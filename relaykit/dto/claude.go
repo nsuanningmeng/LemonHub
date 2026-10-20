@@ -685,4 +685,5 @@ func (u *ClaudeUsage) GetCacheCreationTotalTokens() int {
 
 type ClaudeServerToolUse struct {
 	WebSearchRequests int `json:"web_search_requests"`
+	WebFetchRequests  int `json:"web_fetch_requests,omitempty"`
 }

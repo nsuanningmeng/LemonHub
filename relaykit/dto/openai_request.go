@@ -393,14 +393,30 @@ type Message struct {
 }
 
 type MediaContent struct {
-	Type       string `json:"type"`
-	Text       string `json:"text,omitempty"`
-	ImageUrl   any    `json:"image_url,omitempty"`
-	InputAudio any    `json:"input_audio,omitempty"`
-	File       any    `json:"file,omitempty"`
-	VideoUrl   any    `json:"video_url,omitempty"`
+	imageDetailDefaulted bool
+	Type                 string `json:"type"`
+	Text                 string `json:"text,omitempty"`
+	ImageUrl             any    `json:"image_url,omitempty"`
+	InputAudio           any    `json:"input_audio,omitempty"`
+	File                 any    `json:"file,omitempty"`
+	VideoUrl             any    `json:"video_url,omitempty"`
 	// OpenRouter Params
 	CacheControl json.RawMessage `json:"cache_control,omitempty"`
+}
+
+// OriginalImageDetail returns the source hint without ParseContent's legacy
+// high-detail default, so protocol converters can apply their own defaults.
+func (m *MediaContent) OriginalImageDetail() string {
+	if m.imageDetailDefaulted {
+		return ""
+	}
+	if image, ok := m.ImageUrl.(MessageImageUrl); ok {
+		return image.Detail
+	}
+	if image := m.GetImageMedia(); image != nil {
+		return image.Detail
+	}
+	return ""
 }
 
 func (m *MediaContent) GetImageMedia() *MessageImageUrl {
@@ -686,11 +702,13 @@ func (m *Message) ParseContent() []MediaContent {
 				switch image := v["image_url"].(type) {
 				case string:
 					block.ImageUrl = &MessageImageUrl{Url: image, Detail: "high"}
+					block.imageDetailDefaulted = true
 				case map[string]any:
 					url, ok := image["url"].(string)
 					if ok {
 						detail, _ := image["detail"].(string)
 						if detail == "" {
+							block.imageDetailDefaulted = true
 							detail = "high"
 						}
 						mime, _ := image["mime_type"].(string)
