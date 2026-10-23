@@ -78,6 +78,7 @@ const (
 // ============================
 
 type TaskAdaptor struct {
+	info *relaycommon.RelayInfo
 	taskcommon.BaseBilling
 	ChannelType int
 	accessKey   string
@@ -86,6 +87,7 @@ type TaskAdaptor struct {
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
+	a.info = info
 	a.ChannelType = info.ChannelType
 	a.baseURL = info.ChannelBaseUrl
 
@@ -254,11 +256,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 			return nil, errors.Wrap(err, "sign request failed")
 		}
 	}
-	client, err := service.GetHttpClientWithProxy(proxy)
-	if err != nil {
-		return nil, fmt.Errorf("new proxy http client failed: %w", err)
-	}
-	return client.Do(req)
+	return channel.DoTaskPollingRequest(a.info, key, proxy, req)
 }
 
 func (a *TaskAdaptor) GetModelList() []string {

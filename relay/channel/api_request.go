@@ -197,10 +197,12 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 	}
 
 	headerOverrideSource := common.GetEffectiveHeaderOverride(info)
+	// Background polling has no original client request.
+	hasClientRequest := !info.IsChannelTest && c != nil && c.Request != nil
 
 	passAll := false
 	var passthroughRegex []*regexp.Regexp
-	if !info.IsChannelTest {
+	if hasClientRequest {
 		for k := range headerOverrideSource {
 			key := strings.TrimSpace(strings.ToLower(k))
 			if key == "" {
@@ -233,9 +235,6 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 	}
 
 	if passAll || len(passthroughRegex) > 0 {
-		if c == nil || c.Request == nil {
-			return nil, types.NewError(fmt.Errorf("missing request context for header passthrough"), types.ErrorCodeChannelHeaderOverrideInvalid)
-		}
 		for name := range c.Request.Header {
 			if shouldSkipPassthroughHeader(name) {
 				continue
@@ -273,7 +272,7 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 		if !ok {
 			return nil, types.NewError(nil, types.ErrorCodeChannelHeaderOverrideInvalid)
 		}
-		if info.IsChannelTest && strings.HasPrefix(strings.TrimSpace(str), clientHeaderPlaceholderPrefix) {
+		if !hasClientRequest && strings.HasPrefix(strings.TrimSpace(str), clientHeaderPlaceholderPrefix) {
 			continue
 		}
 
@@ -292,6 +291,87 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 
 func ResolveHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]string, error) {
 	return processHeaderOverride(info, c)
+}
+
+// ApplyHeaderOverride applies channel overrides after the adaptor's defaults.
+// Background requests resolve static values and {api_key}, without client headers.
+func ApplyHeaderOverride(info *common.RelayInfo, c *gin.Context, req *http.Request) error {
+	headers, err := processHeaderOverride(info, c)
+	if err != nil {
+		return err
+	}
+	applyHeaderOverrideToRequest(req, headers)
+	return nil
+}
+
+// Redirect policy errors may include signed destination URLs. Keep the cause
+// available to errors.Is/As without exposing it through polling logs.
+type taskRedirectError struct{ cause error }
+
+func (e *taskRedirectError) Error() string { return "task polling redirect blocked by upstream policy" }
+func (e *taskRedirectError) Unwrap() error { return e.cause }
+
+// DoTaskPollingRequest applies the selected task credential without mutating the
+// channel's shared configuration. Polling keeps the shared transport policy and
+// SSRF redirect checks, but credentials must never follow a cross-origin redirect.
+func DoTaskPollingRequest(info *common.RelayInfo, key, proxy string, req *http.Request) (*http.Response, error) {
+	pollInfo := &common.RelayInfo{ChannelMeta: &common.ChannelMeta{ApiKey: key}}
+	pollInfo.HeadersOverride = common.GetEffectiveHeaderOverride(info)
+	if info != nil && info.ChannelMeta != nil {
+		pollInfo.ChannelSetting = info.ChannelSetting
+	}
+	if err := ApplyHeaderOverride(pollInfo, nil, req); err != nil {
+		return nil, err
+	}
+	client, err := service.GetHttpClientWithProxySettings(proxy, pollInfo.ChannelSetting)
+	if err != nil {
+		return nil, fmt.Errorf("new proxy http client failed: %w", err)
+	}
+	pollingClient := *client
+	pollingClient.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+		if client.CheckRedirect != nil {
+			if err := client.CheckRedirect(next, via); err != nil {
+				if err == http.ErrUseLastResponse {
+					return err
+				}
+				return &taskRedirectError{cause: err}
+			}
+		} else if err := service.ValidateRelayTargetURL(next.URL.String()); err != nil {
+			return &taskRedirectError{cause: err}
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		if len(via) > 0 && !sameTaskRedirectOrigin(via[0].URL, next.URL) {
+			return fmt.Errorf("cross-origin task redirect blocked")
+		}
+		return nil
+	}
+	resp, err := pollingClient.Do(req)
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		// url.Error prints the original URL, which can carry query credentials.
+		return resp, fmt.Errorf("task polling request failed: %w", urlErr.Err)
+	}
+	return resp, err
+}
+
+func sameTaskRedirectOrigin(first, next *url.URL) bool {
+	if !strings.EqualFold(first.Scheme, next.Scheme) || !strings.EqualFold(first.Hostname(), next.Hostname()) {
+		return false
+	}
+	defaultPort := "80"
+	if strings.EqualFold(first.Scheme, "https") {
+		defaultPort = "443"
+	}
+	firstPort, nextPort := first.Port(), next.Port()
+	if firstPort == "" {
+		firstPort = defaultPort
+	}
+	if nextPort == "" {
+		nextPort = defaultPort
+	}
+	return firstPort == nextPort
 }
 
 func applyHeaderOverrideToRequest(req *http.Request, headerOverride map[string]string) {
@@ -571,6 +651,9 @@ func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, req
 	err = a.BuildRequestHeader(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("setup request header failed: %w", err)
+	}
+	if err = ApplyHeaderOverride(info, c, req); err != nil {
+		return nil, err
 	}
 	resp, err := doRequest(c, req, info)
 	if err != nil {

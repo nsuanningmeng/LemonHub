@@ -19,6 +19,7 @@ import (
 )
 
 type TaskAdaptor struct {
+	info *relaycommon.RelayInfo
 	taskcommon.BaseBilling
 	ChannelType int
 }
@@ -32,6 +33,7 @@ func (a *TaskAdaptor) ParseTaskResult([]byte) (*relaycommon.TaskInfo, error) {
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
+	a.info = info
 	a.ChannelType = info.ChannelType
 }
 
@@ -142,11 +144,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+key)
-	client, err := service.GetHttpClientWithProxy(proxy)
-	if err != nil {
-		return nil, fmt.Errorf("new proxy http client failed: %w", err)
-	}
-	return client.Do(req)
+	return channel.DoTaskPollingRequest(a.info, key, proxy, req)
 }
 
 func actionValidate(c *gin.Context, sunoRequest *dto.SunoSubmitReq, action string) (err error) {

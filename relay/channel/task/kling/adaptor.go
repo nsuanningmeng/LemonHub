@@ -113,6 +113,7 @@ type responsePayload struct {
 // ============================
 
 type TaskAdaptor struct {
+	info *relaycommon.RelayInfo
 	taskcommon.BaseBilling
 	ChannelType int
 	apiKey      string
@@ -120,6 +121,7 @@ type TaskAdaptor struct {
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
+	a.info = info
 	a.ChannelType = info.ChannelType
 	a.baseURL = info.ChannelBaseUrl
 	a.apiKey = info.ApiKey
@@ -238,18 +240,14 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 
 	token, err := a.createJWTTokenWithKey(key)
 	if err != nil {
-		token = key
+		return nil, fmt.Errorf("failed to create JWT token: %w", err)
 	}
 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("User-Agent", "kling-sdk/1.0")
 
-	client, err := service.GetHttpClientWithProxy(proxy)
-	if err != nil {
-		return nil, fmt.Errorf("new proxy http client failed: %w", err)
-	}
-	return client.Do(req)
+	return channel.DoTaskPollingRequest(a.info, key, proxy, req)
 }
 
 func (a *TaskAdaptor) GetModelList() []string {
@@ -312,18 +310,25 @@ func (a *TaskAdaptor) createJWTToken() (string, error) {
 }
 
 func (a *TaskAdaptor) createJWTTokenWithKey(apiKey string) (string, error) {
+	apiKey = strings.TrimSpace(apiKey)
+	if apiKey == "" {
+		return "", errors.New("api_key is empty")
+	}
 	if isNewAPIRelay(apiKey) {
 		return apiKey, nil // new api relay
 	}
 	keyParts := strings.Split(apiKey, "|")
+	if len(keyParts) == 1 {
+		return apiKey, nil
+	}
 	if len(keyParts) != 2 {
 		return "", errors.New("invalid api_key, required format is accessKey|secretKey")
 	}
 	accessKey := strings.TrimSpace(keyParts[0])
-	if len(keyParts) == 1 {
-		return accessKey, nil
-	}
 	secretKey := strings.TrimSpace(keyParts[1])
+	if accessKey == "" || secretKey == "" {
+		return "", errors.New("invalid api_key, accessKey and secretKey must be non-empty")
+	}
 	now := time.Now().Unix()
 	claims := jwt.MapClaims{
 		"iss": accessKey,
@@ -375,7 +380,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 }
 
 func isNewAPIRelay(apiKey string) bool {
-	return strings.HasPrefix(apiKey, "sk-")
+	return strings.HasPrefix(strings.TrimSpace(apiKey), "sk-")
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {

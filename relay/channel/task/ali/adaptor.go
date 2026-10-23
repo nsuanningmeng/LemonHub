@@ -118,6 +118,7 @@ type AliMetadata struct {
 // ============================
 
 type TaskAdaptor struct {
+	info *relaycommon.RelayInfo
 	taskcommon.BaseBilling
 	ChannelType int
 	apiKey      string
@@ -125,6 +126,7 @@ type TaskAdaptor struct {
 }
 
 func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
+	a.info = info
 	a.ChannelType = info.ChannelType
 	a.baseURL = info.ChannelBaseUrl
 	a.apiKey = info.ApiKey
@@ -537,11 +539,7 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 
 	req.Header.Set("Authorization", "Bearer "+key)
 
-	client, err := service.GetHttpClientWithProxy(proxy)
-	if err != nil {
-		return nil, fmt.Errorf("new proxy http client failed: %w", err)
-	}
-	return client.Do(req)
+	return channel.DoTaskPollingRequest(a.info, key, proxy, req)
 }
 
 func (a *TaskAdaptor) GetModelList() []string {
