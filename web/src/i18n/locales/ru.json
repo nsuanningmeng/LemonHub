@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Failed to load performance data": "Не удалось загрузить данные о производительности",
     "Processing finished": "Обработка завершена",
     "Processing finished with failures": "Обработка завершена с ошибками",
     "Processed: {{processed}}/{{total}}": "Обработано: {{processed}}/{{total}}",

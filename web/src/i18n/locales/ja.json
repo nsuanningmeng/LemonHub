@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Failed to load performance data": "パフォーマンスデータの読み込みに失敗しました",
     "Processing finished": "処理終了",
     "Processing finished with failures": "処理終了（一部失敗）",
     "Processed: {{processed}}/{{total}}": "処理済み：{{processed}}/{{total}}",

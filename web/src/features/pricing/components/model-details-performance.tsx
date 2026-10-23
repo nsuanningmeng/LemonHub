@@ -26,7 +26,10 @@ import {
   staticDataTableClassNames as tableStyles,
 } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
-import { getPerfMetrics } from '@/features/performance-metrics/api'
+import {
+  getPerfMetrics,
+  getPerfMetricsSummary,
+} from '@/features/performance-metrics/api'
 import {
   formatLatency,
   formatThroughput,
@@ -156,17 +159,6 @@ function toGroupUptimeSeries(group: PerformanceGroup): UptimeDayPoint[] {
   })
 }
 
-function average(
-  rows: PerformanceRow[],
-  field: 'avg_ttft_ms' | 'avg_latency_ms'
-) {
-  const values = rows.map((row) => row[field]).filter((value) => value > 0)
-  if (values.length === 0) return 0
-  return Math.round(
-    values.reduce((sum, value) => sum + value, 0) / values.length
-  )
-}
-
 export function ModelDetailsPerformance(props: {
   model: PricingModel
   availableGroups: string[]
@@ -178,6 +170,14 @@ export function ModelDetailsPerformance(props: {
     queryFn: () => getPerfMetrics(props.model.model_name, 24),
     staleTime: 60 * 1000,
     refetchOnMount: 'always',
+    retry: false,
+  })
+  const summaryQuery = useQuery({
+    queryKey: ['perf-metrics-summary', 24],
+    queryFn: () => getPerfMetricsSummary(24),
+    staleTime: 60 * 1000,
+    refetchOnMount: 'always',
+    retry: false,
   })
   const groups = useMemo(
     () =>
@@ -209,10 +209,24 @@ export function ModelDetailsPerformance(props: {
     return map
   }, [groups])
 
-  if (metricsQuery.isLoading) {
+  if (metricsQuery.isError || summaryQuery.isError) {
     return (
-      <div className='text-muted-foreground rounded-lg border p-6 text-center text-sm'>
-        {t('Performance data is not yet available for this model.')}
+      <div
+        role='alert'
+        className='text-muted-foreground rounded-lg border p-6 text-center text-sm'
+      >
+        {t('Failed to load performance data')}
+      </div>
+    )
+  }
+
+  if (metricsQuery.isPending || summaryQuery.isPending) {
+    return (
+      <div
+        role='status'
+        className='text-muted-foreground rounded-lg border p-6 text-center text-sm'
+      >
+        {t('Loading...')}
       </div>
     )
   }
@@ -242,22 +256,12 @@ export function ModelDetailsPerformance(props: {
     )
   }
 
-  const tpsValues = performances
-    .map((p) => p.avg_tps)
-    .filter((value) => value > 0)
-  const avgTps =
-    tpsValues.length > 0
-      ? tpsValues.reduce((sum, value) => sum + value, 0) / tpsValues.length
-      : 0
-  const avgLatency = average(performances, 'avg_latency_ms')
-  const successRates = performances
-    .map((perf) => perf.success_rate)
-    .filter((value) => Number.isFinite(value))
-  const successRate =
-    successRates.length > 0
-      ? successRates.reduce((sum, value) => sum + value, 0) /
-        successRates.length
-      : Number.NaN
+  const summary = summaryQuery.data.data.models.find(
+    (model) => model.model_name === props.model.model_name
+  )
+  const avgTps = summary?.avg_tps ?? Number.NaN
+  const avgLatency = summary?.avg_latency_ms ?? Number.NaN
+  const successRate = summary?.success_rate ?? Number.NaN
   const incidentCount = uptimeSeries.reduce((s, p) => s + p.incidents, 0)
   const intent = successRateIntent(successRate, srConfig)
   const hasMissingSpeedMetrics = performances.some(
@@ -266,7 +270,7 @@ export function ModelDetailsPerformance(props: {
       (!(perf.avg_tps > 0) || !(perf.avg_ttft_ms > 0))
   )
   let successRateHint = t('No requests in the last 24 hours')
-  if (successRates.length > 0) {
+  if (Number.isFinite(successRate)) {
     successRateHint =
       incidentCount > 0
         ? t('{{count}} incidents in the last 24 hours', {
@@ -349,6 +353,7 @@ export function ModelDetailsPerformance(props: {
                   <UptimeSparkline
                     size='sm'
                     series={uptimeByGroup[perf.group] ?? []}
+                    overallRate={perf.success_rate}
                   />
                 ) : (
                   <span className='text-muted-foreground text-xs'>—</span>

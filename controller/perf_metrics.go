@@ -8,7 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -22,18 +21,9 @@ func GetPerfMetricsSummary(c *gin.Context) {
 		}
 	}
 
-	result, err := perfmetrics.QuerySummaryAll(hours, getPerfMetricsModelGroups(c))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    result,
+	modelGroups := getPerfMetricsModelGroups(c)
+	writePerformanceQuery(c, performanceQueryScope{Endpoint: "summary", Hours: hours, Models: modelGroups}, func() (any, error) {
+		return perfmetrics.QuerySummaryAll(hours, modelGroups)
 	})
 }
 
@@ -54,27 +44,20 @@ func GetPerfMetrics(c *gin.Context) {
 		}
 	}
 
-	result, err := perfmetrics.Query(perfmetrics.QueryParams{
-		Model: modelName,
-		Group: c.Query("group"),
-		Hours: hours,
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-
 	activeGroups := getPerfMetricsModelGroups(c)[modelName]
-	result.Groups = lo.Filter(result.Groups, func(group perfmetrics.GroupResult, _ int) bool {
-		return common.StringsContains(activeGroups, group.Group)
-	})
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    result,
+	groupFilter := c.Query("group")
+	writePerformanceQuery(c, performanceQueryScope{
+		Endpoint: "detail", Hours: hours, Model: modelName, Group: groupFilter,
+		Models: map[string][]string{modelName: activeGroups},
+	}, func() (any, error) {
+		result, err := perfmetrics.Query(perfmetrics.QueryParams{Model: modelName, Group: groupFilter, Hours: hours})
+		if err != nil {
+			return nil, err
+		}
+		result.Groups = lo.Filter(result.Groups, func(group perfmetrics.GroupResult, _ int) bool {
+			return common.StringsContains(activeGroups, group.Group)
+		})
+		return result, nil
 	})
 }
 
@@ -87,22 +70,5 @@ func getPerfMetricsModelGroups(c *gin.Context) map[string][]string {
 			userGroup = user.Group
 		}
 	}
-	usableGroups := service.GetUserUsableGroups(userGroup)
-	activeRatios := ratio_setting.GetGroupRatioCopy()
-	modelGroups := make(map[string][]string)
-	for _, pricing := range model.GetPricing() {
-		for _, group := range pricing.EnableGroup {
-			if group == "" || group == "auto" {
-				continue
-			}
-			if _, ok := usableGroups[group]; !ok {
-				continue
-			}
-			if _, ok := activeRatios[group]; !ok {
-				continue
-			}
-			modelGroups[pricing.ModelName] = append(modelGroups[pricing.ModelName], group)
-		}
-	}
-	return modelGroups
+	return service.GetUserPerformanceModelGroups(userGroup)
 }

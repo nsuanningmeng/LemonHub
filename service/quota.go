@@ -257,6 +257,10 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
+	sample := perfmetrics.BuildRelaySample(relayInfo, true, int64(usage.OutputTokens), time.Now())
+	gopool.Go(func() {
+		perfmetrics.Record(sample)
+	})
 }
 
 func CalcOpenRouterCacheCreateTokens(usage dto.Usage, priceData types.PriceData) int {

@@ -68,11 +68,12 @@ func SetApiRouter(router *gin.Engine) {
 		//apiRouter.GET("/midjourney", controller.GetMidjourney)
 		apiRouter.GET("/home_page_content", controller.GetHomePageContent)
 		apiRouter.GET("/pricing", middleware.HeaderNavModuleAuth("pricing"), controller.GetPricing)
-		perfMetricsRoute := apiRouter.Group("/perf-metrics")
-		perfMetricsRoute.Use(middleware.HeaderNavModulePublicOrUserAuth("pricing"))
+		perfMetricsRoute := apiRouter.Group("/perf-metrics", middleware.DisableCache(), middleware.PerformanceMetricsIPRateLimit())
+		perfMetricsRoute.GET("/models", middleware.UserAuth(), middleware.PerformanceMetricsUserRateLimit(), controller.GetModelPerformance)
+		publicPerfMetricsRoute := perfMetricsRoute.Group("", middleware.HeaderNavModulePublicOrUserAuth("pricing"))
 		{
-			perfMetricsRoute.GET("/summary", controller.GetPerfMetricsSummary)
-			perfMetricsRoute.GET("", controller.GetPerfMetrics)
+			publicPerfMetricsRoute.GET("/summary", controller.GetPerfMetricsSummary)
+			publicPerfMetricsRoute.GET("", controller.GetPerfMetrics)
 		}
 		apiRouter.GET("/rankings", middleware.HeaderNavModuleAuth("rankings"), controller.GetRankings)
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.CaptchaCheck(), controller.SendEmailVerification)

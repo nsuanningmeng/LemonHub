@@ -35,7 +35,11 @@ import { isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
-import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
+import {
+  ModelPerfBadge,
+  type ModelPerfBadgeData,
+  type ModelPerfBadgeProps,
+} from './model-perf-badge'
 
 export interface ModelCardProps {
   model: PricingModel
@@ -46,6 +50,7 @@ export interface ModelCardProps {
   showRechargePrice?: boolean
   selectedGroup?: string
   perf?: ModelPerfBadgeData
+  perfStatus?: ModelPerfBadgeProps['status']
 }
 
 export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
@@ -257,7 +262,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           )}
           <ModelBillingModeBadge model={props.model} />
         </div>
-        <ModelPerfBadge perf={props.perf} className='row-span-2 self-start' />
+        <ModelPerfBadge
+          perf={props.perf}
+          status={props.perfStatus}
+          className='row-span-2 self-start'
+        />
 
         <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
           {bottomTags.map((item) => (

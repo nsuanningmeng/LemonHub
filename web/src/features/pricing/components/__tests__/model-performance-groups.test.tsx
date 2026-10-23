@@ -28,6 +28,7 @@ import {
   ModelDetailsContent,
   type ModelDetailsContentProps,
 } from '../model-details'
+import { UptimeSparkline } from '../model-details-uptime-sparkline'
 
 // Canvas rendering is outside jsdom; exercise the real chart data preparation.
 vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
@@ -99,9 +100,25 @@ describe('model performance groups', () => {
       success: true,
       data: { model_name: 'gemini-test', groups: sampledGroups },
     })
-    vi.spyOn(api, 'get').mockResolvedValue({
-      data: queryClient.getQueryData(['perf-metrics', 'gemini-test']),
+    queryClient.setQueryData(['perf-metrics-summary', 24], {
+      success: true,
+      data: {
+        models: [
+          {
+            model_name: 'gemini-test',
+            success_rate: 60,
+            avg_latency_ms: 300,
+            avg_tps: 15,
+          },
+        ],
+      },
     })
+    vi.spyOn(api, 'get').mockImplementation(async (url) => ({
+      data:
+        url === '/api/perf-metrics/summary'
+          ? queryClient.getQueryData(['perf-metrics-summary', 24])
+          : queryClient.getQueryData(['perf-metrics', 'gemini-test']),
+    }))
     props = {
       model: {
         id: 1,
@@ -161,6 +178,77 @@ describe('model performance groups', () => {
   })
 
   test.each([
+    {
+      name: 'time buckets have unequal request volumes',
+      successRate: 99.00990099009901,
+      bucketRates: [100, 0],
+      expected: '99.0%',
+    },
+    {
+      name: 'all requests failed and the timeline is empty',
+      successRate: 0,
+      bucketRates: [],
+      expected: '0.0%',
+    },
+  ])(
+    'group rows display the cumulative API success rate when $name',
+    async ({ successRate, bucketRates, expected }) => {
+      const user = userEvent.setup()
+      const group = {
+        ...sampledGroups[0],
+        // The first bucket can contain 100 successful requests, while the
+        // second contains one failure: the cumulative rate is not 50%.
+        success_rate: successRate,
+        series: bucketRates.map((rate, index) => ({
+          ...sampledGroups[0].series[0],
+          ts: 1720000000 + index * 3600,
+          success_rate: rate,
+        })),
+      }
+      queryClient.setQueryData(['perf-metrics', 'gemini-test'], {
+        success: true,
+        data: { model_name: 'gemini-test', groups: [group] },
+      })
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ModelDetailsContent {...props} />
+        </QueryClientProvider>
+      )
+      await user.click(screen.getByRole('tab', { name: 'Performance' }))
+
+      const row = within(screen.getByRole('table')).getByRole('row', {
+        name: /^Gemini\s/,
+      })
+      expect(within(row).getByText(expected)).toBeInTheDocument()
+    }
+  )
+
+  test('sparklines without a cumulative rate retain their timeline average', () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <UptimeSparkline
+          series={[
+            {
+              date: '2026-10-23T01:00:00Z',
+              uptime_pct: 100,
+              incidents: 0,
+              outage_minutes: 0,
+            },
+            {
+              date: '2026-10-23T02:00:00Z',
+              uptime_pct: 0,
+              incidents: 1,
+              outage_minutes: 0,
+            },
+          ]}
+        />
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByText('50.0%')).toBeInTheDocument()
+  })
+
+  test.each([
     { name: 'TPS', avg_tps: 0, avg_ttft_ms: 100, missingCells: 1 },
     { name: 'TTFT', avg_tps: 20, avg_ttft_ms: 0, missingCells: 1 },
     { name: 'TPS and TTFT', avg_tps: 0, avg_ttft_ms: 0, missingCells: 2 },
@@ -177,9 +265,6 @@ describe('model performance groups', () => {
       queryClient.setQueryData(['perf-metrics', 'gemini-test'], {
         success: true,
         data: { model_name: 'gemini-test', groups: [group] },
-      })
-      vi.mocked(api.get).mockResolvedValue({
-        data: queryClient.getQueryData(['perf-metrics', 'gemini-test']),
       })
       render(
         <QueryClientProvider client={queryClient}>
@@ -198,7 +283,7 @@ describe('model performance groups', () => {
     }
   )
 
-  test('removing a model group immediately removes its row and contribution despite cached metrics', async () => {
+  test('removing a model group immediately removes its row despite cached group metrics', async () => {
     const user = userEvent.setup()
     const view = render(
       <QueryClientProvider client={queryClient}>
@@ -219,11 +304,12 @@ describe('model performance groups', () => {
     expect(
       within(screen.getByRole('table')).queryByText('Gemini特价')
     ).not.toBeInTheDocument()
-    expect(screen.getByText('80.00%')).toBeInTheDocument()
-    expect(screen.getAllByText('200ms')).toHaveLength(2)
+    expect(
+      within(screen.getByRole('table')).getByText('200ms')
+    ).toBeInTheDocument()
   })
 
-  test('overview summary uses the same currently available model groups', () => {
+  test('overview summary displays the model summary returned by the backend', () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ModelDetailsContent {...props} />
@@ -250,7 +336,6 @@ describe('model performance groups', () => {
         .slice(1)
         .map((row) => within(row).getAllByRole('cell')[0].textContent)
     ).toEqual(['Gemini', 'Gemini混合'])
-    expect(screen.getByText('80.00%')).toBeInTheDocument()
   })
 
   test.each([true, false])(
@@ -264,8 +349,9 @@ describe('model performance groups', () => {
         success: true,
         data: { model_name: 'gemini-test', groups: [] },
       })
-      vi.mocked(api.get).mockResolvedValue({
-        data: queryClient.getQueryData(['perf-metrics', 'gemini-test']),
+      queryClient.setQueryData(['perf-metrics-summary', 24], {
+        success: true,
+        data: { models: [] },
       })
       render(
         <QueryClientProvider client={queryClient}>

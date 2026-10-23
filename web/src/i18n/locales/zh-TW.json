@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Failed to load performance data": "效能資料載入失敗",
     "Processing finished": "處理已結束",
     "Processing finished with failures": "處理已結束（有失敗）",
     "Processed: {{processed}}/{{total}}": "已處理：{{processed}}/{{total}}",

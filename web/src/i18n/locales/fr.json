@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Failed to load performance data": "Impossible de charger les données de performance",
     "Processing finished": "Traitement terminé",
     "Processing finished with failures": "Traitement terminé avec des échecs",
     "Processed: {{processed}}/{{total}}": "Traités : {{processed}}/{{total}}",

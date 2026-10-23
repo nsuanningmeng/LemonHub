@@ -81,7 +81,7 @@ describe('compact model pricing', () => {
       defaultOptions: { queries: { retry: false } },
     })
     vi.spyOn(api, 'get').mockResolvedValue({
-      data: { success: true, data: {} },
+      data: { success: true, data: { models: [], groups: [] } },
     })
   })
 

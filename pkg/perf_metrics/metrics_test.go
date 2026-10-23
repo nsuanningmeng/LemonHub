@@ -75,7 +75,7 @@ func TestQueryMetricsReflectManualDisableRestoreAndDeletion(t *testing.T) {
 			ChannelID: channelID, ModelName: "gemini", Group: "Gemini", BucketTs: bucket,
 			RequestCount: 1, SuccessCount: successes,
 		}))
-		hot := &atomicBucket{}
+		hot := &metricBucket{}
 		hot.add(Sample{Success: channelID == 1})
 		hotBuckets.Store(bucketKey{channelID: channelID, model: "gemini", group: "Gemini", bucketTs: bucket}, hot)
 	}
@@ -225,7 +225,7 @@ func TestQuerySummaryAllFiltersModelGroupsBeforeMergingDBAndHotBuckets(t *testin
 		{model: "no-groups-model", group: "default", ts: bucket + 3600},
 		{model: "hot-only-deleted-model", group: "default", ts: bucket + 3600},
 	} {
-		hot := &atomicBucket{}
+		hot := &metricBucket{}
 		hot.add(Sample{Success: fixture.success, LatencyMs: 1000, OutputTokens: 10, GenerationMs: 1000})
 		hotBuckets.Store(bucketKey{channelID: 1, model: fixture.model, group: fixture.group, bucketTs: fixture.ts}, hot)
 	}

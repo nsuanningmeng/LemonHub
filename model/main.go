@@ -295,6 +295,9 @@ func migrateDB() error {
 	if err := prepareUserOAuthBindingsSiteScope(DB); err != nil {
 		return err
 	}
+	if err := migratePerfMetricIdentities(DB); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -408,6 +411,9 @@ func migrateDBFast() error {
 		return err
 	}
 	if err := prepareUserOAuthBindingsSiteScope(DB); err != nil {
+		return err
+	}
+	if err := migratePerfMetricIdentities(DB); err != nil {
 		return err
 	}
 

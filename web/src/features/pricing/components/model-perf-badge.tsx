@@ -26,6 +26,8 @@ import {
 } from '@/features/performance-metrics/lib/success-rate'
 import { cn } from '@/lib/utils'
 
+const STATUS_BAR_KEYS = ['oldest', 'middle', 'newest']
+
 export type ModelPerfBadgeData = {
   avg_latency_ms: number
   success_rate: number
@@ -35,6 +37,7 @@ export type ModelPerfBadgeData = {
 
 export interface ModelPerfBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   perf: ModelPerfBadgeData | undefined
+  status?: 'pending' | 'error' | 'success'
 }
 
 function formatCompactNumber(value: number): string {
@@ -60,6 +63,22 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
   const { t } = useTranslation()
   const srConfig = useSuccessRateConfig()
 
+  if (props.status === 'pending' || props.status === 'error') {
+    return (
+      <div
+        role={props.status === 'error' ? 'alert' : 'status'}
+        className={cn(
+          'text-muted-foreground hidden w-[132px] text-right text-xs min-[460px]:block',
+          props.className
+        )}
+      >
+        {props.status === 'error'
+          ? t('Failed to load performance data')
+          : t('Loading...')}
+      </div>
+    )
+  }
+
   // When a model has no metrics yet, optionally treat it as 100% healthy
   // (green) instead of hiding the badge entirely.
   if (!props.perf && !srConfig.noDataAsFull) {
@@ -71,7 +90,7 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
   // Resolve a possibly-missing rate so models without metrics can still render
   // as healthy when the admin enables "no data => 100%".
   const success_rate = resolveSuccessRate(
-    props.perf ? props.perf.success_rate : NaN,
+    props.perf ? props.perf.success_rate : Number.NaN,
     srConfig
   )
 
@@ -116,22 +135,26 @@ export const ModelPerfBadge = memo(function ModelPerfBadge(
           {t('Status short')}
         </div>
         <div className='flex h-4 items-center justify-end gap-0.5'>
-          {statusBars.map((rate, index) => (
-            <span
-              key={`${index}-${rate ?? 'empty'}`}
-              className={cn(
-                'w-1 rounded-full',
-                index === 0 && 'h-2',
-                index === 1 && 'h-2.5',
-                index === 2 && 'h-3',
-                rate == null
-                  ? index === 0
-                    ? 'bg-muted-foreground/10'
-                    : 'bg-muted-foreground/15'
-                  : successRateDotClass(rate, srConfig)
-              )}
-            />
-          ))}
+          {statusBars.map((rate, index) => {
+            let toneClass = 'bg-muted-foreground/15'
+            if (rate != null) {
+              toneClass = successRateDotClass(rate, srConfig)
+            } else if (index === 0) {
+              toneClass = 'bg-muted-foreground/10'
+            }
+            return (
+              <span
+                key={STATUS_BAR_KEYS[index]}
+                className={cn(
+                  'w-1 rounded-full',
+                  index === 0 && 'h-2',
+                  index === 1 && 'h-2.5',
+                  index === 2 && 'h-3',
+                  toneClass
+                )}
+              />
+            )
+          })}
         </div>
       </div>
     </div>

@@ -86,8 +86,8 @@ func Record(sample Sample) {
 		group:     sample.Group,
 		bucketTs:  bucketStart(time.Now().Unix()),
 	}
-	actual, _ := hotBuckets.LoadOrStore(key, &atomicBucket{})
-	actual.(*atomicBucket).add(sample)
+	actual, _ := hotBuckets.LoadOrStore(key, &metricBucket{})
+	actual.(*metricBucket).add(sample)
 	recordRedis(key, sample)
 }
 
@@ -110,7 +110,13 @@ func Query(params QueryParams) (QueryResult, error) {
 	for _, channelID := range channelIDs {
 		allowedChannels[channelID] = struct{}{}
 	}
-	rows, err := model.GetPerfMetrics(params.Model, params.Group, startTs, endTs, channelIDs)
+	rows, hot, err := queryWithHotSnapshot(func() ([]model.PerfMetric, error) {
+		return model.GetPerfMetrics(params.Model, params.Group, startTs, endTs, channelIDs)
+	}, func(k bucketKey) bool {
+		_, allowed := allowedChannels[k.channelID]
+		return allowed && k.model == params.Model && k.bucketTs >= startTs && k.bucketTs <= endTs &&
+			(params.Group == "" || k.group == params.Group)
+	})
 	if err != nil {
 		return QueryResult{}, err
 	}
@@ -130,23 +136,12 @@ func Query(params QueryParams) (QueryResult, error) {
 		})
 	}
 
-	hotBuckets.Range(func(key, value any) bool {
-		k := key.(bucketKey)
-		if _, allowed := allowedChannels[k.channelID]; !allowed {
-			return true
-		}
-		if k.model != params.Model || k.bucketTs < startTs || k.bucketTs > endTs {
-			return true
-		}
-		if params.Group != "" && k.group != params.Group {
-			return true
-		}
+	for k, snapshot := range hot {
 		// Channel identity is needed for filtering/storage, but the response
 		// combines the eligible channels into one model/group/time bucket.
 		k.channelID = 0
-		mergeCounters(merged, k, value.(*atomicBucket).snapshot())
-		return true
-	})
+		mergeCounters(merged, k, snapshot)
+	}
 
 	return buildQueryResult(params.Model, merged), nil
 }
@@ -184,7 +179,13 @@ func QuerySummaryAll(hours int, modelGroups map[string][]string) (SummaryAllResu
 	for _, channelID := range channelIDs {
 		allowedChannels[channelID] = struct{}{}
 	}
-	rows, err := model.GetPerfMetricsSummaryBucketsAll(startTs, endTs, groups, channelIDs)
+	rows, hot, err := queryWithHotSnapshot(func() ([]model.PerfMetricSummaryBucket, error) {
+		return model.GetPerfMetricsSummaryBucketsAll(startTs, endTs, groups, channelIDs)
+	}, func(k bucketKey) bool {
+		_, channelAllowed := allowedChannels[k.channelID]
+		_, groupAllowed := allowedModelGroups[k.model][k.group]
+		return channelAllowed && groupAllowed && k.bucketTs >= startTs && k.bucketTs <= endTs
+	})
 	if err != nil {
 		return SummaryAllResult{}, err
 	}
@@ -206,25 +207,10 @@ func QuerySummaryAll(hours int, modelGroups map[string][]string) (SummaryAllResu
 		mergeModelBucket(modelBuckets, row.ModelName, row.BucketTs, value)
 	}
 
-	hotBuckets.Range(func(key, value any) bool {
-		k := key.(bucketKey)
-		if _, allowed := allowedChannels[k.channelID]; !allowed {
-			return true
-		}
-		if k.bucketTs < startTs || k.bucketTs > endTs {
-			return true
-		}
-		if _, ok := allowedModelGroups[k.model][k.group]; !ok {
-			return true
-		}
-		snap := value.(*atomicBucket).snapshot()
-		if snap.requestCount == 0 {
-			return true
-		}
+	for k, snap := range hot {
 		mergeModelTotals(totals, k.model, snap)
 		mergeModelBucket(modelBuckets, k.model, k.bucketTs, snap)
-		return true
-	})
+	}
 
 	models := make([]ModelSummary, 0, len(totals))
 	for name, total := range totals {

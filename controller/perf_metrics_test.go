@@ -20,6 +20,9 @@ import (
 
 func setupPerfMetricsControllerTest(t *testing.T) *gorm.DB {
 	t.Helper()
+	originalCache := cachedPerformanceQueries
+	cachedPerformanceQueries = newPerformanceQueryCache()
+	t.Cleanup(func() { cachedPerformanceQueries = originalCache })
 	originalDB, originalLogDB := model.DB, model.LOG_DB
 	originalMainType, originalLogType := common.MainDatabaseType(), common.LogDatabaseType()
 	originalRedis, originalMemory := common.RedisEnabled, common.MemoryCacheEnabled

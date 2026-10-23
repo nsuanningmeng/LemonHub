@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Failed to load performance data": "Không thể tải dữ liệu hiệu suất",
     "Processing finished": "Đã xử lý xong",
     "Processing finished with failures": "Đã xử lý xong, có lỗi gửi",
     "Processed: {{processed}}/{{total}}": "Đã xử lý: {{processed}}/{{total}}",

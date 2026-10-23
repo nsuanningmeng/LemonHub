@@ -48,13 +48,16 @@ import {
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { getPerfMetrics } from '@/features/performance-metrics/api'
+import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import {
   formatLatency,
   formatThroughput,
-  formatUptimePct,
-  getSuccessRateTextClass,
 } from '@/features/performance-metrics/lib/format'
+import {
+  formatSuccessRate,
+  successRateToneTextClass,
+  useSuccessRateConfig,
+} from '@/features/performance-metrics/lib/success-rate'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
@@ -176,63 +179,60 @@ function OverviewMetric(props: {
   )
 }
 
-function OverviewSummaryGrid(props: {
-  model: PricingModel
-  availableGroups: string[]
-}) {
+function OverviewSummaryGrid(props: { model: PricingModel }) {
   const { t } = useTranslation()
-  const metricsQuery = useQuery({
-    queryKey: ['perf-metrics', props.model.model_name],
-    queryFn: () => getPerfMetrics(props.model.model_name, 24),
+  const srConfig = useSuccessRateConfig()
+  const summaryQuery = useQuery({
+    queryKey: ['perf-metrics-summary', 24],
+    queryFn: () => getPerfMetricsSummary(24),
     staleTime: 60 * 1000,
     refetchOnMount: 'always',
+    retry: false,
   })
 
-  const groups = (metricsQuery.data?.data.groups ?? []).filter((group) =>
-    props.availableGroups.includes(group.group)
+  if (summaryQuery.isError) {
+    return (
+      <div
+        role='alert'
+        className='text-muted-foreground rounded-lg border p-6 text-center text-sm'
+      >
+        {t('Failed to load performance data')}
+      </div>
+    )
+  }
+  if (summaryQuery.isPending) {
+    return (
+      <div
+        role='status'
+        className='text-muted-foreground rounded-lg border p-6 text-center text-sm'
+      >
+        {t('Loading...')}
+      </div>
+    )
+  }
+
+  const summary = summaryQuery.data.data.models.find(
+    (model) => model.model_name === props.model.model_name
   )
-  const successRates = groups
-    .map((group) => group.success_rate)
-    .filter((rate) => Number.isFinite(rate))
-  const successRate =
-    successRates.length > 0
-      ? successRates.reduce((sum, rate) => sum + rate, 0) / successRates.length
-      : Number.NaN
-  const tpsValues = groups
-    .map((group) => group.avg_tps)
-    .filter((value) => value > 0)
-  const avgTps =
-    tpsValues.length > 0
-      ? tpsValues.reduce((sum, value) => sum + value, 0) / tpsValues.length
-      : 0
-  const latencyValues = groups
-    .map((group) => group.avg_latency_ms)
-    .filter((value) => value > 0)
-  const avgLatency =
-    latencyValues.length > 0
-      ? Math.round(
-          latencyValues.reduce((sum, value) => sum + value, 0) /
-            latencyValues.length
-        )
-      : 0
+  const successRate = summary?.success_rate ?? Number.NaN
 
   return (
     <div className='bg-muted/20 grid overflow-hidden rounded-lg border sm:grid-cols-3 sm:divide-x'>
       <OverviewMetric
         icon={Timer}
         label='TPS'
-        value={formatThroughput(avgTps)}
+        value={formatThroughput(summary?.avg_tps ?? Number.NaN)}
       />
       <OverviewMetric
         icon={Timer}
         label={t('Average latency')}
-        value={formatLatency(avgLatency)}
+        value={formatLatency(summary?.avg_latency_ms ?? Number.NaN)}
       />
       <OverviewMetric
         icon={HeartPulse}
         label={t('Success rate')}
-        value={formatUptimePct(successRate)}
-        valueClassName={getSuccessRateTextClass(successRate)}
+        value={formatSuccessRate(successRate, srConfig)}
+        valueClassName={successRateToneTextClass(successRate, srConfig)}
       />
     </div>
   )
@@ -1170,10 +1170,7 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
         </TabsList>
 
         <TabsContent value='overview' className='space-y-6 outline-none'>
-          <OverviewSummaryGrid
-            model={props.model}
-            availableGroups={availableGroups}
-          />
+          <OverviewSummaryGrid model={props.model} />
 
           <section className='bg-card/60 space-y-5 rounded-xl border p-4 shadow-sm'>
             <SectionTitle>{t('Pricing')}</SectionTitle>

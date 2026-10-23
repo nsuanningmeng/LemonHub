@@ -53,6 +53,8 @@ type SparklineSize = 'sm' | 'md'
 
 type UptimeSparklineProps = {
   series: UptimeDayPoint[]
+  /** Request-weighted aggregate; individual bars retain their bucket rates. */
+  overallRate?: number
   size?: SparklineSize
   showOverall?: boolean
   emptyLabel?: string
@@ -87,20 +89,27 @@ export function UptimeSparkline(props: UptimeSparklineProps) {
   const srConfig = useSuccessRateConfig()
   const size = props.size ?? 'md'
   const showOverall = props.showOverall ?? true
+  let overall = props.overallRate ?? Number.NaN
+  if (!Number.isFinite(overall) && props.series.length > 0) {
+    overall =
+      props.series.reduce((sum, point) => sum + point.uptime_pct, 0) /
+      props.series.length
+  }
 
   if (props.series.length === 0) {
-    // No data in the window. When configured, present it as 100% healthy
-    // (green) rather than a neutral em dash.
-    if (srConfig.noDataAsFull) {
+    // A measured aggregate remains valid even when its timeline is unavailable.
+    // Apply the no-data setting only when neither contains a measurement.
+    const resolved = resolveSuccessRate(overall, srConfig)
+    if (Number.isFinite(resolved)) {
       return (
         <span
           className={cn(
             'font-mono text-sm font-semibold tabular-nums',
-            successRateToneTextClass(100, srConfig),
+            successRateToneTextClass(resolved, srConfig),
             props.className
           )}
         >
-          {resolveSuccessRate(NaN, srConfig).toFixed(1)}%
+          {resolved.toFixed(1)}%
         </span>
       )
     }
@@ -110,9 +119,6 @@ export function UptimeSparkline(props: UptimeSparklineProps) {
       </span>
     )
   }
-
-  const overall =
-    props.series.reduce((s, p) => s + p.uptime_pct, 0) / props.series.length
 
   const containerHeight = size === 'sm' ? 'h-3.5' : 'h-5'
   const barWidth = size === 'sm' ? 'w-[3px]' : 'w-1'
@@ -185,26 +191,22 @@ export function UptimeStatusRow(props: {
   const { t } = useTranslation()
   const srConfig = useSuccessRateConfig()
   const summary = useMemo(() => aggregateUptime(props.series), [props.series])
-  const uptimeRate = props.series.length === 0 ? NaN : summary.uptime_pct
+  const uptimeRate = props.series.length === 0 ? Number.NaN : summary.uptime_pct
   const tone = successRateTone(uptimeRate, srConfig)
 
-  const StatusIcon =
-    tone === 'success'
-      ? CheckCircle2
-      : tone === 'destructive'
-        ? AlertCircle
-        : Activity
+  let StatusIcon = Activity
+  let statusLabel = t('No data available')
+  if (tone === 'success') {
+    StatusIcon = CheckCircle2
+    statusLabel = t('All systems operational')
+  } else if (tone === 'warning') {
+    statusLabel = t('Degraded performance recently')
+  } else if (tone === 'destructive') {
+    StatusIcon = AlertCircle
+    statusLabel = t('Significant outages detected')
+  }
 
   const statusColour = successRateToneTextClass(uptimeRate, srConfig)
-
-  const statusLabel =
-    tone === 'success'
-      ? t('All systems operational')
-      : tone === 'warning'
-        ? t('Degraded performance recently')
-        : tone === 'destructive'
-          ? t('Significant outages detected')
-          : t('No data available')
 
   return (
     <div

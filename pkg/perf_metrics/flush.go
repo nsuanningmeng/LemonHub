@@ -30,12 +30,15 @@ func flushCompletedBuckets() {
 			return true
 		}
 
-		bucket := value.(*atomicBucket)
+		persistenceMu.Lock()
+		defer persistenceMu.Unlock()
+		bucket := value.(*metricBucket)
 		drained := bucket.drain()
 		if drained.requestCount == 0 {
 			deleteOldEmptyBucket(k, key)
 			return true
 		}
+		persistenceRevision++
 
 		err := model.UpsertPerfMetric(&model.PerfMetric{
 			ChannelID:      k.channelID,
