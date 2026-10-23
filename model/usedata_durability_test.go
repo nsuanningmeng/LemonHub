@@ -30,7 +30,7 @@ func TestQuotaDataFlushRetainsWholeBatchAfterWriteFailure(t *testing.T) {
 	truncateTables(t)
 	resetQuotaDataDurabilityState(t)
 	for _, id := range []int{8201, 8202} {
-		LogQuotaData(QuotaDataLogParams{UserID: id, Username: "durability", ModelName: "test", CreatedAt: 3600, Quota: 7, TokenUsed: 11})
+		LogQuotaData(QuotaDataLogParams{UserID: id, Username: "durability", ModelName: "test", CreatedAt: 3600, Quota: 7, TokenUsed: 11, CacheReadTokens: 3, CacheCreationTokens: 5})
 	}
 	forced := errors.New("quota data second insert rejected")
 	writes := 0
@@ -61,6 +61,8 @@ func TestQuotaDataFlushRetainsWholeBatchAfterWriteFailure(t *testing.T) {
 		assert.Equal(t, 1, row.Count)
 		assert.Equal(t, 7, row.Quota)
 		assert.Equal(t, int64(11), row.TokenUsed)
+		assert.Equal(t, int64(3), row.CacheReadTokens)
+		assert.Equal(t, int64(5), row.CacheCreationTokens)
 	}
 }
 

@@ -51,7 +51,7 @@ func TestMySQLQuotaDataFlushDurability(t *testing.T) {
 	for _, operation := range []string{"INSERT", "UPDATE"} {
 		t.Run(operation, func(t *testing.T) {
 			for _, id := range []int{8201, 8202} {
-				LogQuotaData(QuotaDataLogParams{UserID: id, Username: "native-durability", CreatedAt: 3600, Quota: 7, TokenUsed: 5000000000})
+				LogQuotaData(QuotaDataLogParams{UserID: id, Username: "native-durability", CreatedAt: 3600, Quota: 7, TokenUsed: 5000000000, CacheReadTokens: 3000000000, CacheCreationTokens: 4000000000})
 			}
 			require.NoError(t, db.Exec("CREATE TRIGGER quota_data_reject BEFORE "+operation+" ON quota_data FOR EACH ROW BEGIN IF NEW.user_id = 8202 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'controlled dashboard write rejection'; END IF; END").Error)
 			t.Cleanup(func() { assert.NoError(t, db.Exec("DROP TRIGGER IF EXISTS quota_data_reject").Error) })
@@ -66,6 +66,8 @@ func TestMySQLQuotaDataFlushDurability(t *testing.T) {
 					assert.Equal(t, 1, row.Count)
 					assert.Equal(t, 7, row.Quota)
 					assert.Equal(t, int64(5000000000), row.TokenUsed)
+					assert.Equal(t, int64(3000000000), row.CacheReadTokens)
+					assert.Equal(t, int64(4000000000), row.CacheCreationTokens)
 				}
 			}
 			CacheQuotaDataLock.Lock()
@@ -84,6 +86,8 @@ func TestMySQLQuotaDataFlushDurability(t *testing.T) {
 				assert.Equal(t, multiplier, row.Count)
 				assert.Equal(t, 7*multiplier, row.Quota)
 				assert.Equal(t, int64(5000000000)*int64(multiplier), row.TokenUsed)
+				assert.Equal(t, int64(3000000000)*int64(multiplier), row.CacheReadTokens)
+				assert.Equal(t, int64(4000000000)*int64(multiplier), row.CacheCreationTokens)
 			}
 		})
 	}
