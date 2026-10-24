@@ -155,8 +155,6 @@ describe('model card performance status', () => {
     renderCard()
 
     expect(await screen.findByTitle('Success rate: 0.0%')).toBeInTheDocument()
-    expect(
-      screen.queryByTitle('Success rate: 100.0%')
-    ).not.toBeInTheDocument()
+    expect(screen.queryByTitle('Success rate: 100.0%')).not.toBeInTheDocument()
   })
 })
