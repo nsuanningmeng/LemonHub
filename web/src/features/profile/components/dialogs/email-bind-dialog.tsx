@@ -21,10 +21,12 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { CaptchaWidget } from '@/components/captcha'
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useCaptcha } from '@/features/auth/hooks/use-captcha'
 import { useCountdown } from '@/hooks/use-countdown'
 
 import { sendEmailVerification, bindEmail } from '../../api'
@@ -51,6 +53,14 @@ export function EmailBindDialog({
   const [sendingCode, setSendingCode] = useState(false)
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
+  const [captchaWidgetKey, setCaptchaWidgetKey] = useState(0)
+  const {
+    isCaptchaEnabled,
+    captchaProvider,
+    captchaToken,
+    setCaptchaToken,
+    validateCaptcha,
+  } = useCaptcha()
   const {
     secondsLeft,
     isActive,
@@ -59,16 +69,21 @@ export function EmailBindDialog({
   } = useCountdown({
     initialSeconds: 60,
   })
+  const captchaReady = !isCaptchaEnabled || Boolean(captchaToken)
+  let sendLabel = t('Send')
+  if (sendingCode) sendLabel = t('Sending...')
+  if (isActive) sendLabel = `${secondsLeft}s`
 
   const handleSendCode = async () => {
     if (!email || !email.includes('@')) {
       toast.error(t('Please enter a valid email address'))
       return
     }
+    if (!validateCaptcha()) return
 
     try {
       setSendingCode(true)
-      const response = await sendEmailVerification(email)
+      const response = await sendEmailVerification(email, captchaToken)
 
       if (response.success) {
         toast.success(t('Verification code sent! Please check your email.'))
@@ -76,10 +91,13 @@ export function EmailBindDialog({
       } else {
         toast.error(response.message || t('Failed to send verification code'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to send verification code'))
     } finally {
       setSendingCode(false)
+      // Every send attempt may consume the token, including failed requests.
+      setCaptchaToken('')
+      setCaptchaWidgetKey((current) => current + 1)
     }
   }
 
@@ -100,11 +118,12 @@ export function EmailBindDialog({
         // Reset form
         setEmail('')
         setCode('')
+        setCaptchaToken('')
         resetCountdown()
       } else {
         toast.error(response.message || t('Failed to bind email'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to bind email'))
     } finally {
       setLoading(false)
@@ -112,12 +131,13 @@ export function EmailBindDialog({
   }
 
   const handleOpenChange = (open: boolean) => {
-    if (!loading) {
+    if (!loading && !sendingCode) {
       onOpenChange(open)
       if (!open) {
         // Reset form when closing
         setEmail('')
         setCode('')
+        setCaptchaToken('')
         resetCountdown()
       }
     }
@@ -137,6 +157,9 @@ export function EmailBindDialog({
       }
       contentClassName='sm:max-w-md'
       contentHeight='auto'
+      bodyOverflow={
+        isCaptchaEnabled && captchaProvider === 'geetest' ? 'visible' : 'auto'
+      }
       bodyClassName='space-y-4'
       footer={
         <>
@@ -144,14 +167,14 @@ export function EmailBindDialog({
             type='button'
             variant='outline'
             onClick={() => handleOpenChange(false)}
-            disabled={loading}
+            disabled={loading || sendingCode}
           >
             {t('Cancel')}
           </Button>
           <Button
             type='button'
             onClick={handleBind}
-            disabled={loading || !email || !code}
+            disabled={loading || sendingCode || !email || !code}
           >
             {loading && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {loading ? t('Binding...') : t('Bind Email')}
@@ -172,6 +195,14 @@ export function EmailBindDialog({
           />
         </div>
 
+        {open && isCaptchaEnabled && (
+          <CaptchaWidget
+            key={captchaWidgetKey}
+            onVerify={setCaptchaToken}
+            onExpire={() => setCaptchaToken('')}
+          />
+        )}
+
         <div className='space-y-2'>
           <Label htmlFor='code'>{t('Verification Code')}</Label>
           <div className='flex gap-2'>
@@ -187,13 +218,11 @@ export function EmailBindDialog({
               type='button'
               variant='outline'
               onClick={handleSendCode}
-              disabled={sendingCode || isActive || !email}
+              disabled={
+                loading || sendingCode || isActive || !email || !captchaReady
+              }
             >
-              {isActive
-                ? `${secondsLeft}s`
-                : sendingCode
-                  ? t('Sending...')
-                  : t('Send')}
+              {sendLabel}
             </Button>
           </div>
         </div>

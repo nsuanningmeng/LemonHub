@@ -18,6 +18,15 @@
 
 接口依据：[服务端 API](https://docs.geetest.com/gt4/apirefer/api/server)、[快捷集成指南](https://docs.geetest.com/gt4/quick_integration_guide)、[服务端 FAQ](https://docs.geetest.com/gt4/faq/server)。
 
+## 邮箱绑定与前端凭据生命周期
+
+- 登录后的绑定/修改邮箱也使用受保护的 `/api/verification` 接口；登录状态不代替本次人机验证。弹窗复用 `useCaptcha` 与 `CaptchaWidget`，通过 `turnstile` 参数传递当前渠道的完整凭据。
+- 发送按钮在验证完成前不可用；凭据过期后再次禁用。每次发送请求结束（包括业务拒绝和网络失败）都清空凭据并重新创建组件，关闭弹窗也清空凭据。发送过程中禁止关闭及提交绑定，避免旧请求结果污染重新打开的表单。
+- `/api/oauth/email/bind` 继续由登录认证、站点约束及邮件验证码校验保护，不要求复用已被发送接口消费的人机验证凭据。前端禁用状态只是交互约束，服务端校验始终是安全边界。
+- GeeTest 浮层仅在所在邮箱弹窗放开 overflow，不改变通用弹窗及其他渠道的滚动行为。Turnstile 每个组件实例独立订阅共享脚本的加载事件，并在卸载时解绑，防止脚本尚未加载时关闭重开导致空白。
+
 ## 回归验证
 
 `go test ./service/captcha` 覆盖签名表单、首尾空白、旧版凭据兼容、过时 ID、脱敏 Key、缺失参数、极验明确拒绝及现有断网容灾行为。前端设置测试覆盖保存配置后刷新公开状态。
+
+前端 `email-bind-captcha.test.tsx` 覆盖完整凭据编码、单次消费、过期、失败重试、关闭重开、发送中状态保护、关闭验证配置及浮层裁切；Turnstile 组件测试覆盖脚本延迟加载与多实例。浏览器回归使用模拟 SDK 和 HTTP 验证交互与容器布局，不代表生产第三方验证服务已经实测。
