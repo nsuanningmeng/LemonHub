@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
@@ -99,7 +100,7 @@ func TestClaudeToolTokenUnknownObjectsRemainOpaque(t *testing.T) {
 func TestClaudeTokenMetaPreservesExistingToolAndSystemText(t *testing.T) {
 	var req ClaudeRequest
 	require.NoError(t, kitutil.UnmarshalJsonStr(`{"model":"m","system":"system text","messages":[{"role":"assistant","content":[{"type":"text","text":"assistant text"},{"type":"tool_use","name":"run","input":{"query":"text"}}]},{"role":"user","content":"user text"}],"tools":[{"name":"search","description":"description","input_schema":{"type":"object"}}]}`, &req))
-	req.Tools = []any{Tool{Name: "search", Description: "description", InputSchema: map[string]any{"type": "object"}}}
+	req.Tools = []any{Tool{Name: "search", Description: "description", InputSchema: json.RawMessage(`{"type":"object"}`)}}
 	meta := req.GetTokenCountMeta()
 	assert.Equal(t, "system text\nassistant\nassistant text\nrun\n{\"query\":\"text\"}\nuser\nuser text\nsearch\ndescription\n{\"type\":\"object\"}", meta.CombineText)
 	assert.Equal(t, 2, meta.MessagesCount)

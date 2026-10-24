@@ -2365,3 +2365,7 @@ func TestSettle_NonPerCallBilling_AppliesAdaptorAdjustment(t *testing.T) {
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 }
+
+func (s *taskSubmissionBillingRecorder) ReserveBeforeSubmit(targetQuota int) error {
+	return s.Reserve(targetQuota)
+}

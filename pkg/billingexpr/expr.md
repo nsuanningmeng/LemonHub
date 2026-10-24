@@ -2,15 +2,15 @@
 
 ## Design Philosophy
 
-**One expression, one truth.** A single expression string completely defines a model's billing logic — pricing, tier conditions, cache/image/audio differentiation, time-based discounts, request-aware multipliers — all in one line. No scattered configuration, no implicit rules, no magic numbers.
+**One expression, one truth.** A single expression string completely defines a model's billing logic — pricing, tier conditions, cache/image/audio differentiation, time-based discounts, request-aware multipliers — all in one line. No scattered price configuration. Provider cache-lifetime fallback rules are defined below and applied before expression evaluation.
 
 The expression is the billing contract between the administrator and the system. What you write is what gets executed. The system's job is to evaluate it faithfully, not to interpret it.
 
 ### Core Principles
 
-1. **Expression is self-contained** — The expression string alone determines billing. No external ratio tables, no implicit completion multipliers, no hidden conversion factors. Given the same token counts and request context, the same expression always produces the same cost.
+1. **Expression is self-contained** — The expression string alone determines billing. No external ratio tables or implicit completion multipliers. Cache lifetimes use the explicit normalization rules below when their variables are omitted. Given the same token counts and request context, the same expression always produces the same cost.
 
-2. **Variables are opt-in** — `p` (prompt) and `c` (completion) are the base. Cache (`cr`, `cc`, `cc1h`), image (`img`), and audio (`ai`, `ao`) variables are optional. If omitted, those tokens are included in `p`/`c` and priced at their rate. The system automatically detects which variables the expression uses (via AST introspection) and adjusts token normalization accordingly.
+2. **Variables are opt-in** — `p` (prompt) and `c` (completion) are the base. Cache (`cr`, `cc`, `cc1h`, `cc12h`), image (`img`), and audio (`ai`, `ao`) variables are optional. If omitted, those tokens are included in `p`/`c`; long-lived cache writes use the documented fallback multipliers. The system automatically detects which variables the expression uses (via AST introspection) and adjusts token normalization accordingly.
 
 3. **Prices are real prices** — Expression coefficients are actual $/1M tokens prices as published by providers. No ratio conversion, no `/2` convention. `p * 2.5` means $2.50 per 1M prompt tokens.
 
@@ -33,8 +33,9 @@ Powered by [expr-lang/expr](https://github.com/expr-lang/expr). Expressions are 
 | `p` | 输入 token 数（**计价用**）。**自动排除**表达式中单独计价的子类别（见下方说明） |
 | `len` | 输入上下文总长度（**条件判断用**）。不受自动排除影响，始终反映完整输入长度。非 Claude：等于原始 `prompt_tokens`；Claude：等于文本输入 + 缓存读取 + 缓存创建 |
 | `cr` | 缓存命中（读取）token 数 |
-| `cc` | 缓存创建 token 数（Claude 5分钟 TTL / 通用） |
+| `cc` | 缓存创建计价 token 数（Claude 5分钟 / OpenAI 30分钟 / 通用；缺少长缓存价格时包括折算量） |
 | `cc1h` | 缓存创建 token 数 — 1小时 TTL（Claude 专用） |
+| `cc12h` | 缓存创建 token 数 — 12小时 TTL（OpenAI 专用） |
 | `img` | 图片输入 token 数 |
 | `ai` | 音频输入 token 数 |
 
@@ -45,6 +46,12 @@ Powered by [expr-lang/expr](https://github.com/expr-lang/expr). Expressions are 
 | `c` | 输出 token 数。**自动排除**表达式中单独计价的子类别（见下方说明） |
 | `img_o` | 图片输出 token 数 |
 | `ao` | 音频输出 token 数 |
+
+#### 缓存生命周期与缺省价格
+
+OpenAI 的 `cache_write_tokens_details.ttl_12h_tokens` 是总 `cache_write_tokens` 的子集；负数按零处理，12小时子集最多取总写入量。`cc12h` 有独立价格时，从普通输入和短缓存中移出相同的实际 token 数，避免重复计费。未使用 `cc12h` 时，每个12小时写入折算为 **2 个 `cc`**；连 `cc` 也未使用时，折算为 **2 个 `p`**。Claude 的1小时缓存同理，在未使用 `cc1h` 时按 **1.6 个 `cc`** 折算；未使用 `cc` 时再并入 `p`。短缓存未单独定价时按原始数量并入 `p`，Claude 缓存读取未单独定价时也并入 `p`。
+
+Claude 只报告缓存写入总数或不完整5分钟/1小时明细时，未标明的余量计入5分钟短缓存。`len` 始终使用实际上下文 token 数，**不包含1.6/2倍折算**；输入、用量日志保留原始数量。现有表达式文本、数据库定价配置和历史账单不自动重写，但升级后新的请求在缺少缓存变量时可能因上述缺省计价而改变扣费。需要显式免费时可在表达式中保留对应变量并乘零。
 
 #### `p` 和 `c` 的自动排除机制
 
@@ -73,7 +80,7 @@ Gemini 的缓存与输入模态可能重叠：`promptTokensDetails` 包含缓存
 
 缺少缓存模态明细时，不按比例猜测部分缓存属于哪种模态。只有原始 prompt 全部命中缓存、计数自洽时，才能确定原始 prompt 的全部媒体都已缓存；额外 `toolUsePromptTokensDetails` 仍作为新输入。部分缓存没有模态明细或明细相互冲突时保留原来的模态计价，无法精确去除未知交集。
 
-> **注意：** 这个自动排除仅针对 GPT/OpenAI 格式的 API（prompt_tokens 包含所有子类别）。Claude 格式的 API（input_tokens 本身就只包含纯文本）不做任何减法。系统根据上游返回格式自动判断，表达式作者无需关心。
+> **注意：** 这个自动排除仅针对 GPT/OpenAI 格式的 API（prompt_tokens 包含所有子类别）。Claude 格式的 API（input_tokens 本身就只包含纯文本）不做减法，但未单独定价的缓存按上一节加回输入。系统根据上游返回格式自动判断，表达式作者无需关心。
 
 ### Built-in Functions
 
@@ -294,6 +301,7 @@ cache write / output. A dash means no separate cache-write price.
   Fast request-rule group. Above the threshold, the template
   does not apply a Fast surcharge. GPT-5.4 explicitly falls back to Standard;
   GPT-5.5's published Fast table excludes these requests.
+- GPT-5.6 Sol and GPT-6 presets separately price `cc12h` at twice their listed cache-write price (GPT-6 Astra: $25 / $50 above 272K). Selecting updated presets is explicit; stored expressions are not replaced.
 - GPT-5.6 Sol and GPT-6 presets separately price `cc`, populated from OpenAI
   `cache_write_tokens`. Normalization subtracts `cc` from `p` once; `len` remains
   the full input length.

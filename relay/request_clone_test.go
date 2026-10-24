@@ -177,11 +177,15 @@ func TestRequestDeepCopyOtherProtocols(t *testing.T) {
 		assertRequestCloneIsolation(t, `{
 			"model":"gpt-4.1","max_tokens":0,"stream":false,"thinking_budget":128,
 			"messages":[{"role":"assistant","content":[{"type":"text","text":"hello"}],"tool_calls":[{"id":"call_1"}]}],
-			"response_format":{"type":"json_schema","json_schema":{"strict":false}}
+			"response_format":{"type":"json_schema","json_schema":{"strict":false}},
+ "prompt_cache_options":{"ttl":"12h"},
+ "tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]
 		}`, func(clone *dto.GeneralOpenAIRequest) {
 			clone.Messages[0].ToolCalls[0] = '!'
 			clone.Messages[0].Content.([]any)[0].(map[string]any)["text"] = "changed"
 			clone.ResponseFormat.JsonSchema[0] = '!'
+			clone.PromptCacheOptions[0] = '!'
+			clone.Tools[0].Function.Parameters[0] = '!'
 			*clone.MaxTokens = 1
 			*clone.Stream = true
 		})
@@ -194,7 +198,7 @@ func TestRequestDeepCopyOtherProtocols(t *testing.T) {
 			"metadata":{"user_id":"test"},"messages":[{"role":"user","content":"hello"}]
 		}`, func(clone *dto.ClaudeRequest) {
 			clone.Metadata[0] = '!'
-			clone.Tools.([]any)[0].(map[string]any)["input_schema"].(map[string]any)["type"] = "array"
+			clone.Tools.(json.RawMessage)[0] = '!'
 			clone.Messages[0].Content = "changed"
 			*clone.Temperature = 1
 		})

@@ -226,6 +226,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 		comment bool
 	}
 	dataChan := make(chan streamRecord, 10)
+	sr := newStreamResult(info.StreamStatus)
 
 	wg.Add(1)
 	gopool.Go(func() {
@@ -237,7 +238,6 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			stop()
 			wg.Done()
 		}()
-		sr := newStreamResult(info.StreamStatus)
 		for record := range dataChan {
 			sr.reset()
 			func() {
@@ -348,6 +348,10 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			}
 		}
 
+		// Closing the upstream body during cleanup must not create a false error.
+		if ctx.Err() != nil {
+			return
+		}
 		if err := scanner.Err(); err != nil {
 			if err != io.EOF {
 				logger.LogError(c, "scanner error: "+err.Error())
@@ -374,7 +378,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	// A callback may confirm queued protocol completion during cancellation
 	// cleanup. Readers and callbacks are joined before correcting diagnostics.
 	outcome := info.StreamOutcome()
-	if outcome.UpstreamCompleted && !outcome.UpstreamFailed {
+	if sr.done && outcome.UpstreamCompleted && !outcome.UpstreamFailed && !info.StreamStatus.HasErrors() && !c.GetBool("relay_stream_write_failed") {
 		info.StreamStatus.CorrectCompletedCancellationAfterJoin()
 	}
 	if info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors() {

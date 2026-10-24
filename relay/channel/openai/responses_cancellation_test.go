@@ -246,6 +246,7 @@ func TestResponsesNativeNonCancellationWriteFailurePreservesEndpointBilling(t *t
 	assert.True(t, c.GetBool("relay_stream_write_failed"))
 	assert.NoError(t, c.Request.Context().Err())
 	assert.True(t, info.StreamOutcome().UpstreamCompleted)
+	assert.NotEqual(t, relaycommon.StreamEndReasonDone, info.StreamStatus.EndReason, "failed delivery must not be recorded as delivered completion")
 }
 func TestResponsesNativeCompletedImageCancellationAndIncompleteControl(t *testing.T) {
 	for _, kind := range []string{"completed-duplicate", "partial", "empty", "source-incomplete"} {

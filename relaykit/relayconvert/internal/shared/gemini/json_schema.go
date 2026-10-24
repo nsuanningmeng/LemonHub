@@ -16,6 +16,17 @@ func FunctionSchema(schema any, supportsJSONSchema bool) (typed, full any, err e
 	if schema == nil {
 		return nil, nil, nil
 	}
+	if raw, ok := schema.(json.RawMessage); ok {
+		if len(raw) == 0 || kitutil.GetJsonType(raw) == "null" {
+			return nil, nil, nil
+		}
+		if supportsJSONSchema {
+			return nil, raw, nil
+		}
+		if err := kitutil.Unmarshal(raw, &schema); err != nil {
+			return nil, nil, unsupportedJSONSchema()
+		}
+	}
 	if supportsJSONSchema {
 		return nil, schema, nil
 	}

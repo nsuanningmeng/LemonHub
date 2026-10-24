@@ -9,6 +9,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -31,12 +32,15 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	p := nonNegativeTokenCount(usage.PromptTokens)
 	c := nonNegativeTokenCount(usage.CompletionTokens)
 	cr := nonNegativeTokenCount(usage.PromptTokensDetails.CachedTokens)
-	cc5m := nonNegativeTokenCount(usage.PromptTokensDetails.CacheCreationTokensTotal())
+	cc := nonNegativeTokenCount(usage.PromptTokensDetails.CacheCreationTokensTotal())
 	cc1h := float64(0)
+	cc12h := float64(0)
 
 	if usage.UsageSemantic == "anthropic" {
 		cc1h = nonNegativeTokenCount(usage.ClaudeCacheCreation1hTokens)
-		cc5m = nonNegativeTokenCount(usage.ClaudeCacheCreation5mTokens)
+		// Unknown TTL writes belong to the short-lived category. Compute in
+		// nonnegative floats so malicious int counters cannot overflow here.
+		cc = max(nonNegativeTokenCount(usage.ClaudeCacheCreation5mTokens), cc-cc1h)
 	}
 
 	img := nonNegativeTokenCount(usage.PromptTokensDetails.ImageTokens)
@@ -57,15 +61,40 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	// Claude: input_tokens is text-only, so add cache read + cache creation.
 	inputLen := p
 	if isClaudeUsageSemantic {
-		inputLen = p + cr + cc5m + cc1h
+		inputLen = p + cr + cc + cc1h
 	}
 
-	if !isClaudeUsageSemantic {
+	if isClaudeUsageSemantic {
+		if !usedVars["cr"] {
+			p += cr
+		}
+		if !usedVars["cc1h"] {
+			cc += cc1h * hosttypes.ClaudeCacheCreation1hMultiplier
+			cc1h = 0
+		}
+		if !usedVars["cc"] {
+			p += cc
+			cc = 0
+		}
+	} else {
 		if usedVars["cr"] {
 			p -= cr
 		}
+		cc12h = nonNegativeTokenCount(usage.PromptTokensDetails.CacheWrite12hTokens())
+		cc -= cc12h
+		ccTokens := cc
+		if usedVars["cc12h"] {
+			p -= cc12h
+		} else {
+			ccTokens += cc12h
+			cc += cc12h * hosttypes.OpenAICacheCreation12hMultiplier
+			cc12h = 0
+		}
 		if usedVars["cc"] {
-			p -= cc5m
+			p -= ccTokens
+		} else {
+			p += cc - ccTokens
+			cc = 0
 		}
 		if usedVars["cc1h"] {
 			p -= cc1h
@@ -94,16 +123,17 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	}
 
 	return billingexpr.TokenParams{
-		P:    p,
-		C:    c,
-		Len:  inputLen,
-		CR:   cr,
-		CC:   cc5m,
-		CC1h: cc1h,
-		Img:  img,
-		ImgO: imgO,
-		AI:   ai,
-		AO:   ao,
+		P:     p,
+		C:     c,
+		Len:   inputLen,
+		CR:    cr,
+		CC:    cc,
+		CC1h:  cc1h,
+		CC12h: cc12h,
+		Img:   img,
+		ImgO:  imgO,
+		AI:    ai,
+		AO:    ao,
 	}
 }
 

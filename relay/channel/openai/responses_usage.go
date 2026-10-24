@@ -97,9 +97,9 @@ func (a *responsesUsageAccumulator) observeResponse(response *dto.OpenAIResponse
 		usage.PromptTokens = usage.InputTokens
 		usage.CompletionTokens = usage.OutputTokens
 		if usage.InputTokensDetails != nil {
-			details := *usage.InputTokensDetails
+			details := usage.InputTokensDetails.Clone()
 			usage.InputTokensDetails = &details
-			usage.PromptTokensDetails = details
+			usage.PromptTokensDetails = details.Clone()
 		}
 		if usage.OutputTokensDetails != nil {
 			details := *usage.OutputTokensDetails

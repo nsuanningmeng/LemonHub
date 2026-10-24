@@ -21,4 +21,8 @@ type BillingSettler interface {
 
 	// Reserve 将预扣额度补到目标值；若目标值不高于当前预扣额度则不做任何事。
 	Reserve(targetQuota int) error
+
+	// ReserveBeforeSubmit raises the reservation before contacting an upstream;
+	// insufficient available quota must reject the attempt instead of creating debt.
+	ReserveBeforeSubmit(targetQuota int) error
 }

@@ -74,6 +74,7 @@ type GeneralOpenAIRequest struct {
 	Store json.RawMessage `json:"store,omitempty"`
 	// Used by OpenAI to cache responses for similar requests to optimize your cache hit rates. Replaces the user field
 	PromptCacheKey       string          `json:"prompt_cache_key,omitempty"`
+	PromptCacheOptions   json.RawMessage `json:"prompt_cache_options,omitempty"`
 	PromptCacheRetention json.RawMessage `json:"prompt_cache_retention,omitempty"`
 	LogitBias            json.RawMessage `json:"logit_bias,omitempty"`
 	Metadata             json.RawMessage `json:"metadata,omitempty"`
@@ -195,7 +196,7 @@ func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
 				texts = append(texts, tool.Function.Description)
 			}
 			if tool.Function.Parameters != nil {
-				texts = append(texts, fmt.Sprintf("%v", tool.Function.Parameters))
+				texts = append(texts, string(tool.Function.Parameters))
 			}
 		}
 		//toolTokens := CountTokenInput(countStr, request.Model)
@@ -329,11 +330,26 @@ type ToolCallRequest struct {
 }
 
 type FunctionRequest struct {
-	Strict      *bool  `json:"strict,omitempty"`
-	Description string `json:"description,omitempty"`
-	Name        string `json:"name"`
-	Parameters  any    `json:"parameters,omitempty"`
-	Arguments   string `json:"arguments,omitempty"`
+	Strict      *bool           `json:"strict,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Name        string          `json:"name"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+	Arguments   string          `json:"arguments,omitempty"`
+}
+
+// UnmarshalJSON leaves a null parameters value out, as the former decoded
+// value did.
+func (f *FunctionRequest) UnmarshalJSON(data []byte) error {
+	type functionFields FunctionRequest
+	var fields functionFields
+	if err := kitutil.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if kitutil.GetJsonType(fields.Parameters) == "null" {
+		fields.Parameters = nil
+	}
+	*f = FunctionRequest(fields)
+	return nil
 }
 
 type StreamOptions struct {

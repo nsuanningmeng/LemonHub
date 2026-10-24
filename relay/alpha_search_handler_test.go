@@ -175,3 +175,7 @@ func TestDeepSeekToolsHelper(t *testing.T) {
 		})
 	}
 }
+
+func (s *recordedSettlement) ReserveBeforeSubmit(targetQuota int) error {
+	return s.Reserve(targetQuota)
+}

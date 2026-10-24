@@ -446,3 +446,16 @@ func mustStreamChunks(t *testing.T, state *ResponsesToChatStreamState, event *dt
 	require.NoError(t, err)
 	return chunks
 }
+
+func TestResponsesToChatPreservesDetachedCacheWriteLifetime(t *testing.T) {
+	source := &dto.Usage{InputTokens: 1000, InputTokensDetails: &dto.InputTokenDetails{CacheWriteTokens: 300, CacheWriteTokensDetails: &dto.CacheWriteTokenDetails{TTL30mTokens: 100, TTL12hTokens: 200}}}
+	response := &dto.OpenAIResponsesResponse{ID: "resp-cache", Usage: source}
+	chat, usage, err := ResponsesResponseToChatCompletionsResponse(response, "chat-cache")
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	assert.Equal(t, 200, chat.Usage.PromptTokensDetails.CacheWrite12hTokens())
+	require.NotNil(t, usage.BillingUsage)
+	source.InputTokensDetails.CacheWriteTokensDetails.TTL12hTokens = 1
+	assert.Equal(t, 200, usage.PromptTokensDetails.CacheWrite12hTokens())
+	assert.Equal(t, 200, usage.BillingUsage.OpenAIUsage.InputTokensDetails.CacheWrite12hTokens())
+}

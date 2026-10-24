@@ -1,6 +1,7 @@
 package oairesponses
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -38,14 +39,20 @@ func filterGeminiResponsesTools(raw []byte) ([]byte, error) {
 		return raw, nil
 	}
 
-	var tools []map[string]any
+	var tools []json.RawMessage
 	if err := kitutil.Unmarshal(raw, &tools); err != nil {
 		return nil, err
 	}
 
-	filtered := make([]map[string]any, 0, len(tools))
+	filtered := make([]json.RawMessage, 0, len(tools))
 	for _, tool := range tools {
-		if strings.TrimSpace(kitutil.Interface2String(tool["type"])) != "function" {
+		var fields struct {
+			Type string `json:"type"`
+		}
+		if err := kitutil.Unmarshal(tool, &fields); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(fields.Type) != "function" {
 			continue
 		}
 		filtered = append(filtered, tool)

@@ -43,9 +43,11 @@ func TestChatCompletionsRequestToResponsesRequestPreservesPromptCacheKey(t *test
 	t.Run("present", func(t *testing.T) {
 		key := "session-\"quoted\"\\path\n世界"
 		got, err := ChatCompletionsRequestToResponsesRequest(&dto.GeneralOpenAIRequest{
-			Model:          "gpt-test",
-			Messages:       []dto.Message{{Role: "user", Content: "hello"}},
-			PromptCacheKey: key,
+			Model:                "gpt-test",
+			Messages:             []dto.Message{{Role: "user", Content: "hello"}},
+			PromptCacheKey:       key,
+			PromptCacheOptions:   json.RawMessage(`{"ttl":"12h"}`),
+			PromptCacheRetention: json.RawMessage(`"24h"`),
 		})
 		require.NoError(t, err)
 
@@ -56,6 +58,8 @@ func TestChatCompletionsRequestToResponsesRequestPreservesPromptCacheKey(t *test
 		encoded, err := kitutil.Marshal(got)
 		require.NoError(t, err)
 		assert.Equal(t, key, gjson.GetBytes(encoded, "prompt_cache_key").String())
+		assert.Equal(t, "12h", gjson.GetBytes(encoded, "prompt_cache_options.ttl").String())
+		assert.Equal(t, "24h", gjson.GetBytes(encoded, "prompt_cache_retention").String())
 	})
 
 	t.Run("absent", func(t *testing.T) {

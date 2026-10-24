@@ -287,7 +287,14 @@ func updateSunoTaskGroup(ctx context.Context, ch *model.Channel, key string, tas
 	if adaptor == nil {
 		return errors.New("adaptor not found")
 	}
-	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: ch.GetBaseURL(), ApiKey: key, ChannelType: ch.Type}})
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelBaseUrl:  ch.GetBaseURL(),
+		ApiKey:          key,
+		ChannelType:     ch.Type,
+		ChannelId:       ch.Id,
+		ChannelSetting:  ch.GetSetting(),
+		HeadersOverride: ch.GetHeaderOverride(),
+	}})
 	proxy := ch.GetSetting().Proxy
 	resp, err := adaptor.FetchTask(ch.GetBaseURL(), key, map[string]any{
 		"ids": taskIds,
@@ -501,7 +508,14 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if err != nil {
 		return err
 	}
-	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: baseURL, ApiKey: key, ChannelType: ch.Type}})
+	adaptor.Init(&relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
+		ChannelBaseUrl:  baseURL,
+		ApiKey:          key,
+		ChannelType:     ch.Type,
+		ChannelId:       ch.Id,
+		ChannelSetting:  ch.GetSetting(),
+		HeadersOverride: ch.GetHeaderOverride(),
+	}})
 	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
 		"task_id": task.GetUpstreamTaskID(),
 		"action":  task.Action,
@@ -515,6 +529,31 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
 
+	return ApplyVideoTaskResult(ctx, adaptor, task, responseBody)
+}
+
+// ApplyVideoTaskResult shares the polling state transition and billing path with
+// realtime queries. Only the winner of the persisted transition may bill it.
+func ApplyVideoTaskResult(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, responseBody []byte) (resultErr error) {
+	if task == nil {
+		return fmt.Errorf("task is nil")
+	}
+	if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure {
+		// A realtime read of historical terminal data must not charge or refund
+		// it again, including records predating the billing ledger.
+		return nil
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	original := *task
+	defer func() {
+		if resultErr != nil {
+			*task = original
+		}
+	}()
+	taskId := task.GetUpstreamTaskID()
+	var err error
 	logger.LogDebug(ctx, "updateVideoSingleTask response: %s", responseBody)
 
 	snap := task.Snapshot()
@@ -533,6 +572,10 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		task.Data = t.Data
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+	}
+
+	if taskResult == nil {
+		return fmt.Errorf("empty task result for %s", taskId)
 	}
 
 	task.Data = redactVideoResponseBody(responseBody)
@@ -617,17 +660,16 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if isDone && snap.Status != task.Status {
 		won, err := task.UpdateWithStatus(snap.Status)
 		if err != nil {
-			logger.LogError(ctx, fmt.Sprintf("UpdateWithStatus failed for task %s: %s", task.TaskID, err.Error()))
-			shouldRefund = false
-			shouldSettle = false
-		} else if !won {
-			logger.LogWarn(ctx, fmt.Sprintf("Task %s CAS lost or no-op update, skip billing", task.TaskID))
-			shouldRefund = false
-			shouldSettle = false
+			return fmt.Errorf("update task %s: %w", task.TaskID, err)
+		}
+		if !won {
+			return fmt.Errorf("task %s status changed concurrently", task.TaskID)
 		}
 	} else if !snap.Equal(task.Snapshot()) {
-		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
-			logger.LogError(ctx, fmt.Sprintf("Failed to update task %s: %s", task.TaskID, err.Error()))
+		if won, err := task.UpdateWithStatus(snap.Status); err != nil {
+			return fmt.Errorf("update task %s: %w", task.TaskID, err)
+		} else if !won {
+			return fmt.Errorf("task %s status changed concurrently", task.TaskID)
 		}
 	} else {
 		// No changes, skip update

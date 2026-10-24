@@ -124,12 +124,16 @@ func GeminiGenerateContentRequestToOpenAIChat(geminiRequest *dto.GeminiChatReque
 						convmeta.ReportConversionDiagnostic(info, convmeta.ConversionDiagnostic{Code: convmeta.DiagnosticGeminiSchemaNormalized, Source: types.RelayFormatGemini, Target: types.RelayFormatOpenAI, Field: "tools.functionDeclarations.parameters"})
 					}
 				}
+				rawParameters, err := kitutil.Marshal(parameters)
+				if err != nil {
+					return nil, err
+				}
 				openAITool := dto.ToolCallRequest{
 					Type: "function",
 					Function: dto.FunctionRequest{
 						Name:        function.Name,
 						Description: function.Description,
-						Parameters:  parameters,
+						Parameters:  rawParameters,
 					},
 				}
 				tools = append(tools, openAITool)

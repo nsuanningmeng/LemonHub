@@ -143,7 +143,6 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		} else if completed {
 			info.MarkUpstreamCompleted()
-			sr.Done()
 		} else if otherTerminal {
 			info.MarkOtherUpstreamTerminal()
 			sr.Stop(nil)
@@ -208,6 +207,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 				info.MarkDownstreamCancelled()
 			}
 		} else {
+			if completed {
+				sr.Done()
+			}
 			if strings.HasPrefix(streamResponse.Type, "response.") {
 				forwardedSemantic = true
 			}

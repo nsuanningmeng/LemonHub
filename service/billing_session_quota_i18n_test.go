@@ -136,7 +136,7 @@ func TestB19SubscriptionReservationKeepsRequestLanguageAndTypedCause(t *testing.
 
 func TestB19LegacySubscriptionFundingReservationKeepsErrorContract(t *testing.T) {
 	fixture := newSubscriptionSessionFixture(t, "subscription_only", 100, true)
-	err := fixture.session.reserveFunding(60)
+	err := fixture.session.reserveFunding(60, false)
 	require.Error(t, err)
 	var apiErr *types.NewAPIError
 	require.ErrorAs(t, err, &apiErr)

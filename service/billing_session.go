@@ -93,6 +93,9 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		}
 		return nil
 	}
+	if s.fundingUncertain || s.tokenUncertain {
+		return fmt.Errorf("billing persistence is uncertain; reconcile before settlement")
+	}
 	if actualQuota < 0 || actualQuota > common.MaxQuota {
 		return fmt.Errorf("actual quota out of range: %d", actualQuota)
 	}
@@ -174,12 +177,13 @@ func (s *BillingSession) Refund(c *gin.Context) {
 		s.mu.Unlock()
 		return
 	}
+	if s.fundingUncertain || s.tokenUncertain {
+		s.mu.Unlock()
+		logger.LogError(c, fmt.Sprintf("billing persistence uncertain for request %s user %d (possible funding=%d token=%d); automatic refund withheld, reconcile the ledger before retrying", s.relayInfo.RequestId, s.relayInfo.UserId, s.fundingConsumed, s.tokenConsumed))
+		return
+	}
 	var subscriptionRefund *model.SubscriptionBillingParams
 	if _, ok := s.funding.(*SubscriptionFunding); ok {
-		if s.fundingUncertain || s.tokenUncertain {
-			s.mu.Unlock()
-			return
-		}
 		params := s.subscriptionBillingParams(0)
 		subscriptionRefund = &params
 	}
@@ -256,6 +260,9 @@ func (s *BillingSession) needsRefundLocked() bool {
 	if s.tokenConsumed > 0 {
 		return true
 	}
+	if wallet, ok := s.funding.(*WalletFunding); ok && wallet.consumed > 0 {
+		return true
+	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
 	if sub, ok := s.funding.(*SubscriptionFunding); ok && sub.preConsumed > 0 {
 		return true
@@ -284,10 +291,24 @@ func (s *BillingSession) taskSubmissionBillingSnapshot(targetQuota int, failure 
 }
 
 func (s *BillingSession) Reserve(targetQuota int) error {
+	return s.reserve(targetQuota, false)
+}
+
+func (s *BillingSession) ReserveBeforeSubmit(targetQuota int) error {
+	return s.reserve(targetQuota, true)
+}
+
+func (s *BillingSession) reserve(targetQuota int, requireAvailableQuota bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.settled || s.refunded || s.trusted || targetQuota <= s.preConsumedQuota {
+	if s.fundingUncertain || s.tokenUncertain {
+		return types.NewError(fmt.Errorf("billing reservation persistence is uncertain; reconcile before retrying"), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+	}
+	if targetQuota < 0 || targetQuota > common.MaxQuota {
+		return types.NewErrorWithStatusCode(fmt.Errorf("reservation quota out of range: %d", targetQuota), types.ErrorCodeModelPriceError, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
+	if s.settled || s.refunded || s.trusted && !requireAvailableQuota || targetQuota <= s.preConsumedQuota {
 		return nil
 	}
 
@@ -320,11 +341,15 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 		return nil
 	}
 
-	if err := s.reserveFunding(delta); err != nil {
+	if err := s.reserveFunding(delta, requireAvailableQuota); err != nil {
 		return err
 	}
 	if err := s.reserveToken(delta); err != nil {
-		s.rollbackFundingReserve(delta)
+		if rollbackErr := s.rollbackFundingReserve(delta); rollbackErr != nil {
+			s.fundingUncertain = true
+			s.fundingConsumed += delta
+			return types.NewError(errors.Join(err, fmt.Errorf("wallet reservation rollback uncertain: %w", rollbackErr)), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		}
 		return err
 	}
 
@@ -334,6 +359,9 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 		s.tokenConsumed += delta
 	}
 	s.extraReserved += delta
+	if requireAvailableQuota {
+		s.trusted = false
+	}
 	s.syncRelayInfo()
 	return nil
 }
@@ -415,14 +443,29 @@ func (s *BillingSession) subscriptionBillingParams(actualQuota int) model.Subscr
 	return p
 }
 
-func (s *BillingSession) reserveFunding(delta int) error {
+func (s *BillingSession) reserveFunding(delta int, requireAvailableQuota bool) error {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
+		if requireAvailableQuota {
+			if err := funding.PreConsume(delta); err != nil {
+				if errors.Is(err, ErrInsufficientWalletQuota) {
+					return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+				}
+				// Redis may have reserved the delta before SQL persistence
+				// returned an error. Do not treat an unknown outcome as zero.
+				s.fundingUncertain = true
+				s.fundingConsumed += delta
+				return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+			}
+			return nil
+		}
 		// 与结算补扣（SettleBilling 正差额 → WalletFunding.Settle）语义一致：
 		// 全额无条件扣减，余额不足的部分记为欠费（余额可为负），不中断请求，
 		// 保证日志记录的预扣额度与用户余额的实际变动始终对账一致。
 		// DecreaseUserQuota 仅在数据库错误时失败。
 		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
+			s.fundingUncertain = true
+			s.fundingConsumed += delta
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.consumed += delta
@@ -443,26 +486,40 @@ func (s *BillingSession) reserveFunding(delta int) error {
 	}
 }
 
-func (s *BillingSession) rollbackFundingReserve(delta int) {
+func (s *BillingSession) rollbackFundingReserve(delta int) error {
 	switch funding := s.funding.(type) {
 	case *WalletFunding:
 		if err := model.IncreaseUserQuota(funding.userId, delta, false); err != nil {
 			common.SysLog("error rolling back wallet funding reserve: " + err.Error())
+			return err
 		} else {
 			funding.consumed -= delta
 		}
 	case *SubscriptionFunding:
 		if err := model.PostConsumeUserSubscriptionDelta(funding.subscriptionId, -int64(delta)); err != nil {
 			common.SysLog("error rolling back subscription funding reserve: " + err.Error())
+			return err
 		}
 	}
+	return nil
 }
 
 func (s *BillingSession) reserveToken(delta int) error {
 	if delta <= 0 || s.relayInfo.IsPlayground {
 		return nil
 	}
-	if err := PreConsumeTokenQuota(s.relayInfo, delta); err != nil {
+	reserved, err := model.TryReserveTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, delta, s.relayInfo.TokenUnlimited)
+	if err != nil {
+		s.tokenUncertain = true
+		s.tokenConsumed += delta
+		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+	}
+	if !reserved {
+		remainQuota := 0
+		if token, tokenErr := model.GetTokenByKey(s.relayInfo.TokenKey, false); tokenErr == nil && token != nil {
+			remainQuota = token.RemainQuota
+		}
+		err := fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(remainQuota), logger.FormatQuota(delta))
 		return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 	}
 	return nil
