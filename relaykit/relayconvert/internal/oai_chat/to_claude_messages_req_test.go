@@ -79,6 +79,51 @@ func TestOpenAIChatRequestToClaudeMessagesNormalizesToolInputSchema(t *testing.T
 	}
 }
 
+func TestOpenAIChatRequestToClaudeMessagesSkipsNonFunctionToolsWithoutObjectParameters(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		firstTool string
+		wantNames []string
+	}{
+		{
+			name:      "custom tool without function",
+			firstTool: `{"type":"custom","custom":{"name":"grammar","format":{"type":"text"}}}`,
+			wantNames: []string{"lookup"},
+		},
+		{
+			name:      "non-function with null parameters",
+			firstTool: `{"type":"custom","function":{"name":"custom_name","parameters":null}}`,
+			wantNames: []string{"lookup"},
+		},
+		{
+			name:      "non-function with scalar parameters",
+			firstTool: `{"type":"custom","function":{"name":"custom_name","parameters":"text"}}`,
+			wantNames: []string{"lookup"},
+		},
+		{
+			name:      "legacy object parameters still convert",
+			firstTool: `{"type":"custom","function":{"name":"legacy_lookup","parameters":{"type":"object","properties":{}}}}`,
+			wantNames: []string{"legacy_lookup", "lookup"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var request dto.GeneralOpenAIRequest
+			require.NoError(t, kitutil.UnmarshalJsonStr(`{"model":"claude-test","max_tokens":10,"messages":[{"role":"user","content":"hi"}],"tools":[`+tc.firstTool+`,{"type":"function","function":{"name":"lookup"}}]}`, &request))
+			converted, err := OpenAIChatRequestToClaudeMessages(context.Background(), nil, request)
+			require.NoError(t, err)
+			tools, ok := converted.Tools.([]any)
+			require.True(t, ok)
+			require.Len(t, tools, len(tc.wantNames))
+			for i, rawTool := range tools {
+				tool, ok := rawTool.(*dto.Tool)
+				require.True(t, ok)
+				assert.Equal(t, tc.wantNames[i], tool.Name)
+				assert.JSONEq(t, `{"type":"object","properties":{}}`, string(tool.InputSchema))
+			}
+		})
+	}
+}
+
 func TestOpenAIChatRequestToClaudeMessagesMergesAdjacentAssistantToolCalls(t *testing.T) {
 	toolCall := func(id string) []dto.ToolCallRequest {
 		return []dto.ToolCallRequest{{

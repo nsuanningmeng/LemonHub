@@ -46,6 +46,11 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 	claudeTools := make([]any, 0, len(textRequest.Tools))
 
 	for _, tool := range textRequest.Tools {
+		// Schema normalization accepts missing parameters for functions, but
+		// must not turn an unrelated custom tool into an unnamed function.
+		if tool.Type != "function" && kitutil.GetJsonType(tool.Function.Parameters) != "object" {
+			continue
+		}
 		schema, ok := sharedclaude.FunctionParametersToInputSchema(tool.Function.Parameters)
 		if !ok && tool.Type != "function" {
 			continue
