@@ -276,8 +276,10 @@ func TestSubscriptionSessionReserveDatabaseErrorsRemainServerErrors(t *testing.T
 		t.Run(tc.name, func(t *testing.T) {
 			fixture := newSubscriptionSessionFixture(t, "subscription_first", 200, false)
 			callbackName := "test:subscription_reserve_error_contract:" + common.GetUUID()
+			attempts := 0
 			require.NoError(t, model.DB.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
 				if tx.Statement != nil && tx.Statement.Table == "user_subscriptions" {
+					attempts++
 					tx.AddError(tc.err)
 				}
 			}))
@@ -297,6 +299,9 @@ func TestSubscriptionSessionReserveDatabaseErrorsRemainServerErrors(t *testing.T
 			assert.ErrorIs(t, routingErr, tc.err)
 			assert.Equal(t, http.StatusInternalServerError, routingErr.StatusCode)
 			assert.Equal(t, types.ErrorCodeUpdateDataError, routingErr.GetErrorCode())
+			if errors.Is(tc.err, model.ErrSubscriptionBillingUncertain) {
+				assert.Equal(t, 1, attempts, "an uncertain reservation must not be replayed")
+			}
 			assert.Equal(t, 60, fixture.session.GetPreConsumedQuota())
 			assert.Equal(t, 60, fixture.info.FinalPreConsumedQuota)
 			assertSubscriptionSessionBalances(t, fixture, 60, 1000, 940, 60)

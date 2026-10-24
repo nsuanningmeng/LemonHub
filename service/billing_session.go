@@ -28,17 +28,18 @@ type BillingSession struct {
 	relayInfo        *relaycommon.RelayInfo
 	language         string // 请求语言快照；Reserve 无需保留请求上下文
 	funding          FundingSource
-	preConsumedQuota int  // 实际预扣额度（信任用户可能为 0）
-	fundingConsumed  int  // 资金来源当前已扣额度（用于任务提交恢复快照）
-	tokenConsumed    int  // 令牌额度实际扣减量
-	extraReserved    int  // 发送前补充预扣的额度（订阅退款时需要单独回滚）
-	trusted          bool // 是否命中信任额度旁路
-	fundingSettled   bool // funding.Settle 已成功，资金来源已提交
-	settled          bool // Settle 全部完成（资金 + 令牌）
-	settledQuota     int  // 订阅最终receipt的实际额度，防止冲突目标重入
-	refunded         bool // Refund 已调用
-	fundingUncertain bool // 资金变更返回错误，持久结果需人工核对
-	tokenUncertain   bool // token 变更返回错误，持久结果需人工核对
+	preConsumedQuota int   // 实际预扣额度（信任用户可能为 0）
+	fundingConsumed  int   // 资金来源当前已扣额度（用于任务提交恢复快照）
+	tokenConsumed    int   // 令牌额度实际扣减量
+	extraReserved    int   // 发送前补充预扣的额度（订阅退款时需要单独回滚）
+	trusted          bool  // 是否命中信任额度旁路
+	fundingSettled   bool  // funding.Settle 已成功，资金来源已提交
+	settled          bool  // Settle 全部完成（资金 + 令牌）
+	settledQuota     int   // 订阅最终receipt的实际额度，防止冲突目标重入
+	refunded         bool  // Refund 已调用
+	fundingUncertain bool  // 资金变更返回错误，持久结果需人工核对
+	tokenUncertain   bool  // token 变更返回错误，持久结果需人工核对
+	uncertainCause   error // 保留导致隔离的原始错误，供后续调用追踪及分类
 	mu               sync.Mutex
 }
 
@@ -94,7 +95,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		return nil
 	}
 	if s.fundingUncertain || s.tokenUncertain {
-		return fmt.Errorf("billing persistence is uncertain; reconcile before settlement")
+		return errors.Join(errors.New("billing persistence is uncertain; reconcile before settlement"), s.uncertainCause)
 	}
 	if actualQuota < 0 || actualQuota > common.MaxQuota {
 		return fmt.Errorf("actual quota out of range: %d", actualQuota)
@@ -105,10 +106,12 @@ func (s *BillingSession) Settle(actualQuota int) error {
 			if errors.Is(err, model.ErrSubscriptionBillingUncertain) {
 				s.fundingUncertain = true
 				s.tokenUncertain = !s.relayInfo.IsPlayground
+				s.uncertainCause = err
 			}
 			return err
 		}
 		s.fundingUncertain, s.tokenUncertain = false, false
+		s.uncertainCause = nil
 		s.fundingConsumed = actualQuota
 		if !s.relayInfo.IsPlayground {
 			s.tokenConsumed = actualQuota
@@ -131,6 +134,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	if !s.fundingSettled {
 		if err := s.funding.Settle(delta); err != nil {
 			s.fundingUncertain = true
+			s.uncertainCause = err
 			return err
 		}
 		s.fundingConsumed += delta
@@ -145,6 +149,7 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		}
 		if tokenErr != nil {
 			s.tokenUncertain = true
+			s.uncertainCause = tokenErr
 			// The funding stage committed but the token stage did not. Restore only
 			// the stage that actually committed, leaving the original pre-consume
 			// state available to Refund.
@@ -152,7 +157,8 @@ func (s *BillingSession) Settle(actualQuota int) error {
 			if rollbackErr != nil {
 				s.fundingUncertain = true
 				s.fundingSettled = true
-				return errors.Join(tokenErr, fmt.Errorf("rollback settled funding delta: %w", rollbackErr))
+				s.uncertainCause = errors.Join(tokenErr, fmt.Errorf("rollback settled funding delta: %w", rollbackErr))
+				return s.uncertainCause
 			}
 			s.fundingConsumed -= delta
 			return tokenErr
@@ -303,7 +309,7 @@ func (s *BillingSession) reserve(targetQuota int, requireAvailableQuota bool) er
 	defer s.mu.Unlock()
 
 	if s.fundingUncertain || s.tokenUncertain {
-		return types.NewError(fmt.Errorf("billing reservation persistence is uncertain; reconcile before retrying"), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+		return types.NewError(errors.Join(errors.New("billing reservation persistence is uncertain; reconcile before retrying"), s.uncertainCause), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
 	if targetQuota < 0 || targetQuota > common.MaxQuota {
 		return types.NewErrorWithStatusCode(fmt.Errorf("reservation quota out of range: %d", targetQuota), types.ErrorCodeModelPriceError, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -322,6 +328,7 @@ func (s *BillingSession) reserve(targetQuota int, requireAvailableQuota bool) er
 			if errors.Is(err, model.ErrSubscriptionBillingUncertain) {
 				s.fundingUncertain = true
 				s.tokenUncertain = !s.relayInfo.IsPlayground
+				s.uncertainCause = err
 			}
 			if errors.Is(err, model.ErrSubscriptionQuotaInsufficient) {
 				return types.NewErrorWithStatusCode(subscriptionQuotaDiagnostic(s.language, err), types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
@@ -332,6 +339,7 @@ func (s *BillingSession) reserve(targetQuota int, requireAvailableQuota bool) er
 			return err
 		}
 		s.fundingUncertain, s.tokenUncertain = false, false
+		s.uncertainCause = nil
 		s.preConsumedQuota, s.fundingConsumed = targetQuota, targetQuota
 		if !s.relayInfo.IsPlayground {
 			s.tokenConsumed = targetQuota
@@ -348,7 +356,8 @@ func (s *BillingSession) reserve(targetQuota int, requireAvailableQuota bool) er
 		if rollbackErr := s.rollbackFundingReserve(delta); rollbackErr != nil {
 			s.fundingUncertain = true
 			s.fundingConsumed += delta
-			return types.NewError(errors.Join(err, fmt.Errorf("wallet reservation rollback uncertain: %w", rollbackErr)), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+			s.uncertainCause = errors.Join(err, fmt.Errorf("wallet reservation rollback uncertain: %w", rollbackErr))
+			return types.NewError(s.uncertainCause, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		return err
 	}
@@ -455,6 +464,7 @@ func (s *BillingSession) reserveFunding(delta int, requireAvailableQuota bool) e
 				// returned an error. Do not treat an unknown outcome as zero.
 				s.fundingUncertain = true
 				s.fundingConsumed += delta
+				s.uncertainCause = err
 				return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 			}
 			return nil
@@ -466,6 +476,7 @@ func (s *BillingSession) reserveFunding(delta int, requireAvailableQuota bool) e
 		if err := model.DecreaseUserQuota(funding.userId, delta, false); err != nil {
 			s.fundingUncertain = true
 			s.fundingConsumed += delta
+			s.uncertainCause = err
 			return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 		}
 		funding.consumed += delta
@@ -512,6 +523,7 @@ func (s *BillingSession) reserveToken(delta int) error {
 	if err != nil {
 		s.tokenUncertain = true
 		s.tokenConsumed += delta
+		s.uncertainCause = err
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
 	if !reserved {
