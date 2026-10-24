@@ -16,7 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { BILLING_CACHE_VAR_MAP, parsePricingExpression } from './billing-expr'
+import {
+  BILLING_CACHE_VAR_MAP,
+  parsePricingExpression,
+  type PricingNode,
+} from './billing-expr'
 import { resolveBillingTimeZone } from './billing-time'
 import { evaluatePricingAst, type PricingFunction } from './pricing-evaluator'
 
@@ -39,6 +43,7 @@ export type VisualTier = {
   cache_read_unit_cost?: number
   cache_create_unit_cost?: number
   cache_create_1h_unit_cost?: number
+  cache_create_12h_unit_cost?: number
   image_unit_cost?: number
   image_output_unit_cost?: number
   audio_input_unit_cost?: number
@@ -73,6 +78,10 @@ export function normalizeVisualTier(
     cache_read_unit_cost: Number(tier.cache_read_unit_cost) || 0,
     cache_create_unit_cost: Number(tier.cache_create_unit_cost) || 0,
     cache_create_1h_unit_cost: Number(tier.cache_create_1h_unit_cost) || 0,
+    cache_create_12h_unit_cost:
+      tier.cache_create_12h_unit_cost == null
+        ? undefined
+        : Number(tier.cache_create_12h_unit_cost) || 0,
     image_unit_cost: Number(tier.image_unit_cost) || 0,
     image_output_unit_cost: Number(tier.image_output_unit_cost) || 0,
     audio_input_unit_cost: Number(tier.audio_input_unit_cost) || 0,
@@ -122,7 +131,12 @@ function buildTierBodyExpr(tier: VisualTier): string {
   parts.push(`c * ${oc}`)
   for (const cv of BILLING_CACHE_VAR_MAP) {
     const v = Number((tier as Record<string, unknown>)[cv.field]) || 0
-    if (v !== 0) parts.push(`${cv.exprVar} * ${v}`)
+    if (
+      v !== 0 ||
+      (cv.exprVar === 'cc12h' && tier.cache_create_12h_unit_cost != null)
+    ) {
+      parts.push(`${cv.exprVar} * ${v}`)
+    }
   }
   return parts.join(' + ')
 }
@@ -190,9 +204,18 @@ export function tryParseVisualConfig(
         const val = simple[4 + i]
         if (val != null) tier[cv.field] = Number(val)
       })
-      return normalizeVisualConfig({
+      const config = normalizeVisualConfig({
         tiers: [normalizeVisualTier(tier as Partial<VisualTier>)],
       })
+      // A zero coefficient can opt out of fallback pricing. Keep the raw
+      // editor when the visual form cannot preserve the complete expression.
+      if (
+        generateExprFromVisualConfig(config).replaceAll(/\s+/g, '') !==
+        body.replaceAll(/\s+/g, '')
+      ) {
+        return null
+      }
+      return config
     }
 
     const condGroup =
@@ -253,6 +276,7 @@ const ESTIMATOR_VARS = [
   { var: 'cr', stateKey: 'cacheReadTokens' },
   { var: 'cc', stateKey: 'cacheCreateTokens' },
   { var: 'cc1h', stateKey: 'cacheCreate1hTokens' },
+  { var: 'cc12h', stateKey: 'cacheCreate12hTokens' },
   { var: 'img', stateKey: 'imageTokens' },
   { var: 'img_o', stateKey: 'imageOutputTokens' },
   { var: 'ai', stateKey: 'audioInputTokens' },
@@ -344,20 +368,54 @@ export function evalExprLocally(
     if (!exprStr || !exprStr.trim()) {
       return { cost: 0, matchedTier: '', error: null }
     }
+    const ast = parsePricingExpression(exprStr)
+    const usedVars = new Set<string>()
+    const pending: PricingNode[] = [ast]
+    while (pending.length > 0) {
+      const node = pending.pop()
+      if (!node) break
+      if (node.kind === 'variable') usedVars.add(node.name)
+      if (node.kind === 'call') pending.push(...node.args)
+      if (node.kind === 'unary') pending.push(node.value)
+      if (node.kind === 'binary') pending.push(node.left, node.right)
+      if (node.kind === 'conditional') {
+        pending.push(node.condition, node.yes, node.no)
+      }
+    }
     let matchedTier = ''
     const cacheReadTokens = extraTokenValues.cacheReadTokens || 0
-    const cacheCreateTokens = extraTokenValues.cacheCreateTokens || 0
+    let cacheCreateTokens = extraTokenValues.cacheCreateTokens || 0
     const cacheCreate1hTokens = extraTokenValues.cacheCreate1hTokens || 0
+    const cacheCreate12hTokens = extraTokenValues.cacheCreate12hTokens || 0
     const len =
-      promptTokens + cacheReadTokens + cacheCreateTokens + cacheCreate1hTokens
+      promptTokens +
+      cacheReadTokens +
+      cacheCreateTokens +
+      cacheCreate1hTokens +
+      cacheCreate12hTokens
+    let pricedPromptTokens = promptTokens
+    if (!usedVars.has('cr')) pricedPromptTokens += cacheReadTokens
+    if (!usedVars.has('cc1h')) {
+      if (usedVars.has('cc')) {
+        cacheCreateTokens += cacheCreate1hTokens * (6 / 3.75)
+      } else {
+        pricedPromptTokens += cacheCreate1hTokens * (6 / 3.75)
+      }
+    }
+    if (!usedVars.has('cc12h')) {
+      if (usedVars.has('cc')) cacheCreateTokens += cacheCreate12hTokens * 2
+      else pricedPromptTokens += cacheCreate12hTokens * 2
+    }
+    if (!usedVars.has('cc')) pricedPromptTokens += cacheCreateTokens
     const variables = new Map([
-      ['p', promptTokens],
+      ['p', pricedPromptTokens],
       ['c', completionTokens],
       ['len', len],
     ])
     for (const field of ESTIMATOR_VARS) {
       variables.set(field.var, extraTokenValues[field.stateKey] || 0)
     }
+    variables.set('cc', cacheCreateTokens)
     const functions = new Map<string, PricingFunction>([
       [
         'tier',
@@ -391,7 +449,7 @@ export function evalExprLocally(
         evaluate: ([timezone]) => fn(timezone as string),
       })
     }
-    const cost = evaluatePricingAst(parsePricingExpression(exprStr), {
+    const cost = evaluatePricingAst(ast, {
       variables,
       functions,
     })

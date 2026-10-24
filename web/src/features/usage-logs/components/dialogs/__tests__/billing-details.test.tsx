@@ -98,3 +98,39 @@ test('recorded time tier displays its exact conditions and all configured rates'
   )
   expect(screen.getAllByText('Matched').length).toBeGreaterThan(0)
 })
+
+test('shows the 12-hour write price and splits its tokens from the aggregate cache writes', () => {
+  renderBillingDetails({
+    model_ratio: 5,
+    completion_ratio: 4,
+    group_ratio: 1,
+    cache_creation_tokens: 1500,
+    cache_creation_ratio: 1.25,
+    cache_creation_tokens_12h: 1000,
+    cache_creation_ratio_12h: 2.5,
+  })
+  expect(screen.getByText('Cache Write (30m)').parentElement).toHaveTextContent(
+    '500'
+  )
+  expect(screen.getByText('Cache Write (12h)').parentElement).toHaveTextContent(
+    '1,000'
+  )
+  expect(
+    screen.getByText('Cache Creation (30m)').parentElement
+  ).toHaveTextContent('$12.5/M')
+  expect(
+    screen.getByText('Cache Creation (12h)').parentElement
+  ).toHaveTextContent('$25/M')
+  expect(screen.queryByText('Cache Write')).not.toBeInTheDocument()
+})
+
+test('keeps legacy undivided cache write counts without inventing a TTL split', () => {
+  renderBillingDetails({
+    cache_creation_tokens: 1500,
+    cache_creation_ratio: 1.25,
+  })
+  expect(screen.getByText('Cache Write').parentElement).toHaveTextContent(
+    '1,500'
+  )
+  expect(screen.queryByText('Cache Write (12h)')).not.toBeInTheDocument()
+})

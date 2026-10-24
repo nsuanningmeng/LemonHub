@@ -42,7 +42,7 @@ import type {
   PriorityMove,
   PriorityOrder,
 } from '../../lib/channel-priority-order'
-import type { Channel } from '../../types'
+import type { Channel, GetChannelsParams } from '../../types'
 import { ChannelsPrimaryButtons } from '../channels-primary-buttons'
 import { ChannelsProvider } from '../channels-provider'
 import { ChannelsTable } from '../channels-table'
@@ -127,8 +127,9 @@ beforeEach(() => {
       return { data: { success: true, data: current } }
     }
     if (url === '/api/channel' || url === '/api/channel/search') {
-      const field = config?.params?.sort_by ?? 'priority'
-      const desc = config?.params?.sort_order !== 'asc'
+      const params = config?.params as GetChannelsParams | undefined
+      const field = params?.sort_by ?? 'priority'
+      const desc = params?.sort_order !== 'asc'
       const items = current.items
         .map(channel)
         .sort(

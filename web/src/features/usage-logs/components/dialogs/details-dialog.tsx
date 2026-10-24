@@ -36,6 +36,7 @@ import {
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
@@ -210,6 +211,7 @@ function BillingBreakdown(props: {
   const { log, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
+  const hasCacheWrite12h = (other.cache_creation_tokens_12h || 0) > 0
   const isTieredExpr = other.billing_mode === 'tiered_expr'
   const tieredSummary = getTieredBillingSummary(other)
 
@@ -276,7 +278,11 @@ function BillingBreakdown(props: {
     })
   }
 
-  if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
+  if (
+    !isTieredExpr &&
+    (isClaude || hasCacheWrite12h) &&
+    hasAnyCacheTokens(other)
+  ) {
     if (other.cache_ratio != null && other.cache_ratio !== 1) {
       rows.push({
         label: t('Cache Read'),
@@ -288,7 +294,9 @@ function BillingBreakdown(props: {
       other.cache_creation_ratio !== 1
     ) {
       rows.push({
-        label: t('Cache Creation'),
+        label: hasCacheWrite12h
+          ? t('Cache Creation (30m)')
+          : t('Cache Creation'),
         value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio)}/M`,
       })
     }
@@ -308,6 +316,12 @@ function BillingBreakdown(props: {
       rows.push({
         label: t('Cache Creation (1h)'),
         value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_1h)}/M`,
+      })
+    }
+    if (other.cache_creation_ratio_12h != null) {
+      rows.push({
+        label: t('Cache Creation (12h)'),
+        value: `${fmtPrice(baseInputUSD * other.cache_creation_ratio_12h)}/M`,
       })
     }
   }
@@ -399,6 +413,9 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
   const cacheWrite = other.cache_creation_tokens || 0
   const cacheWrite5m = other.cache_creation_tokens_5m || 0
   const cacheWrite1h = other.cache_creation_tokens_1h || 0
+  const cacheWrite12h = other.cache_creation_tokens_12h || 0
+  const cacheWrite30m =
+    cacheWrite12h > 0 ? Math.max(cacheWrite - cacheWrite12h, 0) : 0
   const hasTokens =
     promptTokens > 0 ||
     completionTokens > 0 ||
@@ -428,7 +445,12 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
     })
   }
 
-  if (cacheWrite > 0 && cacheWrite5m === 0 && cacheWrite1h === 0) {
+  if (
+    cacheWrite > 0 &&
+    cacheWrite5m === 0 &&
+    cacheWrite1h === 0 &&
+    cacheWrite12h === 0
+  ) {
     rows.push({
       label: t('Cache Write'),
       value: cacheWrite.toLocaleString(),
@@ -446,6 +468,19 @@ function TokenBreakdown(props: { log: UsageLog; other: LogOtherData }) {
     rows.push({
       label: t('Cache Write (1h)'),
       value: cacheWrite1h.toLocaleString(),
+    })
+  }
+
+  if (cacheWrite30m > 0) {
+    rows.push({
+      label: t('Cache Write (30m)'),
+      value: cacheWrite30m.toLocaleString(),
+    })
+  }
+  if (cacheWrite12h > 0) {
+    rows.push({
+      label: t('Cache Write (12h)'),
+      value: cacheWrite12h.toLocaleString(),
     })
   }
 
@@ -1060,12 +1095,40 @@ export function DetailsDialog(props: DetailsDialogProps) {
           <DetailSection label={t('Model Mapping')}>
             <DetailRow
               label={t('Request Model')}
-              value={props.log.model_name}
+              value={
+                <span className='inline-flex max-w-full items-start gap-1'>
+                  <span className='min-w-0 wrap-anywhere'>
+                    {props.log.model_name}
+                  </span>
+                  <CopyButton
+                    value={props.log.model_name || ''}
+                    className='size-5'
+                    iconClassName='size-3'
+                    aria-label={t('Copy {{field}}', {
+                      field: t('Request Model'),
+                    })}
+                  />
+                </span>
+              }
               mono
             />
             <DetailRow
               label={t('Actual Model')}
-              value={other.upstream_model_name}
+              value={
+                <span className='inline-flex max-w-full items-start gap-1'>
+                  <span className='min-w-0 wrap-anywhere'>
+                    {other.upstream_model_name}
+                  </span>
+                  <CopyButton
+                    value={other.upstream_model_name || ''}
+                    className='size-5'
+                    iconClassName='size-3'
+                    aria-label={t('Copy {{field}}', {
+                      field: t('Actual Model'),
+                    })}
+                  />
+                </span>
+              }
               mono
             />
           </DetailSection>

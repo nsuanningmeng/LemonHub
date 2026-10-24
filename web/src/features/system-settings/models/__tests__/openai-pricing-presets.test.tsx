@@ -207,6 +207,7 @@ describe('published OpenAI token prices', () => {
         cacheReadTokens: 200,
         cacheCreateTokens,
         cacheCreate1hTokens: 0,
+        cacheCreate12hTokens: 0,
         imageTokens: 0,
         imageOutputTokens: 0,
         audioInputTokens: 0,
@@ -224,4 +225,65 @@ describe('published OpenAI token prices', () => {
       })
     }
   )
+})
+
+test('editing an input price preserves an explicitly free 12-hour cache price', async () => {
+  const user = userEvent.setup()
+  render(
+    <BillingEditorFixture initialExpr='tier("base", p * 5 + c * 20 + cc * 6.25 + cc12h * 0)' />
+  )
+  expect(
+    screen.getByRole('switch', { name: 'Custom 12-hour cache write price' })
+  ).toBeChecked()
+  const input = screen.getByRole('spinbutton', { name: 'Input price' })
+  await user.clear(input)
+  await user.type(input, '6')
+  await user.click(screen.getByRole('button', { name: 'Save pricing' }))
+  expect(
+    screen.getByRole('status', { name: 'Saved billing expression' })
+  ).toHaveTextContent('cc12h * 0')
+})
+
+test('an omitted 12-hour price stays on default until a custom price is enabled', async () => {
+  const user = userEvent.setup()
+  render(
+    <BillingEditorFixture initialExpr='tier("base", p * 5 + c * 20 + cc * 6.25)' />
+  )
+  const custom = screen.getByRole('switch', {
+    name: 'Custom 12-hour cache write price',
+  })
+  expect(custom).not.toBeChecked()
+  await user.click(screen.getByRole('button', { name: 'Save pricing' }))
+  expect(
+    screen.getByRole('status', { name: 'Saved billing expression' }).textContent
+  ).not.toContain('cc12h')
+  await user.click(custom)
+  await user.click(screen.getByRole('button', { name: 'Save pricing' }))
+  expect(
+    screen.getByRole('status', { name: 'Saved billing expression' })
+  ).toHaveTextContent('cc12h * 12.5')
+  await user.click(custom)
+  await user.click(screen.getByRole('button', { name: 'Save pricing' }))
+  expect(
+    screen.getByRole('status', { name: 'Saved billing expression' }).textContent
+  ).not.toContain('cc12h')
+})
+
+test('keeps cache counts visible after switching to an expression with fallback pricing', async () => {
+  const user = userEvent.setup()
+  render(
+    <BillingEditorFixture initialExpr='tier("base", p * 5 + c * 20 + cc12h * 10)' />
+  )
+  const cache = screen.getByRole('spinbutton', { name: 'Cache Write (12h)' })
+  await user.clear(cache)
+  await user.type(cache, '30')
+  await user.click(screen.getAllByRole('combobox')[0])
+  await user.click(screen.getByRole('option', { name: 'Expression editor' }))
+  const expression = screen.getByRole('textbox')
+  await user.clear(expression)
+  await user.type(expression, 'tier("base", p * 5 + c * 20)')
+  expect(
+    screen.getByRole('spinbutton', { name: 'Cache Write (12h)' })
+  ).toHaveValue(30)
+  expect(screen.getByText('Estimated quota cost: 300')).toBeVisible()
 })

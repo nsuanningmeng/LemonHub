@@ -101,7 +101,7 @@
     "knip": "^6.24.0",
     "oxfmt": "^0.57.0",
     "oxlint": "^1.72.0",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.4"
   },
   "overrides": {
     "@hono/node-server": "1.19.15",

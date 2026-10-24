@@ -25,7 +25,8 @@ type OpenAIPricingPreset = {
   requestRules?: RequestRuleGroup[]
 }
 
-// USD / 1M tokens, checked 2026-09-23:
+// USD / 1M tokens, base prices checked 2026-09-23; 12-hour cache writes
+// added 2026-10-23 at twice the 30-minute write price:
 // https://developers.openai.com/api/docs/pricing
 // https://developers.openai.com/api/docs/guides/latest-model?model=gpt-5.4
 // https://openai.com/api-fast-mode/ (GPT-5.4 / GPT-5.5 exclude long context)
@@ -74,25 +75,25 @@ export const OPENAI_PRICING_PRESETS: OpenAIPricingPreset[] = [
   {
     key: 'gpt-5.6-sol-tiers',
     label: 'GPT-5.6 Sol Fast/Flex',
-    expr: 'len <= 272000 ? tier("standard", p * 4 + c * 20 + cr * 0.4 + cc * 5) : tier("long_context", p * 8 + c * 30 + cr * 0.8 + cc * 10)',
+    expr: 'len <= 272000 ? tier("standard", p * 4 + c * 20 + cr * 0.4 + cc * 5 + cc12h * 10) : tier("long_context", p * 8 + c * 30 + cr * 0.8 + cc * 10 + cc12h * 20)',
     requestRules: openAIServiceTierRules(),
   },
   {
     key: 'gpt-6-astra-tiers',
     label: 'GPT-6 Astra Fast/Flex',
-    expr: 'len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1 + cc * 12.5) : tier("long_context", p * 20 + c * 75 + cr * 2 + cc * 25)',
+    expr: 'len <= 272000 ? tier("standard", p * 10 + c * 50 + cr * 1 + cc * 12.5 + cc12h * 25) : tier("long_context", p * 20 + c * 75 + cr * 2 + cc * 25 + cc12h * 50)',
     requestRules: openAIServiceTierRules(),
   },
   {
     key: 'gpt-6-sol-tiers',
     label: 'GPT-6 Sol Fast/Flex',
-    expr: 'len <= 272000 ? tier("standard", p * 2 + c * 10 + cr * 0.2 + cc * 2.5) : tier("long_context", p * 4 + c * 15 + cr * 0.4 + cc * 5)',
+    expr: 'len <= 272000 ? tier("standard", p * 2 + c * 10 + cr * 0.2 + cc * 2.5 + cc12h * 5) : tier("long_context", p * 4 + c * 15 + cr * 0.4 + cc * 5 + cc12h * 10)',
     requestRules: openAIServiceTierRules(),
   },
   {
     key: 'gpt-6-luna-tiers',
     label: 'GPT-6 Luna Fast/Flex',
-    expr: 'len <= 272000 ? tier("standard", p * 0.1 + c * 0.5 + cr * 0.01 + cc * 0.125) : tier("long_context", p * 0.2 + c * 0.75 + cr * 0.02 + cc * 0.25)',
+    expr: 'len <= 272000 ? tier("standard", p * 0.1 + c * 0.5 + cr * 0.01 + cc * 0.125 + cc12h * 0.25) : tier("long_context", p * 0.2 + c * 0.75 + cr * 0.02 + cc * 0.25 + cc12h * 0.5)',
     requestRules: openAIServiceTierRules(),
   },
 ]

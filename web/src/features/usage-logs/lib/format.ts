@@ -326,7 +326,8 @@ export function hasAnyCacheTokens(
     (other.cache_tokens || 0) > 0 ||
     (other.cache_creation_tokens || 0) > 0 ||
     (other.cache_creation_tokens_5m || 0) > 0 ||
-    (other.cache_creation_tokens_1h || 0) > 0
+    (other.cache_creation_tokens_1h || 0) > 0 ||
+    (other.cache_creation_tokens_12h || 0) > 0
   )
 }
 
@@ -344,11 +345,19 @@ export function getTieredBillingSummary(
 
   const priceEntries: TieredBillingSummary['priceEntries'] = []
   for (const v of BILLING_PRICING_VARS) {
-    if (!v.field) continue
+    if (
+      !v.field ||
+      (v.key === 'cc12h' && !tier.configuredPriceFields?.includes(v.field))
+    ) {
+      continue
+    }
     if (v.group === 'cache' && !cacheTokensPresent) continue
     const raw = tier[v.field as keyof ParsedTier]
     const price = Number(raw)
-    if (Number.isFinite(price) && price > 0) {
+    if (
+      Number.isFinite(price) &&
+      (price > 0 || (price === 0 && v.key === 'cc12h' && raw != null))
+    ) {
       priceEntries.push({
         field: v.field,
         shortLabel: v.shortLabel,

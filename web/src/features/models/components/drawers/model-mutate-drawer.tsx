@@ -93,7 +93,7 @@ const extendedModelFormSchema = z.object({
   description: z.string(),
   icon: z.string(),
   tags: z.array(z.string()),
-  vendor_id: z.number().optional(),
+  vendor_id: z.number(),
   endpoints: z.string(),
   name_rule: z.number(),
   status: z.boolean(),
@@ -140,6 +140,19 @@ const EMPTY_PRICING_FIELDS: PricingFields = {
   imageRatio: '',
   audioRatio: '',
   audioCompletionRatio: '',
+}
+
+const MODEL_FORM_DEFAULT_VALUES: ExtendedModelFormValues = {
+  model_name: '',
+  description: '',
+  icon: '',
+  tags: [],
+  vendor_id: 0,
+  endpoints: '',
+  name_rule: 0,
+  status: true,
+  sync_official: true,
+  ...EMPTY_PRICING_FIELDS,
 }
 
 const EMPTY_PRICING_CONFIG: PricingConfig = {
@@ -242,6 +255,7 @@ export function ModelMutateDrawer({
   const currentModelId = currentRow?.id
   const isEditing = Boolean(currentModelId)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [loadedModelId, setLoadedModelId] = useState<number | null>(null)
   const [pricingMode, setPricingMode] = useState<PricingMode>('per-token')
   const [pricingSubMode, setPricingSubMode] = useState<PricingSubMode>('ratio')
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -364,24 +378,7 @@ export function ModelMutateDrawer({
 
   const form = useForm<ExtendedModelFormValues>({
     resolver: zodResolver(extendedModelFormSchema),
-    defaultValues: {
-      model_name: '',
-      description: '',
-      icon: '',
-      tags: [],
-      vendor_id: undefined,
-      endpoints: '',
-      name_rule: 0,
-      status: true,
-      sync_official: true,
-      price: '',
-      ratio: '',
-      cacheRatio: '',
-      completionRatio: '',
-      imageRatio: '',
-      audioRatio: '',
-      audioCompletionRatio: '',
-    },
+    defaultValues: MODEL_FORM_DEFAULT_VALUES,
   })
 
   const validateNumber = (value: string) => {
@@ -418,8 +415,25 @@ export function ModelMutateDrawer({
 
   // Load model data for editing and ratio configuration
   useEffect(() => {
-    if (open && isEditing && modelData?.data) {
+    if (
+      !open ||
+      (isEditing &&
+        (!modelData?.success || modelData.data?.id !== currentModelId))
+    ) {
+      form.reset(MODEL_FORM_DEFAULT_VALUES)
+      setLoadedModelId(null)
+      setOldModelName('')
+      setLoadedPricingName('')
+      setPricingMode('per-token')
+      setPricingSubMode('ratio')
+      setPromptPrice('')
+      setCompletionPrice('')
+      setAdvancedOpen(false)
+      return
+    }
+    if (isEditing && modelData?.data) {
       const model = modelData.data
+      setLoadedModelId(model.id)
       setOldModelName(model.model_name)
 
       const pricing = readPricingConfig(
@@ -437,7 +451,7 @@ export function ModelMutateDrawer({
         description: model.description || '',
         icon: model.icon || '',
         tags: parseModelTags(model.tags),
-        vendor_id: model.vendor_id,
+        vendor_id: model.vendor_id ?? 0,
         endpoints: model.endpoints || '',
         name_rule: model.name_rule || 0,
         status: model.status === 1,
@@ -462,7 +476,7 @@ export function ModelMutateDrawer({
         description: '',
         icon: '',
         tags: [],
-        vendor_id: undefined,
+        vendor_id: 0,
         endpoints: '',
         name_rule: 0,
         status: true,
@@ -470,10 +484,25 @@ export function ModelMutateDrawer({
         ...pricing.fields,
       })
     }
-  }, [open, isEditing, modelData, currentRow, form, hasModelSettings])
+  }, [
+    open,
+    isEditing,
+    currentModelId,
+    modelData,
+    currentRow,
+    form,
+    hasModelSettings,
+  ])
+
+  const isFormReady =
+    !isEditing ||
+    (modelData?.success === true &&
+      modelData.data?.id === currentModelId &&
+      loadedModelId === currentModelId)
 
   const onSubmit = useCallback(
     async (values: ExtendedModelFormValues): Promise<void> => {
+      if (!open || !isFormReady) return
       setIsSubmitting(true)
       try {
         const submitData = {
@@ -710,6 +739,8 @@ export function ModelMutateDrawer({
       }
     },
     [
+      open,
+      isFormReady,
       isEditing,
       currentModelId,
       queryClient,
@@ -830,11 +861,9 @@ export function ModelMutateDrawer({
                         label: vendor.name,
                       }))}
                       onValueChange={(value) =>
-                        field.onChange(
-                          value ? Number.parseInt(value) : undefined
-                        )
+                        field.onChange(value ? Number.parseInt(value) : 0)
                       }
-                      value={field.value ? String(field.value) : undefined}
+                      value={field.value ? String(field.value) : null}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -1386,7 +1415,11 @@ export function ModelMutateDrawer({
           >
             {t('Cancel')}
           </SheetClose>
-          <Button form='model-form' type='submit' disabled={isSubmitting}>
+          <Button
+            form='model-form'
+            type='submit'
+            disabled={isSubmitting || !isFormReady}
+          >
             {isSubmitting && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
             {isEditing ? t('Update Model') : t('Save changes')}
           </Button>

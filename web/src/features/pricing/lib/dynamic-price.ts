@@ -135,17 +135,33 @@ export function getDynamicPriceEntries(
 ): DynamicPriceEntry[] {
   if (!tier) return []
 
+  const hasCache12hPrice =
+    tier.configuredPriceFields?.includes('cacheCreate12hPrice') === true
   return BILLING_PRICING_VARS.flatMap((variable) => {
-    if (!variable.field) return []
+    if (!variable.field || (variable.key === 'cc12h' && !hasCache12hPrice)) {
+      return []
+    }
     const value = Number(tier[variable.field])
-    if (!Number.isFinite(value) || value <= 0) return []
+    if (
+      !Number.isFinite(value) ||
+      value < 0 ||
+      (value === 0 && variable.key !== 'cc12h')
+    ) {
+      return []
+    }
 
+    let label = variable.label
+    let shortLabel = variable.shortLabel
+    if (variable.key === 'cc' && hasCache12hPrice) {
+      label = 'Cache Creation (30m)'
+      shortLabel = 'Cache Write (30m)'
+    }
     return [
       {
         key: variable.key,
         field: variable.field,
-        label: variable.label,
-        shortLabel: variable.shortLabel,
+        label,
+        shortLabel,
         value,
         formatted: formatDynamicUnitPrice(value, options),
         variable,

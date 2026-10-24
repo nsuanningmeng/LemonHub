@@ -24,6 +24,7 @@ const EXTRA_TOKENS: ExtraTokenValues = {
   cacheReadTokens: 100,
   cacheCreateTokens: 0,
   cacheCreate1hTokens: 0,
+  cacheCreate12hTokens: 0,
   imageTokens: 0,
   imageOutputTokens: 0,
   audioInputTokens: 0,
@@ -186,7 +187,7 @@ describe('time functions in the local token estimator', () => {
         'tier("night", p) * (hour("UTC") >= 21 || hour("UTC") < 6 ? 0.5 : 1)',
         100,
         0,
-        EXTRA_TOKENS
+        { ...EXTRA_TOKENS, cacheReadTokens: 0 }
       )
     ).toEqual({ cost, matchedTier: 'night', error: null })
   })

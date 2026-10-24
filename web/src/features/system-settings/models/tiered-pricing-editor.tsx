@@ -51,6 +51,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -497,6 +498,7 @@ function PriceField({ label, hint, value, onChange }: PriceFieldProps) {
     <div className='w-36 space-y-0.5'>
       <Label className='text-muted-foreground text-xs'>{label}</Label>
       <DraftNumberInput
+        aria-label={label}
         min={0}
         step={0.000001}
         value={Number.isFinite(value) ? value : 0}
@@ -706,6 +708,38 @@ function VisualTierCard({
                 if (variable.key === 'cc1h' && cacheMode !== CACHE_MODE_TIMED) {
                   return null
                 }
+                if (variable.key === 'cc12h') {
+                  const customPrice = tier.cache_create_12h_unit_cost != null
+                  return (
+                    <div key={variable.key} className='space-y-2'>
+                      <Label className='flex items-center gap-2 text-xs'>
+                        <Switch
+                          checked={customPrice}
+                          onCheckedChange={(checked) =>
+                            onChange({
+                              ...tier,
+                              cache_create_12h_unit_cost: checked
+                                ? 2 *
+                                  (tier.cache_create_unit_cost ||
+                                    tier.input_unit_cost)
+                                : undefined,
+                            })
+                          }
+                        />
+                        {t('Custom 12-hour cache write price')}
+                      </Label>
+                      {customPrice ? (
+                        renderPriceVariable(variable)
+                      ) : (
+                        <p className='text-muted-foreground max-w-56 text-xs'>
+                          {t(
+                            'Defaults to twice the cache write price, or twice the input price when cache writes are not priced separately.'
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )
+                }
                 return renderPriceVariable(variable)
               })}
             </div>
@@ -865,8 +899,8 @@ function RawExprEditor({ exprString, onChange }: RawExprEditorProps) {
           <div>
             {t('Variables')}: <code>len</code>, <code>p</code>, <code>c</code>,{' '}
             <code>cr</code>, <code>cc</code>, <code>cc1h</code>,{' '}
-            <code>img</code>, <code>img_o</code>, <code>ai</code>,{' '}
-            <code>ao</code>
+            <code>cc12h</code>, <code>img</code>, <code>img_o</code>,{' '}
+            <code>ai</code>, <code>ao</code>
           </div>
           <div>
             {t('Functions')}: <code>tier(name, value)</code>, <code>max</code>,{' '}
@@ -1378,6 +1412,7 @@ function CostEstimator({ effectiveExpr }: EstimatorProps) {
     cacheReadTokens: 0,
     cacheCreateTokens: 0,
     cacheCreate1hTokens: 0,
+    cacheCreate12hTokens: 0,
     imageTokens: 0,
     imageOutputTokens: 0,
     audioInputTokens: 0,
@@ -1423,35 +1458,37 @@ function CostEstimator({ effectiveExpr }: EstimatorProps) {
           />
         </div>
       </div>
-      {usesExtras && (
-        <div className='grid grid-cols-2 gap-3'>
-          {BILLING_EXTRA_VARS.map((variable) => {
-            // BILLING_EXTRA_VARS only contains pricing variables; they are
-            // guaranteed to have a non-null `field` (the `len` condition-only
-            // variable is filtered out). Narrow the type here for safety.
-            if (!variable.field) return null
-            const stateKey = variable.field.replace(
-              'Price',
-              'Tokens'
-            ) as keyof ExtraTokenValues
-            return (
-              <div key={variable.key} className='space-y-1'>
-                <Label className='text-xs'>{t(variable.shortLabel)}</Label>
-                <DraftNumberInput
-                  min={0}
-                  value={extras[stateKey]}
-                  onValueChange={(value) =>
-                    setExtras((prev) => ({
-                      ...prev,
-                      [stateKey]: value,
-                    }))
-                  }
-                />
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <div className='grid grid-cols-2 gap-3'>
+        {BILLING_EXTRA_VARS.map((variable) => {
+          // BILLING_EXTRA_VARS only contains pricing variables; they are
+          // guaranteed to have a non-null `field` (the `len` condition-only
+          // variable is filtered out). Narrow the type here for safety.
+          if (!variable.field) return null
+          const stateKey = variable.field.replace(
+            'Price',
+            'Tokens'
+          ) as keyof ExtraTokenValues
+          if (variable.group !== 'cache' && !usesExtras && !extras[stateKey]) {
+            return null
+          }
+          return (
+            <div key={variable.key} className='space-y-1'>
+              <Label className='text-xs'>{t(variable.shortLabel)}</Label>
+              <DraftNumberInput
+                aria-label={t(variable.shortLabel)}
+                min={0}
+                value={extras[stateKey]}
+                onValueChange={(value) =>
+                  setExtras((prev) => ({
+                    ...prev,
+                    [stateKey]: value,
+                  }))
+                }
+              />
+            </div>
+          )
+        })}
+      </div>
       <div
         className={cn(
           'rounded-md border p-3 text-sm',
@@ -1497,8 +1534,9 @@ Input side:
 - p — input token count (for pricing). Automatically excludes sub-categories priced separately (e.g., if cr is used, cache tokens are deducted from p)
 - len — total input context length (for condition checks). Not affected by auto-exclusion; always reflects the full input length. Use in tier conditions
 - cr — cache-hit (read) token count
-- cc — cache-create token count (5-min TTL)
+- cc — short-lived cache-create token count (5-minute Claude / 30-minute OpenAI)
 - cc1h — cache-create token count (1-hour TTL, Claude-specific)
+- cc12h — cache-create token count (12-hour TTL, OpenAI-specific)
 - img — image input token count
 - ai — audio input token count
 
@@ -1509,7 +1547,7 @@ Output side:
 
 ### p/c Auto-exclusion
 
-p and c are fallback variables representing all tokens not separately priced in the expression. If the expression uses a sub-category variable (e.g., cr), those tokens are deducted from p to avoid double-billing. Unused sub-category tokens remain in p/c at base price.
+p and c are fallback variables representing tokens not separately priced in the expression. If cc1h is omitted, 1-hour writes join cc at 1.6x; if cc12h is omitted, 12-hour writes join cc at 2x. If cc is also omitted, these weighted counts join p. The len variable always uses real, unweighted counts. If the expression uses a sub-category variable (e.g., cr), those tokens are deducted from p to avoid double-billing. Other unused sub-category tokens remain in p/c at base price.
 
 Important: len is NOT affected by auto-exclusion. Tier conditions should use len instead of p to prevent cache hits from lowering p and misidentifying the tier.
 
@@ -1560,7 +1598,7 @@ len <= 128000
 3. Use len for tier conditions (not p), supports <, <=, >, >=
 4. Multi-tier uses nested ternary: cond1 ? tier(...) : (cond2 ? tier(...) : tier(...))
 5. Price coefficients are the provider's official $/1M tokens prices
-6. If cache/image/audio don't need separate pricing, omit those variables; their tokens are included in p/c automatically
+6. Omitted cache read/image/audio prices use p/c. Omitted long-lived cache write prices fall back to cc, then p, with the 1.6x/2x factors above; include cc1h or cc12h explicitly to choose a different price (including zero).
 
 Please generate a billing expression based on the model information and pricing requirements provided.`
 
