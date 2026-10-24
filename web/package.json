@@ -47,7 +47,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dayjs": "^1.11.21",
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "i18next": "^26.3.4",
     "i18next-browser-languagedetector": "^8.2.1",
     "input-otp": "^1.4.2",
@@ -78,7 +78,7 @@
     "use-stick-to-bottom": "^1.1.6",
     "vaul": "^1.1.2",
     "yace": "^1.1.1",
-    "zod": "^4.4.3",
+    "zod": "^4.6.6",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -101,6 +101,7 @@
     "knip": "^6.24.0",
     "oxfmt": "^0.57.0",
     "oxlint": "^1.72.0",
+    "vite": "8.1.6",
     "vitest": "^5.0.4"
   },
   "overrides": {
@@ -110,8 +111,9 @@
     "browserslist": "4.29.0",
     "colord": "2.10.0",
     "decode-uri-component": "0.5.0",
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "fast-uri": "3.1.8",
+    "follow-redirects": "1.16.1",
     "hono": "4.13.8",
     "ip-address": "10.7.2",
     "js-cookie": "3.0.7",
@@ -125,7 +127,9 @@
     "smol-toml": "1.9.0",
     "source-map-js": "1.2.2",
     "tinypool": "2.1.2",
-    "undici": "7.29.1",
-    "uuid": "14.0.0"
+    "undici": "7.30.1",
+    "uuid": "14.0.0",
+    "vite": "8.1.6",
+    "zod": "4.6.6"
   }
 }
