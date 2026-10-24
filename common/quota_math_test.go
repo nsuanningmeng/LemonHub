@@ -124,3 +124,33 @@ func TestQuotaFromDecimalChecked(t *testing.T) {
 		assert.Equal(t, QuotaClampOverflow, clamp.Kind)
 	}
 }
+
+func TestQuotaClampAuditMapPreservesJSONMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		original float64
+		want     interface{}
+	}{
+		{"finite", 1e30, float64(1e30)},
+		{"positive infinity", math.Inf(1), "+Inf"},
+		{"negative infinity", math.Inf(-1), "-Inf"},
+		{"not a number", math.NaN(), "NaN"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clamp := &QuotaClamp{Op: "QuotaFromDecimal", Kind: QuotaClampOverflow, Original: tc.original, Clamped: MaxQuota}
+			encoded, err := Marshal(map[string]interface{}{
+				"model_ratio": 1.0,
+				"admin_info":  map[string]interface{}{"quota_saturation": clamp.AuditMap()},
+			})
+			require.NoError(t, err)
+			var decoded map[string]interface{}
+			require.NoError(t, Unmarshal(encoded, &decoded))
+			assert.Equal(t, 1.0, decoded["model_ratio"])
+			saturation := decoded["admin_info"].(map[string]interface{})["quota_saturation"].(map[string]interface{})
+			assert.Equal(t, tc.want, saturation["original"])
+			assert.Equal(t, "QuotaFromDecimal", saturation["op"])
+			assert.Equal(t, string(QuotaClampOverflow), saturation["kind"])
+			assert.Equal(t, float64(MaxQuota), saturation["clamped"])
+		})
+	}
+}

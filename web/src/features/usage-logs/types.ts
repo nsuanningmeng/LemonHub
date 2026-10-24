@@ -139,7 +139,7 @@ export interface LogOtherData {
     quota_saturation?: {
       op: string
       kind: 'overflow' | 'underflow' | 'nan'
-      original: number
+      original: number | string
       clamped: number
     }
     // Set when the user's full request body was recorded for this request

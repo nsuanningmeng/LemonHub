@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/shopspring/decimal"
 )
@@ -53,10 +54,16 @@ func (c *QuotaClamp) AuditMap() map[string]interface{} {
 	if c == nil {
 		return nil
 	}
+	var original interface{} = c.Original
+	if math.IsNaN(c.Original) || math.IsInf(c.Original, 0) {
+		// JSON cannot encode non-finite floats. Preserve the audit value as
+		// text so one oversized charge does not discard all log metadata.
+		original = strconv.FormatFloat(c.Original, 'g', -1, 64)
+	}
 	return map[string]interface{}{
 		"op":       c.Op,
 		"kind":     c.Kind,
-		"original": c.Original,
+		"original": original,
 		"clamped":  c.Clamped,
 	}
 }

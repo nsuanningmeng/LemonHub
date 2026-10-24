@@ -2,6 +2,7 @@ package helper
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -140,6 +141,10 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		// 固定1h和5min缓存写入价格的比例
 		cacheCreationRatio1h = cacheCreationRatio * claudeCacheCreation1hMultiplier
 		cacheCreationRatio12h = cacheCreationRatio * hosttypes.OpenAICacheCreation12hMultiplier
+		if math.IsNaN(cacheCreationRatio12h) || math.IsInf(cacheCreationRatio12h, 0) ||
+			math.IsNaN(cacheCreationRatio1h) || math.IsInf(cacheCreationRatio1h, 0) {
+			return hosttypes.PriceData{}, fmt.Errorf("cache creation lifetime ratio for model %s is non-finite", info.OriginModelName)
+		}
 		imageRatio, _ = ratio_setting.GetImageRatio(info.OriginModelName)
 		audioRatio = ratio_setting.GetAudioRatio(info.OriginModelName)
 		audioCompletionRatio = ratio_setting.GetAudioCompletionRatio(info.OriginModelName)

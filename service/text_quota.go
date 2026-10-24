@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -313,7 +314,6 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	dCacheCreationRatio := decimal.NewFromFloat(summary.CacheCreationRatio)
 	dCacheCreationRatio5m := decimal.NewFromFloat(summary.CacheCreationRatio5m)
 	dCacheCreationRatio1h := decimal.NewFromFloat(summary.CacheCreationRatio1h)
-	dCacheCreationRatio12h := decimal.NewFromFloat(summary.CacheCreationRatio12h)
 	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 
 	ratio := dModelRatio.Mul(dGroupRatio)
@@ -338,7 +338,19 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 				baseTokens = baseTokens.Sub(dCachedCreationTokens)
 				dCachedCreationTokens12h := decimal.NewFromInt(int64(summary.CacheCreationTokens12h))
 				cachedCreationTokensWithRatio = dCachedCreationTokens.Sub(dCachedCreationTokens12h).Mul(dCacheCreationRatio)
-				cachedCreationTokensWithRatio = cachedCreationTokensWithRatio.Add(dCachedCreationTokens12h.Mul(dCacheCreationRatio12h))
+				if summary.CacheCreationTokens12h > 0 {
+					// Price construction rejects non-finite derived ratios before
+					// submission. Defend older/direct snapshots too: reconstruct an
+					// overflowed lifetime ratio in decimal and let the final quota
+					// conversion apply its normal saturation and audit policy.
+					var dCacheCreationRatio12h decimal.Decimal
+					if math.IsNaN(summary.CacheCreationRatio12h) || math.IsInf(summary.CacheCreationRatio12h, 0) {
+						dCacheCreationRatio12h = dCacheCreationRatio.Mul(decimal.NewFromInt(hosttypes.OpenAICacheCreation12hMultiplier))
+					} else {
+						dCacheCreationRatio12h = decimal.NewFromFloat(summary.CacheCreationRatio12h)
+					}
+					cachedCreationTokensWithRatio = cachedCreationTokensWithRatio.Add(dCachedCreationTokens12h.Mul(dCacheCreationRatio12h))
+				}
 			} else {
 				remaining := summary.CacheCreationTokens - summary.CacheCreationTokens5m - summary.CacheCreationTokens1h
 				if remaining < 0 {
@@ -538,7 +550,11 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 	if summary.CacheCreationTokens12h > 0 {
 		other["cache_creation_tokens_12h"] = summary.CacheCreationTokens12h
-		other["cache_creation_ratio_12h"] = summary.CacheCreationRatio12h
+		// An old/direct snapshot can contain an overflowed derived ratio. Its
+		// charge is reconstructed above, but JSON cannot represent that float.
+		if !math.IsNaN(summary.CacheCreationRatio12h) && !math.IsInf(summary.CacheCreationRatio12h, 0) {
+			other["cache_creation_ratio_12h"] = summary.CacheCreationRatio12h
+		}
 	}
 	cacheWriteTokens := cacheWriteTokensTotal(summary)
 	if cacheWriteTokens > 0 {

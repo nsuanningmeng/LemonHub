@@ -1,6 +1,7 @@
 package helper
 
 import (
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,6 +18,27 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestModelPriceHelperRejectsOverflowingCacheLifetimeRatio(t *testing.T) {
+	savedModels := ratio_setting.ModelRatio2JSONString()
+	savedCache := ratio_setting.CreateCacheRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModels))
+		require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(savedCache))
+	})
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"cache-lifetime-overflow-review":1}`))
+	require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(`{"cache-lifetime-overflow-review":9e307}`))
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{OriginModelName: "cache-lifetime-overflow-review", UsingGroup: "default", UserGroup: "default"}
+	_, err := ModelPriceHelper(ctx, info, 1, &types.TokenCountMeta{})
+	require.ErrorContains(t, err, "cache creation lifetime ratio")
+
+	require.NoError(t, ratio_setting.UpdateCreateCacheRatioByJSONString(`{"cache-lifetime-overflow-review":9e306}`))
+	price, err := ModelPriceHelper(ctx, info, 1, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	assert.False(t, math.IsInf(price.CacheCreation12hRatio, 0))
+	assert.Equal(t, 1.8e307, price.CacheCreation12hRatio)
+}
 
 func TestHandleGroupRatioUsesSelectedAutoGroup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
