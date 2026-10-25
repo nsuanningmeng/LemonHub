@@ -124,6 +124,10 @@ export function SidebarModulesSection({
         title: t('Wallet'),
         description: t('Top up balance and view billing history.'),
       },
+      rewards: {
+        title: t('My Rewards'),
+        description: t('Claim rewards and view your reward history.'),
+      },
       personal: {
         title: t('Profile'),
         description: t('Personal settings and profile management.'),
@@ -141,6 +145,10 @@ export function SidebarModulesSection({
       redemption: {
         title: t('Redeem codes'),
         description: t('Create and review invite or credit codes.'),
+      },
+      reward_campaigns: {
+        title: t('Reward Center'),
+        description: t('Issue rewards to users with top-up or usage records.'),
       },
       user: {
         title: t('Users'),

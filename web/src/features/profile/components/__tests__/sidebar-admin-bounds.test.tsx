@@ -18,12 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { expect, test, vi } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
 import { api } from '@/lib/api'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { SidebarModulesCard } from '../sidebar-modules-card'
+
+afterEach(() => {
+  useAuthStore.getState().auth.reset()
+})
 
 function Navigation() {
   const groups = useSidebarConfig([
@@ -89,3 +95,94 @@ test.each([false, true])(
     client.clear()
   }
 )
+
+function RewardsNavigation() {
+  const groups = useSidebarConfig([
+    {
+      title: 'Personal',
+      items: [{ title: 'My Rewards', url: '/rewards' }],
+    },
+  ])
+  return (
+    <nav>
+      {groups.flatMap((group) =>
+        group.items.map((item) => (
+          <a key={item.url} href={item.url}>
+            {item.title}
+          </a>
+        ))
+      )}
+    </nav>
+  )
+}
+
+test('saving the personal rewards preference updates navigation and preserves other modules', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  client.setQueryData(['status'], {})
+  const config = { personal: { enabled: true, topup: true } }
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    role: ROLE.USER,
+    username: 'member',
+    sidebar_modules: JSON.stringify(config),
+  })
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: { success: true, data: { sidebar_modules: JSON.stringify(config) } },
+  })
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  const rendered = render(
+    <QueryClientProvider client={client}>
+      <SidebarModulesCard />
+      <RewardsNavigation />
+    </QueryClientProvider>
+  )
+  const rewardsSwitch = await screen.findByRole('switch', {
+    name: 'My Rewards',
+  })
+  expect(rewardsSwitch).toBeChecked()
+  expect(screen.getByRole('link', { name: 'My Rewards' })).toBeVisible()
+
+  fireEvent.click(rewardsSwitch)
+  expect(rewardsSwitch).not.toBeChecked()
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+  await waitFor(() => expect(put).toHaveBeenCalledTimes(1))
+  const payload = put.mock.calls[0]?.[1] as { sidebar_modules: string }
+  expect(JSON.parse(payload.sidebar_modules).personal).toEqual({
+    enabled: true,
+    topup: true,
+    rewards: false,
+  })
+  await waitFor(() =>
+    expect(screen.queryByRole('link', { name: 'My Rewards' })).toBeNull()
+  )
+  rendered.unmount()
+  client.clear()
+})
+
+test('an administrator-disabled rewards module cannot be restored in personal sidebar settings', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  client.setQueryData(['status'], {
+    SidebarModulesAdmin: JSON.stringify({
+      personal: { enabled: true, rewards: false },
+    }),
+  })
+  vi.spyOn(api, 'get').mockResolvedValue({ data: { success: true, data: {} } })
+  const rendered = render(
+    <QueryClientProvider client={client}>
+      <SidebarModulesCard />
+    </QueryClientProvider>
+  )
+  await screen.findByRole('switch', { name: 'Wallet Management' })
+  expect(screen.queryByRole('switch', { name: 'My Rewards' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Reset to Default' }))
+  expect(screen.queryByRole('switch', { name: 'My Rewards' })).toBeNull()
+  rendered.unmount()
+  client.clear()
+})

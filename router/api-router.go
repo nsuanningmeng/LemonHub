@@ -208,6 +208,20 @@ func SetApiRouter(router *gin.Engine) {
 			}
 		}
 
+		// Rewards are claimed by their owner; campaign issuance is admin-only.
+		rewardRoute := apiRouter.Group("/rewards", middleware.UserAuth(), middleware.DisableCache())
+		{
+			rewardRoute.GET("", controller.GetUserRewards)
+			rewardRoute.GET("/summary", controller.GetRewardSummary)
+			rewardRoute.POST("/:id/claim", middleware.UserCriticalRateLimit("reward-claim"), controller.ClaimReward)
+		}
+		rewardCampaignRoute := apiRouter.Group("/reward-campaigns", middleware.AdminAuth(), middleware.DisableCache())
+		{
+			rewardCampaignRoute.GET("", controller.GetRewardCampaigns)
+			rewardCampaignRoute.POST("/preview", middleware.UserCriticalRateLimit("reward-preview"), controller.PreviewRewardCampaign)
+			rewardCampaignRoute.POST("", middleware.UserCriticalRateLimit("reward-issue"), controller.CreateRewardCampaign)
+		}
+
 		// Subscription billing (plans, purchase, admin management)
 		subscriptionRoute := apiRouter.Group("/subscription")
 		subscriptionRoute.Use(middleware.UserAuth())

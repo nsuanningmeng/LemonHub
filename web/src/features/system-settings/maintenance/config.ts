@@ -74,6 +74,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
   personal: {
     enabled: true,
     topup: true,
+    rewards: true,
     personal: true,
   },
   admin: {
@@ -81,6 +82,7 @@ export const SIDEBAR_MODULES_DEFAULT: SidebarModulesAdminConfig = {
     channel: true,
     models: true,
     redemption: true,
+    reward_campaigns: true,
     user: true,
     setting: true,
     subscription: true,

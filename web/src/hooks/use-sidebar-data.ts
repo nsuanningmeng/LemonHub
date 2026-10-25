@@ -23,6 +23,7 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
+  Gift,
   Key,
   LayoutDashboard,
   LifeBuoy,
@@ -42,6 +43,7 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import type { SidebarData } from '@/components/layout/types'
+import { useRewardSummary } from '@/features/rewards/hooks/use-rewards'
 import { ROLE } from '@/lib/roles'
 
 /**
@@ -52,6 +54,8 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const rewards = useRewardSummary()
+  const pendingRewards = rewards.data?.pending_count ?? 0
 
   return {
     navGroups: [
@@ -119,6 +123,12 @@ export function useSidebarData(): SidebarData {
             icon: Wallet,
           },
           {
+            title: t('My Rewards'),
+            url: '/rewards',
+            icon: Gift,
+            badge: pendingRewards > 0 ? String(pendingRewards) : undefined,
+          },
+          {
             title: t('Referral Dashboard'),
             url: '/referral',
             icon: TrendingUp,
@@ -164,6 +174,12 @@ export function useSidebarData(): SidebarData {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,
+          },
+          {
+            title: t('Reward Center'),
+            url: '/reward-campaigns',
+            icon: Gift,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Sub-site Management'),

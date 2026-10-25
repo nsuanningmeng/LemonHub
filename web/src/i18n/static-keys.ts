@@ -19,6 +19,26 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Reward API error messages translated by the shared error handler.
+  'invalid reward campaign',
+  'invalid reward audience',
+  'reward request id already used for another campaign',
+  'no eligible reward recipients',
+  'reward recipient count or total quota exceeds limit',
+  'reward not found',
+  'reward user unavailable',
+  'invalid reward status or type',
+  'reward audience changed; preview again',
+  'reward audience changed since preview',
+  'reward expired',
+  'top-up quota limit exceeded',
+  'invalid top-up quota',
+  'Invalid reward ID',
+  'Invalid reward audience',
+  'Invalid reward campaign',
+  'Unable to process rewards. Please try again.',
+  'Failed to issue rewards',
+
   // Dynamic billing-variable labels.
   'Cache create (12h) price',
   // Complete sentences rendered through Trans.

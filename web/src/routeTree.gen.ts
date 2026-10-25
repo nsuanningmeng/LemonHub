@@ -50,6 +50,8 @@ import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_auth
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedRedemptionCodesIndexRouteImport } from './routes/_authenticated/redemption-codes/index'
 import { Route as AuthenticatedReferralIndexRouteImport } from './routes/_authenticated/referral/index'
+import { Route as AuthenticatedRewardCampaignsIndexRouteImport } from './routes/_authenticated/reward-campaigns/index'
+import { Route as AuthenticatedRewardsIndexRouteImport } from './routes/_authenticated/rewards/index'
 import { Route as AuthenticatedSiteAdminIndexRouteImport } from './routes/_authenticated/site-admin/index'
 import { Route as AuthenticatedSubSiteManagementIndexRouteImport } from './routes/_authenticated/sub-site-management/index'
 import { Route as AuthenticatedSubscriptionsIndexRouteImport } from './routes/_authenticated/subscriptions/index'
@@ -291,6 +293,18 @@ const AuthenticatedReferralIndexRoute =
     path: '/referral/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedRewardCampaignsIndexRoute =
+  AuthenticatedRewardCampaignsIndexRouteImport.update({
+    id: '/reward-campaigns/',
+    path: '/reward-campaigns/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedRewardsIndexRoute =
+  AuthenticatedRewardsIndexRouteImport.update({
+    id: '/rewards/',
+    path: '/rewards/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSiteAdminIndexRoute =
   AuthenticatedSiteAdminIndexRouteImport.update({
     id: '/site-admin/',
@@ -475,6 +489,8 @@ export interface FileRoutesByFullPath {
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/referral/': typeof AuthenticatedReferralIndexRoute
+  '/reward-campaigns/': typeof AuthenticatedRewardCampaignsIndexRoute
+  '/rewards/': typeof AuthenticatedRewardsIndexRoute
   '/site-admin/': typeof AuthenticatedSiteAdminIndexRoute
   '/sub-site-management/': typeof AuthenticatedSubSiteManagementIndexRoute
   '/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
@@ -539,6 +555,8 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/redemption-codes': typeof AuthenticatedRedemptionCodesIndexRoute
   '/referral': typeof AuthenticatedReferralIndexRoute
+  '/reward-campaigns': typeof AuthenticatedRewardCampaignsIndexRoute
+  '/rewards': typeof AuthenticatedRewardsIndexRoute
   '/site-admin': typeof AuthenticatedSiteAdminIndexRoute
   '/sub-site-management': typeof AuthenticatedSubSiteManagementIndexRoute
   '/subscriptions': typeof AuthenticatedSubscriptionsIndexRoute
@@ -607,6 +625,8 @@ export interface FileRoutesById {
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/redemption-codes/': typeof AuthenticatedRedemptionCodesIndexRoute
   '/_authenticated/referral/': typeof AuthenticatedReferralIndexRoute
+  '/_authenticated/reward-campaigns/': typeof AuthenticatedRewardCampaignsIndexRoute
+  '/_authenticated/rewards/': typeof AuthenticatedRewardsIndexRoute
   '/_authenticated/site-admin/': typeof AuthenticatedSiteAdminIndexRoute
   '/_authenticated/sub-site-management/': typeof AuthenticatedSubSiteManagementIndexRoute
   '/_authenticated/subscriptions/': typeof AuthenticatedSubscriptionsIndexRoute
@@ -674,6 +694,8 @@ export interface FileRouteTypes {
     | '/profile/'
     | '/redemption-codes/'
     | '/referral/'
+    | '/reward-campaigns/'
+    | '/rewards/'
     | '/site-admin/'
     | '/sub-site-management/'
     | '/subscriptions/'
@@ -738,6 +760,8 @@ export interface FileRouteTypes {
     | '/profile'
     | '/redemption-codes'
     | '/referral'
+    | '/reward-campaigns'
+    | '/rewards'
     | '/site-admin'
     | '/sub-site-management'
     | '/subscriptions'
@@ -805,6 +829,8 @@ export interface FileRouteTypes {
     | '/_authenticated/profile/'
     | '/_authenticated/redemption-codes/'
     | '/_authenticated/referral/'
+    | '/_authenticated/reward-campaigns/'
+    | '/_authenticated/rewards/'
     | '/_authenticated/site-admin/'
     | '/_authenticated/sub-site-management/'
     | '/_authenticated/subscriptions/'
@@ -1140,6 +1166,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReferralIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/reward-campaigns/': {
+      id: '/_authenticated/reward-campaigns/'
+      path: '/reward-campaigns'
+      fullPath: '/reward-campaigns/'
+      preLoaderRoute: typeof AuthenticatedRewardCampaignsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/rewards/': {
+      id: '/_authenticated/rewards/'
+      path: '/rewards'
+      fullPath: '/rewards/'
+      preLoaderRoute: typeof AuthenticatedRewardsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/site-admin/': {
       id: '/_authenticated/site-admin/'
       path: '/site-admin'
@@ -1412,6 +1452,8 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedRedemptionCodesIndexRoute: typeof AuthenticatedRedemptionCodesIndexRoute
   AuthenticatedReferralIndexRoute: typeof AuthenticatedReferralIndexRoute
+  AuthenticatedRewardCampaignsIndexRoute: typeof AuthenticatedRewardCampaignsIndexRoute
+  AuthenticatedRewardsIndexRoute: typeof AuthenticatedRewardsIndexRoute
   AuthenticatedSiteAdminIndexRoute: typeof AuthenticatedSiteAdminIndexRoute
   AuthenticatedSubSiteManagementIndexRoute: typeof AuthenticatedSubSiteManagementIndexRoute
   AuthenticatedSubscriptionsIndexRoute: typeof AuthenticatedSubscriptionsIndexRoute
@@ -1441,6 +1483,9 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRedemptionCodesIndexRoute:
     AuthenticatedRedemptionCodesIndexRoute,
   AuthenticatedReferralIndexRoute: AuthenticatedReferralIndexRoute,
+  AuthenticatedRewardCampaignsIndexRoute:
+    AuthenticatedRewardCampaignsIndexRoute,
+  AuthenticatedRewardsIndexRoute: AuthenticatedRewardsIndexRoute,
   AuthenticatedSiteAdminIndexRoute: AuthenticatedSiteAdminIndexRoute,
   AuthenticatedSubSiteManagementIndexRoute:
     AuthenticatedSubSiteManagementIndexRoute,
