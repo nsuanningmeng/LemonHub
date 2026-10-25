@@ -36,6 +36,16 @@ import { formatTimestamp } from '@/lib/format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { listRewardCampaigns } from './api'
+import { formatRewardClaimedAmount } from './lib/claimed-amount'
+import type { RewardDistributionStatus } from './types'
+
+const distributionStatusLabels: Record<RewardDistributionStatus, string> = {
+  backfilling: 'Processing eligible users',
+  scheduled: 'Waiting for activity period',
+  active: 'Automatically distributing',
+  completed: 'Activity period ended',
+  legacy: 'Legacy one-time distribution',
+}
 
 export function CampaignHistory() {
   const { t } = useTranslation()
@@ -55,6 +65,11 @@ export function CampaignHistory() {
     <Card className='rounded-2xl'>
       <CardHeader>
         <CardTitle>{t('Distribution history')}</CardTitle>
+        <p className='text-muted-foreground text-sm'>
+          {t(
+            'Validity starts separately when each user receives their reward. Existing one-time campaigns stay unchanged.'
+          )}
+        </p>
       </CardHeader>
       <CardContent>
         {query.isLoading && (
@@ -89,62 +104,82 @@ export function CampaignHistory() {
                   <TableHead>{t('Campaign')}</TableHead>
                   <TableHead>{t('Reward type')}</TableHead>
                   <TableHead>{t('Amount per user')}</TableHead>
-                  <TableHead>{t('Recipients')}</TableHead>
+                  <TableHead>{t('Rewards issued')}</TableHead>
                   <TableHead>{t('Claimed recipients')}</TableHead>
                   <TableHead>{t('Total claimed amount')}</TableHead>
                   <TableHead>{t('Activity period')}</TableHead>
-                  <TableHead>{t('Issued at')}</TableHead>
-                  <TableHead>{t('Expires at')}</TableHead>
+                  <TableHead>{t('Created at')}</TableHead>
+                  <TableHead>{t('Reward validity')}</TableHead>
+                  <TableHead>{t('Distribution status')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {campaigns.map((campaign) => (
-                  <TableRow key={campaign.id}>
-                    <TableCell>
-                      <div className='max-w-64 font-medium break-words whitespace-normal'>
-                        {campaign.title}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {campaign.type === 'fixed'
-                        ? t('Reward credit')
-                        : t('Lucky red packet')}
-                    </TableCell>
-                    <TableCell className='tabular-nums'>
-                      {formatQuotaWithCurrency(campaign.min_quota, {
-                        abbreviate: false,
-                      })}
-                      {campaign.type === 'random' &&
-                        ` – ${formatQuotaWithCurrency(campaign.max_quota, { abbreviate: false })}`}
-                    </TableCell>
-                    <TableCell className='tabular-nums'>
-                      {campaign.recipient_count}
-                    </TableCell>
-                    <TableCell className='tabular-nums'>
-                      {campaign.claimed_count}
-                    </TableCell>
-                    <TableCell className='tabular-nums'>
-                      {formatQuotaWithCurrency(campaign.claimed_quota, {
-                        abbreviate: false,
-                      })}
-                    </TableCell>
-                    <TableCell>
-                      <div className='text-xs'>
-                        {formatTimestamp(campaign.start_time)}
-                        <br />
-                        {formatTimestamp(campaign.end_time)}
-                      </div>
-                    </TableCell>
-                    <TableCell className='text-xs'>
-                      {formatTimestamp(campaign.created_at)}
-                    </TableCell>
-                    <TableCell className='text-xs'>
-                      {campaign.expires_at > 0
-                        ? formatTimestamp(campaign.expires_at)
-                        : t('No expiration')}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {campaigns.map((campaign) => {
+                  let validity = t('No expiration')
+                  let statusLabel = 'Legacy one-time distribution'
+                  if (campaign.continuous) {
+                    validity = t('{{count}} days per reward', {
+                      count: campaign.expires_in_days,
+                    })
+                    statusLabel = campaign.distribution_status
+                      ? distributionStatusLabels[campaign.distribution_status]
+                      : 'Unknown'
+                  } else if (campaign.expires_at > 0) {
+                    validity = formatTimestamp(campaign.expires_at)
+                  }
+                  return (
+                    <TableRow key={campaign.id}>
+                      <TableCell>
+                        <div className='max-w-64 font-medium break-words whitespace-normal'>
+                          {campaign.title}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {campaign.type === 'fixed'
+                          ? t('Reward credit')
+                          : t('Lucky red packet')}
+                      </TableCell>
+                      <TableCell className='tabular-nums'>
+                        {formatQuotaWithCurrency(campaign.min_quota, {
+                          abbreviate: false,
+                        })}
+                        {campaign.type === 'random' &&
+                          ` – ${formatQuotaWithCurrency(campaign.max_quota, { abbreviate: false })}`}
+                      </TableCell>
+                      <TableCell className='tabular-nums'>
+                        {campaign.recipient_count}
+                      </TableCell>
+                      <TableCell className='tabular-nums'>
+                        {campaign.claimed_count}
+                      </TableCell>
+                      <TableCell className='tabular-nums'>
+                        {formatRewardClaimedAmount(campaign)}
+                      </TableCell>
+                      <TableCell>
+                        <div className='text-xs'>
+                          {formatTimestamp(campaign.start_time)}
+                          <br />
+                          {formatTimestamp(campaign.end_time)}
+                        </div>
+                      </TableCell>
+                      <TableCell className='text-xs'>
+                        {formatTimestamp(campaign.created_at)}
+                      </TableCell>
+                      <TableCell className='text-xs'>{validity}</TableCell>
+                      <TableCell className='max-w-48 text-xs whitespace-normal'>
+                        {t(statusLabel)}
+                        {campaign.continuous &&
+                          campaign.distribution_status === 'completed' && (
+                            <p className='text-muted-foreground mt-1'>
+                              {t(
+                                'Late records from the activity period can still qualify for rewards.'
+                              )}
+                            </p>
+                          )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

@@ -105,7 +105,7 @@ func ensureLogRequestId(log *Log) {
 
 func createLog(log *Log) error {
 	ensureLogRequestId(log)
-	return LOG_DB.Create(log).Error
+	return createLogWithRewardActivity(log)
 }
 
 func clickHouseLogOrder(prefix string) string {

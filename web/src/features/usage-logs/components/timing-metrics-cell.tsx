@@ -34,6 +34,10 @@ import { formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getFirstResponseTimeColor, getResponseTimeColor } from '../lib/format'
+import {
+  getStreamEndReasonLabel,
+  getStreamStatusLabel,
+} from '../lib/stream-status'
 import type { LogOtherData } from '../types'
 
 /**
@@ -189,9 +193,12 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
               <TooltipContent>
                 <div className='space-y-0.5 text-xs'>
                   <p>
-                    {t('Stream Status')}: {t('Error')}
+                    {t('Stream Status')}:{' '}
+                    {getStreamStatusLabel(props.streamStatus?.status, t)}
                   </p>
-                  <p>{props.streamStatus?.end_reason || 'unknown'}</p>
+                  <p title={props.streamStatus?.end_reason}>
+                    {getStreamEndReasonLabel(props.streamStatus?.end_reason, t)}
+                  </p>
                   {(props.streamStatus?.error_count ?? 0) > 0 && (
                     <p>
                       {t('Soft Errors')}: {props.streamStatus?.error_count}

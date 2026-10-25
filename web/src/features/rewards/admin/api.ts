@@ -48,7 +48,7 @@ export async function createRewardCampaign(
     input
   )
   if (!response.data.success) {
-    throw new Error(response.data.message || 'Failed to issue rewards')
+    throw new Error(response.data.message || 'Failed to create reward campaign')
   }
   return response.data.data
 }

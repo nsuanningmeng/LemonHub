@@ -61,6 +61,7 @@ describe('reward campaign validation', () => {
       const result = getCampaignFormSchema(i18next.t).safeParse({
         ...campaign,
         expires_in_days,
+        continuous: true,
       })
 
       expect(result.success).toBe(false)
@@ -73,10 +74,12 @@ describe('reward campaign validation', () => {
       const parsed = getCampaignFormSchema(i18next.t).parse({
         ...campaign,
         expires_in_days,
+        continuous: true,
       })
 
       expect(campaignFormToInput(parsed, 'validity-boundary')).toMatchObject({
         expires_in_days,
+        continuous: true,
       })
     }
   )
@@ -90,6 +93,24 @@ describe('reward campaign validation', () => {
     expect(campaignFormToInput(parsed, 'both-activities')).toMatchObject({
       audience: 'both',
     })
+  })
+
+  test('future activity dates retain their source-record period and opt into continuous delivery', () => {
+    const parsed = getCampaignFormSchema(i18next.t).parse({
+      ...campaign,
+      start: '2099-11-01T00:00',
+      end: '2099-11-08T00:00',
+    })
+
+    const input = campaignFormToInput(parsed, 'future-activity')
+
+    expect(input).toMatchObject({
+      start_time: new Date('2099-11-01T00:00').getTime() / 1000,
+      end_time: new Date('2099-11-08T00:00').getTime() / 1000,
+      expires_in_days: 7,
+      continuous: true,
+    })
+    expect(input).not.toHaveProperty('scheduled_at')
   })
 
   test.each(['', '0', '-1', '18014398510'])(

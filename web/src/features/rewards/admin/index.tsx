@@ -34,7 +34,7 @@ export function RewardCampaigns() {
         <div className='mx-auto flex w-full max-w-6xl flex-col gap-6 pb-4'>
           <p className='text-muted-foreground text-sm'>
             {t(
-              'Send rewards to users who topped up or used the API during a selected period.'
+              'Reward campaigns automatically include enabled users with qualifying activity in the selected period.'
             )}
           </p>
           <CampaignForm />

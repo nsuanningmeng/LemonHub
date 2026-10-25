@@ -337,6 +337,11 @@ func InitResources() error {
 	if err != nil {
 		return err
 	}
+	// Every instance captures reward activity, including workers that do not
+	// run migrations or background distribution tasks.
+	if err = model.InitializeRewardActivityCapture(); err != nil {
+		return fmt.Errorf("initialize reward activity capture: %w", err)
+	}
 
 	// Initialize Redis
 	err = common.InitRedisClient()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -41,6 +42,7 @@ type RewardAudienceFilter struct {
 }
 
 type RewardCampaignInput struct {
+	Continuous             bool   `json:"continuous"`
 	Title                  string `json:"title"`
 	Description            string `json:"description"`
 	Type                   string `json:"type"`
@@ -58,26 +60,52 @@ type RewardRecipientPreview struct {
 	RecipientCount int `json:"recipient_count"`
 }
 
-// RewardCampaign is immutable once issued. Its UserReward rows are the recipient
-// snapshot, so activity occurring after issuance cannot add another recipient.
+// Legacy campaigns retain their immutable recipient snapshot. New continuous
+// campaigns explicitly opt in to recoverable distribution; old rows stay false.
 type RewardCampaign struct {
-	Id             int    `json:"id" gorm:"primaryKey"`
-	Title          string `json:"title" gorm:"type:varchar(480);not null"`
-	Description    string `json:"description" gorm:"type:text"`
-	Type           string `json:"type" gorm:"type:varchar(16);not null"`
-	MinQuota       int    `json:"min_quota" gorm:"type:bigint;not null"`
-	MaxQuota       int    `json:"max_quota" gorm:"type:bigint;not null"`
-	ExpiresInDays  int    `json:"expires_in_days" gorm:"not null;default:0"`
-	ExpiresAt      int64  `json:"expires_at" gorm:"type:bigint;not null;default:0"`
-	Audience       string `json:"audience" gorm:"type:varchar(16);not null"`
-	StartTime      int64  `json:"start_time" gorm:"type:bigint;not null"`
-	EndTime        int64  `json:"end_time" gorm:"type:bigint;not null"`
-	RequestID      string `json:"request_id" gorm:"type:varchar(64);not null;uniqueIndex"`
-	CreatedBy      int    `json:"created_by" gorm:"not null"`
-	CreatedAt      int64  `json:"created_at" gorm:"type:bigint;not null"`
-	RecipientCount int    `json:"recipient_count" gorm:"not null"`
-	ClaimedCount   int64  `json:"claimed_count" gorm:"-"`
-	ClaimedQuota   int64  `json:"claimed_quota" gorm:"-"`
+	Id                 int    `json:"id" gorm:"primaryKey"`
+	Continuous         bool   `json:"continuous" gorm:"not null;default:false;index:idx_reward_continuous"`
+	DistributionStatus string `json:"distribution_status" gorm:"-"`
+	Title              string `json:"title" gorm:"type:varchar(480);not null"`
+	Description        string `json:"description" gorm:"type:text"`
+	Type               string `json:"type" gorm:"type:varchar(16);not null"`
+	MinQuota           int    `json:"min_quota" gorm:"type:bigint;not null"`
+	MaxQuota           int    `json:"max_quota" gorm:"type:bigint;not null"`
+	ExpiresInDays      int    `json:"expires_in_days" gorm:"not null;default:0"`
+	ExpiresAt          int64  `json:"expires_at" gorm:"type:bigint;not null;default:0"`
+	Audience           string `json:"audience" gorm:"type:varchar(16);not null"`
+	StartTime          int64  `json:"start_time" gorm:"type:bigint;not null"`
+	EndTime            int64  `json:"end_time" gorm:"type:bigint;not null"`
+	RequestID          string `json:"request_id" gorm:"type:varchar(64);not null;uniqueIndex"`
+	CreatedBy          int    `json:"created_by" gorm:"not null"`
+	CreatedAt          int64  `json:"created_at" gorm:"type:bigint;not null"`
+	RecipientCount     int    `json:"recipient_count" gorm:"not null"`
+	ClaimedCount       int64  `json:"claimed_count" gorm:"-"`
+	ClaimedQuota       int64  `json:"claimed_quota" gorm:"-"`
+	ClaimedQuotaExact  string `json:"claimed_quota_exact" gorm:"-"`
+}
+
+// MarshalJSON keeps legacy numeric statistics unchanged when exactly representable
+// by JavaScript. Larger campaign totals are sent only as their exact decimal
+// string; null never pretends that a saturated or rounded number is the total.
+func (campaign RewardCampaign) MarshalJSON() ([]byte, error) {
+	type rewardCampaignJSON RewardCampaign
+	if campaign.ClaimedQuotaExact == "" {
+		campaign.ClaimedQuotaExact = strconv.FormatInt(campaign.ClaimedQuota, 10)
+	}
+	total, valid := new(big.Int).SetString(campaign.ClaimedQuotaExact, 10)
+	if !valid || total.Sign() < 0 {
+		return nil, ErrInvalidRewardCampaign
+	}
+	var numeric *int64
+	if total.IsInt64() && total.Int64() <= common.MaxWalletQuota {
+		value := total.Int64()
+		numeric = &value
+	}
+	return common.Marshal(struct {
+		rewardCampaignJSON
+		ClaimedQuota *int64 `json:"claimed_quota"`
+	}{rewardCampaignJSON: rewardCampaignJSON(campaign), ClaimedQuota: numeric})
 }
 
 // UserReward is also the durable credit ledger: the claim and wallet increment
@@ -226,7 +254,7 @@ func (input *RewardCampaignInput) normalizeAndValidate() error {
 	if input.ExpiresInDays < 1 || input.ExpiresInDays > 3650 {
 		return ErrInvalidRewardCampaign
 	}
-	if input.ExpectedRecipientCount != nil && (*input.ExpectedRecipientCount < 0 || *input.ExpectedRecipientCount > maxRewardRecipients) {
+	if !input.Continuous && input.ExpectedRecipientCount != nil && (*input.ExpectedRecipientCount < 0 || *input.ExpectedRecipientCount > maxRewardRecipients) {
 		return ErrInvalidRewardCampaign
 	}
 	return validateRewardAudience(RewardAudienceFilter{Audience: input.Audience, StartTime: input.StartTime, EndTime: input.EndTime})
@@ -236,7 +264,7 @@ func (campaign *RewardCampaign) matchesRequest(input RewardCampaignInput, create
 	return campaign.CreatedBy == createdBy && campaign.Title == input.Title && campaign.Description == input.Description &&
 		campaign.Type == input.Type && campaign.MinQuota == input.MinQuota && campaign.MaxQuota == input.MaxQuota &&
 		campaign.Audience == input.Audience && campaign.StartTime == input.StartTime && campaign.EndTime == input.EndTime &&
-		campaign.ExpiresInDays == input.ExpiresInDays
+		campaign.ExpiresInDays == input.ExpiresInDays && campaign.Continuous == input.Continuous
 }
 
 func CreateRewardCampaign(input RewardCampaignInput, createdBy int) (*RewardCampaign, error) {
@@ -255,10 +283,17 @@ func CreateRewardCampaign(input RewardCampaignInput, createdBy int) (*RewardCamp
 		if !existing.matchesRequest(input, createdBy) {
 			return nil, ErrRewardRequestConflict
 		}
-		return &existing, nil
+		items := []RewardCampaign{existing}
+		if err := populateRewardDistributionStatuses(items); err != nil {
+			return nil, err
+		}
+		return &items[0], nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
+	}
+	if input.Continuous {
+		return createContinuousRewardCampaign(input, createdBy)
 	}
 	ids, err := rewardRecipientIDs(RewardAudienceFilter{Audience: input.Audience, StartTime: input.StartTime, EndTime: input.EndTime})
 	if err != nil {
@@ -331,6 +366,7 @@ func CreateRewardCampaign(input RewardCampaignInput, createdBy int) (*RewardCamp
 		}
 		return nil, err
 	}
+	campaign.DistributionStatus = "legacy"
 	return campaign, nil
 }
 
@@ -361,33 +397,11 @@ func ListRewardCampaigns(page, size int) ([]RewardCampaign, int64, error) {
 	if len(items) == 0 {
 		return items, total, nil
 	}
-	campaignIDs := make([]int, len(items))
-	positions := make(map[int]int, len(items))
-	for i, campaign := range items {
-		campaignIDs[i] = campaign.Id
-		positions[campaign.Id] = i
-	}
-	var claims []struct {
-		CampaignID   int
-		ClaimedCount int64
-		ClaimedQuota int64
-	}
-	// Aggregate the current page in one query. The immutable credit ledger
-	// remains authoritative even if a recipient is later disabled or deleted.
-	err := DB.Model(&UserReward{}).
-		Select("campaign_id, COUNT(*) AS claimed_count, SUM(quota_awarded) AS claimed_quota").
-		Where("campaign_id IN ? AND status = ?", campaignIDs, RewardStatusClaimed).
-		Group("campaign_id").Scan(&claims).Error
-	if err != nil {
+	if err := populateRewardClaimStatistics(items); err != nil {
 		return nil, 0, err
 	}
-	for _, claim := range claims {
-		if claim.ClaimedQuota < 0 || claim.ClaimedQuota > common.MaxWalletQuota {
-			return nil, 0, ErrRewardRecipientsLimit
-		}
-		i := positions[claim.CampaignID]
-		items[i].ClaimedCount = claim.ClaimedCount
-		items[i].ClaimedQuota = claim.ClaimedQuota
+	if err := populateRewardDistributionStatuses(items); err != nil {
+		return nil, 0, err
 	}
 	return items, total, nil
 }

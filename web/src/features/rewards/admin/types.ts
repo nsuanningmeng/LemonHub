@@ -29,17 +29,27 @@ export type RewardCampaignInput = {
   start_time: number
   end_time: number
   expires_in_days: number
-  expected_recipient_count?: number
+  continuous: boolean
   request_id: string
 }
 
-export type RewardCampaign = RewardCampaignInput & {
+export type RewardDistributionStatus =
+  | 'backfilling'
+  | 'scheduled'
+  | 'active'
+  | 'completed'
+  | 'legacy'
+
+export type RewardCampaign = Omit<RewardCampaignInput, 'continuous'> & {
+  continuous?: boolean
+  distribution_status?: RewardDistributionStatus
   id: number
   created_at: number
   created_by: number
   recipient_count: number
   claimed_count: number
-  claimed_quota: number
+  claimed_quota: number | null
+  claimed_quota_exact?: string
   expires_at: number
 }
 

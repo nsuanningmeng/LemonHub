@@ -60,8 +60,13 @@ import {
   getFirstResponseTimeColor,
   getResponseTimeColor,
   getReasoningEffortVariant,
+  getAuditLoginMethodLabel,
   renderAuditContent,
 } from '../../lib/format'
+import {
+  getStreamEndReasonLabel,
+  getStreamStatusLabel,
+} from '../../lib/stream-status'
 import {
   getLogTypeConfig,
   isPerCallBilling,
@@ -612,7 +617,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
     ? ([
         other?.login_method && {
           label: t('Login Method'),
-          value: String(other.login_method),
+          value: getAuditLoginMethodLabel(String(other.login_method), t),
         },
         props.log.ip && {
           label: t('IP Address'),
@@ -1191,7 +1196,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
               label={t('Status')}
               value={
                 <StatusBadge
-                  label={other.stream_status.status || t('Error')}
+                  label={getStreamStatusLabel(other.stream_status.status, t)}
+                  title={other.stream_status.status}
                   variant='red'
                   size='sm'
                   copyable={false}
@@ -1201,7 +1207,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
             {other.stream_status.end_reason && (
               <DetailRow
                 label={t('End Reason')}
-                value={other.stream_status.end_reason}
+                value={
+                  <span title={other.stream_status.end_reason}>
+                    {getStreamEndReasonLabel(other.stream_status.end_reason, t)}
+                  </span>
+                }
               />
             )}
             {(other.stream_status.error_count ?? 0) > 0 && (
@@ -1317,7 +1327,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
         {/* Content */}
         {details && (
           <div className='space-y-1.5'>
-            <Label className='text-xs font-semibold'>{t('Content')}</Label>
+            <Label className='text-xs font-semibold'>
+              {operationText != null ? t('Original content') : t('Content')}
+            </Label>
             <div className='bg-muted/30 relative min-w-0 overflow-hidden rounded-md border p-2.5'>
               <Button
                 variant='ghost'

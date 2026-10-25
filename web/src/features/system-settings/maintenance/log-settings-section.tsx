@@ -76,6 +76,7 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { getMaintenanceErrorMessage } from '../lib/maintenance-error'
 import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
@@ -242,7 +243,11 @@ export function LogSettingsSection({
                 : t('No log entries matched the selected time.')
             )
           } else if (res.data.status === 'failed') {
-            toast.error(res.data.error || t('Failed to clean logs'))
+            toast.error(
+              res.data.error
+                ? getMaintenanceErrorMessage(res.data.error, t)
+                : t('Failed to clean logs')
+            )
           }
         }
       } catch {
@@ -294,7 +299,7 @@ export function LogSettingsSection({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : t('Failed to clean logs')
-      toast.error(message)
+      toast.error(getMaintenanceErrorMessage(message, t))
     } finally {
       setIsStartingLogCleanup(false)
     }
@@ -324,7 +329,11 @@ export function LogSettingsSection({
           })
         )
       } else {
-        toast.error(res.data.message || t('Cleanup failed'))
+        toast.error(
+          res.data.message
+            ? getMaintenanceErrorMessage(res.data.message, t)
+            : t('Cleanup failed')
+        )
       }
       fetchServerLogInfo()
     } catch {
@@ -417,8 +426,11 @@ export function LogSettingsSection({
                   })}
                 </div>
                 {logCleanupTask.status === 'failed' && logCleanupTask.error && (
-                  <div className='text-destructive mt-2 text-xs'>
-                    {logCleanupTask.error}
+                  <div
+                    className='text-destructive mt-2 text-xs'
+                    title={logCleanupTask.error}
+                  >
+                    {getMaintenanceErrorMessage(logCleanupTask.error, t)}
                   </div>
                 )}
               </div>

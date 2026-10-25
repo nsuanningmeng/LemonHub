@@ -56,13 +56,13 @@ export function RequestBodyDialog({
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const [loading, setLoading] = useState(false)
   const [body, setBody] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open || !requestId) return
     let cancelled = false
     setLoading(true)
-    setError('')
+    setError(null)
     setBody('')
     const run = async () => {
       try {
@@ -71,10 +71,10 @@ export function RequestBodyDialog({
         if (res.success && res.data) {
           setBody(res.data.body ?? '')
         } else {
-          setError(res.message || t('Request body not recorded'))
+          setError(res.message || 'request body not recorded for this request')
         }
       } catch {
-        if (!cancelled) setError(t('Failed to load request body'))
+        if (!cancelled) setError('')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -83,15 +83,42 @@ export function RequestBodyDialog({
     return () => {
       cancelled = true
     }
-  }, [open, requestId, t])
+  }, [open, requestId])
 
   const formatted = formatBody(body)
+  let errorMessage = error
+  switch (error) {
+    case '':
+      errorMessage = t('Failed to load request body')
+      break
+    case 'request body not recorded for this request':
+      errorMessage = t('Request body not recorded')
+      break
+    case 'request_id is required':
+      errorMessage = t('Request ID is required')
+      break
+    case '无权查看该用户的请求体':
+      errorMessage = t("You cannot view this user's request body")
+      break
+  }
 
   let content: React.ReactNode
   if (loading) {
     content = <p className='text-muted-foreground text-sm'>{t('Loading...')}</p>
-  } else if (error) {
-    content = <p className='text-muted-foreground text-sm'>{error}</p>
+  } else if (error !== null) {
+    content = (
+      <div className='text-muted-foreground space-y-2 text-sm'>
+        <p role='alert'>{errorMessage}</p>
+        {error && error !== errorMessage && (
+          <details>
+            <summary className='cursor-pointer'>{t('Original error')}</summary>
+            <pre className='mt-2 font-mono text-xs break-words whitespace-pre-wrap'>
+              {error}
+            </pre>
+          </details>
+        )}
+      </div>
+    )
   } else {
     content = (
       <div className='bg-muted/50 relative rounded-md border p-3'>

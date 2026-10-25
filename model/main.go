@@ -326,6 +326,8 @@ func migrateDB() error {
 		&Checkin{},
 		&RewardCampaign{},
 		&UserReward{},
+		&RewardDistributionState{},
+		&RewardDistributionCandidate{},
 		&SubscriptionOrder{},
 		&UserSubscription{},
 		&SubscriptionPreConsumeRecord{},
@@ -349,6 +351,9 @@ func migrateDB() error {
 		&AuthzRole{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := MigrateRewardActivityEvents(DB); err != nil {
 		return err
 	}
 	if err := finalizeExternalIdentityClaimsSiteScope(DB); err != nil {
@@ -451,6 +456,8 @@ func migrateDBFast() error {
 		{&Checkin{}, "Checkin"},
 		{&RewardCampaign{}, "RewardCampaign"},
 		{&UserReward{}, "UserReward"},
+		{&RewardDistributionState{}, "RewardDistributionState"},
+		{&RewardDistributionCandidate{}, "RewardDistributionCandidate"},
 		{&SubscriptionOrder{}, "SubscriptionOrder"},
 		{&UserSubscription{}, "UserSubscription"},
 		{&SubscriptionPreConsumeRecord{}, "SubscriptionPreConsumeRecord"},
@@ -496,6 +503,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := MigrateRewardActivityEvents(DB); err != nil {
+		return err
+	}
 	if err := finalizeExternalIdentityClaimsSiteScope(DB); err != nil {
 		return err
 	}
@@ -531,6 +541,9 @@ func migrateLOGDB() error {
 		return migrateClickHouseLogDB()
 	}
 	if err := LOG_DB.AutoMigrate(&Log{}); err != nil {
+		return err
+	}
+	if err := MigrateRewardActivityEvents(LOG_DB); err != nil {
 		return err
 	}
 	// Backfill NULL logs.site_id to 0 for the separate log database, matching the

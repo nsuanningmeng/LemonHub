@@ -34,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { listSystemTasks } from '@/features/system-settings/api'
+import { getMaintenanceErrorMessage } from '@/features/system-settings/lib/maintenance-error'
 import type {
   SystemTask,
   SystemTaskStatus,
@@ -79,6 +80,7 @@ const PROGRESS_BAR_CLASS_NAME: Record<SystemTaskStatus, string> = {
 // Maps backend system task type constants to i18n source keys. Unknown/future
 // types fall back to their raw identifier so the panel never shows blank.
 const TYPE_LABEL: Record<string, string> = {
+  reward_distribution: 'Automatic reward distribution',
   log_cleanup: 'Log cleanup',
   channel_test: 'Batch channel test',
   model_update: 'Batch upstream model update',
@@ -194,7 +196,7 @@ function SystemTasksTable(props: SystemTasksTableProps) {
                   className='text-destructive max-w-[220px] truncate py-3 pr-4 align-middle text-xs'
                   title={task.error || undefined}
                 >
-                  {task.error || '-'}
+                  {task.error ? getMaintenanceErrorMessage(task.error, t) : '-'}
                 </TableCell>
               </TableRow>
             )
@@ -212,7 +214,7 @@ export function SystemTasksPanel() {
     queryFn: async () => {
       const res = await listSystemTasks(TASK_LIMIT)
       if (!res.success || !Array.isArray(res.data)) {
-        throw new Error(res.message || t('We could not load system tasks.'))
+        throw new Error(res.message || 'We could not load system tasks.')
       }
       return res.data
     },
@@ -286,18 +288,19 @@ export function SystemTasksPanel() {
       </div>
 
       <div aria-busy={tasksQuery.isFetching}>
-        {loading ? (
+        {loading && (
           <div className='space-y-2 p-4 sm:p-5'>
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className='h-9 w-full rounded-md' />
+            {[1, 2, 3, 4].map((row) => (
+              <Skeleton key={row} className='h-9 w-full rounded-md' />
             ))}
           </div>
-        ) : tasksQuery.isError ? (
+        )}
+        {!loading && tasksQuery.isError && (
           <ErrorState
             title={t('We could not load system tasks.')}
             description={
               tasksQuery.error instanceof Error
-                ? tasksQuery.error.message
+                ? getMaintenanceErrorMessage(tasksQuery.error.message, t)
                 : undefined
             }
             onRetry={() => {
@@ -305,7 +308,8 @@ export function SystemTasksPanel() {
             }}
             className='min-h-[260px]'
           />
-        ) : tasks.length === 0 ? (
+        )}
+        {!loading && !tasksQuery.isError && tasks.length === 0 && (
           <div className='px-4 py-10 text-center sm:px-5'>
             <div className='bg-muted mx-auto mb-3 flex size-10 items-center justify-center rounded-lg'>
               <ListChecks
@@ -317,7 +321,8 @@ export function SystemTasksPanel() {
               {t('No system tasks yet.')}
             </p>
           </div>
-        ) : (
+        )}
+        {!loading && !tasksQuery.isError && tasks.length > 0 && (
           <div className='space-y-4 p-4 sm:p-5'>
             <div>
               <div className='mb-2 flex items-center justify-between gap-3'>

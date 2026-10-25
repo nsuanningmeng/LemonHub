@@ -28,12 +28,15 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { NativeSelect } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 
+import { CampaignSelectField } from './campaign-select-field'
 import type { CampaignFormValues } from './lib/campaign-form'
 
-type CampaignFieldsProps = { form: UseFormReturn<CampaignFormValues> }
+type CampaignFieldsProps = {
+  form: UseFormReturn<CampaignFormValues>
+  onSelectionChange: () => void
+}
 
 export function CampaignFields(props: CampaignFieldsProps) {
   const { t } = useTranslation()
@@ -76,52 +79,36 @@ export function CampaignFields(props: CampaignFieldsProps) {
           </FormItem>
         )}
       />
-      <FormField
+      <CampaignSelectField
         control={props.form.control}
         name='type'
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('Reward type')}</FormLabel>
-            <FormControl>
-              <NativeSelect {...field} className='w-full'>
-                <option value='fixed'>{t('Reward credit')}</option>
-                <option value='random'>{t('Lucky red packet')}</option>
-              </NativeSelect>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
+        label={t('Reward type')}
+        options={[
+          { value: 'fixed', label: t('Reward credit') },
+          { value: 'random', label: t('Lucky red packet') },
+        ]}
+        onValueChange={props.onSelectionChange}
       />
-      <FormField
+      <CampaignSelectField
         control={props.form.control}
         name='audience'
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('Eligible users')}</FormLabel>
-            <FormControl>
-              <NativeSelect {...field} className='w-full'>
-                <option value='topup'>
-                  {t('Users with successful top-ups')}
-                </option>
-                <option value='usage'>
-                  {t('Users with successful API calls')}
-                </option>
-                <option value='both'>
-                  {t('Users with successful top-ups and API calls')}
-                </option>
-                <option value='either'>
-                  {t('Users with successful top-ups or API calls')}
-                </option>
-              </NativeSelect>
-            </FormControl>
-            <FormMessage />
-            <p className='text-muted-foreground text-xs'>
-              {t(
-                'Recipients must be enabled. Within the selected period, “and” requires both a successful top-up and a successful API call; “or” requires either activity.'
-              )}
-            </p>
-          </FormItem>
+        label={t('Eligible users')}
+        options={[
+          { value: 'topup', label: t('Users with successful top-ups') },
+          { value: 'usage', label: t('Users with successful API calls') },
+          {
+            value: 'both',
+            label: t('Users with successful top-ups and API calls'),
+          },
+          {
+            value: 'either',
+            label: t('Users with successful top-ups or API calls'),
+          },
+        ]}
+        description={t(
+          'Recipients must be enabled. Within the selected period, “and” requires both a successful top-up and a successful API call; “or” requires either activity.'
         )}
+        onValueChange={props.onSelectionChange}
       />
       <FormField
         control={props.form.control}
@@ -199,7 +186,7 @@ export function CampaignFields(props: CampaignFieldsProps) {
             </FormControl>
             <FormDescription>
               {t(
-                'Validity starts when the campaign is issued and applies to both reward credits and lucky red packets. Unclaimed rewards expire after this period.'
+                'Each reward expires the configured number of days after it is issued to that user.'
               )}
             </FormDescription>
             <FormMessage />
@@ -238,7 +225,7 @@ export function CampaignFields(props: CampaignFieldsProps) {
           { zone: timeZone }
         )}{' '}
         {t(
-          'Each eligible main-site user receives one reward per campaign. Only successful, unrefunded top-ups and successful API usage are included.'
+          'Existing eligible users are processed after creation. New users qualify through successful activity within this period.'
         )}
       </p>
     </div>

@@ -119,10 +119,49 @@ function campaignCells(title: string) {
 }
 
 describe('reward distribution history', () => {
+  test.each([
+    ['backfilling', 'Processing eligible users'],
+    ['scheduled', 'Waiting for activity period'],
+    ['active', 'Automatically distributing'],
+    ['completed', 'Activity period ended'],
+  ])(
+    'a continuous %s campaign shows per-user validity and its distribution status',
+    async (status, label) => {
+      const campaign = {
+        ...unclaimed,
+        title: 'Future activity reward',
+        continuous: true,
+        distribution_status: status,
+        expires_at: 0,
+        recipient_count: 0,
+      }
+      vi.spyOn(api, 'get').mockResolvedValue({
+        data: { success: true, data: { items: [campaign], total: 1 } },
+      })
+      renderHistory()
+
+      const row = await screen.findByRole('row', {
+        name: /Future activity reward/,
+      })
+      expect(within(row).getByText('7 days per reward')).toBeVisible()
+      expect(within(row).getByText(label)).toBeVisible()
+      if (status === 'completed') {
+        expect(
+          within(row).getByText(
+            'Late records from the activity period can still qualify for rewards.'
+          )
+        ).toBeVisible()
+      }
+      expect(within(row).queryByText('No expiration')).not.toBeInTheDocument()
+    }
+  )
+
   test('shows the issued expiry timestamp and explicitly identifies a legacy campaign without expiry', async () => {
     const legacy = {
       ...partial,
       title: 'Legacy reward without expiry',
+      continuous: false,
+      distribution_status: 'legacy',
       expires_in_days: 0,
       expires_at: 0,
     }
@@ -134,12 +173,37 @@ describe('reward distribution history', () => {
     await screen.findByText(unclaimed.title)
 
     expect(
-      screen.getByRole('columnheader', { name: 'Expires at' })
+      screen.getByRole('columnheader', { name: 'Reward validity' })
     ).toBeVisible()
     expect(campaignCells(unclaimed.title)[8]).toHaveTextContent(
       formatTimestamp(unclaimed.expires_at)
     )
     expect(campaignCells(legacy.title)[8]).toHaveTextContent('No expiration')
+    expect(campaignCells(legacy.title)[9]).toHaveTextContent(
+      'Legacy one-time distribution'
+    )
+  })
+
+  test('large cumulative claims display the exact quota total instead of a missing or rounded number', async () => {
+    useSystemConfigStore.getState().setConfig({
+      currency: { ...DEFAULT_CURRENCY_CONFIG, quotaPerUnit: 100 },
+    })
+    const campaign = {
+      ...unclaimed,
+      title: 'Large claimed total',
+      claimed_quota: null,
+      claimed_quota_exact: '9007199254740993',
+    }
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: { success: true, data: { items: [campaign], total: 1 } },
+    })
+    renderHistory()
+
+    await screen.findByText(campaign.title)
+
+    expect(campaignCells(campaign.title)[5]).toHaveTextContent(
+      '$90,071,992,547,409.93'
+    )
   })
 
   test('an unclaimed campaign displays zero recipients claimed and zero actual amount', async () => {

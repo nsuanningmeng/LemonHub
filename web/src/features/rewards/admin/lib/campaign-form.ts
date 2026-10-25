@@ -143,5 +143,6 @@ export function campaignFormToInput(
     start_time: Math.floor(new Date(values.start).getTime() / 1000),
     end_time: Math.floor(new Date(values.end).getTime() / 1000),
     request_id: requestId,
+    continuous: true,
   }
 }

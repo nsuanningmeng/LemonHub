@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -87,6 +88,9 @@ func CreateRewardCampaign(c *gin.Context) {
 	if err != nil {
 		rewardAPIError(c, err)
 		return
+	}
+	if campaign.Continuous {
+		service.WakeRewardDistribution()
 	}
 	common.ApiSuccess(c, campaign)
 }

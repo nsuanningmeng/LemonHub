@@ -53,6 +53,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 
 import { getDeploymentLogs, listDeploymentContainers } from '../../api'
+import { getDeploymentContainerStatusLabel } from '../../lib/deployment-log-labels'
 
 interface ViewLogsDialogProps {
   open: boolean
@@ -66,6 +67,11 @@ export function ViewLogsDialog({
   deploymentId,
 }: ViewLogsDialogProps) {
   const { t } = useTranslation()
+  const streamOptions = [
+    { value: 'stdout', label: t('Standard output (stdout)') },
+    { value: 'stderr', label: t('Standard error (stderr)') },
+    { value: 'all', label: t('All streams') },
+  ]
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(false)
@@ -265,7 +271,7 @@ export function ViewLogsDialog({
               if (typeof id !== 'string' || !id) return []
               const status =
                 typeof c?.status === 'string' && c.status
-                  ? ` (${c.status})`
+                  ? ` (${getDeploymentContainerStatusLabel(c.status, t)})`
                   : ''
               return [
                 {
@@ -295,7 +301,7 @@ export function ViewLogsDialog({
                   }
                   const status =
                     typeof c?.status === 'string' && c.status
-                      ? ` (${c.status})`
+                      ? ` (${getDeploymentContainerStatusLabel(c.status, t)})`
                       : ''
                   return (
                     <SelectItem key={id} value={id}>
@@ -311,11 +317,7 @@ export function ViewLogsDialog({
         <div className='space-y-1'>
           <div className='text-muted-foreground text-xs'>{t('Stream')}</div>
           <Select
-            items={[
-              { value: 'stdout', label: 'stdout' },
-              { value: 'stderr', label: 'stderr' },
-              { value: 'all', label: 'all' },
-            ]}
+            items={streamOptions}
             value={stream}
             onValueChange={(v) => {
               if (v === 'stderr' || v === 'all' || v === 'stdout') {
@@ -330,9 +332,11 @@ export function ViewLogsDialog({
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               <SelectGroup>
-                <SelectItem value='stdout'>stdout</SelectItem>
-                <SelectItem value='stderr'>stderr</SelectItem>
-                <SelectItem value='all'>all</SelectItem>
+                {streamOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectGroup>
             </SelectContent>
           </Select>

@@ -476,8 +476,184 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   // Logs
   'log.clear': 'Cleared historical logs',
   'log.cleanup_start': 'Log cleanup task started.',
+  // Structured administration records, including historical rows with other.op.
+  'user.request_body_record':
+    '{{state}} request body recording for user {{username}} (ID: {{id}})',
+  'log.request_body_view':
+    'Viewed the recorded request body for request {{request_id}}',
+  'log.request_body_clear':
+    'Cleared all recorded request bodies ({{deleted}} removed)',
+  'site.create': 'Created sub-site {{name}} (ID: {{id}})',
+  'site.update': 'Updated sub-site {{name}} (ID: {{id}})',
+  'site.delete': 'Deleted sub-site (ID: {{id}})',
+  'site.wallet_recharge':
+    'Recharged sub-site {{id}} wallet by {{amount}} (1/1000 CNY)',
+  'site.wallet_adjust':
+    'Adjusted sub-site {{id}} wallet by {{amount}} (1/1000 CNY)',
+  'redemption.void': 'Voided redemption (ID: {{id}}) and refunded its cost',
+  'site_admin.branding_update':
+    'Sub-site admin updated branding for site {{id}} (name {{name}})',
+  'site_admin.redemption_create':
+    'Sub-site admin created {{count}} redemption codes named {{name}} ({{quota}} each)',
+  'site_admin.redemption_void': 'Sub-site admin voided redemption (ID: {{id}})',
+  'site_admin.warn_threshold':
+    'Sub-site admin set wallet warning threshold to {{threshold}} (1/1000 CNY) for site {{id}}',
+  'site_admin.pay_config':
+    'Sub-site admin updated payment collection settings for site {{id}}',
+  'site_admin.model_pricing':
+    'Sub-site admin set model pricing rate to {{model_price_rate}}/10000 for site {{id}}',
+  'topup.retry_settlement':
+    'Retried settlement of top-up {{trade_no}} (result {{status}})',
+  'subscription.plan_reset': 'Reset active subscriptions for plan {{plan_id}}',
+  'subscription.user_plan_reset':
+    'Reset active plan {{plan_id}} subscriptions for user {{target_user_id}}',
+  'channel.status_update': 'Updated channel {{id}} status to {{status}}',
+  'channel.status_update_batch':
+    'Updated {{count}} of {{total}} channels to {{status}}',
+  'channel.upstream_detect_all':
+    'Started upstream model detection for all channels (task: {{task_id}})',
+  'email_campaign.create':
+    'Created email campaign (ID: {{campaign_id}}, group: {{target_group}}, users: {{target_status}}, source: {{source}})',
+  'email_suppression.add':
+    'Added {{email}} to the email suppression list (reason: {{reason}})',
+  'email_suppression.delete':
+    'Removed email suppression entry (ID: {{suppression_id}})',
+  'email_suppression.import':
+    'Imported email suppression entries (imported: {{imported}}, failed: {{failed}})',
+  'ticket.update':
+    'Updated ticket {{ticket_id}} (status: {{status}}, priority: {{priority}})',
+  'ticket.cleanup':
+    'Cleaned ticket data (tickets: {{deleted_tickets}}, messages: {{deleted_messages}}, files: {{deleted_files}}, attachment records: {{deleted_rows}}, failed files: {{failed_files}})',
+  'user.aff_cash_payout':
+    'Recorded affiliate cash payout for inviter {{inviter_id}} (quota: {{amount}}, payout: {{payout_id}})',
   // Generic middleware fallback
   generic: '{{method}} {{route}}',
+}
+
+// Only documented enum fields are localized. User names, groups, IDs, and
+// unknown future values must remain byte-for-byte intact.
+const AUDIT_PARAM_LABELS: Record<
+  string,
+  Record<string, Record<string, string>>
+> = {
+  'user.manage': {
+    action: {
+      disable: 'Disable',
+      enable: 'Enable',
+      delete: 'Delete',
+      promote: 'Promote',
+      demote: 'Demote',
+    },
+  },
+  'channel.multi_key_manage': {
+    action: {
+      disable_key: 'Disable',
+      enable_key: 'Enable',
+      enable_all_keys: 'Enable All',
+      disable_all_keys: 'Disable All',
+      delete_key: 'Delete',
+      delete_disabled_keys: 'Delete Auto-Disabled',
+    },
+  },
+  'user.binding_clear': {
+    bindingType: {
+      email: 'Email',
+      github: 'GitHub',
+      discord: 'Discord',
+      oidc: 'OIDC',
+      wechat: 'WeChat',
+      telegram: 'Telegram',
+      linuxdo: 'LinuxDO',
+    },
+  },
+  'user.request_body_record': {
+    state: {
+      Enabled: 'Enabled',
+      Disabled: 'Disabled',
+    },
+  },
+  'topup.retry_settlement': {
+    status: {
+      pending: 'Pending',
+      success: 'Success',
+      failed: 'Failed',
+      expired: 'Expired',
+      refunded: 'Refunded',
+      disputed: 'Disputed',
+    },
+  },
+  'channel.status_update': {
+    status: {
+      '1': 'Enabled',
+      '2': 'Manual Disabled',
+      '3': 'Auto Disabled',
+    },
+  },
+  'channel.status_update_batch': {
+    status: {
+      '1': 'Enabled',
+      '2': 'Manual Disabled',
+      '3': 'Auto Disabled',
+    },
+  },
+  'email_campaign.create': {
+    source: {
+      manual: 'Manual',
+      announcement: 'Announcement',
+    },
+    target_status: {
+      '0': 'All users',
+      '1': 'Enabled',
+    },
+    target_group: {
+      '': 'All Groups',
+    },
+  },
+  'email_suppression.add': {
+    reason: {
+      hard_bounce: 'Hard bounce',
+      complaint: 'Spam complaint',
+    },
+  },
+  'ticket.update': {
+    status: {
+      open: 'Awaiting administrator',
+      awaiting_user: 'Awaiting Reply',
+      closed: 'Closed',
+      '': 'Unchanged',
+    },
+    priority: {
+      low: 'Low',
+      normal: 'Normal',
+      high: 'High',
+      urgent: 'Urgent',
+      '': 'Unchanged',
+    },
+  },
+}
+
+const AUDIT_LOGIN_METHOD_LABELS: Record<string, string> = {
+  password: 'Password',
+  '2fa': 'Two-factor Authentication',
+  passkey: 'Passkey',
+  wechat: 'WeChat',
+  telegram: 'Telegram',
+  oauth: 'OAuth',
+  unknown: 'Unknown',
+  'oauth:github': 'GitHub',
+  'oauth:discord': 'Discord',
+  'oauth:oidc': 'OIDC',
+  'oauth:linuxdo': 'LinuxDO',
+}
+
+/** Localize known audit login methods without normalizing custom identifiers. */
+export function getAuditLoginMethodLabel(
+  method: string,
+  t: (key: string) => string
+): string {
+  if (!Object.hasOwn(AUDIT_LOGIN_METHOD_LABELS, method)) return method
+  const label = t(AUDIT_LOGIN_METHOD_LABELS[method])
+  return method.startsWith('oauth:') ? `${t('OAuth')} · ${label}` : label
 }
 
 /**
@@ -490,8 +666,20 @@ export function renderAuditContent(
   t: (key: string, opts?: Record<string, unknown>) => string
 ): string | null {
   const op = other?.op
-  if (!op?.action) return null
+  if (!op?.action || !Object.hasOwn(AUDIT_TEMPLATES, op.action)) return null
   const template = AUDIT_TEMPLATES[op.action]
-  if (!template) return null
-  return t(template, (op.params ?? {}) as Record<string, unknown>)
+  const params = { ...op.params }
+  const fields = AUDIT_PARAM_LABELS[op.action]
+  if (fields) {
+    for (const [field, labels] of Object.entries(fields)) {
+      const value = params[field]
+      if (typeof value !== 'string' && typeof value !== 'number') continue
+      const token = String(value)
+      if (Object.hasOwn(labels, token)) params[field] = t(labels[token])
+    }
+  }
+  if (op.action === 'login' && typeof params.method === 'string') {
+    params.method = getAuditLoginMethodLabel(params.method, t)
+  }
+  return t(template, params)
 }

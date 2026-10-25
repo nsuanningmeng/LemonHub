@@ -1162,7 +1162,10 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 				CompleteTime:  now,
 				Status:        common.TopUpStatusSuccess,
 			}
-			return tx.Create(&topup).Error
+			if err := tx.Create(&topup).Error; err != nil {
+				return err
+			}
+			return recordRewardTopUpActivity(tx, &topup)
 		}
 		return err
 	}
@@ -1177,7 +1180,10 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	}
 	topup.CompleteTime = now
 	topup.Status = common.TopUpStatusSuccess
-	return tx.Save(&topup).Error
+	if err := tx.Save(&topup).Error; err != nil {
+		return err
+	}
+	return recordRewardTopUpActivity(tx, &topup)
 }
 
 func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) error {

@@ -422,6 +422,9 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
+		if err := recordRewardTopUpActivity(tx, topUp); err != nil {
+			return err
+		}
 		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheGeneration)
 	})
 	if err != nil {
@@ -486,6 +489,9 @@ func Recharge(referenceId string, customerId string, paymentIntent string, calle
 		}
 		err = tx.Save(topUp).Error
 		if err != nil {
+			return err
+		}
+		if err := recordRewardTopUpActivity(tx, topUp); err != nil {
 			return err
 		}
 
@@ -997,6 +1003,9 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
+		if err := recordRewardTopUpActivity(tx, topUp); err != nil {
+			return err
+		}
 
 		// 增加用户额度（立即写库，保持一致性）
 		if err := creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheGeneration); err != nil {
@@ -1050,6 +1059,9 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 		topUp.Status = common.TopUpStatusSuccess
 		err = tx.Save(topUp).Error
 		if err != nil {
+			return err
+		}
+		if err := recordRewardTopUpActivity(tx, topUp); err != nil {
 			return err
 		}
 
@@ -1127,6 +1139,9 @@ func RechargeWaffo(tradeNo string, callerIp string) (err error) {
 		if err := tx.Save(topUp).Error; err != nil {
 			return err
 		}
+		if err := recordRewardTopUpActivity(tx, topUp); err != nil {
+			return err
+		}
 
 		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil, &cacheGeneration)
 	})
@@ -1189,6 +1204,9 @@ func RechargeWaffoPancake(tradeNo string) (err error) {
 		topUp.CompleteTime = common.GetTimestamp()
 		topUp.Status = common.TopUpStatusSuccess
 		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+		if err := recordRewardTopUpActivity(tx, topUp); err != nil {
 			return err
 		}
 
