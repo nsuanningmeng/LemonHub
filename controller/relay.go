@@ -211,6 +211,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	clientIsStream := relayInfo.IsStream
 	relayInfo.RetryIndex = 0
 	relayInfo.LastError = nil
+	errorLogs := &relayChannelErrorLogs{}
+	c.Set(relayChannelErrorLogsKey, errorLogs)
+	defer func() {
+		errorLogs.record(newAPIError)
+		delete(c.Keys, relayChannelErrorLogsKey)
+	}()
 
 	for ; retryParam.GetRetry() <= common.RetryTimes; retryParam.IncreaseRetry() {
 		relayInfo.RetryIndex = retryParam.GetRetry()
@@ -317,7 +323,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			}
 			model.RecordErrorLog(c, relayInfo.UserId, relayInfo.ChannelId, relayInfo.OriginModelName,
 				c.GetString("token_name"), "downstream_cancelled", relayInfo.TokenId,
-				int(time.Since(relayInfo.StartTime).Seconds()), relayInfo.IsStream, relayInfo.UsingGroup, other)
+				int(time.Since(relayInfo.StartTime).Seconds()), relayInfo.IsStream, relayInfo.UsingGroup, other, false, time.Now())
 			return
 		}
 
@@ -599,6 +605,25 @@ func maskMappedModelName(c *gin.Context, message string) string {
 	return sb.String()
 }
 
+const relayChannelErrorLogsKey = "relay_channel_error_logs"
+
+type relayChannelErrorLog struct {
+	context    *gin.Context
+	err        *types.NewAPIError
+	recordedAt time.Time
+}
+
+type relayChannelErrorLogs struct {
+	attempts []relayChannelErrorLog
+}
+
+func (logs *relayChannelErrorLogs) record(finalError *types.NewAPIError) {
+	for i, attempt := range logs.attempts {
+		isRetry := i < len(logs.attempts)-1 || attempt.err != finalError
+		recordChannelErrorLog(attempt.context, attempt.err, isRetry, attempt.recordedAt)
+	}
+}
+
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
@@ -613,55 +638,69 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		})
 	}
 
-	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
-		// 保存错误日志到mysql中
-		userId := c.GetInt("id")
-		tokenName := c.GetString("token_name")
-		modelName := c.GetString("original_model")
-		tokenId := c.GetInt("token_id")
-		userGroup := c.GetString("group")
-		channelId := c.GetInt("channel_id")
-		other := make(map[string]interface{})
-		if c.Request != nil && c.Request.URL != nil {
-			other["request_path"] = c.Request.URL.Path
-		}
-		other["error_type"] = err.GetErrorType()
-		other["error_code"] = err.GetErrorCode()
-		other["status_code"] = err.StatusCode
-		other["channel_id"] = channelId
-		other["channel_name"] = c.GetString("channel_name")
-		other["channel_type"] = c.GetInt("channel_type")
-		if upstreamModel := common.GetContextKeyString(c, constant.ContextKeyUpstreamModelName); upstreamModel != "" {
-			// The log content below is scrubbed of the mapped model name;
-			// keep the actual upstream model visible to admins here
-			// (formatUserLogs strips these keys for non-admin viewers).
-			other["is_model_mapped"] = true
-			other["upstream_model_name"] = upstreamModel
-		}
-		adminInfo := make(map[string]interface{})
-		adminInfo["use_channel"] = c.GetStringSlice("use_channel")
-		if overrideText, tagged := err.UserMessageOverride(); tagged {
-			// The user-facing response was replaced with the fixed error text;
-			// this log entry keeps the original message for admins, and the
-			// user-visible text is stored so user log views can mask consistently.
-			adminInfo["error_override_enabled"] = true
-			adminInfo["error_override_text"] = overrideText
-		}
-		isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
-		if isMultiKey {
-			adminInfo["is_multi_key"] = true
-			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
-		}
-		service.AppendChannelAffinityAdminInfo(c, adminInfo)
-		other["admin_info"] = adminInfo
-		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
-		if startTime.IsZero() {
-			startTime = time.Now()
-		}
-		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, maskMappedModelName(c, err.MaskSensitiveErrorWithStatusCode()), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+	if !constant.ErrorLogEnabled || !types.IsRecordErrorLog(err) {
+		return
 	}
+	if pending, ok := c.Get(relayChannelErrorLogsKey); ok {
+		// Classify attempts only after the request finishes. This also handles a
+		// retry whose channel selection fails, leaving the last upstream error final.
+		// Copy the context now so later attempts cannot replace channel metadata.
+		logs := pending.(*relayChannelErrorLogs)
+		snapshot := c.Copy()
+		delete(snapshot.Keys, relayChannelErrorLogsKey)
+		logs.attempts = append(logs.attempts, relayChannelErrorLog{snapshot, err, time.Now()})
+		return
+	}
+	recordChannelErrorLog(c, err, false, time.Now())
+}
 
+func recordChannelErrorLog(c *gin.Context, err *types.NewAPIError, isRetry bool, recordedAt time.Time) {
+	// 保存错误日志到mysql中
+	userId := c.GetInt("id")
+	tokenName := c.GetString("token_name")
+	modelName := c.GetString("original_model")
+	tokenId := c.GetInt("token_id")
+	userGroup := c.GetString("group")
+	channelId := c.GetInt("channel_id")
+	other := make(map[string]interface{})
+	if c.Request != nil && c.Request.URL != nil {
+		other["request_path"] = c.Request.URL.Path
+	}
+	other["error_type"] = err.GetErrorType()
+	other["error_code"] = err.GetErrorCode()
+	other["status_code"] = err.StatusCode
+	other["channel_id"] = channelId
+	other["channel_name"] = c.GetString("channel_name")
+	other["channel_type"] = c.GetInt("channel_type")
+	if upstreamModel := common.GetContextKeyString(c, constant.ContextKeyUpstreamModelName); upstreamModel != "" {
+		// The log content below is scrubbed of the mapped model name;
+		// keep the actual upstream model visible to admins here
+		// (formatUserLogs strips these keys for non-admin viewers).
+		other["is_model_mapped"] = true
+		other["upstream_model_name"] = upstreamModel
+	}
+	adminInfo := make(map[string]interface{})
+	adminInfo["use_channel"] = c.GetStringSlice("use_channel")
+	if overrideText, tagged := err.UserMessageOverride(); tagged {
+		// The user-facing response was replaced with the fixed error text;
+		// this log entry keeps the original message for admins, and the
+		// user-visible text is stored so user log views can mask consistently.
+		adminInfo["error_override_enabled"] = true
+		adminInfo["error_override_text"] = overrideText
+	}
+	isMultiKey := common.GetContextKeyBool(c, constant.ContextKeyChannelIsMultiKey)
+	if isMultiKey {
+		adminInfo["is_multi_key"] = true
+		adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
+	}
+	service.AppendChannelAffinityAdminInfo(c, adminInfo)
+	other["admin_info"] = adminInfo
+	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
+	if startTime.IsZero() {
+		startTime = recordedAt
+	}
+	useTimeSeconds := int(recordedAt.Sub(startTime).Seconds())
+	model.RecordErrorLog(c, userId, channelId, modelName, tokenName, maskMappedModelName(c, err.MaskSensitiveErrorWithStatusCode()), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other, isRetry, recordedAt)
 }
 
 func RelayMidjourney(c *gin.Context) {
@@ -766,6 +805,17 @@ func RelayTask(c *gin.Context) {
 
 	var result *relay.TaskSubmitResult
 	var taskErr *taskdto.TaskError
+	var loggedTaskErr *taskdto.TaskError
+	var loggedChannelErr *types.NewAPIError
+	errorLogs := &relayChannelErrorLogs{}
+	c.Set(relayChannelErrorLogsKey, errorLogs)
+	defer func() {
+		if taskErr == nil || taskErr != loggedTaskErr {
+			loggedChannelErr = nil
+		}
+		errorLogs.record(loggedChannelErr)
+		delete(c.Keys, relayChannelErrorLogsKey)
+	}()
 	defer func() {
 		if taskErr != nil && relayInfo.Billing != nil {
 			relayInfo.Billing.Refund(c)
@@ -828,6 +878,7 @@ func RelayTask(c *gin.Context) {
 
 		if !taskErr.LocalError {
 			wrappedErr := types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode)
+			loggedTaskErr, loggedChannelErr = taskErr, wrappedErr
 			// 渠道来源的任务错误仅在命中泄密关键词时替换
 			if overrideText, ok := service.ChannelErrorOverrideForError(c, taskErr.Message+" "+taskErr.Code); ok {
 				taskErr.UserMessageOverride = overrideText

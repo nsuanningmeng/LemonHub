@@ -173,11 +173,19 @@ func TestLogInputTokensMigrationPreservesLegacyRows(t *testing.T) {
 							require.Contains(t, row, "input_tokens_total")
 							assert.Nil(t, row["input_tokens_total"], "old rows retain NULL fallback")
 							delete(row, "input_tokens_total")
+							delete(row, "is_retry")
 						}
 						assert.Equal(t, legacyRaw, rows, "old raw fields remain byte-for-byte stable")
 						if mode == "separate_log" {
 							assert.False(t, DB.Migrator().HasTable("logs"), "log migration must not create tables in primary DB")
 						}
+					}
+					visibleLogs, total, err := GetUserLogs(101, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "")
+					require.NoError(t, err)
+					assert.EqualValues(t, 2, total, "legacy logs remain visible after adding the retry marker")
+					require.Len(t, visibleLogs, 2)
+					for _, log := range visibleLogs {
+						assert.False(t, log.IsRetry)
 					}
 					// Old and new binaries can share a migrated log schema. An omitted field
 					// stays NULL; an explicit 0 must override a nonzero raw prompt count.
