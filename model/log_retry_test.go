@@ -6,19 +6,26 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestRetryLogsStayAdminOnlyAcrossUserAndTokenQueries(t *testing.T) {
 	db := setupUsageActivityTestDB(t)
-	previousLogType, previousLimit := common.LogDatabaseType(), common.MaxRecentItems
+	previousLogType := common.LogDatabaseType()
 	common.SetLogDatabaseType(common.DatabaseTypeSQLite)
-	common.MaxRecentItems = 2
 	initCol()
 	t.Cleanup(func() {
 		common.SetLogDatabaseType(previousLogType)
-		common.MaxRecentItems = previousLimit
 		initCol()
 	})
+	verifyRetryLogQueries(t, db)
+}
+
+func verifyRetryLogQueries(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	previousLimit := common.MaxRecentItems
+	common.MaxRecentItems = 2
+	t.Cleanup(func() { common.MaxRecentItems = previousLimit })
 	logs := []Log{
 		{UserId: 77, TokenId: 3, Type: LogTypeError, RequestId: "legacy", Content: "legacy failure"},
 		{UserId: 77, TokenId: 3, Type: LogTypeError, RequestId: "success", IsRetry: true, Content: "recovered failure"},
@@ -30,14 +37,16 @@ func TestRetryLogsStayAdminOnlyAcrossUserAndTokenQueries(t *testing.T) {
 		{UserId: 78, TokenId: 5, Type: LogTypeError, RequestId: "other-user", Content: "other user"},
 	}
 	for i := range logs {
+		logs[i].Id = 2001 + i
 		logs[i].CreatedAt = int64(100 + i)
 		logs[i].ModelName = "retry-model"
 		logs[i].Group = "retry-group"
 		logs[i].Other = `{"admin_info":{"diagnostic":"private"}}`
 	}
-	require.NoError(t, db.Create(&logs).Error)
-	// Old binaries omit the newly added nullable column.
-	require.NoError(t, db.Model(&Log{}).Where("request_id = ?", "legacy").Update("is_retry", nil).Error)
+	// An old writer leaves NULL on relational databases and the default 0 on
+	// ClickHouse. Both must remain visible alongside newly classified attempts.
+	require.NoError(t, db.Omit("is_retry").Create(&logs[0]).Error)
+	require.NoError(t, db.Create(logs[1:]).Error)
 
 	for _, tc := range []struct {
 		name      string
@@ -96,5 +105,8 @@ func TestRetryLogsStayAdminOnlyAcrossUserAndTokenQueries(t *testing.T) {
 	assert.True(t, adminLogs[2].IsRetry)
 	for _, log := range adminLogs {
 		assert.JSONEq(t, `{"admin_info":{"diagnostic":"private"}}`, log.Other)
+	}
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		assert.Equal(t, []int{1, 2, 3}, []int{adminLogs[0].Id, adminLogs[1].Id, adminLogs[2].Id})
 	}
 }

@@ -187,6 +187,16 @@ func TestLogInputTokensMigrationPreservesLegacyRows(t *testing.T) {
 					for _, log := range visibleLogs {
 						assert.False(t, log.IsRetry)
 					}
+					tokenLogs, err := GetLogByTokenId(5)
+					require.NoError(t, err)
+					require.Len(t, tokenLogs, 1)
+					assert.Equal(t, "legacy-a", tokenLogs[0].RequestId)
+					assert.Equal(t, 1, tokenLogs[0].Id)
+					adminLogs, adminTotal, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "legacy-b", "", SiteScopeAll)
+					require.NoError(t, err)
+					assert.EqualValues(t, 1, adminTotal)
+					require.Len(t, adminLogs, 1)
+					assert.Equal(t, "raw B", adminLogs[0].Content)
 					// Old and new binaries can share a migrated log schema. An omitted field
 					// stays NULL; an explicit 0 must override a nonzero raw prompt count.
 					oldWriter := legacy[0]
@@ -261,7 +271,7 @@ func TestLogInputTokensMigrationPreservesLegacyRows(t *testing.T) {
 					var persistedExtreme []Log
 					require.NoError(t, db.Where("id >= ?", 801).Order("id").Find(&persistedExtreme).Error)
 					assert.Equal(t, extremeRows, persistedExtreme, "aggregate normalization must never mutate raw log usage")
-
+					verifyRetryLogQueries(t, db)
 				})
 			}
 		})

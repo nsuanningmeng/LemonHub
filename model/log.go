@@ -119,6 +119,16 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
+func selectLogListColumns(tx *gorm.DB) *gorm.DB {
+	if !common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		return tx
+	}
+	// ClickHouse lists use generated display IDs. Reading the unused physical
+	// id can also collide with 25.8's lazy-materialization column in ordered
+	// queries that filter newly added columns on existing MergeTree parts.
+	return tx.Select("* EXCEPT (id)")
+}
+
 func formatUserLogs(logs []*Log, startIdx int) {
 	for _, log := range logs {
 		log.ChannelName = ""
@@ -169,7 +179,7 @@ func GetLogByTokenId(tokenId int) (logs []*Log, err error) {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("")
 	}
-	err = LOG_DB.Model(&Log{}).Where("token_id = ?", tokenId).
+	err = selectLogListColumns(LOG_DB.Model(&Log{})).Where("token_id = ?", tokenId).
 		Where("is_retry = ? OR is_retry IS NULL", false).
 		Order(order).Limit(common.MaxRecentItems).Find(&logs).Error
 	formatUserLogs(logs, 0)
@@ -586,7 +596,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("logs.")
 	}
-	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
+	err = selectLogListColumns(tx).Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
 		return nil, 0, err
 	}
@@ -679,7 +689,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		order = clickHouseLogOrder("logs.")
 	}
-	err = tx.Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
+	err = selectLogListColumns(tx).Order(order).Limit(num).Offset(startIdx).Find(&logs).Error
 	if err != nil {
 		common.SysError("failed to search user logs: " + err.Error())
 		return nil, 0, errors.New("查询日志失败")
