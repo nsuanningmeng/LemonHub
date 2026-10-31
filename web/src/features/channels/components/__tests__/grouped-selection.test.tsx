@@ -210,7 +210,10 @@ test.each([
         screen.queryByRole('toolbar', { name: /Bulk actions/ })
       ).not.toBeInTheDocument()
     )
-  }
+  },
+  // These full-page grouping, selection and mutation flows need headroom on
+  // shared CI runners; keep the timeout local to these four interaction cases.
+  10_000
 )
 
 test('Escape on the toolbar clears grouped checkboxes and hides the toolbar without any mutation', async () => {
