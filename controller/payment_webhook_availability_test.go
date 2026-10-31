@@ -26,34 +26,8 @@ func confirmPaymentComplianceForTest(t *testing.T) {
 	paymentSetting.ComplianceTermsVersion = operation_setting.CurrentComplianceTermsVersion
 }
 
-func TestStripeWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
-	confirmPaymentComplianceForTest(t)
-	originalAPISecret := setting.StripeApiSecret
-	originalWebhookSecret := setting.StripeWebhookSecret
-	originalPriceID := setting.StripePriceId
-	t.Cleanup(func() {
-		setting.StripeApiSecret = originalAPISecret
-		setting.StripeWebhookSecret = originalWebhookSecret
-		setting.StripePriceId = originalPriceID
-	})
-
-	setting.StripeWebhookSecret = ""
-	setting.StripeApiSecret = "sk_test_123"
-	setting.StripePriceId = "price_123"
-	require.False(t, isStripeWebhookEnabled())
-
-	setting.StripeWebhookSecret = "whsec_test"
-	require.True(t, isStripeWebhookEnabled())
-
-	setting.StripePriceId = ""
-	require.False(t, isStripeWebhookEnabled())
-}
-
-// The Stripe top-up REQUEST path must refuse before creating a Checkout session
-// under exactly the condition the inbound webhook enforces (isStripeTopUpEnabled).
-// Otherwise a user could pay while payment compliance is unconfirmed and the
-// completion webhook (which gates on the same predicate) would reject the event,
-// leaving the order stuck Pending — money captured, no quota credited.
+// New checkouts remain gated even though signed callbacks for existing orders
+// can still settle after the checkout configuration is disabled.
 func TestStripeRequestPayGatedOnTopUpEnabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalAPISecret := setting.StripeApiSecret

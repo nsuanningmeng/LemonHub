@@ -5,12 +5,14 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,18 +39,118 @@ func setupStripeWebhookRetry(t *testing.T) (*gorm.DB, model.User) {
 func deliverStripeRetryEvent(t *testing.T, eventType string, object map[string]any) int {
 	t.Helper()
 	payload, err := common.Marshal(map[string]any{
-		"id": "evt_retry", "object": "event", "type": eventType,
+		"id": "evt_retry_" + strings.ReplaceAll(eventType, ".", "_"), "object": "event", "type": eventType,
 		"data": map[string]any{"object": object},
 	})
 	require.NoError(t, err)
 	signed := webhook.GenerateTestSignedPayload(&webhook.UnsignedPayload{Payload: payload, Secret: setting.StripeWebhookSecret})
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/user/stripe/webhook", bytes.NewReader(payload))
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/stripe/webhook", bytes.NewReader(payload))
 	ctx.Request.Header.Set("Stripe-Signature", signed.Header)
 	StripeWebhook(ctx)
 	ctx.Writer.WriteHeaderNow()
 	return recorder.Code
+}
+
+func TestStripeWebhookDelayedPaymentCreditsOnlyAfterSuccess(t *testing.T) {
+	db, user := setupStripeWebhookRetry(t)
+	order := model.TopUp{UserId: user.Id, TradeNo: "delayed-payment", Amount: 1, Money: 1,
+		PaymentProvider: model.PaymentProviderStripe, PaymentMethod: model.PaymentMethodStripe, Status: common.TopUpStatusPending}
+	require.NoError(t, db.Create(&order).Error)
+	object := map[string]any{"client_reference_id": order.TradeNo, "payment_intent": "pi_delayed",
+		"customer": "cus_delayed", "status": "complete", "payment_status": "unpaid", "amount_total": 100, "currency": "usd"}
+	for _, step := range []struct {
+		eventType, paymentStatus, orderStatus string
+		quotaChange                           int
+	}{
+		{"checkout.session.completed", "unpaid", common.TopUpStatusPending, 0},
+		{"checkout.session.async_payment_succeeded", "paid", common.TopUpStatusSuccess, 500000},
+		{"checkout.session.completed", "unpaid", common.TopUpStatusSuccess, 500000},
+		{"checkout.session.async_payment_succeeded", "paid", common.TopUpStatusSuccess, 500000},
+	} {
+		object["payment_status"] = step.paymentStatus
+		require.Equal(t, http.StatusOK, deliverStripeRetryEvent(t, step.eventType, object))
+		var persisted model.TopUp
+		var settled model.User
+		require.NoError(t, db.First(&persisted, order.Id).Error)
+		require.NoError(t, db.First(&settled, user.Id).Error)
+		assert.Equal(t, step.orderStatus, persisted.Status, "event %s", step.eventType)
+		assert.Equal(t, user.Quota+step.quotaChange, settled.Quota, "event %s", step.eventType)
+	}
+}
+
+func TestStripeWebhookSettlesExistingTopUpAfterCheckoutDisabled(t *testing.T) {
+	for _, disabled := range []string{"price", "api_key", "compliance", "terms_version"} {
+		for _, eventType := range []string{"checkout.session.completed", "checkout.session.async_payment_succeeded"} {
+			t.Run(disabled+"/"+eventType, func(t *testing.T) {
+				db, user := setupStripeWebhookRetry(t)
+				order := model.TopUp{UserId: user.Id, TradeNo: "paid-before-disable", Amount: 1, Money: 1,
+					PaymentProvider: model.PaymentProviderStripe, PaymentMethod: model.PaymentMethodStripe, Status: common.TopUpStatusPending}
+				require.NoError(t, db.Create(&order).Error)
+				switch disabled {
+				case "price":
+					setting.StripePriceId = ""
+				case "api_key":
+					setting.StripeApiSecret = ""
+				case "compliance":
+					operation_setting.GetPaymentSetting().ComplianceConfirmed = false
+				case "terms_version":
+					operation_setting.GetPaymentSetting().ComplianceTermsVersion = "old-terms"
+				}
+				require.False(t, isStripeTopUpEnabled())
+				object := map[string]any{"client_reference_id": order.TradeNo, "payment_intent": "pi_existing",
+					"customer": "cus_existing", "status": "complete", "payment_status": "paid", "amount_total": 100, "currency": "usd"}
+				assert.Equal(t, http.StatusOK, deliverStripeRetryEvent(t, eventType, object))
+				assert.Equal(t, http.StatusOK, deliverStripeRetryEvent(t, eventType, object))
+				var persisted model.TopUp
+				var settled model.User
+				require.NoError(t, db.First(&persisted, order.Id).Error)
+				require.NoError(t, db.First(&settled, user.Id).Error)
+				assert.Equal(t, common.TopUpStatusSuccess, persisted.Status)
+				assert.Equal(t, "pi_existing", persisted.PaymentIntent)
+				assert.Equal(t, user.Quota+500000, settled.Quota, "a repeated event must credit only once")
+			})
+		}
+	}
+}
+
+func TestStripeWebhookSettlesSubscriptionWithoutWalletPrice(t *testing.T) {
+	db, user := setupStripeWebhookRetry(t)
+	require.NoError(t, db.AutoMigrate(&model.SubscriptionPlan{}, &model.UserSubscription{}))
+	plan := model.SubscriptionPlan{Title: "Stripe subscription", PriceAmount: 10, Currency: "USD",
+		DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true,
+		TotalAmount: 12345, QuotaResetPeriod: model.SubscriptionResetNever, StripePriceId: "price_plan"}
+	require.NoError(t, db.Create(&plan).Error)
+	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+	order := model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: "paid-subscription", Money: 10,
+		PaymentProvider: model.PaymentProviderStripe, PaymentMethod: model.PaymentMethodStripe, Status: common.TopUpStatusPending}
+	require.NoError(t, order.InsertWithPlanSnapshot(&plan))
+	setting.StripePriceId = ""
+	object := map[string]any{"client_reference_id": order.TradeNo, "customer": "cus_subscription",
+		"status": "complete", "payment_status": "paid", "amount_total": 1000, "currency": "usd"}
+	assert.Equal(t, http.StatusOK, deliverStripeRetryEvent(t, "checkout.session.completed", object))
+	assert.Equal(t, http.StatusOK, deliverStripeRetryEvent(t, "checkout.session.completed", object))
+	var persisted model.SubscriptionOrder
+	var subscriptions []model.UserSubscription
+	var settled model.User
+	require.NoError(t, db.First(&persisted, order.Id).Error)
+	require.NoError(t, db.Where("user_id = ?", user.Id).Find(&subscriptions).Error)
+	require.NoError(t, db.First(&settled, user.Id).Error)
+	assert.Equal(t, common.TopUpStatusSuccess, persisted.Status)
+	require.Len(t, subscriptions, 1, "replaying a paid subscription must not grant another subscription")
+	assert.Equal(t, plan.TotalAmount, subscriptions[0].AmountTotal)
+	assert.Equal(t, user.Quota, settled.Quota, "subscription fulfillment must not credit the wallet")
+}
+
+func TestStripeWebhookRejectsMissingSigningSecret(t *testing.T) {
+	for _, secret := range []string{"", "   "} {
+		t.Run("secret="+secret, func(t *testing.T) {
+			setupStripeWebhookRetry(t)
+			setting.StripeWebhookSecret = secret
+			assert.Equal(t, http.StatusForbidden, deliverStripeRetryEvent(t, "checkout.session.completed", map[string]any{}))
+		})
+	}
 }
 
 func TestStripeWebhookRetriesFailedPersistenceWithoutDuplicateAccounting(t *testing.T) {

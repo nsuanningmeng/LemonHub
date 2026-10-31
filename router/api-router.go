@@ -23,9 +23,8 @@ func SetApiRouter(router *gin.Engine) {
 	// that deliberately OMITS gzip + the global API rate limit:
 	//   - gzip would compress the plain "success" ack; EasyPay does a literal body=="success"
 	//     string compare, so a gzipped body reads as failure and the paid order stays unpaid.
-	//   - the global API rate limit (keyed by caller IP) can 429 a burst of callbacks arriving
-	//     from EasyPay's shared exit IP; the gateway only retries a few times, so a dropped
-	//     callback strands a paid order as unpaid.
+	//   - the global API rate limit can reject callbacks from a gateway's shared exit IP
+	//     or fail closed during a Redis outage, delaying settlement of paid orders.
 	// These endpoints authenticate via their own signature verification, so they do not need the
 	// global rate limit. Body-storage cleanup + anonymous body limit are still applied.
 	paymentWebhookRouter := router.Group("/api")
@@ -37,6 +36,7 @@ func SetApiRouter(router *gin.Engine) {
 		paymentWebhookRouter.GET("/user/epay/notify", controller.EpayNotify)
 		paymentWebhookRouter.POST("/subscription/epay/notify", anonymousRequestBodyLimit, controller.SubscriptionEpayNotify)
 		paymentWebhookRouter.GET("/subscription/epay/notify", controller.SubscriptionEpayNotify)
+		paymentWebhookRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, controller.StripeWebhook)
 		// Email provider delivery-event callback (Aliyun DirectMail via
 		// EventBridge/MNS HTTP push). Same reasoning as the payment callbacks:
 		// server-to-server bursts from a shared provider exit IP must not hit the
@@ -95,7 +95,6 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.TryUserAuth(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
-		apiRouter.POST("/stripe/webhook", anonymousRequestBodyLimit, controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", anonymousRequestBodyLimit, controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", anonymousRequestBodyLimit, controller.WaffoWebhook)
 		// :env separates test vs prod URLs so the operator can register each
