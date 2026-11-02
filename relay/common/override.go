@@ -79,6 +79,9 @@ type ConditionOperation struct {
 	Invert         bool        `json:"invert"`           // 反选功能，true表示取反结果
 	PassMissingKey bool        `json:"pass_missing_key"` // 未获取到json key时的行为
 
+	// Conditions belong to one request. Reuse even patterns omitted or evicted
+	// from the shared cache while checking multiple objects in that request.
+	regex *regexp.Regexp
 }
 
 type ParamOperation struct {
@@ -679,11 +682,15 @@ func (condition *ConditionOperation) compareGjsonValues(jsonValue, targetValue g
 		if targetValue.Type != gjson.String {
 			return false, fmt.Errorf("regex pattern must be a string")
 		}
-		re, err := getParamOverrideRegex(targetValue.String())
-		if err != nil {
-			return false, fmt.Errorf("invalid regex pattern: %w", err)
+		pattern := targetValue.String()
+		if condition.regex == nil || condition.regex.String() != pattern {
+			re, err := getParamOverrideRegex(pattern)
+			if err != nil {
+				return false, fmt.Errorf("invalid regex pattern: %w", err)
+			}
+			condition.regex = re
 		}
-		return re.MatchString(jsonValue.String()), nil
+		return condition.regex.MatchString(jsonValue.String()), nil
 	case "gt":
 		return compareNumeric(jsonValue, targetValue, "gt")
 	case "gte":
