@@ -46,6 +46,12 @@ var buildFS embed.FS
 var indexPage []byte
 
 func main() {
+	// Own termination signals before initialization starts background writers or
+	// opens HTTP. A health check may succeed before the startup banner finishes.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+
 	startTime := time.Now()
 	kitutil.SetLogging(common.SysLog, func(message string) {
 		logger.LogError(nil, message)
@@ -216,8 +222,6 @@ func main() {
 
 	common.LogStartupSuccess(startTime, port)
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
 	common.SysLog(fmt.Sprintf("received signal: %v, shutting down...", sig))
 
