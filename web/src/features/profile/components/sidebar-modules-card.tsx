@@ -32,6 +32,7 @@ import {
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Switch } from '@/components/ui/switch'
 import { useAdminSidebarConfig } from '@/hooks/use-sidebar-config'
+import { useStatus } from '@/hooks/use-status'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -57,6 +58,7 @@ export function SidebarModulesCard() {
   const setUser = useAuthStore((s) => s.auth.setUser)
 
   const adminConfig = useAdminSidebarConfig()
+  const { status } = useStatus()
   const sectionDefs: SectionDef[] = [
     {
       key: 'chat',
@@ -149,12 +151,7 @@ export function SidebarModulesCard() {
         const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
         setConfig(parsed)
       } else {
-        const defaults: SidebarModulesConfig = {}
-        for (const sec of sectionDefs) {
-          defaults[sec.key] = { enabled: true }
-          for (const mod of sec.modules) defaults[sec.key][mod.key] = true
-        }
-        setConfig(defaults)
+        setConfig({})
       }
     } catch {
       /* ignore */
@@ -217,6 +214,8 @@ export function SidebarModulesCard() {
     setConfig(defaults)
     toast.success(t('Reset to default configuration'))
   }
+
+  if (!status) return null
 
   return (
     <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>

@@ -679,6 +679,30 @@ export function classifyBillingExpression(
   }
 }
 
+/** Billing units for every supported pricing leaf, independent of display badges. */
+export function classifyBillingQuotaType(
+  expr: string
+): 'token' | 'request' | undefined {
+  try {
+    const { billingExpr } = splitBillingExprAndRequestRules(expr)
+    const remaining = [parsePricingExpression(billingExpr)]
+    let category: 'token' | 'request' = 'request'
+    for (let node = remaining.pop(); node; node = remaining.pop()) {
+      if (node.kind === 'conditional') {
+        if (!supportedTierCondition(node.condition)) return undefined
+        remaining.push(node.yes, node.no)
+        continue
+      }
+      const price = tierPrice(node)
+      if (!validLinearPrice(price)) return undefined
+      if (Object.keys(price.coefficients).length > 0) category = 'token'
+    }
+    return category
+  } catch {
+    return undefined
+  }
+}
+
 export function normalizeTierLabel(label: string | undefined): string {
   if (!label) return ''
   return label

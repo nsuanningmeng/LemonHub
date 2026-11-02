@@ -130,7 +130,8 @@ export function BotProtectionSection({
     })
 
     for (const [key, value] of updates) {
-      await updateOption.mutateAsync({ key, value: value ?? '' })
+      const result = await updateOption.mutateAsync({ key, value: value ?? '' })
+      if (!result.success) return
     }
   }
 

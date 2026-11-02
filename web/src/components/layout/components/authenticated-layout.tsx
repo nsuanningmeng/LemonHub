@@ -38,6 +38,7 @@ type AuthenticatedLayoutProps = {
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
   const userId = useAuthStore((state) => state.auth.user?.id)
+  if (userId === undefined) return null
 
   return (
     <LayoutProvider>
