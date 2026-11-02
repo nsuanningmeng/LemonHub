@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"sync"
@@ -556,4 +557,55 @@ func TestSweepTimedOutTasksMovesStalePendingSubmissionToManualReviewWithoutBilli
 	RecalculateTaskQuota(context.Background(), &restarted, 0, "timeout retry")
 	assert.Equal(t, 8_800, getUserQuota(t, userID))
 	assert.Zero(t, countLogs(t))
+}
+
+func TestSweepTimedOutTasksHonorsSeventyTwoHoursAndOverrides(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		minutes  int
+		timeouts int
+	}{
+		{"default 72 hours", 4320, 1},
+		{"explicit 24 hours", 1440, 2},
+		{"disabled", 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			const userID, initialQuota, taskQuota = 405, 10000, 1500
+			seedUser(t, userID, initialQuota)
+			require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", userID).Updates(map[string]any{
+				"used_quota": 2 * taskQuota, "request_count": 2,
+			}).Error)
+			var tasks []*model.Task
+			for _, hours := range []int{60, 73} {
+				task := makeTask(userID, 0, taskQuota, 0, BillingSourceWallet, 0)
+				task.TaskID = fmt.Sprintf("running_for_%d_hours", hours)
+				task.Progress = "50%"
+				task.SubmitTime = time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
+				require.NoError(t, model.DB.Create(task).Error)
+				tasks = append(tasks, task)
+			}
+			previousTimeout := constant.TaskTimeoutMinutes
+			constant.TaskTimeoutMinutes = tc.minutes
+			t.Cleanup(func() { constant.TaskTimeoutMinutes = previousTimeout })
+
+			sweepTimedOutTasks(context.Background())
+			sweepTimedOutTasks(context.Background())
+
+			for index, task := range tasks {
+				var reloaded model.Task
+				require.NoError(t, model.DB.First(&reloaded, task.ID).Error)
+				if index >= len(tasks)-tc.timeouts {
+					assert.EqualValues(t, model.TaskStatusFailure, reloaded.Status)
+					assert.Contains(t, reloaded.FailReason, "任务超时")
+					assert.Zero(t, reloaded.Quota)
+				} else {
+					assert.EqualValues(t, model.TaskStatusInProgress, reloaded.Status)
+					assert.Equal(t, taskQuota, reloaded.Quota)
+				}
+			}
+			assert.Equal(t, initialQuota+tc.timeouts*taskQuota, getUserQuota(t, userID))
+			assert.Equal(t, int64(tc.timeouts), countLogs(t), "timeout refunds must remain idempotent")
+		})
+	}
 }

@@ -291,6 +291,11 @@ func TestRelayKnownNonstreamUsageSurvivesWriteTimeCancellation(t *testing.T) {
 					assert.Equal(t, expectedQuota, log.Quota)
 				}
 				assertCancellationBalances(t, db, user, token, sub, preference, expectedQuota, "settled")
+				metrics, err := perfmetrics.QuerySummaryAll(24, map[string][]string{"gpt-4o": {"default"}})
+				require.NoError(t, err)
+				require.Len(t, metrics.Models, 1)
+				assert.Equal(t, int64(1), metrics.Models[0].RequestCount, "a completed non-stream response remains a sample after client cancellation")
+				assert.Equal(t, float64(100), metrics.Models[0].SuccessRate)
 			})
 		}
 	}

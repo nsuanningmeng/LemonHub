@@ -85,8 +85,10 @@ func DecompressRequestMiddleware() gin.HandlerFunc {
 			decompressed = true
 		case "zstd":
 			// Limit internal history/window allocation as well as decoded output.
-			// A single synchronous decoder also avoids per-request background workers.
+			// Cap windows at 8 MiB even when the request body limit is larger.
+			// A single synchronous decoder avoids reading before downstream approval.
 			reader, err := zstd.NewReader(origBody,
+				zstd.WithDecoderMaxWindow(8<<20),
 				zstd.WithDecoderMaxMemory(uint64(maxBytes)),
 				zstd.WithDecoderConcurrency(1),
 			)
