@@ -1,0 +1,161 @@
+name: Recover v0.5.12 macOS artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      capacity_failure_confirmed:
+        description: 'Operator verified original attempt 2 failed before macOS steps due to hosted-runner capacity'
+        required: true
+        type: boolean
+        default: false
+      publish_release:
+        description: 'Publish the complete verified release after creating its draft'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recover-v0.5.12
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: nsuanningmeng/LemonHub
+  RECOVERY_SHA: ${{ github.workflow_sha }}
+  VERSION: v0.5.12
+
+jobs:
+  recover:
+    if: inputs.capacity_failure_confirmed && github.repository == 'nsuanningmeng/LemonHub'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - name: Check out reviewed recovery implementation
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: recovery
+          persist-credentials: false
+
+      - name: Check out immutable application source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: 86ae810bae8519aef3e20f28b65f4893f5b79ea1
+          fetch-depth: 0
+          path: application
+          persist-credentials: false
+
+      - name: Validate original failure, source, CI and immutable original artifacts
+        run: python3 recovery/.github/scripts/recover_v0512.py prepare --payload payload --application application
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.4'
+
+      - name: Build complete frontend from tagged source
+        working-directory: application/web
+        env:
+          CI: ''
+          NODE_OPTIONS: '--max-old-space-size=4096'
+        run: |
+          set -euo pipefail
+          test "$(bun --version)" = '1.4.4'
+          bun install --frozen-lockfile
+          DISABLE_ESLINT_PLUGIN='true' VITE_REACT_APP_VERSION="$VERSION" bun run build
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: application/go.mod
+          cache-dependency-path: application/go.sum
+
+      - name: Build both macOS backends with original flags
+        working-directory: application
+        env:
+          GOWORK: 'off'
+          GOFLAGS: '-mod=readonly'
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          test "$(go env GOVERSION)" = 'go1.26.10'
+          go mod download
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 GOAMD64=v1 go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION'" -o "../payload/release/new-api-macos-amd64-$VERSION"
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 GOARM64=v8.0 go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION'" -o "../payload/release/new-api-macos-arm64-$VERSION"
+          git diff --exit-code
+          cd ../payload/release
+          sha256sum new-api-macos-* > checksums-macos.txt
+
+      - name: Verify Mach-O outputs and create dual-identity manifest
+        run: python3 recovery/.github/scripts/recover_v0512.py manifest --payload payload --application application
+
+      # This standard provenance truthfully names the recovery workflow commit.
+      - name: Attest macOS build with actual recovery workflow identity
+        id: provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-path: payload/release/new-api-macos-*
+
+      # The signed custom predicate explicitly records the old application commit
+      # AND the new recovery workflow commit, and the digest/origin of all assets.
+      - name: Attest application source and complete release manifest
+        id: manifest_attestation
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-path: payload/release/*
+          predicate-type: https://github.com/nsuanningmeng/LemonHub/attestations/recovery-manifest/v1
+          predicate-path: payload/proof/recovery-manifest.json
+
+      - name: Preserve and verify signed evidence
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          MANIFEST_BUNDLE: ${{ steps.manifest_attestation.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          cp "$PROVENANCE_BUNDLE" payload/proof/macos-provenance.sigstore.json
+          cp "$MANIFEST_BUNDLE" payload/proof/recovery-manifest.sigstore.json
+          python3 recovery/.github/scripts/recover_v0512.py verify --payload payload
+
+      - name: Preserve complete release and verification evidence
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: recovery-complete-v0.5.12-${{ github.run_attempt }}
+          path: payload/
+          if-no-files-found: error
+          retention-days: 90
+
+  publish:
+    needs: recover
+    if: inputs.publish_release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      actions: read
+      attestations: read
+    steps:
+      - name: Check out the same recovery verifier
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: recovery
+          persist-credentials: false
+
+      - name: Download only this job's immutable output artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          artifact-ids: ${{ needs.recover.outputs.artifact_id }}
+          merge-multiple: true
+          path: payload
+
+      - name: Reverify signatures, source and original-run state; draft then publish
+        run: python3 recovery/.github/scripts/recover_v0512.py publish --payload payload
