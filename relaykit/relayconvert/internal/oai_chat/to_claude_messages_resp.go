@@ -1,6 +1,7 @@
 package oaichat
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -69,10 +70,10 @@ func buildClaudeUsageFromOpenAIUsage(oaiUsage *dto.Usage) *dto.ClaudeUsage {
 			inputTokens -= cached
 		}
 	}
-	if oaiUsage.PromptTokensDetails.CacheWriteTokens > 0 {
-		// Native OpenAI cache writes are included in prompt_tokens too. Legacy
-		// Claude creation detail is additive; do not infer an inclusive write
-		// prefix unless the explicit native cache-write field is present.
+	if oaiUsage.PromptTokensDetails.CacheWriteTokens > 0 || oaiUsage.PromptTokensDetails.CacheCreationInputTokens > 0 {
+		// Native OpenAI and explicit-cache writes are included in prompt_tokens.
+		// Legacy Claude creation detail is additive; only an explicit inclusive
+		// cache-write field permits subtracting the write total here.
 		if cacheCreationTokens >= inputTokens {
 			inputTokens = 0
 		} else {
@@ -509,9 +510,9 @@ func ResponseOpenAI2Claude(openAIResponse *dto.OpenAITextResponse, info convmeta
 			claudeContent.Type = "tool_use"
 			claudeContent.Id = toolUse.ID
 			claudeContent.Name = toolUse.Function.Name
-			mapParams := map[string]interface{}{}
+			mapParams := map[string]json.RawMessage{}
 			if strings.TrimSpace(toolUse.Function.Arguments) != "" {
-				var parsed map[string]interface{}
+				var parsed map[string]json.RawMessage
 				if err := kitutil.Unmarshal([]byte(toolUse.Function.Arguments), &parsed); err == nil && parsed != nil {
 					mapParams = parsed
 				}

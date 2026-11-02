@@ -83,6 +83,9 @@ func ValidateSSRFProtectedFetchURL(urlStr string) error {
 	return validateURLWithCurrentFetchSetting(urlStr, true)
 }
 
+// maxTimeoutSeconds is the largest second count representable by time.Duration.
+const maxTimeoutSeconds = int(math.MaxInt64 / int64(time.Second))
+
 func newRelayHTTPTransport() *http.Transport {
 	var transport *http.Transport
 	if defaultTransport, ok := http.DefaultTransport.(*http.Transport); ok && defaultTransport != nil {
@@ -103,13 +106,20 @@ func newRelayHTTPTransport() *http.Transport {
 	transport.MaxIdleConns = common.RelayMaxIdleConns
 	transport.MaxIdleConnsPerHost = common.RelayMaxIdleConnsPerHost
 	transport.IdleConnTimeout = time.Duration(common.RelayIdleConnTimeout) * time.Second
+	if seconds := common.RelayHTTP2PingIdleTimeout; seconds > 0 {
+		if transport.HTTP2 == nil {
+			transport.HTTP2 = &http.HTTP2Config{}
+		}
+		// Probe the upstream connection, independently of downstream SSE heartbeats.
+		transport.HTTP2.SendPingTimeout = time.Duration(min(seconds, maxTimeoutSeconds)) * time.Second
+		transport.HTTP2.PingTimeout = time.Duration(min(max(common.RelayHTTP2PingTimeout, 0), maxTimeoutSeconds)) * time.Second
+	}
 	// Limit stalled header waits without imposing a deadline on the response
 	// body. Non-streaming providers may send headers only after generation ends.
 	transport.ResponseHeaderTimeout = 0
 	if seconds := common.RelayResponseHeaderTimeout; seconds > 0 {
 		// Clamp before converting so an oversized setting cannot wrap into a
 		// short positive timeout and interrupt otherwise healthy requests.
-		const maxTimeoutSeconds = int(math.MaxInt64 / int64(time.Second))
 		if seconds > maxTimeoutSeconds {
 			seconds = maxTimeoutSeconds
 		}

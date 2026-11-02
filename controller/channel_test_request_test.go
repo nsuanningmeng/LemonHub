@@ -1,15 +1,20 @@
 package controller
 
 import (
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel/ali"
+	"github.com/QuantumNous/new-api/relay/channel/cloudflare"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -61,6 +66,8 @@ func TestChannelProbeOpenAIChatCapabilities(t *testing.T) {
 	}{
 		{name: "astra automatic", model: "gpt-6-astra", upstream: "gpt-6-astra", channelType: constant.ChannelTypeOpenAI, limit: "max_completion_tokens"},
 		{name: "sol azure streaming", model: "gpt-6-sol", upstream: "gpt-6-sol", endpoint: string(constant.EndpointTypeOpenAI), channelType: constant.ChannelTypeAzure, stream: true, limit: "max_completion_tokens"},
+		{name: "GPT6.1 sol", model: "gpt-6.1-sol", upstream: "gpt-6.1-sol", channelType: constant.ChannelTypeOpenAI, limit: "max_completion_tokens"},
+		{name: "GPT6.1 terra", model: "gpt-6.1-terra", upstream: "gpt-6.1-terra", channelType: constant.ChannelTypeOpenAI, limit: "max_completion_tokens"},
 		{name: "luna", model: "gpt-6-luna", upstream: "gpt-6-luna", channelType: constant.ChannelTypeOpenAI, limit: "max_completion_tokens"},
 		{name: "public alias maps to sol", model: "customer-model", upstream: "gpt-6-sol", channelType: constant.ChannelTypeOpenAI, limit: "max_completion_tokens"},
 		{name: "gpt alias maps to qwen", model: "gpt-6-sol", upstream: "qwen-turbo", channelType: constant.ChannelTypeAli, limit: "max_tokens"},
@@ -94,6 +101,9 @@ func TestOpenAIChatModelSamplingCapabilities(t *testing.T) {
 		{name: "pro variant", model: "gpt-5.2-pro-2025-12-11", wantRole: "developer", params: `{}`},
 		{name: "astra", model: "gpt-6-astra", wantRole: "developer", params: `{}`},
 		{name: "astra snapshot", model: "gpt-6-astra-2026-09-03", wantRole: "developer", params: `{}`},
+		{name: "GPT6.1 sol", model: "gpt-6.1-sol", wantRole: "developer", params: `{}`},
+		{name: "GPT6.1 terra default", model: "gpt-6.1-terra", wantRole: "developer", params: `{}`},
+		{name: "GPT6.1 terra none", model: "gpt-6.1-terra", effort: "none", wantEffort: "none", wantRole: "developer", params: sampling},
 		{name: "sol default", model: "gpt-6-sol", wantRole: "developer", params: sampling},
 		{name: "luna explicit none", model: "gpt-6-luna", effort: "none", wantEffort: "none", wantRole: "developer", params: sampling},
 		{name: "luna reasoning suffix", model: "gpt-6-luna-high", wantModel: "gpt-6-luna", wantEffort: "high", wantRole: "developer", params: `{}`},
@@ -228,6 +238,68 @@ func TestOpenRouterChatCapabilitiesUseResolvedEffort(t *testing.T) {
 			} else {
 				assert.JSONEq(t, tt.wantReasoning, string(request.Reasoning), "retain the existing outbound nested reasoning payload")
 			}
+		})
+	}
+}
+
+func TestCloudflareEmbeddingResponseCompatibility(t *testing.T) {
+	tests := []struct {
+		name        string
+		body        string
+		forceFormat bool
+		wantTokens  int
+	}{
+		{
+			name:       "single embedding preserves upstream usage",
+			body:       `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,-0.2]}],"model":"@cf/baai/bge-large-en-v1.5","usage":{"prompt_tokens":8,"total_tokens":8}}`,
+			wantTokens: 8,
+		},
+		{
+			name:        "batch embeddings survive force format",
+			body:        `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,-0.2]},{"object":"embedding","index":1,"embedding":[0.3,0.4]}],"model":"@cf/baai/bge-large-en-v1.5","usage":{"prompt_tokens":16,"total_tokens":16},"extra":"preserved"}`,
+			forceFormat: true,
+			wantTokens:  16,
+		},
+		{
+			name:       "base64 embedding is forwarded unchanged",
+			body:       `{"object":"list","data":[{"object":"embedding","index":0,"embedding":"zczMPc3MTL4="}],"model":"@cf/baai/bge-large-en-v1.5","usage":{"prompt_tokens":5,"total_tokens":5}}`,
+			wantTokens: 5,
+		},
+		{
+			name:        "missing usage falls back to input estimate",
+			body:        `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,-0.2]}],"model":"@cf/baai/bge-large-en-v1.5"}`,
+			forceFormat: true,
+			wantTokens:  99,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/embeddings", nil)
+			info := &relaycommon.RelayInfo{
+				RelayMode:   relayconstant.RelayModeEmbeddings,
+				RelayFormat: types.RelayFormatEmbedding,
+				ChannelMeta: &relaycommon.ChannelMeta{
+					ChannelType:       constant.ChannelCloudflare,
+					UpstreamModelName: "@cf/baai/bge-large-en-v1.5",
+					ChannelSetting:    dto.ChannelSettings{ForceFormat: tt.forceFormat},
+				},
+			}
+			info.SetEstimatePromptTokens(99)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(tt.body)),
+			}
+
+			usage, apiErr := (&cloudflare.Adaptor{}).DoResponse(c, resp, info)
+			require.Nil(t, apiErr)
+			require.IsType(t, &dto.Usage{}, usage)
+			assert.Equal(t, &dto.Usage{PromptTokens: tt.wantTokens, TotalTokens: tt.wantTokens}, usage)
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+			assert.JSONEq(t, tt.body, w.Body.String())
 		})
 	}
 }

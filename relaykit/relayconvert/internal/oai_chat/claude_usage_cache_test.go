@@ -44,3 +44,25 @@ func TestClaudeResponseUsageSeparatesInclusiveCacheRead(t *testing.T) {
 	existing := &dto.Usage{PromptTokens: 6, CompletionTokens: 3, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 4}, BillingUsage: dto.NewClaudeMessagesBillingUsage(native)}
 	assert.Equal(t, 6, buildClaudeUsageFromOpenAIUsage(existing).InputTokens, "native Anthropic snapshot is already fresh and must not be subtracted again")
 }
+
+func TestClaudeResponseUsageSeparatesExplicitCacheCreation(t *testing.T) {
+	usage := &dto.Usage{
+		PromptTokens:     1510,
+		CompletionTokens: 20,
+		PromptTokensDetails: dto.InputTokenDetails{
+			CachedTokens:             1200,
+			CacheCreationInputTokens: 300,
+			CacheWriteTokens:         250,
+		},
+	}
+	converted := buildClaudeUsageFromOpenAIUsage(usage)
+	require.NotNil(t, converted)
+	assert.Equal(t, 10, converted.InputTokens)
+	assert.Equal(t, 1200, converted.CacheReadInputTokens)
+	assert.Equal(t, 300, converted.CacheCreationInputTokens)
+	assert.Equal(t, 20, converted.OutputTokens)
+	require.NotNil(t, converted.BillingUsage)
+	require.NotNil(t, converted.BillingUsage.OpenAIUsage)
+	assert.Equal(t, 1510, converted.BillingUsage.OpenAIUsage.PromptTokens)
+	assert.Equal(t, 300, converted.BillingUsage.OpenAIUsage.PromptTokensDetails.CacheCreationTokensTotal())
+}
