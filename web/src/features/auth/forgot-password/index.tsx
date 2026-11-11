@@ -33,7 +33,7 @@ export function ForgotPassword() {
           </h2>
           <p className='text-muted-foreground text-left text-sm sm:text-base'>
             {t(
-              'Enter your registered email and we will send you a link to reset your password.'
+              'Use the site where you registered and enter the email bound to your account to request a password reset link.'
             )}
           </p>
           <p className='text-muted-foreground text-left text-sm sm:text-base'>

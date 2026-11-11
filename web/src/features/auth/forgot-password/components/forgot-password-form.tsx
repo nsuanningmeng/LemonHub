@@ -79,7 +79,11 @@ export function ForgotPasswordForm({
       if (res?.success) {
         form.reset()
         startCountdown()
-        toast.success(t('Reset email sent, please check your inbox'))
+        toast.success(
+          t(
+            'If this email is registered on this site, check your inbox for a password reset link. If no email arrives, contact the administrator.'
+          )
+        )
       } else {
         toast.error(res?.message || t('Failed to send reset email'))
       }

@@ -92,7 +92,7 @@ import {
   transformFormDataToPayload,
   transformUserToFormDefaults,
 } from '../lib'
-import { type User } from '../types'
+import type { User } from '../types'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -160,12 +160,16 @@ export function UsersMutateDrawer({
   useEffect(() => {
     if (open && isUpdate && currentRow) {
       // For update, fetch fresh data
-      getUser(currentRow.id).then((result) => {
-        if (result.success && result.data) {
-          form.reset(transformUserToFormDefaults(result.data))
-          setRecordRequestBody(parseRecordRequestBody(result.data.setting))
-        }
-      })
+      getUser(currentRow.id)
+        .then((result) => {
+          if (result.success && result.data) {
+            form.reset(transformUserToFormDefaults(result.data))
+            setRecordRequestBody(parseRecordRequestBody(result.data.setting))
+          }
+        })
+        .catch(() => {
+          // Request errors are reported by the shared API interceptor.
+        })
     } else if (open && !isUpdate) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
@@ -190,7 +194,7 @@ export function UsersMutateDrawer({
         setRecordRequestBody(!next)
         toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
       }
-    } catch (_error) {
+    } catch {
       setRecordRequestBody(!next)
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
@@ -208,8 +212,8 @@ export function UsersMutateDrawer({
   const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
 
   const onSubmit = async (data: UserFormValues) => {
-    if (!isUpdate) {
-      const passwordLength = data.password?.length || 0
+    if (!isUpdate || data.password) {
+      const passwordLength = [...(data.password || '')].length
       if (passwordLength < 8 || passwordLength > 20) {
         form.setError('password', {
           type: 'manual',
@@ -246,7 +250,7 @@ export function UsersMutateDrawer({
               : t(ERROR_MESSAGES.CREATE_FAILED))
         )
       }
-    } catch (_error) {
+    } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsSubmitting(false)
@@ -393,6 +397,9 @@ export function UsersMutateDrawer({
                           }
                         />
                       </FormControl>
+                      <FormDescription>
+                        {t('Password must be between 8 and 20 characters')}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -411,12 +418,10 @@ export function UsersMutateDrawer({
                       <FormItem>
                         <FormLabel>{t('Group')}</FormLabel>
                         <Select
-                          items={[
-                            ...groups.map((group) => ({
-                              value: group,
-                              label: group,
-                            })),
-                          ]}
+                          items={groups.map((group) => ({
+                            value: group,
+                            label: group,
+                          }))}
                           onValueChange={field.onChange}
                           value={field.value}
                         >
