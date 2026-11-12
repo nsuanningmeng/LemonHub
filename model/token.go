@@ -30,6 +30,8 @@ type Token struct {
 	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
 	AutoGroups         string         `json:"-" gorm:"type:text"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
+	CacheExpiresAt     int64          `json:"-" gorm:"-"`
+	CacheMAC           string         `json:"-" gorm:"-"`
 }
 
 func (token *Token) GetAutoGroups() ([]string, error) {
@@ -350,8 +352,8 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 		return nil, err
 	}
 	if common.RedisEnabled {
-		// 冷缓存时用数据库快照初始化；已存在的哈希只刷新 TTL，
-		// 避免快照覆盖 Redis 中已被原子预扣的余额。初始化失败不影响本次读取。
+		// 用数据库快照初始化或修复鉴权元数据；保留已有配额及其 generation，
+		// 避免旧快照覆盖 Redis 中已被原子预扣的余额。初始化失败不影响本次读取。
 		if _, cacheErr := cacheInitToken(*token); cacheErr != nil {
 			common.SysLog("failed to init token cache: " + cacheErr.Error())
 		}

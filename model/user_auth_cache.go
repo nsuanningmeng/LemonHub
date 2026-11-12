@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 
@@ -81,6 +82,11 @@ func writeUserCacheWithTaskBillingFences(
 		includeQuotaArg = "1"
 	}
 	ttl := userCacheTTLSeconds()
+	user.CacheExpiresAt = time.Now().Add(time.Duration(ttl) * time.Second).UnixMilli()
+	mac, err := user.cacheMAC()
+	if err != nil {
+		return err
+	}
 	const script = `
 local incoming = tonumber(ARGV[1])
 local pending = tonumber(redis.call('GET', KEYS[2]) or '0')
@@ -121,7 +127,8 @@ redis.call('HSET', KEYS[1],
   'Id', ARGV[2], 'Group', ARGV[3], 'Email', ARGV[4],
   'Status', ARGV[5], 'Role', ARGV[6], 'Username', ARGV[7],
   'Setting', ARGV[8], 'SiteId', ARGV[9],
-  'AuthVersion', ARGV[1], 'CacheSchema', ARGV[10])
+  'AuthVersion', ARGV[1], 'CacheSchema', ARGV[10],
+  'CacheExpiresAt', ARGV[18 + task_fence_count], 'CacheMAC', ARGV[19 + task_fence_count])
 if ARGV[11] == '1' and redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
   redis.call('HSET', KEYS[1], 'Quota', ARGV[12])
   redis.call('HSET', KEYS[1], 'QuotaGeneration', ARGV[17 + task_fence_count])
@@ -144,7 +151,7 @@ return 1`
 	for _, fenceValue := range fenceValues {
 		args = append(args, fenceValue)
 	}
-	args = append(args, common.GetUUID())
+	args = append(args, common.GetUUID(), user.CacheExpiresAt, mac)
 	result, err := common.RDB.Eval(context.Background(), script,
 		[]string{
 			getUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id),
@@ -288,64 +295,43 @@ func BumpUserAuthVersion(userId int) (int64, error) {
 	return next, nil
 }
 
-// PublishUserAuthCache refreshes the current database state after a successful
-// auth-sensitive transaction without touching the cached quota field.
+// PublishUserAuthCache signs current database metadata without changing quota.
 func PublishUserAuthCache(userId int) error {
-	user, err := GetUserById(userId, false)
+	if !common.RedisEnabled {
+		return nil
+	}
+	if userId <= 0 {
+		return fmt.Errorf("invalid user id")
+	}
+	authoritative, err := GetUserById(userId, false)
 	if err != nil {
 		return err
 	}
-	return updateUserCache(*user)
+	// Same-version profile/group changes can race. Re-read after publishing
+	// so a delayed writer repairs newer metadata that it may have replaced.
+	for range 3 {
+		if err := updateUserCache(*authoritative); err != nil {
+			return err
+		}
+		verified, err := GetUserById(userId, false)
+		if err != nil {
+			return err
+		}
+		previousBase, verifiedBase := authoritative.ToBaseUser(), verified.ToBaseUser()
+		previousBase.Quota, verifiedBase.Quota = 0, 0
+		if *previousBase == *verifiedBase {
+			return nil
+		}
+		authoritative = verified
+	}
+	if err := updateUserCache(*authoritative); err != nil {
+		return err
+	}
+	return fmt.Errorf("user metadata changed repeatedly during cache refresh")
 }
 
 // InitializeUserAuthVersions must run after AutoMigrate when upgrading an
 // existing database. It is idempotent and portable across all supported DBs.
 func InitializeUserAuthVersions() error {
 	return DB.Model(&User{}).Where("auth_version IS NULL OR auth_version < ?", 1).Update("auth_version", 1).Error
-}
-
-func updateUserCacheFieldAtVersion(userId int, field string, value interface{}, authVersion int64) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-	if userId <= 0 || authVersion <= 0 {
-		return fmt.Errorf("invalid user auth version")
-	}
-	const script = `
-local incoming = tonumber(ARGV[1])
-local pending = tonumber(redis.call('GET', KEYS[2]) or '0')
-local committed = tonumber(redis.call('GET', KEYS[3]) or '0')
-local current = tonumber(redis.call('HGET', KEYS[1], 'AuthVersion') or '0')
-if pending > incoming or committed > incoming or current > incoming then
-  return 0
-end
-if committed < incoming then
-  redis.call('SET', KEYS[3], ARGV[1])
-end
-if pending > 0 and pending <= incoming then
-  redis.call('DEL', KEYS[2])
-end
-if redis.call('EXISTS', KEYS[1]) == 0 then
-  return 1
-end
-if current ~= incoming then
-  return 1
-end
-local schema = tonumber(redis.call('HGET', KEYS[1], 'CacheSchema') or '0')
-if schema ~= tonumber(ARGV[4]) then
-  return 1
-end
-redis.call('HSET', KEYS[1], ARGV[2], ARGV[3])
-return 1`
-	result, err := common.RDB.Eval(context.Background(), script,
-		[]string{getUserCacheKey(userId), getUserAuthFenceKey(userId), getUserAuthVersionKey(userId)},
-		authVersion, field, value, userCacheSchemaVersion,
-	).Int()
-	if err != nil {
-		return err
-	}
-	if result == 0 {
-		return ErrUserAuthCachePending
-	}
-	return nil
 }

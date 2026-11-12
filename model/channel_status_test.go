@@ -271,3 +271,100 @@ func TestAutomaticChannelStatusRollsBackWhenAbilitiesFail(t *testing.T) {
 	assert.Equal(t, common.ChannelStatusEnabled, cached.Status)
 	assert.Equal(t, channel.ChannelInfo, cached.ChannelInfo)
 }
+
+func TestEnableChannelKeysRestoresOnlyExhaustedAutomaticDisable(t *testing.T) {
+	for _, allKeys := range []bool{false, true} {
+		for _, tc := range []struct {
+			name       string
+			status     int
+			reason     string
+			wantStatus int
+		}{
+			{"exhausted", common.ChannelStatusAutoDisabled, "All keys are disabled", common.ChannelStatusEnabled},
+			{"manual", common.ChannelStatusManuallyDisabled, "manual operation", common.ChannelStatusManuallyDisabled},
+			{"manual after exhaustion", common.ChannelStatusManuallyDisabled, "All keys are disabled", common.ChannelStatusManuallyDisabled},
+			{"other automatic reason", common.ChannelStatusAutoDisabled, "provider unavailable", common.ChannelStatusAutoDisabled},
+		} {
+			t.Run(fmt.Sprintf("all=%t/%s", allKeys, tc.name), func(t *testing.T) {
+				setupChannelStatusTest(t)
+				channel := Channel{Name: "enable-keys", Type: 1, Key: "key-one\nkey-two", Models: "test-model", Group: "default", Status: tc.status,
+					ChannelInfo: ChannelInfo{IsMultiKey: true, MultiKeySize: 2, MultiKeyPollingIndex: 1,
+						MultiKeyStatusList:     map[int]int{0: common.ChannelStatusAutoDisabled, 1: common.ChannelStatusManuallyDisabled},
+						MultiKeyDisabledReason: map[int]string{0: "failure", 1: "manual"}, MultiKeyDisabledTime: map[int]int64{0: 12, 1: 34}}}
+				channel.SetOtherInfo(map[string]any{"status_reason": tc.reason, "status_time": int64(123)})
+				require.NoError(t, channel.Insert())
+				index := common.GetPointer(0)
+				if allKeys {
+					index = nil
+				}
+				count, err := EnableChannelKeys(channel.Id, channel.Key, index)
+				require.NoError(t, err)
+				wantCount := 1
+				if allKeys {
+					wantCount = 2
+				}
+				assert.Equal(t, wantCount, count)
+				stored, err := GetChannelById(channel.Id, true)
+				require.NoError(t, err)
+				assert.Equal(t, tc.wantStatus, stored.Status)
+				assert.NotContains(t, stored.ChannelInfo.MultiKeyStatusList, 0)
+				assert.NotContains(t, stored.ChannelInfo.MultiKeyDisabledReason, 0)
+				assert.NotContains(t, stored.ChannelInfo.MultiKeyDisabledTime, 0)
+				assert.Equal(t, 1, stored.ChannelInfo.MultiKeyPollingIndex)
+				if allKeys {
+					assert.Empty(t, stored.ChannelInfo.MultiKeyStatusList)
+				} else {
+					assert.Equal(t, common.ChannelStatusManuallyDisabled, stored.ChannelInfo.MultiKeyStatusList[1])
+				}
+				if tc.wantStatus == common.ChannelStatusEnabled {
+					assert.Empty(t, stored.GetOtherInfo()["status_reason"])
+				} else {
+					assert.Equal(t, tc.reason, stored.GetOtherInfo()["status_reason"])
+				}
+				var abilities []Ability
+				require.NoError(t, DB.Where("channel_id = ?", channel.Id).Find(&abilities).Error)
+				require.NotEmpty(t, abilities)
+				for _, ability := range abilities {
+					assert.Equal(t, tc.wantStatus == common.ChannelStatusEnabled, ability.Enabled)
+				}
+			})
+		}
+	}
+}
+
+func TestEnableChannelKeysRejectsChangedCredentialSnapshot(t *testing.T) {
+	setupChannelStatusTest(t)
+	channel := Channel{Name: "changed-key", Type: 1, Key: "new-key", Models: "test-model", Group: "default", Status: common.ChannelStatusAutoDisabled,
+		ChannelInfo: ChannelInfo{IsMultiKey: true, MultiKeySize: 1, MultiKeyStatusList: map[int]int{0: common.ChannelStatusAutoDisabled}}}
+	require.NoError(t, channel.Insert())
+	_, err := EnableChannelKeys(channel.Id, "old-key", common.GetPointer(0))
+	require.Error(t, err)
+	stored, err := GetChannelById(channel.Id, true)
+	require.NoError(t, err)
+	assert.Equal(t, channel.Status, stored.Status)
+	assert.Equal(t, channel.ChannelInfo.MultiKeyStatusList, stored.ChannelInfo.MultiKeyStatusList)
+}
+
+func TestEnableChannelKeysRollsBackWhenAbilitiesFail(t *testing.T) {
+	channel := setupAutomaticChannelStatusTest(t, common.ChannelStatusAutoDisabled, true, false)
+	channel.ChannelInfo.MultiKeyStatusList = map[int]int{0: common.ChannelStatusAutoDisabled, 1: common.ChannelStatusAutoDisabled}
+	channel.SetOtherInfo(map[string]any{"status_reason": "All keys are disabled"})
+	require.NoError(t, DB.Model(channel).Select("channel_info", "other_info").Updates(channel).Error)
+	const callback = "test:reject-key-enable-ability-write"
+	require.NoError(t, DB.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+		if tx.Statement.Table == "abilities" {
+			tx.AddError(errors.New("ability update failed"))
+		}
+	}))
+	t.Cleanup(func() { require.NoError(t, DB.Callback().Update().Remove(callback)) })
+	_, err := EnableChannelKeys(channel.Id, channel.Key, common.GetPointer(0))
+	require.Error(t, err)
+	stored, err := GetChannelById(channel.Id, true)
+	require.NoError(t, err)
+	assert.Equal(t, common.ChannelStatusAutoDisabled, stored.Status)
+	assert.Equal(t, channel.ChannelInfo, stored.ChannelInfo)
+	assert.Equal(t, "All keys are disabled", stored.GetOtherInfo()["status_reason"])
+	var ability Ability
+	require.NoError(t, DB.Where("channel_id = ?", channel.Id).First(&ability).Error)
+	assert.False(t, ability.Enabled)
+}

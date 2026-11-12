@@ -214,7 +214,7 @@ func UpdateUserSetting(userId int, setting dto.UserSetting) error {
 	if err = DB.Model(&User{}).Where("id = ?", userId).Update("setting", settingValue).Error; err != nil {
 		return err
 	}
-	return updateUserSettingCache(userId, settingValue)
+	return PublishUserAuthCache(userId)
 }
 
 // userBindColumns 允许通过 UpdateUserBindColumn 更新的第三方账号绑定列白名单。
@@ -1240,7 +1240,7 @@ func BindUserEmail(userId int, email string) error {
 	if err != nil {
 		return err
 	}
-	return updateUserEmailCache(userId, email)
+	return PublishUserAuthCache(userId)
 }
 
 // BindUserEmailIfEmpty attaches an optional, externally supplied profile email
@@ -1283,7 +1283,7 @@ func BindUserEmailIfEmpty(userId int, email string) (bool, error) {
 	if err != nil || !updated {
 		return updated, err
 	}
-	return true, updateUserEmailCache(userId, email)
+	return true, PublishUserAuthCache(userId)
 }
 
 func IsWeChatIdAlreadyTaken(wechatId string, siteId int) bool {
@@ -1483,7 +1483,7 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 		// Update Redis cache asynchronously on successful DB read
 		if shouldUpdateRedis(fromDB, err) {
 			gopool.Go(func() {
-				if err := updateUserSettingCache(id, setting); err != nil {
+				if err := PublishUserAuthCache(id); err != nil {
 					common.SysLog("failed to update user setting cache: " + err.Error())
 				}
 			})
@@ -1633,7 +1633,7 @@ func GetUsernameById(id int, fromDB bool) (username string, err error) {
 		// Update Redis cache asynchronously on successful DB read
 		if shouldUpdateRedis(fromDB, err) {
 			gopool.Go(func() {
-				if err := updateUserNameCache(id, username); err != nil {
+				if err := PublishUserAuthCache(id); err != nil {
 					common.SysLog("failed to update user name cache: " + err.Error())
 				}
 			})
