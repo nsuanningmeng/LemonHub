@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Pencil } from 'lucide-react'
+import { Pencil, Undo2 } from 'lucide-react'
 
 import { DataTableColumnHeader } from '@/components/data-table/core/column-header'
 import { StaticRowActions } from '@/components/data-table/static/static-row-actions'
@@ -44,6 +44,7 @@ const filterBySelectedValues = (
 type BuildModelRatioColumnsOptions = {
   onDelete: (name: string) => void
   onEdit: (model: ModelRow) => void
+  onUndo: (name: string) => void
   deleteDisabled?: boolean
   t: (key: string) => string
   /**
@@ -57,6 +58,7 @@ type BuildModelRatioColumnsOptions = {
 export function buildModelRatioColumns({
   onDelete,
   onEdit,
+  onUndo,
   deleteDisabled,
   t,
   unsetMode = false,
@@ -103,6 +105,13 @@ export function buildModelRatioColumns({
               className='shrink-0'
             />
           )}
+          {row.original.isDraftDeleted && (
+            <StatusBadge
+              label={t('Deleted')}
+              variant='danger'
+              copyable={false}
+            />
+          )}
           {row.original.hasConflict && (
             <StatusBadge
               label={t('Conflict')}
@@ -146,6 +155,14 @@ export function buildModelRatioColumns({
           <span className='text-muted-foreground truncate text-xs'>
             {getPriceDetail(row.original, t)}
           </span>
+          {row.original.isDraftChanged && row.original.draft && (
+            <span className='text-muted-foreground truncate text-xs'>
+              {t('New price')}:{' '}
+              {row.original.draft.billingMode === 'tiered_expr'
+                ? row.original.draft.billingExpr
+                : getPriceSummary(row.original.draft, t)}
+            </span>
+          )}
         </div>
       ),
       sortingFn: (rowA, rowB) =>
@@ -157,8 +174,20 @@ export function buildModelRatioColumns({
     {
       id: 'actions',
       header: () => <div>{t('Actions')}</div>,
-      cell: ({ row }) =>
-        unsetMode ? (
+      cell: ({ row }) => {
+        if (row.original.isDraftDeleted) {
+          return (
+            <Button
+              variant='ghost'
+              size='sm'
+              onClick={() => onUndo(row.original.name)}
+            >
+              <Undo2 aria-hidden='true' />
+              {t('Undo')}
+            </Button>
+          )
+        }
+        return unsetMode ? (
           // Unset-price models can only be edited (to assign a price), not deleted.
           <div className='flex justify-end gap-1'>
             <Button
@@ -179,7 +208,8 @@ export function buildModelRatioColumns({
             onDelete={() => onDelete(row.original.name)}
             deleteDisabled={deleteDisabled}
           />
-        ),
+        )
+      },
       enableHiding: false,
     },
   ]

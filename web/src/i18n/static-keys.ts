@@ -19,6 +19,20 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Dynamic labels in the price review and authentication footer.
+  'By clicking sign in, you agree to our',
+  'By creating an account, you agree to our',
+  'Billing mode',
+  'Model fixed pricing',
+  'Model ratio',
+  'Completion ratio',
+  'Prompt cache ratio',
+  'Create cache ratio',
+  'Image ratio',
+  'Audio ratio',
+  'Audio completion ratio',
+  'Billing expression',
+
   // Maintenance and deployment log display labels.
   'No log entries were deleted. Please try again.',
   'The task stopped because its execution lease expired.',

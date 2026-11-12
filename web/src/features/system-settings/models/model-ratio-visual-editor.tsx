@@ -245,7 +245,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
           isDraftNew: Boolean(!saved && draft),
         }
       })
-      .filter((row) => !row.isDraftDeleted)
       .filter(
         (row) =>
           filterMode !== 'unset' || isBasePricingUnset(row.draft ?? row.saved)
@@ -442,16 +441,88 @@ const ModelRatioVisualEditorComponent = forwardRef<
     ]
   )
 
+  const handleUndo = useCallback(
+    (name: string) => {
+      const maps: Array<[string, string, string]> = [
+        ['ModelPrice', modelPrice, savedModelPrice],
+        ['ModelRatio', modelRatio, savedModelRatio],
+        ['CacheRatio', cacheRatio, savedCacheRatio],
+        ['CreateCacheRatio', createCacheRatio, savedCreateCacheRatio],
+        ['CompletionRatio', completionRatio, savedCompletionRatio],
+        ['ImageRatio', imageRatio, savedImageRatio],
+        ['AudioRatio', audioRatio, savedAudioRatio],
+        [
+          'AudioCompletionRatio',
+          audioCompletionRatio,
+          savedAudioCompletionRatio,
+        ],
+        ['billing_setting.billing_mode', billingMode, savedBillingMode],
+        ['billing_setting.billing_expr', billingExpr, savedBillingExpr],
+      ]
+      try {
+        const changes = maps.map(([field, draftText, savedText]) => {
+          const draft = JSON.parse(draftText || '{}')
+          const saved = JSON.parse(savedText || '{}')
+          if (
+            !draft ||
+            !saved ||
+            typeof draft !== 'object' ||
+            typeof saved !== 'object' ||
+            Array.isArray(draft) ||
+            Array.isArray(saved)
+          ) {
+            throw new Error()
+          }
+          let next = { ...draft }
+          if (Object.hasOwn(saved, name)) {
+            next = { ...next, [name]: saved[name] }
+          } else {
+            delete next[name]
+          }
+          return [field, JSON.stringify(next, null, 2)] as const
+        })
+        for (const [field, value] of changes) onChange(field, value)
+      } catch {
+        toast.error(t('Invalid JSON'))
+      }
+    },
+    [
+      modelPrice,
+      modelRatio,
+      cacheRatio,
+      createCacheRatio,
+      completionRatio,
+      imageRatio,
+      audioRatio,
+      audioCompletionRatio,
+      billingMode,
+      billingExpr,
+      savedModelPrice,
+      savedModelRatio,
+      savedCacheRatio,
+      savedCreateCacheRatio,
+      savedCompletionRatio,
+      savedImageRatio,
+      savedAudioRatio,
+      savedAudioCompletionRatio,
+      savedBillingMode,
+      savedBillingExpr,
+      onChange,
+      t,
+    ]
+  )
+
   const columns = useMemo(
     () =>
       buildModelRatioColumns({
         onDelete: handleDelete,
+        onUndo: handleUndo,
         onEdit: handleEdit,
         deleteDisabled: filterMode === 'unset',
         t,
         unsetMode: filterMode === 'unset',
       }),
-    [handleEdit, handleDelete, filterMode, t]
+    [handleEdit, handleDelete, handleUndo, filterMode, t]
   )
 
   const ensurePageInRange = useCallback((pageCount: number) => {
@@ -786,7 +857,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     const target = event.target as HTMLElement
                     if (!event.currentTarget.contains(target)) return
                     if (target.closest('button, [role="checkbox"]')) return
-                    handleEdit(row.original)
+                    if (!row.original.isDraftDeleted) handleEdit(row.original)
                   }}
                 />
               )}

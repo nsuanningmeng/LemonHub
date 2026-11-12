@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Edit, FileText, Plus, RefreshCw, Trash2, X } from 'lucide-react'
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { Edit, Eraser, FileText, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -84,6 +84,8 @@ function ChannelAffinityConfirmDialog(props: {
   desc: ReactNode
   handleConfirm: () => void
   destructive?: boolean
+  isLoading?: boolean
+  confirmText?: string
 }) {
   const { t } = useTranslation()
 
@@ -97,14 +99,19 @@ function ChannelAffinityConfirmDialog(props: {
       bodyClassName='flex items-start'
       footer={
         <>
-          <Button variant='outline' onClick={() => props.onOpenChange(false)}>
+          <Button
+            variant='outline'
+            disabled={props.isLoading}
+            onClick={() => props.onOpenChange(false)}
+          >
             {t('Cancel')}
           </Button>
           <Button
             variant={props.destructive ? 'destructive' : 'default'}
             onClick={props.handleConfirm}
+            disabled={props.isLoading}
           >
-            {t('Continue')}
+            {props.confirmText ?? t('Continue')}
           </Button>
         </>
       }
@@ -158,6 +165,8 @@ export function ChannelAffinitySection(props: Props) {
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null)
   const [cacheLoading, setCacheLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const clearPendingRef = useRef(false)
 
   const [ruleEditorOpen, setRuleEditorOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<AffinityRule | null>(null)
@@ -195,8 +204,10 @@ export function ChannelAffinitySection(props: Props) {
     setCacheLoading(true)
     try {
       const res = await getCacheStats()
-      if (res.success) setCacheStats(res.data || null)
+      if (!res.success) throw new Error()
+      setCacheStats(res.data || null)
     } catch {
+      setCacheStats(null)
       toast.error(t('Failed to refresh cache stats'))
     } finally {
       setCacheLoading(false)
@@ -320,8 +331,10 @@ export function ChannelAffinitySection(props: Props) {
       }
 
       for (const u of updates) {
-        await updateOption.mutateAsync(u)
+        const result = await updateOption.mutateAsync(u)
+        if (!result.success) return
       }
+      await refreshCache()
       toast.success(t('Saved successfully'))
     } catch {
       toast.error(t('Failed to save'))
@@ -352,23 +365,26 @@ export function ChannelAffinitySection(props: Props) {
     toast.success(t('Deleted successfully'))
   }
 
-  const handleClearAll = async () => {
-    const res = await clearAllCache()
-    if (res.success) {
-      toast.success(t('Cleared'))
-      refreshCache()
+  const handleClearCache = async (ruleName: string | null) => {
+    if (clearPendingRef.current) return
+    clearPendingRef.current = true
+    setClearing(true)
+    try {
+      const res =
+        ruleName === null
+          ? await clearAllCache()
+          : await clearRuleCache(ruleName)
+      if (!res.success) throw new Error()
+      toast.success(t('Cleared channel affinity cache'))
+      setClearAllDialogOpen(false)
+      setClearRuleName(null)
+      await refreshCache()
+    } catch {
+      toast.error(t('Failed to clear channel affinity cache'))
+    } finally {
+      clearPendingRef.current = false
+      setClearing(false)
     }
-    setClearAllDialogOpen(false)
-  }
-
-  const handleClearRule = async () => {
-    if (!clearRuleName) return
-    const res = await clearRuleCache(clearRuleName)
-    if (res.success) {
-      toast.success(t('Cleared'))
-      refreshCache()
-    }
-    setClearRuleName(null)
   }
 
   const switchToJsonMode = () => {
@@ -522,17 +538,18 @@ export function ChannelAffinitySection(props: Props) {
             variant='outline'
             size='sm'
             onClick={refreshCache}
-            disabled={cacheLoading}
+            disabled={cacheLoading || clearing}
           >
             <RefreshCw
               className={`mr-1 h-3 w-3 ${cacheLoading ? 'animate-spin' : ''}`}
             />
-            {t('Refresh Cache')}
+            {t('Refresh cache statistics')}
           </Button>
           <Button
             variant='destructive'
             size='sm'
             onClick={() => setClearAllDialogOpen(true)}
+            disabled={clearing}
           >
             {t('Clear All Cache')}
           </Button>
@@ -544,6 +561,11 @@ export function ChannelAffinitySection(props: Props) {
           )}
         </SettingsPageActionsPortal>
 
+        <p className='text-muted-foreground text-xs'>
+          {t(
+            'Refreshing updates the counts. Clearing cache makes subsequent requests select channels again.'
+          )}
+        </p>
         {/* Rules Table or JSON Editor */}
         {editMode === 'visual' ? (
           <StaticDataTable
@@ -610,11 +632,47 @@ export function ChannelAffinitySection(props: Props) {
               },
               {
                 id: 'cache',
-                header: t('Cache'),
-                cell: (rule) =>
-                  rule.include_rule_name && cacheStats?.by_rule_name
-                    ? cacheStats.by_rule_name[rule.name] || 0
-                    : 'N/A',
+                header: t('Cache Entries'),
+                cell: (rule) => {
+                  const ruleName = rule.name.trim()
+                  const count = cacheStats?.by_rule_name?.[ruleName]
+                  let unavailableReason = ''
+                  if (!rule.include_rule_name) {
+                    unavailableReason = t(
+                      'This rule shares its cache and cannot be cleared separately.'
+                    )
+                  } else if (!cacheStats) {
+                    unavailableReason = t(
+                      'Cache statistics are unavailable. Refresh to try again.'
+                    )
+                  } else if (count === undefined) {
+                    unavailableReason = t(
+                      'Save this rule before clearing its cache.'
+                    )
+                  }
+                  return (
+                    <div className='flex items-center gap-2'>
+                      <span>{unavailableReason ? '—' : count}</span>
+                      <Button
+                        variant='destructive'
+                        size='sm'
+                        aria-label={t('Clear cache for {{name}}', {
+                          name: rule.name,
+                        })}
+                        title={
+                          unavailableReason || t('Clear cache for this rule')
+                        }
+                        disabled={
+                          Boolean(unavailableReason) || cacheLoading || clearing
+                        }
+                        onClick={() => setClearRuleName(ruleName)}
+                      >
+                        <Eraser aria-hidden='true' />
+                        {t('Clear cache')}
+                      </Button>
+                    </div>
+                  )
+                },
               },
               {
                 id: 'actions',
@@ -623,17 +681,6 @@ export function ChannelAffinitySection(props: Props) {
                 cellClassName: 'text-right',
                 cell: (rule, idx) => (
                   <div className='flex justify-end gap-1'>
-                    {rule.include_rule_name && (
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        className='h-7 w-7'
-                        onClick={() => setClearRuleName(rule.name)}
-                        title={t('Clear cache for this rule')}
-                      >
-                        <X className='h-3 w-3' />
-                      </Button>
-                    )}
                     <Button
                       variant='ghost'
                       size='icon'
@@ -684,22 +731,33 @@ export function ChannelAffinitySection(props: Props) {
 
       <ChannelAffinityConfirmDialog
         open={clearAllDialogOpen}
-        onOpenChange={setClearAllDialogOpen}
+        onOpenChange={(open) => {
+          if (!clearing) setClearAllDialogOpen(open)
+        }}
         title={t('Confirm clearing all channel affinity cache')}
         desc={t(
-          'This will delete all channel affinity cache entries still in memory.'
+          'Clear all cached session bindings? Subsequent requests will select channels again.'
         )}
-        handleConfirm={handleClearAll}
+        handleConfirm={() => void handleClearCache(null)}
+        confirmText={t('Clear All Cache')}
+        isLoading={clearing}
         destructive
       />
 
       {clearRuleName !== null && (
         <ChannelAffinityConfirmDialog
           open
-          onOpenChange={(v) => !v && setClearRuleName(null)}
+          onOpenChange={(open) => {
+            if (!open && !clearing) setClearRuleName(null)
+          }}
           title={t('Confirm clearing cache for this rule')}
-          desc={`${t('Rule')}: ${clearRuleName}`}
-          handleConfirm={handleClearRule}
+          desc={t(
+            'Clear cached session bindings for "{{name}}"? Subsequent requests will select channels again.',
+            { name: clearRuleName }
+          )}
+          handleConfirm={() => void handleClearCache(clearRuleName)}
+          confirmText={t('Clear cache')}
+          isLoading={clearing}
           destructive
         />
       )}
