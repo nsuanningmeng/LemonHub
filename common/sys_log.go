@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -70,6 +71,16 @@ func LogStartupSuccess(startTime time.Time, port string) {
 	fmt.Fprintf(gin.DefaultWriter, "\n")
 	fmt.Fprintf(gin.DefaultWriter, "  \033[32m%s %s\033[0m  ready in %d ms\n", SystemName, Version, durationMs)
 	fmt.Fprintf(gin.DefaultWriter, "\n")
+
+	host, _, err := net.SplitHostPort(HTTPListenAddress(port))
+	if ip := net.ParseIP(host); err == nil && host != "" && !ip.IsUnspecified() {
+		label := "Network:"
+		if ip.IsLoopback() {
+			label = "Local:"
+		}
+		fmt.Fprintf(gin.DefaultWriter, "  ➜  \033[1m%-8s\033[0m http://%s/\n\n", label, net.JoinHostPort(host, port))
+		return
+	}
 
 	if !IsRunningInContainer() {
 		fmt.Fprintf(gin.DefaultWriter, "  ➜  \033[1mLocal:\033[0m   http://localhost:%s/\n", port)

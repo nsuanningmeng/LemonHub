@@ -12,22 +12,29 @@ import (
 
 func TestHTTPListenAddressConfiguration(t *testing.T) {
 	for _, tt := range []struct {
-		name string
-		host string
-		want string
+		name         string
+		host         string
+		upstreamHost string
+		want         string
 	}{
 		{name: "gateway default remains public", want: ":3000"},
 		{name: "desktop loopback", host: "127.0.0.1", want: "127.0.0.1:3000"},
 		{name: "IPv6 loopback", host: "::1", want: "[::1]:3000"},
+		{name: "upstream loopback", upstreamHost: "127.0.0.1", want: "127.0.0.1:3000"},
+		{name: "upstream IPv6", upstreamHost: "::1", want: "[::1]:3000"},
+		{name: "desktop setting wins", host: "127.0.0.1", upstreamHost: "0.0.0.0", want: "127.0.0.1:3000"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("BIND_ADDRESS", tt.host)
+			t.Setenv("HOST", tt.upstreamHost)
 			assert.Equal(t, tt.want, HTTPListenAddress("3000"))
 		})
 	}
 }
 
 func TestPprofListenAddressDefaultsToLoopback(t *testing.T) {
+	t.Setenv("HOST", "0.0.0.0")
+	t.Setenv("BIND_ADDRESS", "0.0.0.0")
 	t.Setenv("PPROF_LISTEN_ADDRESS", "")
 	host, port, err := net.SplitHostPort(PprofListenAddress())
 	require.NoError(t, err)
