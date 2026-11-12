@@ -31,3 +31,14 @@ func TestGemini25EffortSuffixUsesModelBudget(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiArgonEffortSuffixUsesSupportedLevels(t *testing.T) {
+	for _, tc := range []struct{ suffix, want string }{{"minimal", "low"}, {"low", "low"}, {"medium", "medium"}, {"high", "high"}, {"xhigh", "high"}, {"max", "high"}} {
+		info := &convmeta.Values{UpstreamModelName: "gemini-4-argon-" + tc.suffix, ChannelMetaAttached: true, Options: &convmeta.Options{Gemini: convmeta.GeminiOptions{ThinkingAdapterEnabled: true}}}
+		req := &dto.GeminiChatRequest{}
+		ApplyThinkingConfig(req, info)
+		require.NotNil(t, req.GenerationConfig.ThinkingConfig)
+		assert.Equal(t, tc.want, req.GenerationConfig.ThinkingConfig.ThinkingLevel)
+		assert.Nil(t, req.GenerationConfig.ThinkingConfig.ThinkingBudget)
+	}
+}

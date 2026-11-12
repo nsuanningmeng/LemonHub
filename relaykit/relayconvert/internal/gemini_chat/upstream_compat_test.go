@@ -86,3 +86,15 @@ func TestGeminiMediaUsesChatModalityAndRejectsUnsupportedPrivately(t *testing.T)
 		assert.NotContains(t, err.Error(), "private")
 	}
 }
+
+func TestGeminiContinuationEndsChatWithLength(t *testing.T) {
+	reason := "CONTINUATION"
+	response := &dto.GeminiChatResponse{Candidates: []dto.GeminiChatCandidate{{FinishReason: &reason, Content: dto.GeminiChatContent{Role: "model", Parts: []dto.GeminiPart{{Text: "partial"}}}}}}
+	full := ResponseGeminiChat2OpenAI("id", 1, response)
+	require.Len(t, full.Choices, 1)
+	assert.Equal(t, "length", full.Choices[0].FinishReason)
+	stream, _ := StreamResponseGeminiChat2OpenAI(response)
+	require.Len(t, stream.Choices, 1)
+	require.NotNil(t, stream.Choices[0].FinishReason)
+	assert.Equal(t, "length", *stream.Choices[0].FinishReason)
+}
