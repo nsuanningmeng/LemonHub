@@ -23,20 +23,19 @@ import (
 )
 
 // ApplyUpstreamBodyMetadata restores metadata that net/http cannot infer from
-// a ReplayableBody. Callers must pass the original body because NewRequest
-// hides its dynamic type behind req.Body's io.ReadCloser wrapper.
+// a ReplayableBody. Pass the original body because NewRequest may wrap bodies
+// that do not implement io.ReadCloser.
 func ApplyUpstreamBodyMetadata(req *http.Request, body io.Reader) {
 	replayable, ok := body.(common2.ReplayableBody)
 	if !ok {
 		return
 	}
 
-	// BodyStorage structurally satisfies ReplayableBody, but it also exposes
-	// io.Closer. If a caller passes the storage directly instead of using
-	// NewReplayableBodyReader, hide Close before the transport takes ownership
-	// of req.Body so the shared replay source remains available to GetBody.
-	if _, rawStorage := body.(common2.BodyStorage); rawStorage {
-		req.Body = io.NopCloser(body)
+	// Raw storage has a shared cursor and closes the replay source. Give the
+	// transport a request-owned cursor even when a caller passes storage directly.
+	if storage, rawStorage := body.(common2.BodyStorage); rawStorage {
+		replayable = common2.NewReplayableBodyReader(storage)
+		req.Body = replayable.(io.ReadCloser)
 	}
 
 	req.ContentLength = replayable.Size()
@@ -606,9 +605,8 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
-	if req.Body != nil {
-		_ = req.Body.Close()
-	}
+	// Response headers can arrive while the transport still uploads the body.
+	// net/http owns that body and closes it once its write has finished.
 	if c != nil && c.Request != nil && c.Request.Body != nil {
 		_ = c.Request.Body.Close()
 	}
