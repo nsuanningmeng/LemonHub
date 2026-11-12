@@ -26,19 +26,27 @@ import (
 func setupDashboardAuthMiddlewareTest(t *testing.T) {
 	t.Helper()
 	previousDB := model.DB
+	previousLogDB := model.LOG_DB
 	previousType := common.MainDatabaseType()
+	previousLogType := common.LogDatabaseType()
 	previousRedis := common.RedisEnabled
 	previousSecret := common.SessionSecret
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.Token{}))
 	model.DB = db
 	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	// Initialize dialect-specific quoted columns for authoritative token reads,
+	// including the fallback from pre-upgrade unsigned Redis hashes.
+	t.Setenv("LOG_SQL_DSN", "")
+	require.NoError(t, model.InitLogDB())
 	common.RedisEnabled = false
 	common.SessionSecret = "middleware-auth-test-secret"
 	t.Cleanup(func() {
 		model.DB = previousDB
+		model.LOG_DB = previousLogDB
 		common.SetMainDatabaseType(previousType)
+		common.SetLogDatabaseType(previousLogType)
 		common.RedisEnabled = previousRedis
 		common.SessionSecret = previousSecret
 	})
@@ -101,6 +109,7 @@ func TestTokenAuthSetsOperatorSiteFromAuthenticatedOwner(t *testing.T) {
 		ExpiredTime:    -1,
 		UnlimitedQuota: true,
 	}
+	require.NoError(t, model.DB.Create(token).Error)
 	server := miniredis.RunT(t)
 	oldRDB, oldRedisEnabled := common.RDB, common.RedisEnabled
 	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr(), MaxRetries: -1})
@@ -109,6 +118,7 @@ func TestTokenAuthSetsOperatorSiteFromAuthenticatedOwner(t *testing.T) {
 		_ = common.RDB.Close()
 		common.RDB, common.RedisEnabled = oldRDB, oldRedisEnabled
 	})
+	// A legacy unsigned hash must resolve against the persisted owner after upgrade.
 	require.NoError(t, common.RedisHSetObj("token:"+common.GenerateHMAC(token.Key), token, time.Minute))
 
 	operatorSite := -1
@@ -294,16 +304,6 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 
 func TestTokenAuthReadOnlyEnforcesIPWithoutRejectingExpiredQuota(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
-	// GetTokenByKey uses the model's dialect-specific quoted key column.
-	// Initialize it through the same setup path used by the application.
-	previousLogDB, previousLogType := model.LOG_DB, common.LogDatabaseType()
-	t.Setenv("LOG_SQL_DSN", "")
-	require.NoError(t, model.InitLogDB())
-	t.Cleanup(func() {
-		model.LOG_DB = previousLogDB
-		common.SetLogDatabaseType(previousLogType)
-	})
-	require.NoError(t, model.DB.AutoMigrate(&model.Token{}))
 	user := createMiddlewarePATUser(t, "readonly-token-owner", "readonlyunusedpat")
 	require.NoError(t, model.DB.Model(user).Update("site_id", 23).Error)
 	allowIPs := "192.0.2.0/24"
