@@ -89,6 +89,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
@@ -827,7 +828,7 @@ export const PromptInputTextarea = ({
 
   const handleKeyDown: KeyboardEventHandler<HTMLTextAreaElement> = (e) => {
     if (e.key === 'Enter') {
-      if (isComposing || e.nativeEvent.isComposing) {
+      if (isComposing || isComposingKeyboardEvent(e)) {
         return
       }
       if (e.shiftKey) {

@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { StickToBottomContext } from 'use-stick-to-bottom'
 
 import {
   Conversation,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ai-elements/conversation'
 import { Loader } from '@/components/ai-elements/loader'
 import { Message } from '@/components/ai-elements/message'
+import { Button } from '@/components/ui/button'
 
 import {
   getChatMessageRenderState,
@@ -44,7 +46,7 @@ import { PlaygroundMessageContent } from '../message/playground-message-content'
 import { PlaygroundMessageEditor } from '../message/playground-message-editor'
 import { PlaygroundEmptyState } from './playground-empty-state'
 
-const MAX_RENDERED_HISTORY_MESSAGES = 24
+const HISTORY_PAGE_SIZE = 24
 
 interface PlaygroundChatProps {
   messages: MessageType[]
@@ -83,11 +85,46 @@ export function PlaygroundChat({
   const [sourceMessageKeys, setSourceMessageKeys] = useState<
     ReadonlySet<string>
   >(() => new Set())
-  const visibleMessageOffset = Math.max(
-    0,
-    messages.length - MAX_RENDERED_HISTORY_MESSAGES
-  )
+  const [loadedHistoryKeys, setLoadedHistoryKeys] =
+    useState<ReadonlySet<string> | null>(null)
+  const conversationRef = useRef<StickToBottomContext | null>(null)
+  const historyScrollRef = useRef<{ top: number; height: number } | null>(null)
+  const loadedHistoryOffset = loadedHistoryKeys
+    ? messages.findIndex((message) => loadedHistoryKeys.has(message.key))
+    : -1
+  const visibleMessageOffset =
+    loadedHistoryOffset >= 0
+      ? loadedHistoryOffset
+      : Math.max(0, messages.length - HISTORY_PAGE_SIZE)
   const visibleMessages = messages.slice(visibleMessageOffset)
+
+  function handleLoadEarlierMessages(): void {
+    const conversation = conversationRef.current
+    const scrollElement = conversation?.scrollRef.current
+    if (scrollElement) {
+      conversation?.stopScroll()
+      historyScrollRef.current = {
+        top: scrollElement.scrollTop,
+        height: scrollElement.scrollHeight,
+      }
+    }
+    const nextOffset = Math.max(0, visibleMessageOffset - HISTORY_PAGE_SIZE)
+    // Keep the earliest surviving loaded message as the boundary when messages
+    // are appended or deleted while the user is reading earlier history.
+    setLoadedHistoryKeys(
+      new Set(messages.slice(nextOffset).map((message) => message.key))
+    )
+  }
+
+  useLayoutEffect(() => {
+    const scrollElement = conversationRef.current?.scrollRef.current
+    const previousScroll = historyScrollRef.current
+    if (scrollElement && previousScroll) {
+      scrollElement.scrollTop =
+        previousScroll.top + scrollElement.scrollHeight - previousScroll.height
+      historyScrollRef.current = null
+    }
+  }, [loadedHistoryKeys])
 
   function handleToggleMessageSource(message: MessageType): void {
     setSourceMessageKeys((currentKeys) => {
@@ -212,10 +249,23 @@ export function PlaygroundChat({
   }
 
   return (
-    <Conversation>
+    <Conversation contextRef={conversationRef}>
       {/* Remove outer padding; apply padding to inner centered container to align with input */}
       <ConversationContent className='p-0'>
-        <div className='mx-auto w-full max-w-4xl px-4 py-4'>{chatContent}</div>
+        <div className='mx-auto w-full max-w-4xl px-4 py-4'>
+          {!isLoadingMessages && visibleMessageOffset > 0 && (
+            <div className='flex justify-center pb-4'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={handleLoadEarlierMessages}
+              >
+                {t('Load earlier messages')}
+              </Button>
+            </div>
+          )}
+          {chatContent}
+        </div>
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>

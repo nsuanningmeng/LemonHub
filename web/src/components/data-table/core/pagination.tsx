@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
@@ -58,13 +58,8 @@ export function DataTablePagination<TData>({
   const pageNumbers = getPageNumbers(currentPage, totalPages)
 
   return (
-    <div
-      className={cn(
-        '@container/pagination flex min-w-0 items-center justify-end overflow-clip'
-      )}
-      style={{ overflowClipMargin: 1 }}
-    >
-      <div className='flex min-w-0 shrink-0 items-center gap-2 @xl/pagination:gap-3'>
+    <div className='@container/pagination min-w-0'>
+      <div className='flex min-w-0 flex-wrap items-center justify-end gap-2 @xl/pagination:gap-3'>
         <div className='flex shrink-0 items-baseline gap-1.5 text-xs font-medium whitespace-nowrap sm:text-sm'>
           <span className='text-muted-foreground/80'>{t('Total:')}</span>
           <span className='text-foreground tabular-nums'>
@@ -83,7 +78,10 @@ export function DataTablePagination<TData>({
               table.setPageSize(Number(value))
             }}
           >
-            <SelectTrigger className='text-foreground h-8 w-[64px] font-medium tabular-nums sm:w-[70px]'>
+            <SelectTrigger
+              aria-label={t('Rows per page')}
+              className='text-foreground h-8 w-[64px] font-medium tabular-nums sm:w-[70px]'
+            >
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent side='top' alignItemWithTrigger={false}>
@@ -98,7 +96,7 @@ export function DataTablePagination<TData>({
           </Select>
         </div>
 
-        <div className='flex min-w-0 shrink-0 items-center gap-1 @lg/pagination:gap-1.5 @xl/pagination:gap-2'>
+        <div className='flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1 @lg/pagination:gap-1.5 @xl/pagination:gap-2'>
           <Button
             variant='outline'
             className='text-muted-foreground hover:text-foreground disabled:text-muted-foreground/50 size-8 p-0 @max-lg/pagination:hidden'
@@ -118,8 +116,22 @@ export function DataTablePagination<TData>({
             <ChevronLeftIcon className='h-4 w-4' />
           </Button>
 
+          <span className='min-w-0 text-center text-xs tabular-nums @lg/pagination:hidden'>
+            {t('Page {{current}} of {{total}}', {
+              current: Math.min(currentPage, totalPages),
+              total: totalPages,
+            })}
+          </span>
+
           {pageNumbers.map((pageNumber, index) => (
-            <div key={`${pageNumber}-${index}`} className='flex items-center'>
+            <div
+              key={
+                pageNumber === '...'
+                  ? `gap-after-${pageNumbers.at(index - 1)}`
+                  : pageNumber
+              }
+              className='flex items-center @max-lg/pagination:hidden'
+            >
               {pageNumber === '...' ? (
                 <span className='text-muted-foreground/60 px-0.5 text-sm @lg/pagination:px-1'>
                   ...
@@ -127,6 +139,8 @@ export function DataTablePagination<TData>({
               ) : (
                 <Button
                   variant={currentPage === pageNumber ? 'default' : 'outline'}
+                  aria-current={currentPage === pageNumber ? 'page' : undefined}
+                  aria-label={t('Go to page {{page}}', { page: pageNumber })}
                   className={cn(
                     'h-8 min-w-8 px-2 tabular-nums',
                     currentPage === pageNumber
@@ -135,9 +149,6 @@ export function DataTablePagination<TData>({
                   )}
                   onClick={() => table.setPageIndex((pageNumber as number) - 1)}
                 >
-                  <span className='sr-only'>
-                    {t('Go to page {{page}}', { page: pageNumber })}
-                  </span>
                   {pageNumber}
                 </Button>
               )}
