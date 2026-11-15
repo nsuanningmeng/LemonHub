@@ -287,3 +287,128 @@ test('status text colors remain readable on light and dark cards', async ({
     }
   }
 })
+
+for (const mode of ['light', 'dark']) {
+  test(`rich channel tooltip text remains readable in ${mode} theme presets`, async ({
+    page,
+  }) => {
+    await page.route('**/api/log?**', async (route) => {
+      await route.fulfill({
+        json: {
+          success: true,
+          data: {
+            items: [
+              {
+                id: 1,
+                user_id: 1,
+                username: user.username,
+                created_at: 1700000000,
+                type: 2,
+                content: '',
+                token_name: 'Tooltip regression',
+                model_name: 'example-model',
+                quota: 100,
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                use_time: 1,
+                is_stream: false,
+                channel: 330,
+                channel_name: 'cmax1.3',
+                token_id: 1,
+                group: 'default',
+                ip: '',
+                request_id: 'tooltip-fixture',
+                upstream_request_id: '',
+                other: JSON.stringify({
+                  admin_info: {
+                    use_channel: [329, 330],
+                    is_multi_key: true,
+                    multi_key_index: 2,
+                    channel_affinity: {
+                      rule_name: 'sticky-session',
+                      using_group: 'default',
+                    },
+                  },
+                }),
+              },
+            ],
+            total: 1,
+          },
+        },
+      })
+    })
+    await page.route('**/api/log/stat?**', async (route) => {
+      await route.fulfill({
+        json: { success: true, data: { quota: 100, rpm: 1, tpm: 15 } },
+      })
+    })
+
+    for (const preset of ['default', 'rose-garden', 'simple-large']) {
+      await page.evaluate(
+        ({ mode, preset }) => {
+          localStorage.setItem('newapi:theme:v1:mode', mode)
+          localStorage.setItem('newapi:theme:v1:preset', preset)
+        },
+        { mode, preset }
+      )
+      await page.goto('/usage-logs/common')
+      // Apply persisted settings even when navigation stays on the current route.
+      await page.reload()
+      await page.getByText('cmax1.3', { exact: true }).hover()
+      const tooltip = page
+        .locator('[data-slot="tooltip-content"][data-open]')
+        .filter({ hasText: 'Channel Affinity' })
+      await expect(tooltip).toBeVisible()
+      await expect(tooltip).toContainText('cmax1.3 #330')
+      await expect(tooltip).toContainText('Chain: 329 → 330')
+      await expect(tooltip).toContainText('Key: 2')
+      await expect(tooltip).toContainText('Rule: sticky-session')
+      await expect(tooltip).toContainText('Group: default')
+
+      const contrasts = await tooltip.locator('p').evaluateAll((paragraphs) => {
+        const canvas = document.createElement('canvas')
+        canvas.width = canvas.height = 1
+        const context = canvas.getContext('2d')
+        if (!context) {
+          throw new Error('Canvas is required to measure text contrast')
+        }
+        const luminance = (color: string) => {
+          context.clearRect(0, 0, 1, 1)
+          context.fillStyle = color
+          context.fillRect(0, 0, 1, 1)
+          const channels = [...context.getImageData(0, 0, 1, 1).data]
+            .slice(0, 3)
+            .map((channel) => {
+              const value = channel / 255
+              return value <= 0.04045
+                ? value / 12.92
+                : ((value + 0.055) / 1.055) ** 2.4
+            })
+          return (
+            channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+          )
+        }
+        return paragraphs.map((paragraph) => {
+          const popup = paragraph.closest('[data-slot="tooltip-content"]')
+          if (!popup) throw new Error('Tooltip paragraph has no popup')
+          const foreground = luminance(getComputedStyle(paragraph).color)
+          const background = luminance(getComputedStyle(popup).backgroundColor)
+          return {
+            text: paragraph.textContent,
+            ratio:
+              (Math.max(foreground, background) + 0.05) /
+              (Math.min(foreground, background) + 0.05),
+          }
+        })
+      })
+      expect(contrasts).toHaveLength(6)
+      for (const result of contrasts) {
+        expect
+          .soft(result.ratio, `${mode} ${preset}: ${result.text}`)
+          .toBeGreaterThanOrEqual(4.5)
+      }
+      await page.keyboard.press('Escape')
+      await expect(tooltip).not.toBeVisible()
+    }
+  })
+}

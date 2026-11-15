@@ -220,6 +220,17 @@ For commercial licensing, please contact support@quantumnous.com
   --color-icon-secondary: var(--muted-foreground);
 }
 
+/* Portal tooltips contain both native text and Astryx typography. Keep their
+ * foreground roles on the same surface instead of relying on inheritance. */
+@utility surface-popover {
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  --color-text-primary: var(--popover-foreground);
+  --color-text-secondary: var(--muted-foreground);
+  --color-icon-primary: var(--popover-foreground);
+  --color-icon-secondary: var(--muted-foreground);
+}
+
 @utility surface-blue {
   background-color: var(--tone-blue);
   color: var(--tone-blue-foreground);
