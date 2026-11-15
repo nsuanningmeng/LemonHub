@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 
 import { getQuotaTypeLabels, QUOTA_TYPES } from '../constants'
+import { getModelQuotaType } from '../lib/filters'
 import type { PricingModel } from '../types'
 
 type CatalogBillingFilterProps = {
@@ -37,11 +38,15 @@ export function CatalogBillingFilter(props: CatalogBillingFilterProps) {
     { value: QUOTA_TYPES.ALL, count: props.models.length },
     {
       value: QUOTA_TYPES.TOKEN,
-      count: props.models.filter((model) => model.quota_type === 0).length,
+      count: props.models.filter(
+        (model) => getModelQuotaType(model) === QUOTA_TYPES.TOKEN
+      ).length,
     },
     {
       value: QUOTA_TYPES.REQUEST,
-      count: props.models.filter((model) => model.quota_type === 1).length,
+      count: props.models.filter(
+        (model) => getModelQuotaType(model) === QUOTA_TYPES.REQUEST
+      ).length,
     },
   ]
 

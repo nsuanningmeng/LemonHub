@@ -112,3 +112,58 @@ describe('Vertex AI API Key project ID', () => {
     )
   })
 })
+
+describe('Vertex AI endpoint version', () => {
+  test('keeps the stable v1 default and preserves explicit beta selection', () => {
+    expect(savedSettings(vertexAPIKeyForm())).toMatchObject({
+      vertex_api_version: 'v1',
+    })
+    expect(
+      savedSettings(vertexAPIKeyForm({ vertex_api_version: 'v1beta1' }))
+    ).toMatchObject({ vertex_api_version: 'v1beta1' })
+  })
+
+  test('removes the Vertex version when changing to another provider', () => {
+    expect(
+      savedSettings(
+        vertexAPIKeyForm({
+          type: 1,
+          settings: '{"vertex_api_version":"v1beta1"}',
+          vertex_api_version: 'v1beta1',
+        })
+      )
+    ).not.toHaveProperty('vertex_api_version')
+  })
+
+  test('rejects unknown endpoint versions', () => {
+    expect(
+      channelFormSchema.safeParse({
+        ...vertexAPIKeyForm(),
+        vertex_api_version: 'v99',
+      }).success
+    ).toBe(false)
+  })
+
+  test.each(['v1', 'v1beta1'])(
+    'loads the saved %s endpoint on edit',
+    (version) => {
+      const channel = channelSchema.parse({
+        id: 7,
+        name: 'Vertex AI',
+        type: 41,
+        key: '',
+        status: 1,
+        created_time: 1,
+        test_time: 0,
+        response_time: 0,
+        balance_updated_time: 0,
+        models: 'gemini-4-argon',
+        group: 'default',
+        settings: JSON.stringify({ vertex_api_version: version }),
+      })
+      expect(transformChannelToFormDefaults(channel).vertex_api_version).toBe(
+        version
+      )
+    }
+  )
+})

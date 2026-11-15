@@ -81,6 +81,7 @@ func (p *RetryParam) ResetRetryNextTry() {
 //	Retry=2: GroupA exhausted → GroupB, priority0    Retry=3: GroupB, priority1
 func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, error) {
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	affinityRetryOffset := param.Ctx.GetInt(ginKeyChannelAffinityRetryOffset)
 	rawGroups := getRawTokenGroups(param.Ctx, param.TokenGroup)
 	containsAuto := slices.Contains(rawGroups, "auto")
 
@@ -120,7 +121,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		if len(priorityGroups) == 1 {
 			group = priorityGroups[0]
 		}
-		channel, err := model.GetRandomSatisfiedChannel(group, param.ModelName, param.GetRetry(), param.RequestPath)
+		channel, err := model.GetRandomSatisfiedChannel(group, param.ModelName, max(param.GetRetry()-affinityRetryOffset, 0), param.RequestPath)
 		if err != nil {
 			return nil, group, err
 		}
@@ -148,12 +149,13 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 		group := priorityGroups[i]
 		// Calculate priorityRetry for current group
 		// 计算当前分组的 priorityRetry
-		priorityRetry := param.GetRetry()
+		groupRetry := param.GetRetry()
 		// If moved to a new group, reset priorityRetry
 		// 如果切换到新分组，重置 priorityRetry
 		if i > startGroupIndex {
-			priorityRetry = 0
+			groupRetry = 0
 		}
+		priorityRetry := max(groupRetry-affinityRetryOffset, 0)
 		logger.LogDebug(param.Ctx, "Priority selecting group: %s, priorityRetry: %d", group, priorityRetry)
 
 		channel, _ = model.GetRandomSatisfiedChannel(group, param.ModelName, priorityRetry, param.RequestPath)
@@ -167,6 +169,8 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			// Reset retry counter so outer loop can continue for next group
 			// 重置重试计数器，以便外层循环可以为下一个分组继续
 			param.SetRetry(0)
+			affinityRetryOffset = 0
+			param.Ctx.Set(ginKeyChannelAffinityRetryOffset, 0)
 			continue
 		}
 		// AutoGroup drives billing refreshes; UsingGroup is the canonical selected
@@ -178,17 +182,18 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 
 		// Prepare state for next retry
 		// 为下一次重试准备状态
-		if crossGroupRetry && priorityRetry >= common.RetryTimes {
+		if crossGroupRetry && groupRetry >= common.RetryTimes {
 			// Current group has exhausted all retries, prepare to switch to next group
 			// This request still uses current group, but next retry will use next group
 			// 当前分组已用完所有重试次数，准备切换到下一个分组
 			// 本次请求仍使用当前分组，但下次重试将使用下一个分组
-			logger.LogDebug(param.Ctx, "Current group %s retries exhausted (priorityRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", group, priorityRetry, common.RetryTimes)
+			logger.LogDebug(param.Ctx, "Current group %s retries exhausted (groupRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", group, groupRetry, common.RetryTimes)
 			common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
 			// Reset retry counter so outer loop can continue for next group
 			// 重置重试计数器，以便外层循环可以为下一个分组继续
 			param.SetRetry(0)
 			param.ResetRetryNextTry()
+			param.Ctx.Set(ginKeyChannelAffinityRetryOffset, 0)
 		} else {
 			// Stay in current group, save current state
 			// 保持在当前分组，保存当前状态

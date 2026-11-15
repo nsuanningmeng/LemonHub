@@ -2,8 +2,16 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -59,9 +67,7 @@ func TestVertexGeminiClaudeProductionRoundTrip(t *testing.T) {
 			}))
 			t.Cleanup(upstream.Close)
 			channel := model.Channel{Id: 671501, Type: constant.ChannelTypeVertexAi, Name: "vertex-local", Key: `{"project_id":"fixture-project","client_email":"fixture@example.invalid"}`, BaseURL: common.GetPointer(upstream.URL), Other: "global", Status: common.ChannelStatusEnabled, ModelMapping: common.GetPointer(`{"gpt-4o":"gemini-2.5-flash"}`)}
-			key := fmt.Sprintf("access-token-%d", channel.Id)
-			require.False(t, vertex.Cache.SetDefault(key, "fixture-access-token"))
-			t.Cleanup(func() { vertex.Cache.DeleteIf(func(k string) bool { return k == key }) })
+			configureVertexOAuthFixture(t, &channel)
 			require.NoError(t, db.Create(&channel).Error)
 			body := vertexClaudeBody
 			if stream {
@@ -149,9 +155,7 @@ func TestVertexGeminiClaudeChannelTestUsesProductionDTO(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 	channel := model.Channel{Id: 671502, Type: constant.ChannelTypeVertexAi, Name: "vertex-probe", Key: `{"project_id":"fixture-project"}`, BaseURL: common.GetPointer(upstream.URL), Other: "global", Status: common.ChannelStatusEnabled, ModelMapping: common.GetPointer(`{"gpt-4o":"gemini-2.5-flash"}`)}
-	key := fmt.Sprintf("access-token-%d", channel.Id)
-	require.False(t, vertex.Cache.SetDefault(key, "fixture-access-token"))
-	t.Cleanup(func() { vertex.Cache.DeleteIf(func(k string) bool { return k == key }) })
+	configureVertexOAuthFixture(t, &channel)
 	require.NoError(t, db.Create(&channel).Error)
 	result := testChannel(context.Background(), &channel, user.Id, "gpt-4o", string(constant.EndpointTypeAnthropic), false)
 	require.NoError(t, result.localErr)
@@ -179,9 +183,7 @@ func TestVertexGeminiClaudeHTTPErrorRefundsPreConsume(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 	channel := model.Channel{Id: 671503, Type: constant.ChannelTypeVertexAi, Name: "vertex-error", Key: `{"project_id":"fixture-project"}`, BaseURL: common.GetPointer(upstream.URL), Other: "global", Status: common.ChannelStatusEnabled, ModelMapping: common.GetPointer(`{"gpt-4o":"gemini-2.5-flash"}`)}
-	key := fmt.Sprintf("access-token-%d", channel.Id)
-	require.False(t, vertex.Cache.SetDefault(key, "fixture-access-token"))
-	t.Cleanup(func() { vertex.Cache.DeleteIf(func(k string) bool { return k == key }) })
+	configureVertexOAuthFixture(t, &channel)
 	require.NoError(t, db.Create(&channel).Error)
 	response, _ := runProtocolConversionRelay(t, user, token, channel, "/v1/messages", vertexClaudeBody, types.RelayFormatClaude)
 	assert.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
@@ -206,9 +208,7 @@ func TestVertexGeminiClaudeHTTPErrorRefundsPreConsume(t *testing.T) {
 func localVertexServiceAccountChannel(t *testing.T, id int, baseURL string) model.Channel {
 	t.Helper()
 	channel := model.Channel{Id: id, Type: constant.ChannelTypeVertexAi, Name: "vertex-local", Key: `{"project_id":"fixture-project"}`, BaseURL: common.GetPointer(baseURL), Other: "global", Status: common.ChannelStatusEnabled, ModelMapping: common.GetPointer(`{"gpt-4o":"gemini-2.5-flash"}`)}
-	key := fmt.Sprintf("access-token-%d", id)
-	require.False(t, vertex.Cache.SetDefault(key, "fixture-access-token"))
-	t.Cleanup(func() { vertex.Cache.DeleteIf(func(k string) bool { return k == key }) })
+	configureVertexOAuthFixture(t, &channel)
 	return channel
 }
 
@@ -251,4 +251,53 @@ func TestVertexGeminiClaudeInBandRefusalKeepsGeminiBilling(t *testing.T) {
 	require.Len(t, logs, 1)
 	assert.Contains(t, logs[0].Other, "billing-usage-gemini")
 	assert.Equal(t, 7, logs[0].Quota)
+}
+
+// Keep the actual signing/exchange path covered without connecting to Google.
+func configureVertexOAuthFixture(t *testing.T, channel *model.Channel) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	privateKey, err := x509.MarshalPKCS8PrivateKey(key)
+	require.NoError(t, err)
+	credentials, err := common.Marshal(vertex.Credentials{
+		ProjectID: "fixture-project", ClientEmail: "fixture@example.invalid",
+		PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKey})),
+	})
+	require.NoError(t, err)
+	channel.Key = string(credentials)
+	template := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "www.googleapis.com"}, DNSNames: []string{"www.googleapis.com"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, IsCA: true, BasicConstraintsValid: true}
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	cert, err := x509.ParseCertificate(certDER)
+	require.NoError(t, err)
+	pool := x509.NewCertPool()
+	pool.AddCert(cert)
+	oauth := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/oauth2/v4/token", r.URL.Path)
+		require.NoError(t, r.ParseForm())
+		assert.NotEmpty(t, r.Form.Get("assertion"))
+		assert.Equal(t, "urn:ietf:params:oauth:grant-type:jwt-bearer", r.Form.Get("grant_type"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"fixture-access-token","expires_in":3600}`)
+	}))
+	oauth.TLS = &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{certDER}, PrivateKey: key}}}
+	oauth.StartTLS()
+	t.Cleanup(oauth.Close)
+	original := http.DefaultTransport
+	transport := original.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.TLSClientConfig = &tls.Config{RootCAs: pool}
+	dial := transport.DialContext
+	if dial == nil {
+		dial = (&net.Dialer{}).DialContext
+	}
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		if address == "www.googleapis.com:443" {
+			address = oauth.Listener.Addr().String()
+		}
+		return dial(ctx, network, address)
+	}
+	http.DefaultTransport = transport
+	t.Cleanup(func() { http.DefaultTransport = original; transport.CloseIdleConnections() })
 }

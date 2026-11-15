@@ -84,11 +84,8 @@ func (*StripeAdaptor) RequestAmount(c *gin.Context, req *StripePayRequest) {
 }
 
 func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
-	// Gate the request path on the same condition the inbound webhook enforces
-	// (isStripeWebhookEnabled == isStripeTopUpEnabled). Without this, a user
-	// could be sent to a real Stripe Checkout and pay while payment compliance
-	// is unconfirmed; the completion webhook would then be rejected and the
-	// order would never be credited.
+	// New checkouts require the full payment configuration and compliance check.
+	// Signed webhooks remain available separately to settle existing orders.
 	if !isStripeTopUpEnabled() {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "Stripe 支付未启用"})
 		return

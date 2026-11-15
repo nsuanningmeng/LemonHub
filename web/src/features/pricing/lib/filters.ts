@@ -24,8 +24,10 @@ import {
   QUOTA_TYPE_VALUES,
   ENDPOINT_TYPES,
   type SortOption,
+  type QuotaTypeOption,
 } from '../constants'
 import type { PricingModel } from '../types'
+import { classifyBillingQuotaType } from './billing-expr'
 import { getDynamicPricingSummary } from './dynamic-price'
 import { isTokenBasedModel } from './model-helpers'
 import { calculateTokenPrice } from './price'
@@ -75,19 +77,28 @@ export function filterByGroup(
   return models.filter((m) => m.enable_groups?.includes(group))
 }
 
-/**
- * Filter models by quota type
- */
+/** Active pricing category shared by catalog filters and their counts. */
+export function getModelQuotaType(
+  model: PricingModel
+): Exclude<QuotaTypeOption, 'all'> | undefined {
+  if (model.billing_mode === 'tiered_expr' && model.billing_expr) {
+    const category = classifyBillingQuotaType(model.billing_expr)
+    if (category) return category
+  }
+  // Keep the existing category for expressions outside the display parser's
+  // supported grammar; catalog filtering must not reinterpret their billing.
+  if (model.quota_type === QUOTA_TYPE_VALUES.TOKEN) return QUOTA_TYPES.TOKEN
+  if (model.quota_type === QUOTA_TYPE_VALUES.REQUEST) return QUOTA_TYPES.REQUEST
+  return undefined
+}
+
+/** Filter models by the active pricing configuration. */
 export function filterByQuotaType(
   models: PricingModel[],
   quotaType: string
 ): PricingModel[] {
   if (quotaType === QUOTA_TYPES.ALL) return models
-  const targetType =
-    quotaType === QUOTA_TYPES.TOKEN
-      ? QUOTA_TYPE_VALUES.TOKEN
-      : QUOTA_TYPE_VALUES.REQUEST
-  return models.filter((m) => m.quota_type === targetType)
+  return models.filter((model) => getModelQuotaType(model) === quotaType)
 }
 
 /**

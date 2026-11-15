@@ -16,9 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useBlocker, type ShouldBlockFn } from '@tanstack/react-router'
+import { useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { PlaygroundChat } from './components/chat/playground-chat'
+import { PlaygroundStorageWarning } from './components/chat/playground-storage-warning'
 import { PlaygroundInput } from './components/input/playground-input'
 import {
   useChatHandler,
@@ -33,11 +39,15 @@ export function Playground() {
 }
 
 function PlaygroundSession() {
+  const { t } = useTranslation()
   const {
     config,
     parameterEnabled,
     messages,
     isLoadingMessages,
+    hasMessageSaveError,
+    retryMessageSave,
+    flushMessageSave,
     models,
     groups,
     updateMessages,
@@ -47,6 +57,17 @@ function PlaygroundSession() {
     updateParameterEnabled,
     clearMessages,
   } = usePlaygroundState()
+
+  const shouldBlockNavigation = useCallback<ShouldBlockFn>(
+    ({ current, next }) =>
+      current.pathname !== next.pathname && !flushMessageSave(),
+    [flushMessageSave]
+  )
+  const navigationBlocker = useBlocker({
+    enableBeforeUnload: false,
+    shouldBlockFn: shouldBlockNavigation,
+    withResolver: true,
+  })
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
@@ -83,6 +104,32 @@ function PlaygroundSession() {
 
   return (
     <div className='relative flex size-full min-h-0 flex-col overflow-hidden'>
+      <ConfirmDialog
+        cancelBtnText={t('Stay')}
+        confirmText={t('Discard and leave')}
+        desc={t(
+          'Conversation could not be saved in this browser. Download a copy before leaving.'
+        )}
+        destructive
+        handleConfirm={() => {
+          if (navigationBlocker.status === 'blocked') {
+            navigationBlocker.proceed()
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open && navigationBlocker.status === 'blocked') {
+            navigationBlocker.reset()
+          }
+        }}
+        open={navigationBlocker.status === 'blocked'}
+        title={t('Unsaved changes')}
+      />
+      {hasMessageSaveError && (
+        <PlaygroundStorageWarning
+          messages={messages}
+          onRetry={retryMessageSave}
+        />
+      )}
       {/* Full-width scroll container: scrolling works even over side whitespace */}
       <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
         <PlaygroundChat

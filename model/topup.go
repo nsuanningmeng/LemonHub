@@ -472,7 +472,17 @@ func Recharge(referenceId string, customerId string, paymentIntent string, calle
 		}
 
 		switch topUp.Status {
-		case common.TopUpStatusSuccess, common.TopUpStatusRefunded, common.TopUpStatusDisputed:
+		case common.TopUpStatusSuccess:
+			alreadyDone = true
+			// A manual settlement can precede the signed payment notification.
+			// Recover its refund/dispute association without repeating accounting
+			// or replacing a payment already linked to this order.
+			if topUp.PaymentIntent == "" && paymentIntent != "" {
+				return tx.Model(topUp).Where("(payment_intent = ? OR payment_intent IS NULL)", "").
+					Update("payment_intent", paymentIntent).Error
+			}
+			return nil
+		case common.TopUpStatusRefunded, common.TopUpStatusDisputed:
 			alreadyDone = true
 			return nil
 		}

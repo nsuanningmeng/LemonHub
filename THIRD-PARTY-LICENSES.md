@@ -13,7 +13,7 @@ Transitive dependencies should be audited before a final external release.
 | backend     | production  | Go        | `github.com/Calcium-Ion/go-epay`                      | `v0.0.5`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/abema/go-mp4`                             | `v1.4.1`                             | MIT                                                |
 | backend     | test        | Go        | `github.com/alicebob/miniredis/v2`                    | `v2.38.0`                            | MIT                                                |
-| backend     | production  | Go        | `github.com/andybalholm/brotli`                       | `v1.1.1`                             | MIT                                                |
+| backend     | production  | Go        | `github.com/andybalholm/brotli`                       | `v1.2.7`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/anknown/ahocorasick`                      | `v0.0.0-20190904063843-d75dbd5169c0` | MIT                                                |
 | backend     | production  | Go        | `github.com/aws/aws-sdk-go-v2`                        | `v1.41.5`                            | Apache-2.0                                         |
 | backend     | production  | Go        | `github.com/aws/aws-sdk-go-v2/credentials`            | `v1.19.10`                           | Apache-2.0                                         |
@@ -37,6 +37,7 @@ Transitive dependencies should be audited before a final external release.
 | backend     | production  | Go        | `github.com/jfreymuth/oggvorbis`                      | `v1.0.5`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/jinzhu/copier`                            | `v0.4.0`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/joho/godotenv`                            | `v1.5.1`                             | MIT                                                |
+| backend     | production  | Go        | `github.com/klauspost/compress`                      | `v1.20.2`                            | BSD-3-Clause AND MIT AND Apache-2.0                 |
 | backend     | production  | Go        | `github.com/mewkiz/flac`                              | `v1.0.13`                            | Unlicense                                          |
 | backend     | production  | Go        | `github.com/nicksnyder/go-i18n/v2`                    | `v2.6.1`                             | MIT                                                |
 | backend     | production  | Go        | `github.com/pkg/errors`                               | `v0.9.1`                             | BSD-2-Clause                                       |
@@ -65,6 +66,8 @@ Transitive dependencies should be audited before a final external release.
 | backend     | production  | Go        | `gorm.io/driver/postgres`                             | `v1.5.2`                             | MIT                                                |
 | backend     | production  | Go        | `gorm.io/gorm`                                        | `v1.25.2`                            | MIT                                                |
 | backend     | production  | Go        | `github.com/expr-lang/expr`                           | `v1.17.8`                            | MIT                                                |
+| web | production | npm | `@astryxdesign/core` | `0.7.16` | MIT |
+| web | production | npm | `@astryxdesign/theme-neutral` | `0.7.16` | MIT |
 | web | production | npm | `@base-ui/react` | `1.6.0` | MIT |
 | web | production | npm | `@codemirror/lang-markdown` | `6.5.1` | MIT |
 | web | production | npm | `@codemirror/language` | `6.12.4` | MIT |
@@ -77,6 +80,7 @@ Transitive dependencies should be audited before a final external release.
 | web | production | npm | `@hugeicons/react` | `1.1.9` | MIT |
 | web | production | npm | `@lezer/highlight` | `1.2.3` | MIT |
 | web | production | npm | `@lobehub/icons` | `5.22.0` | MIT |
+| web | production | npm | `@stylexjs/stylex` | `0.19.2` | MIT |
 | web | production | npm | `@tanstack/react-query` | `5.101.2` | MIT |
 | web | production | npm | `@tanstack/react-router` | `1.170.18` | MIT |
 | web | production | npm | `@tanstack/react-table` | `8.21.3` | MIT |
@@ -123,6 +127,8 @@ Transitive dependencies should be audited before a final external release.
 | web | production | npm | `yace` | `1.1.1` | MIT |
 | web | production | npm | `zod` | `4.4.3` | MIT |
 | web | production | npm | `zustand` | `5.0.14` | MIT |
+| web | development | npm | `@astryxdesign/cli` | `0.7.16` | MIT |
+| web | development | npm | `@playwright/test` | `1.65.1` | Apache-2.0 |
 | web | development | npm | `@rsbuild/core` | `2.1.6` | MIT |
 | web | development | npm | `@rsbuild/plugin-react` | `2.1.0` | MIT |
 | web | development | npm | `@rsbuild/plugin-tailwindcss` | `2.0.3` | MIT |
@@ -141,6 +147,56 @@ Transitive dependencies should be audited before a final external release.
 | electron    | development | npm       | `cross-env`                                           | `7.0.3`                              | MIT                                                |
 | electron    | development | npm       | `electron`                                            | `39.8.5`                             | MIT                                                |
 | electron    | development | npm       | `electron-builder`                                    | `26.7.0`                             | MIT                                                |
+
+## Dependency Notices
+
+### Astryx 0.7.16
+
+`@astryxdesign/core`, `@astryxdesign/theme-neutral`, and `@astryxdesign/cli`
+are licensed under MIT. Copyright (c) 2026 Meta Platforms, Inc.
+The license is included with the theme and CLI packages and is available in
+the [upstream v0.7.16 release](https://github.com/meta/astryx/blob/v0.7.16/LICENSE).
+The MIT permission and disclaimer text below applies to these packages.
+
+The core package's `src/theme/syntax/THIRD_PARTY_LICENSES.md` also credits
+the following MIT-licensed themes for extracted color values; it states that
+no source code from those theme projects is included:
+
+| Theme | Upstream attribution |
+|-------|----------------------|
+| [One Dark Pro](https://github.com/Binaryify/OneDark-Pro) | Binaryify; original Atom One Dark by GitHub |
+| [Dracula](https://github.com/dracula/visual-studio-code) | Zeno Rocha and contributors |
+| [Monokai](https://github.com/microsoft/vscode) | Microsoft Corporation; original Monokai by Wimer Hazenberg |
+| [Nord](https://github.com/nordtheme/visual-studio-code) | Sven Greb (Arctic Ice Studio) and contributors |
+| [Tokyo Night](https://github.com/tokyo-night/tokyo-night-vscode-theme) | enkia and contributors |
+| [Catppuccin (Mocha + Latte)](https://github.com/catppuccin/vscode) | Catppuccin contributors |
+| [GitHub Light](https://github.com/primer/github-vscode-theme) | GitHub (Primer team) |
+| [GitHub Dark](https://github.com/primer/github-vscode-theme) | GitHub (Primer team) |
+| [Solarized Light](https://github.com/altercation/solarized) | Ethan Schoonover |
+| [One Light](https://github.com/atom/one-light-syntax) | GitHub (Atom team) |
+
+### StyleX 0.19.2
+
+`@stylexjs/stylex` is licensed under MIT.
+Copyright (c) Meta Platforms, Inc. and affiliates.
+The [upstream license at the published package's git revision](https://github.com/facebook/stylex/blob/d7e6174c5384c64b87bc5fde1f57eedd7c11c5aa/LICENSE)
+contains the MIT permission and disclaimer text reproduced below.
+
+### Playwright 1.65.1
+
+`@playwright/test` is a development dependency licensed under Apache-2.0.
+Its bundled `NOTICE` reads:
+
+> Playwright
+> Copyright (c) Microsoft Corporation
+>
+> This software contains code derived from the Puppeteer project (https://github.com/puppeteer/puppeteer),
+> available under the Apache 2.0 license (https://github.com/puppeteer/puppeteer/blob/master/LICENSE).
+
+The installed `playwright` and `playwright-core` dependencies are also version
+1.65.1 and carry the same Apache-2.0 license and notice. When redistributing
+this test tooling, retain its packaged `LICENSE`, `NOTICE`,
+`ThirdPartyNotices.txt`, and bundled `*.LICENSE` files where supplied.
 
 ## Vendored Assets
 

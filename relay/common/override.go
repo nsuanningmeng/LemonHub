@@ -12,12 +12,32 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/samber/hot"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
 var negativeIndexRegexp = regexp.MustCompile(`\.(-\d+)`)
+
+// Rules are re-parsed per request. Retain only a bounded set of compiled patterns
+// so edits to long-lived channel configurations cannot grow the cache forever.
+var paramOverrideRegexCache = hot.NewHotCache[string, *regexp.Regexp](hot.LRU, 256).Build()
+
+func getParamOverrideRegex(pattern string) (*regexp.Regexp, error) {
+	if cached, found, _ := paramOverrideRegexCache.Get(pattern); found {
+		return cached, nil
+	}
+	compiled, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	// Large patterns remain supported without being retained in the shared cache.
+	if len(pattern) <= 4096 {
+		paramOverrideRegexCache.Set(pattern, compiled)
+	}
+	return compiled, nil
+}
 
 const (
 	paramOverrideContextRequestHeaders = "request_headers"
@@ -59,8 +79,8 @@ type ConditionOperation struct {
 	Invert         bool        `json:"invert"`           // 反选功能，true表示取反结果
 	PassMissingKey bool        `json:"pass_missing_key"` // 未获取到json key时的行为
 
-	// Conditions are parsed per request. Reuse compiled patterns while pruning
-	// multiple objects, but only compile once a matching key exists.
+	// Conditions belong to one request. Reuse even patterns omitted or evicted
+	// from the shared cache while checking multiple objects in that request.
 	regex *regexp.Regexp
 }
 
@@ -662,8 +682,9 @@ func (condition *ConditionOperation) compareGjsonValues(jsonValue, targetValue g
 		if targetValue.Type != gjson.String {
 			return false, fmt.Errorf("regex pattern must be a string")
 		}
-		if condition.regex == nil {
-			re, err := regexp.Compile(targetValue.String())
+		pattern := targetValue.String()
+		if condition.regex == nil || condition.regex.String() != pattern {
+			re, err := getParamOverrideRegex(pattern)
 			if err != nil {
 				return false, fmt.Errorf("invalid regex pattern: %w", err)
 			}
@@ -1847,7 +1868,7 @@ func regexReplaceStringValue(data []byte, path, pattern, replacement string) ([]
 	if pattern == "" {
 		return data, fmt.Errorf("regex pattern is required")
 	}
-	re, err := regexp.Compile(pattern)
+	re, err := getParamOverrideRegex(pattern)
 	if err != nil {
 		return data, err
 	}

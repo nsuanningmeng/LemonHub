@@ -408,6 +408,10 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		return nil, types.NewOpenAIError(jsonErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
+	if err := validateGeminiEmbeddingResponse(geminiResponse.Embeddings, geminiResponse.UsageMetadata); err != nil {
+		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
+	}
+
 	// convert to openai format response
 	openAIResponse := dto.OpenAIEmbeddingResponse{
 		Object: "list",
@@ -423,12 +427,14 @@ func GeminiEmbeddingHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *h
 		})
 	}
 
-	// calculate usage
-	// https://ai.google.dev/gemini-api/docs/pricing?hl=zh-cn#text-embedding-004
-	// Google has not yet clarified how embedding models will be billed
-	// refer to openai billing method to use input tokens billing
-	// https://platform.openai.com/docs/guides/embeddings#what-are-embeddings
-	usage := service.ResponseText2Usage(c, "", info.UpstreamModelName, info.GetEstimatePromptTokens())
+	// Prefer authoritative token counts and retain the existing estimate when absent.
+	var usage *dto.Usage
+	if upstream := geminiResponse.UsageMetadata.GeminiUsageMetadata(); upstream != nil {
+		upstreamUsage := buildUsageFromGeminiMetadata(upstream, info.GetEstimatePromptTokens())
+		usage = &upstreamUsage
+	} else {
+		usage = service.ResponseText2Usage(c, "", info.UpstreamModelName, info.GetEstimatePromptTokens())
+	}
 	openAIResponse.Usage = *usage
 
 	jsonResponse, jsonErr := common.Marshal(openAIResponse)
@@ -565,4 +571,31 @@ func FetchGeminiModels(baseURL, apiKey, proxyURL string) ([]string, error) {
 	}
 
 	return allModels, nil
+}
+
+// Embedding HTTP 200 responses must contain vectors and coherent nonnegative
+// token counts before they can be returned and billed as successful requests.
+func validateGeminiEmbeddingResponse(embeddings []*dto.ContentEmbedding, metadata *dto.GeminiEmbeddingUsageMetadata) error {
+	if len(embeddings) == 0 {
+		return errors.New("Gemini embedding response has no vectors")
+	}
+	for _, embedding := range embeddings {
+		if embedding == nil || len(embedding.Values) == 0 {
+			return errors.New("Gemini embedding response has an empty vector")
+		}
+	}
+	if metadata == nil {
+		return nil
+	}
+	if metadata.PromptTokenCount < 0 {
+		return errors.New("Gemini embedding response has negative token usage")
+	}
+	remaining := metadata.PromptTokenCount
+	for _, detail := range metadata.PromptTokenDetails {
+		if detail.TokenCount < 0 || detail.TokenCount > remaining {
+			return errors.New("Gemini embedding response has invalid modality token usage")
+		}
+		remaining -= detail.TokenCount
+	}
+	return nil
 }

@@ -53,6 +53,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   })
   const open = sidebarOpen ?? status?.default_collapse_sidebar !== true
   const userId = useAuthStore((state) => state.auth.user?.id)
+  if (userId === undefined) return null
 
   return (
     <LayoutProvider>

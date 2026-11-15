@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -114,4 +114,153 @@ test('storage calls without a signed-in user do not persist shared data', () => 
   expect(loadMessages()).toBeNull()
   expect(loadParameterEnabled()).toEqual({})
   expect(localStorage.length).toBe(0)
+})
+
+test('reloading long messages preserves every version and reasoning without rewriting storage', () => {
+  const content = `${'long prompt '.repeat(4100)}end of prompt`
+  const longMessages: Message[] = [
+    {
+      key: 'long-message',
+      from: 'assistant',
+      status: 'complete',
+      versions: [
+        { id: 'original', content },
+        { id: 'revised', content: `${content} revised ending` },
+      ],
+      reasoning: { content: `${content} reasoning ending`, duration: 2 },
+    },
+    ...messages,
+  ]
+  saveMessages(longMessages, 1)
+  const saved = localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)
+
+  expect(loadMessages(1)).toEqual(longMessages)
+  expect(loadMessages(1)).toEqual(longMessages)
+  expect(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)).toBe(saved)
+})
+
+test('reloading a stored conversation larger than one million characters preserves the complete record', () => {
+  const largeMessages: Message[] = [
+    {
+      key: 'large-message',
+      from: 'user',
+      versions: [
+        {
+          id: 'large-version',
+          content: `${'x'.repeat(1_048_576)}complete ending`,
+        },
+      ],
+    },
+  ]
+  saveMessages(largeMessages, 1)
+  const saved = localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)
+
+  expect(loadMessages(1)).toEqual(largeMessages)
+  expect(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)).toBe(saved)
+})
+
+test('saving more than one hundred messages keeps the earliest message after reload', () => {
+  const history: Message[] = Array.from({ length: 101 }, (_, index) => ({
+    key: `message-${index}`,
+    from: 'user',
+    versions: [{ id: `version-${index}`, content: `Message ${index}` }],
+  }))
+
+  saveMessages(history, 1)
+
+  expect(loadMessages(1)).toEqual(history)
+})
+
+test('repeated numbered headings in a valid message are not treated as duplicate streaming snapshots', () => {
+  const section = `## 1. Daily observations\n${'Observation '.repeat(100)}\n`
+  const repeatedMessages: Message[] = [
+    {
+      key: 'repeated-section',
+      from: 'user',
+      versions: [
+        {
+          id: 'section-version',
+          content: `${section}${section}${section}Final observation`,
+        },
+      ],
+    },
+  ]
+
+  saveMessages(repeatedMessages, 1)
+
+  expect(loadMessages(1)).toEqual(repeatedMessages)
+})
+
+test('recovering an interrupted response retains its original persisted record', () => {
+  const interrupted: Message[] = [
+    {
+      key: 'interrupted',
+      from: 'assistant',
+      status: 'streaming',
+      createdAt: 1000,
+      versions: [
+        {
+          id: 'partial',
+          content: '<think>unfinished reasoning</think>partial answer',
+        },
+      ],
+    },
+  ]
+  saveMessages(interrupted, 1)
+  const saved = localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)
+
+  expect(loadMessages(1)?.[0]).toMatchObject({
+    status: 'complete',
+    versions: [{ id: 'partial', content: 'partial answer' }],
+    reasoning: { content: 'unfinished reasoning' },
+  })
+  expect(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)).toBe(saved)
+})
+
+test('a rejected storage write reports failure and preserves the last saved conversation', () => {
+  expect(saveMessages(messages, 1)).toBe(true)
+  const saved = localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Storage is full', 'QuotaExceededError')
+  })
+
+  expect(
+    saveMessages(
+      [
+        ...messages,
+        {
+          key: 'new',
+          from: 'user',
+          versions: [{ id: 'new-v', content: 'Unsaved instruction' }],
+        },
+      ],
+      1
+    )
+  ).toBe(false)
+  expect(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)).toBe(saved)
+})
+
+test('recovering an interrupted response and saving another turn retains all earlier versions', () => {
+  const interrupted: Message[] = [
+    {
+      key: 'interrupted-versions',
+      from: 'assistant',
+      status: 'streaming',
+      versions: [
+        { id: 'current', content: '<think>reasoning</think>partial reply' },
+        { id: 'earlier', content: 'Earlier reply' },
+      ],
+    },
+  ]
+  saveMessages(interrupted, 1)
+
+  const recovered = loadMessages(1)
+  expect(recovered?.[0].versions).toEqual([
+    { id: 'current', content: 'partial reply' },
+    { id: 'earlier', content: 'Earlier reply' },
+  ])
+  saveMessages([...(recovered ?? []), ...messages], 1)
+
+  expect(loadMessages(1)?.[0].versions).toEqual(recovered?.[0].versions)
 })

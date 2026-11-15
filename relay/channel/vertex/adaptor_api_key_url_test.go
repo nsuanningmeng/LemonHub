@@ -82,3 +82,28 @@ func TestGetRequestURLWithAPIKey(t *testing.T) {
 		})
 	}
 }
+
+func TestVertexGoogleAPIVersionSupportsBothCredentialsAndLeavesClaudeV1(t *testing.T) {
+	for _, keyType := range []dto.VertexKeyType{dto.VertexKeyTypeJSON, dto.VertexKeyTypeAPIKey} {
+		for _, model := range []string{"gemini-4-argon", "imagen-4", "claude-fixture"} {
+			for _, version := range []string{"", "v1", "v1beta1"} {
+				info := &relaycommon.RelayInfo{OriginModelName: model, ChannelMeta: &relaycommon.ChannelMeta{ApiVersion: "global", ApiKey: `{"project_id":"project"}`, UpstreamModelName: model, ChannelOtherSettings: dto.ChannelOtherSettings{VertexKeyType: keyType, VertexProjectID: "project", VertexAPIVersion: version}}}
+				if keyType == dto.VertexKeyTypeAPIKey {
+					info.ApiKey = "fixture-key"
+				}
+				a := &Adaptor{}
+				a.Init(info)
+				actual, err := a.getRequestUrl(info, model, "generateContent")
+				require.NoError(t, err)
+				wantVersion := "v1"
+				if version == "v1beta1" && model != "claude-fixture" {
+					wantVersion = version
+				}
+				assert.Contains(t, actual, "/"+wantVersion+"/projects/project/")
+			}
+		}
+	}
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{ChannelOtherSettings: dto.ChannelOtherSettings{VertexAPIVersion: "../invalid"}}}
+	_, err := (&Adaptor{}).getRequestUrl(info, "gemini-4-argon", "generateContent")
+	require.Error(t, err)
+}

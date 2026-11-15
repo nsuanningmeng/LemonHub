@@ -35,6 +35,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
 import { DirectionProvider } from '@/context/direction-provider'
+import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
@@ -50,7 +51,14 @@ beforeEach(() => {
   client = new QueryClient({
     defaultOptions: { queries: { enabled: false, retry: false } },
   })
+  client.setQueryData(['rewards', 1, 'summary'], { pending_count: 0 })
+  client.setQueryData(['rewards', 1, 'notifications'], { items: [] })
   useAuthStore.getState().auth.reset()
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'member',
+    role: ROLE.USER,
+  })
 })
 
 afterEach(() => {
@@ -59,6 +67,7 @@ afterEach(() => {
   localStorage.clear()
   document.cookie = 'sidebar_state=; max-age=0; path=/'
   document.cookie = 'layout_collapsible=; max-age=0; path=/'
+  useAuthStore.getState().auth.reset()
   useSystemConfigStore.setState(originalConfig, true)
 })
 

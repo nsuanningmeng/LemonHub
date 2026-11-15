@@ -142,8 +142,6 @@ test('electron-builder downloads retain proxy and TLS behavior with the scoped o
         ...baseEnvironment,
         ELECTRON_GET_USE_PROXY: '1',
         ELECTRON_GET_NO_PROGRESS: '1',
-        // Exercise the overridden logger's real implementation, not its disabled stub.
-        ROARR_LOG: 'true',
         HTTP_PROXY: proxyUrl,
         HTTPS_PROXY: proxyUrl,
         NO_PROXY: scenario.noProxy || '',
@@ -170,4 +168,80 @@ test('electron-builder downloads retain proxy and TLS behavior with the scoped o
       }] : []);
     });
   }
+});
+
+test('electron-builder filters and packages files with the patched glob dependencies', async (t) => {
+  const { FileMatcher } = require('app-builder-lib/out/fileMatcher');
+  const { AsarPackager } = require('app-builder-lib/out/asar/asarUtil');
+  const asar = await import('@electron/asar');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'electron-package-test-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const source = path.join(directory, 'app');
+  const destination = path.join(directory, 'resources');
+  await fs.mkdir(destination);
+  const fixture = {
+    'package.json': '{"name":"packaging-fixture","main":"main.js"}',
+    'main.js': 'module.exports = 42;\n',
+    '.config': 'included dotfile',
+    'nested/module.js': 'module.exports = true;\n',
+    'nested/native.node': 'unpacked native module fixture',
+    'nested/module.js.map': 'excluded source map',
+    'ignored/private.js': 'excluded directory',
+  };
+  const metadata = new Map();
+  for (const [relative, content] of Object.entries(fixture)) {
+    const file = path.join(source, relative);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, content);
+    metadata.set(file, await fs.lstat(file));
+  }
+  const filter = new FileMatcher(source, destination, (value) => value,
+    ['**/*', '!**/*.map', '!ignored{,/**/*}']).createFilter();
+  const files = [...metadata.keys()].filter((file) => filter(file, metadata.get(file)));
+  const included = ['.config', 'main.js', 'nested/module.js', 'nested/native.node', 'package.json'];
+  assert.deepEqual(files.map((file) => path.relative(source, file).split(path.sep).join('/')).sort(), included);
+  const unpackPattern = new FileMatcher(source, destination, (value) => value, ['**/*.node']).createFilter();
+  const packager = new AsarPackager({ info: { getWorkspaceRoot: async () => directory } }, {
+    resourcePath: destination,
+    defaultDestination: destination,
+    options: { smartUnpack: false },
+    unpackPattern,
+  });
+  await packager.pack([{ src: source, destination, files, metadata }]);
+  const archive = path.join(destination, 'app.asar');
+  for (const relative of included) {
+    assert.equal(asar.extractFile(archive, relative).toString(), fixture[relative]);
+  }
+  assert.throws(() => asar.statFile(archive, 'nested/module.js.map'));
+  assert.throws(() => asar.statFile(archive, 'ignored/private.js'));
+  assert.equal(asar.statFile(archive, 'nested/native.node').unpacked, true);
+  assert.equal(await fs.readFile(`${archive}.unpacked/nested/native.node`, 'utf8'), fixture['nested/native.node']);
+
+  // Exercise asar's own glob and minimatch calls as well as builder's stream API.
+  const globArchive = path.join(destination, 'glob.asar');
+  await asar.createPackageWithOptions(source, globArchive, {
+    globOptions: { ignore: [`${source.split(path.sep).join('/')}/**/*.map`, `${source.split(path.sep).join('/')}/ignored/**`] },
+    unpack: '*.node',
+  });
+  assert.equal(asar.extractFile(globArchive, 'nested/module.js').toString(), fixture['nested/module.js']);
+  assert.equal(asar.statFile(globArchive, 'nested/native.node').unpacked, true);
+  assert.throws(() => asar.statFile(globArchive, 'ignored/private.js'));
+});
+
+test('filelist retains globstar, brace and exclusion matching', async (t) => {
+  const { FileList } = require('filelist');
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'electron-glob-test-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  for (const relative of ['main.js', '.hidden.js', 'nested/a.js', 'nested/b.json', 'nested/c.map', 'ignored/private.js']) {
+    const file = path.join(directory, relative);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, 'fixture');
+  }
+  const list = new FileList();
+  // filelist accepts absolute paths without changing the process cwd.
+  const prefix = directory.split(path.sep).join('/');
+  list.include(`${prefix}/**/*.{js,json}`);
+  list.exclude(`${prefix}/ignored/**`);
+  assert.deepEqual(list.toArray().map((file) => path.relative(directory, file).split(path.sep).join('/')).sort(),
+    ['main.js', 'nested/a.js', 'nested/b.json']);
 });

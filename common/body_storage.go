@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -122,6 +123,8 @@ type diskStorage struct {
 	size     int64
 	closed   int32
 	mu       sync.Mutex
+	readers  int
+	removed  bool
 }
 
 func newDiskStorage(data []byte, cachePath string) (*diskStorage, error) {
@@ -216,10 +219,44 @@ func (d *diskStorage) Close() error {
 	defer d.mu.Unlock()
 	if atomic.CompareAndSwapInt32(&d.closed, 0, 1) {
 		d.file.Close()
-		os.Remove(d.filePath)
-		DecrementDiskFiles(d.size)
 	}
+	return d.removeClosedFile()
+}
+
+// removeClosedFile runs under d.mu. Retaining the file until the last reader
+// closes also supports Windows, which cannot unlink a file opened by os.Open.
+func (d *diskStorage) removeClosedFile() error {
+	if atomic.LoadInt32(&d.closed) == 0 || d.readers != 0 || d.removed {
+		return nil
+	}
+	if err := os.Remove(d.filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove body cache file")
+	}
+	d.removed = true
+	DecrementDiskFiles(d.size)
 	return nil
+}
+
+type diskStorageReader struct {
+	*os.File
+	storage  *diskStorage
+	close    sync.Once
+	closeErr error
+}
+
+func (r *diskStorageReader) Close() error {
+	r.close.Do(func() {
+		if err := r.File.Close(); err != nil {
+			r.closeErr = fmt.Errorf("failed to close body cache reader")
+		}
+		r.storage.mu.Lock()
+		defer r.storage.mu.Unlock()
+		r.storage.readers--
+		if err := r.storage.removeClosedFile(); err != nil && r.closeErr == nil {
+			r.closeErr = err
+		}
+	})
+	return r.closeErr
 }
 
 func (d *diskStorage) Bytes() ([]byte, error) {
@@ -264,14 +301,14 @@ func (d *diskStorage) NewReader() (io.ReadCloser, error) {
 	}
 	// A separate file descriptor over the same cache file: an independent
 	// cursor at zero copy cost. Closing the returned reader closes only that
-	// descriptor; the storage keeps owning the primary descriptor and the
-	// file's lifetime. Readers opened before Close stay usable even after the
-	// file is unlinked, as the descriptor keeps the inode alive.
+	// descriptor. Readers opened before storage.Close remain usable; the last
+	// reader also removes the file if its owner has already closed it.
 	file, err := os.Open(d.filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open body cache file for replay: %w", err)
 	}
-	return file, nil
+	d.readers++
+	return &diskStorageReader{File: file, storage: d}, nil
 }
 
 func (d *diskStorage) Size() int64 {
@@ -349,25 +386,61 @@ func CreateBodyStorageFromReader(reader io.Reader, contentLength int64, maxBytes
 
 type replayableBodyReader struct {
 	storage BodyStorage
+	mu      sync.Mutex
+	cursor  io.ReadCloser
+	ended   bool
+	closed  bool
 }
 
-func (r replayableBodyReader) Read(p []byte) (int, error) {
-	return r.storage.Read(p)
+func (r *replayableBodyReader) Read(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return 0, http.ErrBodyReadAfterClose
+	}
+	if r.ended {
+		return 0, io.EOF
+	}
+	if r.cursor == nil {
+		cursor, err := r.storage.NewReader()
+		if err != nil {
+			return 0, err
+		}
+		r.cursor = cursor
+	}
+	n, err := r.cursor.Read(p)
+	if err == io.EOF {
+		r.ended = true
+		_ = r.cursor.Close()
+		r.cursor = nil
+	}
+	return n, err
 }
 
-func (r replayableBodyReader) Size() int64 {
+func (r *replayableBodyReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.closed = true
+	if r.cursor == nil {
+		return nil
+	}
+	err := r.cursor.Close()
+	r.cursor = nil
+	return err
+}
+
+func (r *replayableBodyReader) Size() int64 {
 	return r.storage.Size()
 }
 
-func (r replayableBodyReader) NewReader() (io.ReadCloser, error) {
+func (r *replayableBodyReader) NewReader() (io.ReadCloser, error) {
 	return r.storage.NewReader()
 }
 
-// NewReplayableBodyReader exposes the replay capabilities of storage without
-// exposing io.Closer. This keeps ownership of the storage lifecycle with the
-// caller instead of allowing net/http to close it as the request body.
+// NewReplayableBodyReader gives each outbound request an independent cursor.
+// The transport closes only that cursor; the caller owns the storage lifecycle.
 func NewReplayableBodyReader(storage BodyStorage) ReplayableBody {
-	return replayableBodyReader{storage: storage}
+	return &replayableBodyReader{storage: storage}
 }
 
 // CleanupOldCacheFiles 清理旧的缓存文件（用于启动时清理残留）

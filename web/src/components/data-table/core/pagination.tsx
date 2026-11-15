@@ -56,27 +56,12 @@ export function DataTablePagination<TData>({
   const totalPages = table.getPageCount()
   const totalRows = table.getRowCount()
   const pageNumbers = getPageNumbers(currentPage, totalPages)
-  const pageItems = pageNumbers.map((pageNumber, index) => ({
-    value: pageNumber,
-    key:
-      pageNumber === '...'
-        ? `gap-before-${pageNumbers[index + 1]}`
-        : String(pageNumber),
-  }))
 
   return (
     <nav
       aria-label={t('Table pagination')}
-      className={cn(
-        '@container/pagination flex min-w-0 flex-wrap items-center justify-between gap-3'
-      )}
+      className='@container/pagination flex min-w-0 flex-wrap items-center justify-end gap-3'
     >
-      <p className='text-muted-foreground hidden min-w-0 truncate text-xs @3xl/pagination:block'>
-        {t('Page {{page}} of {{pages}}', {
-          page: currentPage,
-          pages: Math.max(1, totalPages),
-        })}
-      </p>
       <div className='ms-auto flex min-w-0 flex-wrap items-center justify-end gap-2 @xl/pagination:gap-3'>
         <div className='flex shrink-0 items-baseline gap-1.5 text-xs font-medium whitespace-nowrap sm:text-sm'>
           <span className='text-muted-foreground/80'>{t('Total:')}</span>
@@ -114,7 +99,7 @@ export function DataTablePagination<TData>({
           </Select>
         </div>
 
-        <div className='flex min-w-0 shrink-0 items-center gap-1 @lg/pagination:gap-1.5 @xl/pagination:gap-2'>
+        <div className='flex max-w-full min-w-0 flex-wrap items-center justify-end gap-1 @lg/pagination:gap-1.5 @xl/pagination:gap-2'>
           <Button
             variant='outline'
             className='text-muted-foreground hover:text-foreground disabled:text-muted-foreground/50 size-8 p-0 @max-lg/pagination:hidden'
@@ -134,13 +119,21 @@ export function DataTablePagination<TData>({
             <ChevronLeftIcon className='h-4 w-4' />
           </Button>
 
-          {pageItems.map(({ value: pageNumber, key }) => (
+          <span className='min-w-0 text-center text-xs tabular-nums @lg/pagination:hidden'>
+            {t('Page {{current}} of {{total}}', {
+              current: Math.min(currentPage, totalPages),
+              total: totalPages,
+            })}
+          </span>
+
+          {pageNumbers.map((pageNumber, index) => (
             <div
-              key={key}
-              className={cn(
-                'flex items-center',
-                pageNumber !== currentPage && '@max-lg/pagination:hidden'
-              )}
+              key={
+                pageNumber === '...'
+                  ? `gap-after-${pageNumbers.at(index - 1)}`
+                  : pageNumber
+              }
+              className='flex items-center @max-lg/pagination:hidden'
             >
               {pageNumber === '...' ? (
                 <span className='text-muted-foreground/60 px-0.5 text-sm @lg/pagination:px-1'>
@@ -149,18 +142,16 @@ export function DataTablePagination<TData>({
               ) : (
                 <Button
                   variant={currentPage === pageNumber ? 'default' : 'outline'}
+                  aria-current={currentPage === pageNumber ? 'page' : undefined}
+                  aria-label={t('Go to page {{page}}', { page: pageNumber })}
                   className={cn(
                     'h-8 min-w-8 px-2 tabular-nums',
                     currentPage === pageNumber
                       ? 'surface-brand bg-(--studio-brand) text-(--studio-on-brand) font-semibold hover:bg-(--studio-brand) hover:brightness-110'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
-                  aria-current={currentPage === pageNumber ? 'page' : undefined}
                   onClick={() => table.setPageIndex((pageNumber as number) - 1)}
                 >
-                  <span className='sr-only'>
-                    {t('Go to page {{page}}', { page: pageNumber })}
-                  </span>
                   {pageNumber}
                 </Button>
               )}

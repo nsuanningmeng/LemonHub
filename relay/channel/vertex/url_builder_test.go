@@ -28,3 +28,14 @@ func TestBuildGoogleModelURLMultiRegionWithoutProject(t *testing.T) {
 	assert.Equal(t, "https://aiplatform.us.rep.googleapis.com/v1/publishers/google/models/gemini-fixture:generateContent", BuildGoogleModelURL("", DefaultAPIVersion, "", "us", "gemini-fixture", "generateContent"))
 	assert.Equal(t, "https://aiplatform.eu.rep.googleapis.com/v1/publishers/google/models/gemini-fixture:generateContent", BuildGoogleModelURL("", DefaultAPIVersion, "", "eu", "gemini-fixture", "generateContent"))
 }
+
+func TestVertexAPIVersionSwitchReplacesExistingBaseSuffix(t *testing.T) {
+	for _, tc := range []struct{ base, version, want string }{
+		{"https://vertex.example/proxy/v1/", "v1beta1", "https://vertex.example/proxy/v1beta1"},
+		{"https://vertex.example/proxy/v1beta1/", "v1", "https://vertex.example/proxy/v1"},
+		{"https://vertex.example/proxy", "v1beta1", "https://vertex.example/proxy/v1beta1"},
+	} {
+		actual := BuildGoogleModelURL(tc.base, tc.version, "", "global", "gemini-4-argon", "generateContent")
+		assert.Equal(t, tc.want+"/publishers/google/models/gemini-4-argon:generateContent", actual)
+	}
+}

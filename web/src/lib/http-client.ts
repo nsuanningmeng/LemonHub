@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import axios, { type AxiosRequestConfig } from 'axios'
+import axios, { CanceledError, type AxiosRequestConfig } from 'axios'
 import { t } from 'i18next'
 import { toast } from 'sonner'
 
@@ -36,6 +36,13 @@ declare module 'axios' {
     skipAuthRefresh?: boolean
     authRetry?: boolean
     acceptAuthRotation?: boolean
+    // Only for public endpoints whose responses do not depend on an account.
+    publicRequest?: boolean
+    authRequestContext?: {
+      identityVersion: number
+      callerSignal: AxiosRequestConfig['signal']
+    }
+    releaseAuthRequest?: () => void
   }
 }
 
@@ -51,13 +58,29 @@ export const api = axios.create({
 
 const inFlightGet = new Map<string, Promise<unknown>>()
 const originalGet = api.get.bind(api)
+let authIdentityVersion = 0
+let authRequests = new AbortController()
+
+useAuthStore.subscribe((state, previous) => {
+  if (
+    state.auth.session?.sid === previous.auth.session?.sid &&
+    state.auth.user?.id === previous.auth.user?.id
+  ) {
+    return
+  }
+
+  authIdentityVersion += 1
+  const previousRequests = authRequests
+  authRequests = new AbortController()
+  previousRequests.abort()
+})
 
 api.get = ((url: string, config: ApiRequestConfig = {}) => {
   if (config.disableDuplicate) return originalGet(url, config)
 
   const params = config.params ? JSON.stringify(config.params) : '{}'
-  const sessionSID = useAuthStore.getState().auth.session?.sid || 'anonymous'
-  const key = `${sessionSID}:${url}?${params}`
+  const scope = config.publicRequest ? 'public' : authIdentityVersion
+  const key = `${scope}:${url}?${params}`
   const existingRequest = inFlightGet.get(key)
   if (existingRequest) return existingRequest
 
@@ -79,6 +102,13 @@ function redirectToSignIn(): void {
 
 api.interceptors.response.use(
   (response) => {
+    response.config.releaseAuthRequest?.()
+    if (
+      response.config.authRequestContext &&
+      response.config.authRequestContext.identityVersion !== authIdentityVersion
+    ) {
+      throw new CanceledError('Authentication session changed', response.config)
+    }
     if (response.config.acceptAuthRotation && response.data?.success === true) {
       applyAuthRotation(response.data.data)
     }
@@ -98,16 +128,33 @@ api.interceptors.response.use(
     return response
   },
   async (error) => {
-    if (axios.isCancel(error)) throw error
-
     const config = error?.config as ApiRequestConfig | undefined
+    config?.releaseAuthRequest?.()
+    if (axios.isCancel(error)) throw error
+    if (
+      config?.authRequestContext &&
+      config.authRequestContext.identityVersion !== authIdentityVersion
+    ) {
+      throw new CanceledError('Authentication session changed')
+    }
     const skipErrorHandler = config?.skipErrorHandler
     const status = error?.response?.status
 
-    if (status === 401) {
+    if (status === 401 && !config?.publicRequest) {
       if (config && !config.skipAuthRefresh && !config.authRetry) {
         config.authRetry = true
         const outcome = await refreshAuthentication()
+        const currentAuth = useAuthStore.getState().auth
+        const sessionExpired =
+          (outcome.kind === 'anonymous' || outcome.kind === 'out_of_sync') &&
+          !currentAuth.session &&
+          !currentAuth.user
+        if (
+          config.authRequestContext?.identityVersion !== authIdentityVersion &&
+          !sessionExpired
+        ) {
+          throw new CanceledError('Authentication session changed')
+        }
         if (outcome.kind === 'authenticated') {
           const token = useAuthStore.getState().auth.accessToken
           if (token) {
@@ -143,10 +190,44 @@ api.interceptors.response.use(
   }
 )
 
-api.interceptors.request.use((config) => {
-  const accessToken = useAuthStore.getState().auth.accessToken
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`
-  }
-  return config
-})
+api.interceptors.request.use(
+  (config) => {
+    if (config.publicRequest) {
+      config.headers.delete('Authorization')
+      config.skipAuthRefresh = true
+      return config
+    }
+
+    // Keep the initial identity and caller cancellation signal across retries.
+    config.authRequestContext ??= {
+      identityVersion: authIdentityVersion,
+      callerSignal: config.signal,
+    }
+    if (config.authRequestContext.identityVersion !== authIdentityVersion) {
+      throw new CanceledError('Authentication session changed', config)
+    }
+
+    const controller = new AbortController()
+    const sessionSignal = authRequests.signal
+    const callerSignal = config.authRequestContext.callerSignal
+    const abort = () => controller.abort()
+    sessionSignal.addEventListener('abort', abort, { once: true })
+    callerSignal?.addEventListener?.('abort', abort, { once: true })
+    if (callerSignal?.aborted) controller.abort()
+    config.signal = controller.signal
+    config.releaseAuthRequest = () => {
+      sessionSignal.removeEventListener('abort', abort)
+      callerSignal?.removeEventListener?.('abort', abort)
+    }
+
+    const accessToken = useAuthStore.getState().auth.accessToken
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`
+    }
+    return config
+  },
+  (error: unknown) => {
+    throw error
+  },
+  { synchronous: true }
+)

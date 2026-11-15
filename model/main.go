@@ -560,6 +560,9 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec("ALTER TABLE logs ADD COLUMN IF NOT EXISTS input_tokens_total Nullable(Int64)").Error; err != nil {
 		return err
 	}
+	if err := LOG_DB.Exec("ALTER TABLE logs ADD COLUMN IF NOT EXISTS is_retry UInt8 DEFAULT 0").Error; err != nil {
+		return err
+	}
 	return syncClickHouseLogTTL(ttlDays)
 }
 
@@ -603,6 +606,7 @@ CREATE TABLE IF NOT EXISTS logs (
 	completion_tokens Int32 DEFAULT 0,
 	use_time Int32 DEFAULT 0,
 	is_stream UInt8 DEFAULT 0,
+	is_retry UInt8 DEFAULT 0,
 	channel_id Int32 DEFAULT 0,
 	token_id Int32 DEFAULT 0,
 	site_id Int32 DEFAULT 0,

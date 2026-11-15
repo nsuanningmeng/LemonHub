@@ -84,3 +84,29 @@ test('late config and parameter callbacks from an old account cannot overwrite t
   expect(loadParameterEnabled()).toEqual({})
   oldAccount.unmount()
 })
+
+test('leaving and remounting the playground keeps long saved message contents intact', () => {
+  const longMessages: Message[] = [
+    {
+      key: 'long-prompt',
+      from: 'user',
+      versions: [
+        {
+          id: 'long-prompt-version',
+          content: `${'prompt '.repeat(7000)}final instruction`,
+        },
+      ],
+    },
+  ]
+  const firstVisit = renderHook(() => usePlaygroundState())
+  act(() => vi.advanceTimersByTime(0))
+  act(() => firstVisit.result.current.updateMessages(longMessages))
+  firstVisit.unmount()
+
+  const returningVisit = renderHook(() => usePlaygroundState())
+  act(() => vi.advanceTimersByTime(0))
+
+  expect(returningVisit.result.current.messages).toEqual(longMessages)
+  returningVisit.unmount()
+  expect(loadMessages()).toEqual(longMessages)
+})

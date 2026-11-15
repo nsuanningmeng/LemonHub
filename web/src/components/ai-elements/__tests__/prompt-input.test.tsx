@@ -123,3 +123,20 @@ test('an attachment conversion failure preserves the provider prompt and attachm
   )
   expect(screen.getByText('note.txt')).toBeInTheDocument()
 })
+
+test('Safari candidate confirmation after compositionend does not submit the prompt', () => {
+  const onSubmit = vi.fn()
+  render(
+    <PromptInput onSubmit={onSubmit}>
+      <PromptInputTextarea aria-label='Prompt' />
+    </PromptInput>
+  )
+  const input = screen.getByRole('textbox', { name: 'Prompt' })
+  fireEvent.change(input, { target: { value: '中文' } })
+  fireEvent.compositionStart(input)
+  fireEvent.compositionEnd(input)
+  const requestSubmit = vi.spyOn(HTMLFormElement.prototype, 'requestSubmit')
+  fireEvent.keyDown(input, { key: 'Enter', keyCode: 229, isComposing: false })
+  expect(requestSubmit).not.toHaveBeenCalled()
+  expect(input).toHaveValue('中文')
+})

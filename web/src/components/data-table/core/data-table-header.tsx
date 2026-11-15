@@ -52,42 +52,51 @@ export function DataTableHeader<TData>({
     <TableHeader className={className}>
       {table.getHeaderGroups().map((headerGroup) => (
         <TableRow key={headerGroup.id} className={rowClassName}>
-          {headerGroup.headers.map((header) => (
-            <TableHead
-              key={header.id}
-              colSpan={header.colSpan}
-              data-column-id={header.column.id}
-              className={cn(
-                'relative',
-                getColumnClassName?.(header.column.id, 'header')
-              )}
-              style={getHeaderSizeStyle(header, applyHeaderSize)}
-            >
-              {renderHeaderContent(header)}
-              {shouldRenderColumnResizer(table, header) && (
-                <div
-                  role='separator'
-                  aria-orientation='vertical'
-                  aria-label={t('Resize column')}
-                  data-column-resizer
-                  tabIndex={0}
-                  onDoubleClick={(event) =>
-                    handleColumnAutoSize(event, table, header)
-                  }
-                  onMouseDown={header.getResizeHandler()}
-                  onTouchStart={header.getResizeHandler()}
-                  onKeyDown={(event) =>
-                    handleColumnResizeKeyDown(event, table, header)
-                  }
-                  className={cn(
-                    'absolute top-0 right-0 h-full w-2 cursor-col-resize touch-none select-none',
-                    'after:bg-border hover:after:bg-primary after:absolute after:top-2 after:right-0 after:h-[calc(100%-1rem)] after:w-px after:transition-colors',
-                    header.column.getIsResizing() && 'after:bg-primary'
-                  )}
-                />
-              )}
-            </TableHead>
-          ))}
+          {headerGroup.headers.map((header) => {
+            const sortDirection = header.column.getIsSorted()
+            const sortLabels = { asc: 'ascending', desc: 'descending' } as const
+            const ariaSort =
+              sortDirection && !header.isPlaceholder
+                ? sortLabels[sortDirection]
+                : undefined
+            return (
+              <TableHead
+                key={header.id}
+                colSpan={header.colSpan}
+                aria-sort={ariaSort}
+                data-column-id={header.column.id}
+                className={cn(
+                  'relative',
+                  getColumnClassName?.(header.column.id, 'header')
+                )}
+                style={getHeaderSizeStyle(header, applyHeaderSize)}
+              >
+                {renderHeaderContent(header)}
+                {shouldRenderColumnResizer(table, header) && (
+                  <div
+                    role='separator'
+                    aria-orientation='vertical'
+                    aria-label={t('Resize column')}
+                    data-column-resizer
+                    tabIndex={0}
+                    onDoubleClick={(event) =>
+                      handleColumnAutoSize(event, table, header)
+                    }
+                    onMouseDown={header.getResizeHandler()}
+                    onTouchStart={header.getResizeHandler()}
+                    onKeyDown={(event) =>
+                      handleColumnResizeKeyDown(event, table, header)
+                    }
+                    className={cn(
+                      'absolute top-0 right-0 h-full w-2 cursor-col-resize touch-none select-none',
+                      'after:bg-border hover:after:bg-primary after:absolute after:top-2 after:right-0 after:h-[calc(100%-1rem)] after:w-px after:transition-colors',
+                      header.column.getIsResizing() && 'after:bg-primary'
+                    )}
+                  />
+                )}
+              </TableHead>
+            )
+          })}
         </TableRow>
       ))}
     </TableHeader>

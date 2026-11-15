@@ -1,11 +1,42 @@
 package common
 
 import (
+	"strings"
+	"testing"
+
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
+
+func TestConditionRegexReusesCompilationWithinRequest(t *testing.T) {
+	value := strings.Repeat("a", 4096)
+	condition := ConditionOperation{Path: "role", Mode: "regex", Value: "^" + value + "$"}
+	input, err := common2.Marshal(map[string]string{"role": value})
+	require.NoError(t, err)
+
+	matched, err := checkSingleCondition(input, "", &condition)
+	require.NoError(t, err)
+	assert.True(t, matched)
+	compiled := condition.regex
+	require.NotNil(t, compiled)
+
+	matched, err = checkSingleCondition([]byte(`{"role":"user"}`), "", &condition)
+	require.NoError(t, err)
+	assert.False(t, matched)
+	// This pattern exceeds the shared-cache limit. Recompiling for every
+	// pruned object previously caused large allocation growth within a request.
+	assert.Same(t, compiled, condition.regex)
+
+	condition.Value = "^user$"
+	matched, err = checkSingleCondition([]byte(`{"role":"user"}`), "", &condition)
+	require.NoError(t, err)
+	assert.True(t, matched, "a changed condition must not reuse its previous pattern")
+
+	condition.Value = "["
+	_, err = checkSingleCondition([]byte(`{"role":"user"}`), "", &condition)
+	require.ErrorContains(t, err, "invalid regex pattern")
+}
 
 func TestApplyParamOverrideConditionRegex(t *testing.T) {
 	tests := []struct {

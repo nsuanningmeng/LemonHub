@@ -23,6 +23,7 @@ import type { UseFormReturn } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { JsonCodeEditor } from '@/components/json-code-editor'
 import { Button } from '@/components/ui/button'
 import {
@@ -46,6 +47,12 @@ import {
   ModelRatioVisualEditor,
   type ModelRatioVisualEditorHandle,
 } from './model-ratio-visual-editor'
+import { PriceChangeDiff } from './price-change-diff'
+import {
+  PRICE_REVIEW_FIELDS,
+  type ModelPriceChange,
+  type UnreadablePriceChange,
+} from './price-change-review'
 
 type ModelFormValues = {
   ModelPrice: string
@@ -177,6 +184,109 @@ export const ModelRatioForm = memo(function ModelRatioForm({
   const isUnsetVariant = variant === 'unset'
   const [editMode, setEditMode] = useState<'visual' | 'json'>('visual')
   const visualEditorRef = useRef<ModelRatioVisualEditorHandle>(null)
+  const [pendingSave, setPendingSave] = useState<{
+    values: ModelFormValues
+    changes: ModelPriceChange[]
+    unreadable: UnreadablePriceChange[]
+    exposedBefore: boolean
+  } | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const confirmPendingRef = useRef(false)
+
+  const reviewSave = useCallback(
+    (values: ModelFormValues) => {
+      const byModel = new Map<string, ModelPriceChange>()
+      const unreadable: UnreadablePriceChange[] = []
+      for (const [field, label] of PRICE_REVIEW_FIELDS) {
+        let draft: Record<string, unknown>
+        try {
+          draft = JSON.parse(values[field] || '{}')
+          if (!draft || typeof draft !== 'object' || Array.isArray(draft)) {
+            throw new Error()
+          }
+        } catch {
+          toast.error(`${t(label)}: ${t('Invalid JSON')}`)
+          return
+        }
+        let saved: Record<string, unknown>
+        try {
+          saved = JSON.parse(savedValues[field] || '{}')
+          if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
+            throw new Error()
+          }
+        } catch {
+          unreadable.push({
+            field,
+            label,
+            saved: savedValues[field],
+            draft: values[field],
+          })
+          continue
+        }
+        const names = new Set([...Object.keys(saved), ...Object.keys(draft)])
+        for (const name of names) {
+          const before = Object.hasOwn(saved, name) ? saved[name] : undefined
+          const after = Object.hasOwn(draft, name) ? draft[name] : undefined
+          const beforeJSON = JSON.stringify(before)
+          const afterJSON = JSON.stringify(after)
+          if (beforeJSON === afterJSON) continue
+          const change: ModelPriceChange = byModel.get(name) ?? {
+            name,
+            saved: {},
+            draft: {},
+          }
+          // Expressions and billing modes are text; other fields show JSON
+          // literals so a number and a malformed quoted number stay distinct.
+          change.saved[field] =
+            (field === 'BillingExpr' || field === 'BillingMode') &&
+            typeof before === 'string' &&
+            before !== ''
+              ? before
+              : beforeJSON
+          change.draft[field] =
+            (field === 'BillingExpr' || field === 'BillingMode') &&
+            typeof after === 'string' &&
+            after !== ''
+              ? after
+              : afterJSON
+          byModel.set(name, change)
+        }
+      }
+      const changes = [...byModel.values()].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      )
+      if (
+        changes.length === 0 &&
+        unreadable.length === 0 &&
+        values.ExposeRatioEnabled === savedValues.ExposeRatioEnabled
+      ) {
+        toast.info(t('No model price changes to save'))
+        return
+      }
+      setPendingSave({
+        values: { ...values },
+        changes,
+        unreadable,
+        exposedBefore: savedValues.ExposeRatioEnabled,
+      })
+    },
+    [savedValues, t]
+  )
+
+  const confirmSave = async () => {
+    if (!pendingSave || confirmPendingRef.current) return
+    confirmPendingRef.current = true
+    setConfirming(true)
+    try {
+      await onSave(pendingSave.values)
+      setPendingSave(null)
+    } catch {
+      toast.error(t('Failed to save'))
+    } finally {
+      confirmPendingRef.current = false
+      setConfirming(false)
+    }
+  }
 
   const enabledModelsQuery = useQuery({
     queryKey: ['enabled-models'],
@@ -216,8 +326,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
       if (committed === false) return
     }
 
-    await form.handleSubmit(onSave)()
-  }, [editMode, form, onSave])
+    await form.handleSubmit(reviewSave)()
+  }, [editMode, form, reviewSave])
 
   return (
     <div className='space-y-6'>
@@ -331,7 +441,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
             )}
           </div>
         ) : (
-          <SettingsForm onSubmit={form.handleSubmit(onSave)}>
+          <SettingsForm onSubmit={form.handleSubmit(reviewSave)}>
             <div className='grid min-w-0 gap-x-5 gap-y-8 lg:grid-cols-2 2xl:grid-cols-3'>
               {modelJsonFields.map((config) => (
                 <ModelJsonTextareaField
@@ -369,6 +479,36 @@ export const ModelRatioForm = memo(function ModelRatioForm({
           </SettingsForm>
         )}
       </Form>
+      <ConfirmDialog
+        open={pendingSave !== null}
+        onOpenChange={(open) => {
+          if (!open && !confirming && !isSaving) setPendingSave(null)
+        }}
+        title={t('Review price changes')}
+        desc={t('Review the current and new prices before saving.')}
+        confirmText={t('Save model prices')}
+        handleConfirm={() => void confirmSave()}
+        isLoading={confirming || isSaving}
+        className='sm:max-w-3xl'
+      >
+        {pendingSave && (
+          <PriceChangeDiff
+            changes={pendingSave.changes}
+            unreadable={pendingSave.unreadable}
+          />
+        )}
+        {pendingSave &&
+          pendingSave.values.ExposeRatioEnabled !==
+            pendingSave.exposedBefore && (
+            <p>
+              {t('Expose ratio API')}:{' '}
+              {t(pendingSave.exposedBefore ? 'Enabled' : 'Disabled')} →{' '}
+              {t(
+                pendingSave.values.ExposeRatioEnabled ? 'Enabled' : 'Disabled'
+              )}
+            </p>
+          )}
+      </ConfirmDialog>
     </div>
   )
 })

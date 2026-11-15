@@ -215,6 +215,9 @@ var RelayTimeout int // unit is second
 
 var RelayIdleConnTimeout int // unit is second
 
+var RelayHTTP2PingIdleTimeout int // seconds without incoming frames before probing; 0 disables probes
+var RelayHTTP2PingTimeout int     // seconds to wait for a PING acknowledgement
+
 // RelayResponseHeaderTimeout bounds the wait for upstream response headers,
 // without limiting streaming after the headers arrive. Zero disables it.
 var RelayResponseHeaderTimeout int // unit is second

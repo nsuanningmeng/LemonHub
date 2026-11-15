@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -92,7 +92,7 @@ import {
   transformFormDataToPayload,
   transformUserToFormDefaults,
 } from '../lib'
-import { type User } from '../types'
+import type { User } from '../types'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -156,22 +156,42 @@ export function UsersMutateDrawer({
     defaultValues: USER_FORM_DEFAULT_VALUES,
   })
 
+  // A reopened editor owns a new cycle, even when its user ID is unchanged.
+  const editorCycle = useMemo(
+    () => ({ open, userId: currentRow?.id, active: false }),
+    [open, currentRow?.id]
+  )
+  useLayoutEffect(() => {
+    editorCycle.active = editorCycle.open
+    return () => {
+      editorCycle.active = false
+    }
+  }, [editorCycle])
+
   // Load existing data when updating
   useEffect(() => {
-    if (open && isUpdate && currentRow) {
-      // For update, fetch fresh data
-      getUser(currentRow.id).then((result) => {
-        if (result.success && result.data) {
-          form.reset(transformUserToFormDefaults(result.data))
-          setRecordRequestBody(parseRecordRequestBody(result.data.setting))
-        }
-      })
-    } else if (open && !isUpdate) {
+    let active = true
+    if (editorCycle.open && editorCycle.userId !== undefined) {
+      // Do not reuse a pending read owned by an earlier opening of this user.
+      getUser(editorCycle.userId, { disableDuplicate: true })
+        .then((result) => {
+          if (active && editorCycle.active && result.success && result.data) {
+            form.reset(transformUserToFormDefaults(result.data))
+            setRecordRequestBody(parseRecordRequestBody(result.data.setting))
+          }
+        })
+        .catch(() => {
+          // Request errors are reported by the shared API interceptor.
+        })
+    } else if (editorCycle.open) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
       setRecordRequestBody(false)
     }
-  }, [open, isUpdate, currentRow, form])
+    return () => {
+      active = false
+    }
+  }, [editorCycle, form])
 
   const handleRecordRequestBodyChange = async (next: boolean) => {
     if (!currentRow) return
@@ -190,7 +210,7 @@ export function UsersMutateDrawer({
         setRecordRequestBody(!next)
         toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
       }
-    } catch (_error) {
+    } catch {
       setRecordRequestBody(!next)
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
@@ -208,8 +228,8 @@ export function UsersMutateDrawer({
   const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
 
   const onSubmit = async (data: UserFormValues) => {
-    if (!isUpdate) {
-      const passwordLength = data.password?.length || 0
+    if (!isUpdate || data.password) {
+      const passwordLength = [...(data.password || '')].length
       if (passwordLength < 8 || passwordLength > 20) {
         form.setError('password', {
           type: 'manual',
@@ -246,7 +266,7 @@ export function UsersMutateDrawer({
               : t(ERROR_MESSAGES.CREATE_FAILED))
         )
       }
-    } catch (_error) {
+    } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsSubmitting(false)
@@ -254,12 +274,18 @@ export function UsersMutateDrawer({
   }
 
   const refreshUserData = async () => {
-    if (!currentRow) return
-    const result = await getUser(currentRow.id)
-    if (result.success && result.data) {
-      form.reset(transformUserToFormDefaults(result.data))
-    }
     triggerRefresh()
+    if (!editorCycle.active || editorCycle.userId === undefined) return
+    try {
+      const result = await getUser(editorCycle.userId, {
+        disableDuplicate: true,
+      })
+      if (editorCycle.active && result.success && result.data) {
+        form.reset(transformUserToFormDefaults(result.data))
+      }
+    } catch {
+      // Request errors are reported by the shared API interceptor.
+    }
   }
 
   return (
@@ -393,6 +419,9 @@ export function UsersMutateDrawer({
                           }
                         />
                       </FormControl>
+                      <FormDescription>
+                        {t('Password must be between 8 and 20 characters')}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -411,12 +440,10 @@ export function UsersMutateDrawer({
                       <FormItem>
                         <FormLabel>{t('Group')}</FormLabel>
                         <Select
-                          items={[
-                            ...groups.map((group) => ({
-                              value: group,
-                              label: group,
-                            })),
-                          ]}
+                          items={groups.map((group) => ({
+                            value: group,
+                            label: group,
+                          }))}
                           onValueChange={field.onChange}
                           value={field.value}
                         >

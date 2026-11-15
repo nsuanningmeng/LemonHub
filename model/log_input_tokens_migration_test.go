@@ -173,12 +173,30 @@ func TestLogInputTokensMigrationPreservesLegacyRows(t *testing.T) {
 							require.Contains(t, row, "input_tokens_total")
 							assert.Nil(t, row["input_tokens_total"], "old rows retain NULL fallback")
 							delete(row, "input_tokens_total")
+							delete(row, "is_retry")
 						}
 						assert.Equal(t, legacyRaw, rows, "old raw fields remain byte-for-byte stable")
 						if mode == "separate_log" {
 							assert.False(t, DB.Migrator().HasTable("logs"), "log migration must not create tables in primary DB")
 						}
 					}
+					visibleLogs, total, err := GetUserLogs(101, LogTypeUnknown, 0, 0, "", "", 0, 10, "", "", "")
+					require.NoError(t, err)
+					assert.EqualValues(t, 2, total, "legacy logs remain visible after adding the retry marker")
+					require.Len(t, visibleLogs, 2)
+					for _, log := range visibleLogs {
+						assert.False(t, log.IsRetry)
+					}
+					tokenLogs, err := GetLogByTokenId(5)
+					require.NoError(t, err)
+					require.Len(t, tokenLogs, 1)
+					assert.Equal(t, "legacy-a", tokenLogs[0].RequestId)
+					assert.Equal(t, 1, tokenLogs[0].Id)
+					adminLogs, adminTotal, err := GetAllLogs(LogTypeUnknown, 0, 0, "", "", "", 0, 10, 0, "", "legacy-b", "", SiteScopeAll)
+					require.NoError(t, err)
+					assert.EqualValues(t, 1, adminTotal)
+					require.Len(t, adminLogs, 1)
+					assert.Equal(t, "raw B", adminLogs[0].Content)
 					// Old and new binaries can share a migrated log schema. An omitted field
 					// stays NULL; an explicit 0 must override a nonzero raw prompt count.
 					oldWriter := legacy[0]
@@ -253,7 +271,7 @@ func TestLogInputTokensMigrationPreservesLegacyRows(t *testing.T) {
 					var persistedExtreme []Log
 					require.NoError(t, db.Where("id >= ?", 801).Order("id").Find(&persistedExtreme).Error)
 					assert.Equal(t, extremeRows, persistedExtreme, "aggregate normalization must never mutate raw log usage")
-
+					verifyRetryLogQueries(t, db)
 				})
 			}
 		})

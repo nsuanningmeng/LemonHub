@@ -17,11 +17,21 @@ cp ../new-api-macos ../new-api
 TODO
 
 ### 2. Electron Dependencies
+Use Node.js 22.12 or newer (CI uses Node.js 22).
+
 ```bash
 cd electron
 npm ci
 node node_modules/electron/install.js
 ```
+
+This directory's `.npmrc` disables automatic peer installation. The configured
+Windows targets are NSIS and portable; Squirrel is not supported, so its legacy
+dependency chain is excluded. The required `dmg-builder` and `picomatch` peers
+remain installed through direct dependencies. Keep this setting when updating
+the lockfile. Security overrides upgrade the proxy and archive dependencies;
+`node --test main.test.js dependency-download.test.js` checks proxy/TLS behavior,
+archive contents, unpacked files, and build file matching. Run `npm audit` too.
 
 ## Development
 

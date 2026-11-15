@@ -36,6 +36,7 @@ import {
   useComboboxAnchor,
 } from '@/components/ui/combobox'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
+import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { cn } from '@/lib/utils'
 
 export type Option = {
@@ -43,7 +44,24 @@ export type Option = {
   value: string
 }
 
-interface MultiSelectProps {
+interface MultiSelectProps extends Pick<
+  React.ComponentPropsWithRef<'input'>,
+  | 'ref'
+  | 'name'
+  | 'onBlur'
+  | 'onFocus'
+  | 'onKeyDown'
+  | 'onCompositionStart'
+  | 'onCompositionEnd'
+  | 'aria-label'
+  | 'aria-labelledby'
+  | 'aria-describedby'
+  | 'aria-invalid'
+  | 'required'
+  | 'tabIndex'
+> {
+  'data-form-root'?: string
+  'data-slot'?: string
   options: Option[]
   selected: string[]
   onChange: (values: string[]) => void
@@ -123,6 +141,7 @@ export function MultiSelect(props: MultiSelectProps) {
   const [inputValue, setInputValue] = React.useState('')
   const [open, setOpen] = React.useState(false)
   const [expanded, setExpanded] = React.useState(false)
+  const isComposingRef = React.useRef(false)
 
   const selectedSet = React.useMemo(
     () => new Set(props.selected),
@@ -164,7 +183,7 @@ export function MultiSelect(props: MultiSelectProps) {
     if (canCreate) {
       set.add(trimmedInput)
     }
-    return Array.from(set)
+    return [...set]
   }, [props.options, props.selected, canCreate, trimmedInput])
 
   const addValues = React.useCallback(
@@ -185,7 +204,7 @@ export function MultiSelect(props: MultiSelectProps) {
   )
 
   const handleInputValueChange = (value: string) => {
-    if (!props.allowCreate) {
+    if (!props.allowCreate || isComposingRef.current) {
       setInputValue(value)
       return
     }
@@ -227,7 +246,18 @@ export function MultiSelect(props: MultiSelectProps) {
     [t]
   )
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown: NonNullable<
+    React.ComponentProps<typeof ComboboxChipsInput>['onKeyDown']
+  > = (event) => {
+    props.onKeyDown?.(event)
+    if (
+      isComposingRef.current ||
+      isComposingKeyboardEvent(event) ||
+      event.defaultPrevented
+    ) {
+      event.preventBaseUIHandler()
+      return
+    }
     // Enter without a highlighted option commits the typed value.
     if (event.key === 'Enter' && props.allowCreate && canCreate) {
       // Only fire when Base UI has no highlighted item to select. We rely on
@@ -340,13 +370,35 @@ export function MultiSelect(props: MultiSelectProps) {
         </ComboboxValue>
         <ComboboxChipsInput
           id={props.id}
+          ref={props.ref}
+          name={props.name}
+          onBlur={props.onBlur}
+          onFocus={props.onFocus}
+          required={props.required}
+          tabIndex={props.tabIndex}
+          aria-labelledby={props['aria-labelledby']}
+          aria-describedby={props['aria-describedby']}
+          aria-invalid={props['aria-invalid']}
+          data-form-root={props['data-form-root']}
+          data-slot={props['data-slot'] ?? 'combobox-chip-input'}
+          onCompositionStart={(event) => {
+            isComposingRef.current = true
+            props.onCompositionStart?.(event)
+          }}
+          onCompositionEnd={(event) => {
+            isComposingRef.current = false
+            props.onCompositionEnd?.(event)
+          }}
           placeholder={
             props.selected.length === 0 && !props.renderSelectedSummary
               ? placeholder
               : undefined
           }
           onKeyDown={handleKeyDown}
-          aria-label={placeholder}
+          aria-label={
+            props['aria-label'] ??
+            (props.id || props['aria-labelledby'] ? undefined : placeholder)
+          }
         />
       </ComboboxChips>
 

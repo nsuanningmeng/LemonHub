@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -44,12 +44,18 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const [mode, setMode] = useState<QuotaAdjustMode>('add')
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
+  const submittingRef = useRef(false)
+  const modes = [
+    { value: 'add', label: t('Add') },
+    { value: 'subtract', label: t('Subtract') },
+    { value: 'override', label: t('Override') },
+  ] as const
 
   const { meta: currencyMeta } = getCurrencyDisplay()
   const currencyLabel = getCurrencyLabel()
   const tokensOnly = currencyMeta.kind === 'tokens'
 
-  const amountValue = parseFloat(amount) || 0
+  const amountValue = Number(amount)
   const quotaValue = parseQuotaFromDollars(Math.abs(amountValue))
 
   const getPreviewText = () => {
@@ -70,13 +76,22 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   }
 
   const handleConfirm = async () => {
-    if (!amount && mode !== 'override') return
+    if (submittingRef.current) return
+    const value =
+      mode === 'override' ? parseQuotaFromDollars(amountValue) : quotaValue
+    if (
+      !amount.trim() ||
+      !Number.isFinite(amountValue) ||
+      !Number.isSafeInteger(value)
+    ) {
+      toast.error(t('Please enter a valid number'))
+      return
+    }
     if (quotaValue <= 0 && mode !== 'override') return
 
+    submittingRef.current = true
     setLoading(true)
     try {
-      const value =
-        mode === 'override' ? parseQuotaFromDollars(amountValue) : quotaValue
       const result = await adjustUserQuota({
         id: props.userId,
         action: 'add_quota',
@@ -95,6 +110,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : t('Failed to adjust quota'))
     } finally {
+      submittingRef.current = false
       setLoading(false)
     }
   }
@@ -134,26 +150,23 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
         <div className='space-y-2'>
           <Label>{t('Mode')}</Label>
           <div className='flex gap-1'>
-            {(['add', 'subtract', 'override'] as const).map((m) => (
+            {modes.map((option) => (
               <Button
-                key={m}
+                key={option.value}
                 type='button'
                 variant='outline'
                 size='sm'
+                disabled={loading}
                 className={cn(
-                  mode === m &&
+                  mode === option.value &&
                     'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                 )}
                 onClick={() => {
-                  setMode(m)
+                  setMode(option.value)
                   setAmount('')
                 }}
               >
-                {m === 'add'
-                  ? t('Add')
-                  : m === 'subtract'
-                    ? t('Subtract')
-                    : t('Override')}
+                {option.label}
               </Button>
             ))}
           </div>
@@ -165,6 +178,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
           </Label>
           <Input
             type='number'
+            disabled={loading}
             step={tokensOnly ? 1 : 0.000001}
             min={mode === 'override' ? undefined : 0}
             placeholder={placeholder}

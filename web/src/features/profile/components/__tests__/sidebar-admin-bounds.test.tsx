@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
@@ -185,4 +185,47 @@ test('an administrator-disabled rewards module cannot be restored in personal si
   expect(screen.queryByRole('switch', { name: 'My Rewards' })).toBeNull()
   rendered.unmount()
   client.clear()
+})
+
+test('personal sidebar controls wait for global visibility before allowing changes', async () => {
+  localStorage.removeItem('status')
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  })
+  let resolveStatus: (value: unknown) => void = () => {}
+  const statusRequest = new Promise((resolve) => {
+    resolveStatus = resolve
+  })
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === '/api/status') return statusRequest as never
+    return { data: { success: true, data: {} } } as never
+  })
+  const rendered = render(
+    <QueryClientProvider client={client}>
+      <SidebarModulesCard />
+    </QueryClientProvider>
+  )
+  expect(screen.queryByRole('switch')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Save Changes' })).toBeNull()
+  await act(async () => {
+    resolveStatus({
+      data: {
+        success: true,
+        data: {
+          SidebarModulesAdmin: JSON.stringify({
+            chat: { enabled: false },
+            personal: { enabled: true, rewards: false },
+          }),
+        },
+      },
+    })
+  })
+  expect(
+    await screen.findByRole('switch', { name: 'Wallet Management' })
+  ).toBeVisible()
+  expect(screen.queryByRole('switch', { name: 'My Rewards' })).toBeNull()
+  expect(screen.queryByRole('switch', { name: 'Chat Area' })).toBeNull()
+  rendered.unmount()
+  client.clear()
+  localStorage.removeItem('status')
 })

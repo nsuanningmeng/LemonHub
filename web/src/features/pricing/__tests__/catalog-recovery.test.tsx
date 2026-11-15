@@ -46,7 +46,9 @@ const payload: PricingData = {
       id: 1,
       model_name: 'chat-model',
       vendor_id: 1,
-      quota_type: 0,
+      quota_type: 1,
+      billing_mode: 'tiered_expr',
+      billing_expr: 'tier("standard", p * 1 + c * 2)',
       model_ratio: 1,
       completion_ratio: 2,
       enable_groups: ['default'],
@@ -55,7 +57,9 @@ const payload: PricingData = {
       id: 2,
       model_name: 'image-model',
       vendor_id: 1,
-      quota_type: 1,
+      quota_type: 0,
+      billing_mode: 'tiered_expr',
+      billing_expr: 'tier("request", 0.1)',
       model_ratio: 1,
       completion_ratio: 1,
       model_price: 0.1,
@@ -128,7 +132,7 @@ test.each(['http', 'response'])(
   }
 )
 
-test('billing categories and sidebar selection stay synchronized when either control changes or resets the filter', async () => {
+test('active billing expressions keep catalog categories and sidebar selection synchronized when either control changes or resets the filter', async () => {
   vi.spyOn(api, 'get').mockImplementation(async (url) => ({
     data:
       url === '/api/pricing'

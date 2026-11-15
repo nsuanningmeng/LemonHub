@@ -170,12 +170,10 @@ test('an HTTP 500 keeps summary recovery local without replacing the workspace o
   const user = userEvent.setup()
   renderSummary()
   expect(await screen.findByText('Failed to fetch usage')).toBeVisible()
-  const queryError = client
-    .getQueryCache()
-    .find({
-      queryKey: ['dashboard', 'overview', 'summary-sparklines'],
-      exact: false,
-    })?.state.error
+  const queryError = client.getQueryCache().find({
+    queryKey: ['dashboard', 'overview', 'summary-sparklines'],
+    exact: false,
+  })?.state.error
   expect(queryError).not.toBeInstanceOf(AxiosError)
   expect(queryError?.cause).toBe(failure)
   expect(notify).not.toHaveBeenCalled()

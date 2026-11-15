@@ -221,16 +221,16 @@ func OpenAIChatRequestToClaudeMessages(c context.Context, info convmeta.Meta, te
 		}
 	}
 
-	if textRequest.Stop != nil {
-		switch stop := textRequest.Stop.(type) {
-		case string:
-			claudeRequest.StopSequences = []string{stop}
-		case []interface{}:
-			stopSequences := make([]string, 0)
-			for _, item := range stop {
-				stopSequences = append(stopSequences, item.(string))
+	switch stop := textRequest.Stop.(type) {
+	case string:
+		claudeRequest.StopSequences = []string{stop}
+	case []string:
+		claudeRequest.StopSequences = append([]string(nil), stop...)
+	case []any:
+		for _, item := range stop {
+			if sequence, ok := item.(string); ok {
+				claudeRequest.StopSequences = append(claudeRequest.StopSequences, sequence)
 			}
-			claudeRequest.StopSequences = stopSequences
 		}
 	}
 

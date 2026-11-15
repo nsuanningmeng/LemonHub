@@ -80,3 +80,18 @@ func TestClaudeThinkingSuffixPreservesStructuredOutputAndExplicitZero(t *testing
 	require.NotNil(t, request.MaxTokens)
 	assert.EqualValues(t, 64, *request.MaxTokens)
 }
+
+func TestDeveloperRoleChangesOnlyForDeepSeekChat(t *testing.T) {
+	chat := &dto.GeneralOpenAIRequest{Model: "deepseek-flash", Messages: []dto.Message{{Role: "developer", Content: "instructions"}, {Role: "user", Content: "hello"}}}
+	out, err := (&Adaptor{}).ConvertOpenAIRequest(nil, nil, chat)
+	require.NoError(t, err)
+	messages := out.(*dto.GeneralOpenAIRequest).Messages
+	assert.Equal(t, "system", messages[0].Role)
+	assert.Equal(t, "instructions", messages[0].Content)
+	assert.Equal(t, "user", messages[1].Role)
+	var req dto.OpenAIResponsesRequest
+	require.NoError(t, common.UnmarshalJsonStr(`{"model":"deepseek-flash","input":[{"role":"developer","content":"instructions"}]}`, &req))
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(nil, nil, req)
+	require.NoError(t, err)
+	assert.Equal(t, req.Input, converted.(dto.OpenAIResponsesRequest).Input)
+}

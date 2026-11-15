@@ -101,6 +101,62 @@ DNS/TLS/outbound-request fan-out or starving main-site settlement.
   use the same rule. A missing or changed generation may leave a conservative
   stale-low balance until refresh; it cannot authorize an unproven extra credit.
 
+## Stripe webhook configuration and recovery
+
+- Register the public HTTPS endpoint `/api/stripe/webhook` in Stripe. Use the
+  endpoint's signing secret (`whsec_...`) for `StripeWebhookSecret`; an API key
+  (`sk_...` or `rk_...`) is not a signing secret. The endpoint, signing secret,
+  API key and Price must belong to the intended Stripe account and live/test
+  environment. Stripe CLI forwarding uses a separate signing secret.
+- To change the callback domain, open the existing webhook destination in the
+  same Stripe account and live/test environment and edit its URL to
+  `https://<new-domain>/api/stripe/webhook`. Editing the existing destination
+  preserves its signing secret unless you explicitly rotate it. If you create a
+  new destination instead, update the site's `StripeWebhookSecret` to that new
+  destination's secret. The new domain must reach the same backend and database
+  directly over HTTPS, without a `301`/`302` redirect, login page or JavaScript
+  challenge. After saving, resend a real Stripe-signed event and verify its
+  delivery to the new URL returns `2xx`; also check the corresponding local order
+  and balance as described below.
+- Subscribe to all supported events:
+  - `checkout.session.completed`
+  - `checkout.session.expired`
+  - `checkout.session.async_payment_succeeded`
+  - `checkout.session.async_payment_failed`
+  - `charge.refunded`
+  - `charge.dispute.created`
+- Checkout completion credits an order only when `payment_status` is `paid`.
+  Delayed payment methods can complete Checkout before payment settles; their
+  eventual credit depends on `checkout.session.async_payment_succeeded`.
+  `payment_intent.succeeded` and `charge.succeeded` alone do not fulfill orders.
+  A `2xx` response acknowledges receipt and can also mean an unrelated event was
+  ignored or an unpaid Checkout is waiting for its asynchronous result.
+- New payments still require the payment enablement checks. Incoming callbacks
+  require a configured signing secret and a valid signature, independently of
+  the recharge Price, API key or current payment enablement. This lets existing
+  orders settle after recharge is disabled and lets subscriptions use their own
+  plan Prices without a global recharge Price. Keep the signing secret configured
+  while existing payments, refunds or disputes can still generate events.
+- For a paid order that remains pending, inspect the actual event's delivery
+  history: endpoint URL, event type, HTTP status and response. Confirm that its
+  `client_reference_id` matches the local `trade_no`, then correlate the server's
+  Stripe webhook logs. A `400` from the handler indicates signature verification
+  failed, `403` indicates a missing signing configuration, and `503` means
+  processing failed and Stripe should retry. Proxies can return their own errors;
+  check server receipt logs before attributing a response to the handler.
+- After correcting the cause, resend the matching paid Checkout event from
+  Stripe. Settlement and wallet credit use an idempotent transaction, so replaying
+  an already completed order does not credit it again. Verify the local order and
+  balance after replay. Missing references, invalid local order states and
+  subscription purchase limits require investigation; retries cannot repair those
+  conditions. Confirm payment status, amount, currency and order ownership before
+  any manual reconciliation, and do not ask the customer to pay again.
+- If an administrator already completed a Stripe top-up, a subsequently delivered,
+  verified paid Checkout event fills a missing PaymentIntent association without
+  crediting the wallet again or replacing an existing association. Later refunds
+  and disputes can then find that order. This requires the successful event to
+  reach the handler; it does not scan historical orders or backfill referral rewards.
+
 ## Stripe recharge price contract
 
 - New orders normalize the requested amount into whole recharge units. Group
