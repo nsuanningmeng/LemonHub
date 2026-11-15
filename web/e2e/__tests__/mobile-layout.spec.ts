@@ -326,9 +326,14 @@ test('a narrow phone can filter keys and open the full credential without horizo
     .evaluate((input) => {
       const popup = input.closest('[data-slot="popover-content"]')
       if (!popup) throw new Error('Credential popover is not rendered')
-      const popupBounds = popup.getBoundingClientRect()
-      const padding = Number.parseFloat(getComputedStyle(popup).paddingRight)
-      return input.getBoundingClientRect().right <= popupBounds.right - padding
+      const style = getComputedStyle(popup)
+      const availableWidth =
+        popup.clientWidth -
+        Number.parseFloat(style.paddingLeft) -
+        Number.parseFloat(style.paddingRight)
+      // Layout widths stay stable while the popup's opening animation scales
+      // its bounding rectangle; a minimum-width overflow still fails here.
+      return (input as HTMLInputElement).offsetWidth <= availableWidth
     })
   expect(inputFitsPopover).toBe(true)
   expect(
