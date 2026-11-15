@@ -23,6 +23,8 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
+import { runSettingsAction } from '../lib/settings-action'
+
 type SettingsFormGridProps = {
   children: ReactNode
   className?: string
@@ -173,7 +175,11 @@ export function SettingsControlChildren({
   )
 }
 
-export function SettingsForm({ className, ...props }: ComponentProps<'form'>) {
+export function SettingsForm({
+  className,
+  onSubmit,
+  ...props
+}: ComponentProps<'form'>) {
   return (
     <form
       className={cn(
@@ -187,6 +193,7 @@ export function SettingsForm({ className, ...props }: ComponentProps<'form'>) {
         className
       )}
       {...props}
+      onSubmit={(event) => runSettingsAction(() => onSubmit?.(event))}
     />
   )
 }

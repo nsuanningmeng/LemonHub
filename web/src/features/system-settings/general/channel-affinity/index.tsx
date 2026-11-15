@@ -41,6 +41,7 @@ import { SettingsSwitchField } from '../../components/settings-form-layout'
 import { SettingsPageActionsPortal } from '../../components/settings-page-context'
 import { SettingsSection } from '../../components/settings-section'
 import { useUpdateOption } from '../../hooks/use-update-option'
+import { isSettingsErrorReported } from '../../lib/settings-action'
 import { getCacheStats, clearAllCache, clearRuleCache } from './api'
 import { RULE_TEMPLATES, cloneTemplate, makeUniqueName } from './constants'
 import { RuleEditorDialog } from './rule-editor-dialog'
@@ -336,8 +337,10 @@ export function ChannelAffinitySection(props: Props) {
       }
       await refreshCache()
       toast.success(t('Saved successfully'))
-    } catch {
-      toast.error(t('Failed to save'))
+    } catch (error) {
+      if (!isSettingsErrorReported(error)) {
+        toast.error(t('Failed to save'))
+      }
     } finally {
       setSaving(false)
     }

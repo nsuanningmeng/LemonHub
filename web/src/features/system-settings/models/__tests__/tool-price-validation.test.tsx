@@ -18,7 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
+import { toast } from 'sonner'
 import { beforeAll, describe, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -110,6 +112,49 @@ describe('tool price validation', () => {
       ).toHaveValue(0.75)
     }
 
+    queryClient.clear()
+  })
+
+  test('a rejected tool price save retains the editable price, reports one error, and can be retried', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    })
+    const put = vi
+      .spyOn(api, 'put')
+      .mockResolvedValueOnce({
+        data: { success: false, message: 'Tool price rejected' },
+      })
+      .mockResolvedValue({ data: { success: true } })
+    const error = vi.spyOn(toast, 'error')
+    const user = userEvent.setup()
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ToolPriceSettings defaultValue='{"web_search":10}' />
+      </QueryClientProvider>
+    )
+    const input = screen.getByRole('spinbutton', {
+      name: 'Price ($/1K calls): web_search',
+    })
+    const save = screen.getByRole('button', { name: 'Save tool prices' })
+    await user.clear(input)
+    await user.type(input, '12.5')
+    await user.click(save)
+
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledExactlyOnceWith('Tool price rejected')
+    )
+    await waitFor(() => expect(save).toBeEnabled())
+    expect(input).toHaveValue(12.5)
+    expect(input).toBeEnabled()
+
+    await user.click(save)
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(save).toBeEnabled())
+    const request = put.mock.calls[1][1] as UpdateOptionRequest
+    expect(request.key).toBe('tool_price_setting.prices')
+    expect(JSON.parse(String(request.value)).web_search).toBe(12.5)
+    expect(error).toHaveBeenCalledTimes(1)
+    view.unmount()
     queryClient.clear()
   })
 })

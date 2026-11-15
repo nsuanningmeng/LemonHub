@@ -20,6 +20,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useForm } from 'react-hook-form'
+import { toast } from 'sonner'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -211,6 +212,7 @@ test('deletes a newly added draft without deleting saved prices or contacting th
 })
 
 test('a business save failure stops later option writes and keeps the reviewed prices open', async () => {
+  const error = vi.spyOn(toast, 'error')
   client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
@@ -271,4 +273,5 @@ test('a business save failure stops later option writes and keeps the reviewed p
   )
   expect(dialog).toBeVisible()
   expect(put).toHaveBeenCalledTimes(1)
+  expect(error).toHaveBeenCalledExactlyOnceWith('not saved')
 })

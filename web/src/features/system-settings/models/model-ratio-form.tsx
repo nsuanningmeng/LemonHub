@@ -43,6 +43,7 @@ import {
   SettingsSwitchContent,
   SettingsSwitchItem,
 } from '../components/settings-form-layout'
+import { isSettingsErrorReported } from '../lib/settings-action'
 import {
   ModelRatioVisualEditor,
   type ModelRatioVisualEditorHandle,
@@ -280,8 +281,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
     try {
       await onSave(pendingSave.values)
       setPendingSave(null)
-    } catch {
-      toast.error(t('Failed to save'))
+    } catch (error) {
+      if (!isSettingsErrorReported(error)) toast.error(t('Failed to save'))
     } finally {
       confirmPendingRef.current = false
       setConfirming(false)

@@ -59,6 +59,7 @@ import {
   SettingsSwitchItem,
 } from '../components/settings-form-layout'
 import { SettingsPageActionsPortal } from '../components/settings-page-context'
+import { runSettingsAction } from '../lib/settings-action'
 import { safeJsonParse } from '../utils/json-parser'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
@@ -158,7 +159,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
           <Button
             type='button'
             size='sm'
-            onClick={form.handleSubmit(onSave)}
+            onClick={() => runSettingsAction(form.handleSubmit(onSave))}
             disabled={isSaving}
           >
             {isSaving ? t('Saving...') : t('Save group ratios')}

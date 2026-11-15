@@ -20,6 +20,7 @@ import { t } from 'i18next'
 
 import { api } from '@/lib/api'
 
+import { OptionUpdateRejectedError } from './lib/settings-action'
 import type {
   ConfirmPaymentComplianceResponse,
   FetchUpstreamRatiosRequest,
@@ -44,7 +45,9 @@ export async function updateSystemOption(request: UpdateOptionRequest) {
     skipErrorHandler: true,
   })
   if (!res.data.success) {
-    throw new Error(res.data.message || t('Failed to update setting'))
+    throw new OptionUpdateRejectedError(
+      res.data.message || t('Failed to update setting')
+    )
   }
   return res.data
 }

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { toast } from 'sonner'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -166,4 +167,23 @@ test('unavailable statistics disable per-rule clearing until a successful refres
     screen.getByRole('button', { name: 'Refresh cache statistics' })
   )
   await waitFor(() => expect(clear).toBeEnabled())
+})
+
+test('a rejected affinity save reports once and keeps the edited setting without refreshing cache', async () => {
+  const put = vi.spyOn(api, 'put').mockResolvedValue({
+    data: { success: false, message: 'Affinity update rejected' },
+  })
+  const notify = vi.spyOn(toast, 'error').mockImplementation(() => 0)
+  const { get, user } = renderSettings()
+  await waitFor(() => expect(get).toHaveBeenCalledTimes(1))
+  const toggle = screen.getByRole('switch', { checked: true })
+  await user.click(toggle)
+  await user.click(screen.getByRole('button', { name: /^Save$/ }))
+  await waitFor(() =>
+    expect(notify).toHaveBeenCalledWith('Affinity update rejected')
+  )
+  expect(notify).toHaveBeenCalledTimes(1)
+  expect(put).toHaveBeenCalledTimes(1)
+  expect(get).toHaveBeenCalledTimes(1)
+  expect(toggle).not.toBeChecked()
 })

@@ -30,6 +30,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
+import { toast } from 'sonner'
 import { afterEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -124,3 +125,55 @@ test('a malformed logo value shows a field error and prevents a save', async () 
   await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
   expect(put).not.toHaveBeenCalled()
 })
+
+test.each(['save button', 'form submission'] as const)(
+  'a rejected setting from %s retains edits, stops later updates and allows a successful retry',
+  async (submission) => {
+    const put = await renderSettings('/lemonhub-mark.svg')
+    put.mockResolvedValueOnce({
+      data: { success: false, message: 'System name rejected' },
+    })
+    const notify = vi.spyOn(toast, 'error').mockImplementation(() => 0)
+    const name = screen.getByRole('textbox', { name: 'System Name' })
+    const footer = screen.getByRole('textbox', { name: 'Footer' })
+    fireEvent.change(name, { target: { value: 'Research Studio' } })
+    fireEvent.change(footer, { target: { value: 'Pending footer' } })
+    const form = name.closest('form')
+    if (!form) throw new Error('System information form is missing')
+
+    if (submission === 'save button') {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    } else {
+      fireEvent.submit(form)
+    }
+
+    await waitFor(() =>
+      expect(notify).toHaveBeenCalledWith('System name rejected')
+    )
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
+    )
+    expect(notify).toHaveBeenCalledTimes(1)
+    expect(put).toHaveBeenCalledTimes(1)
+    expect(name).toHaveValue('Research Studio')
+    expect(footer).toHaveValue('Pending footer')
+    expect(screen.getByRole('button', { name: 'Reset' })).toBeEnabled()
+
+    if (submission === 'save button') {
+      fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    } else {
+      fireEvent.submit(form)
+    }
+
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(3))
+    expect(put.mock.calls.map(([, payload]) => payload)).toEqual([
+      { key: 'SystemName', value: 'Research Studio' },
+      { key: 'SystemName', value: 'Research Studio' },
+      { key: 'Footer', value: 'Pending footer' },
+    ])
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled()
+    )
+    expect(notify).toHaveBeenCalledTimes(1)
+  }
+)

@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { isCancel } from 'axios'
 import i18next from 'i18next'
 import { toast } from 'sonner'
 
 import { updateSystemOption } from '../api'
+import { markSettingsErrorReported } from '../lib/settings-action'
 import type { UpdateOptionRequest } from '../types'
 
 // Configuration keys that require status refresh
@@ -159,7 +161,10 @@ export function useUpdateOption() {
       }
     },
     onError: (error: Error) => {
-      toast.error(error.message || i18next.t('Failed to update setting'))
+      if (!isCancel(error)) {
+        toast.error(error.message || i18next.t('Failed to update setting'))
+      }
+      markSettingsErrorReported(error)
     },
   })
 }

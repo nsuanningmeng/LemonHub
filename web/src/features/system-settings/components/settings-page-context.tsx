@@ -29,6 +29,8 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 
+import { runSettingsAction } from '../lib/settings-action'
+
 type SettingsPageContextValue = {
   actionsContainer: HTMLDivElement | null
   titleStatusContainer: HTMLSpanElement | null
@@ -100,7 +102,7 @@ export function SettingsPageActionsPortal(
 }
 
 type SettingsPageFormActionsProps = {
-  onSave: () => void
+  onSave: () => void | Promise<unknown>
   onReset?: () => void
   isSaving?: boolean
   isSaveDisabled?: boolean
@@ -136,7 +138,7 @@ export function SettingsPageFormActions(props: SettingsPageFormActionsProps) {
         ref={props.saveButtonRef}
         type='button'
         size='sm'
-        onClick={props.onSave}
+        onClick={() => runSettingsAction(props.onSave)}
         disabled={props.isSaving || props.isSaveDisabled}
       >
         <Save data-icon='inline-start' />

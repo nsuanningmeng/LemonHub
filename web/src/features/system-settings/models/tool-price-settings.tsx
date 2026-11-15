@@ -29,6 +29,7 @@ import { Field, FieldError } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 
 import { useUpdateOption } from '../hooks/use-update-option'
+import { runSettingsAction } from '../lib/settings-action'
 
 const OPTION_KEY = 'tool_price_setting.prices'
 
@@ -381,7 +382,7 @@ export const ToolPriceSettings = memo(function ToolPriceSettings({
 
       <div className='flex justify-end'>
         <Button
-          onClick={handleSave}
+          onClick={() => runSettingsAction(handleSave)}
           disabled={
             updateOption.isPending ||
             invalidRowIds.size > 0 ||

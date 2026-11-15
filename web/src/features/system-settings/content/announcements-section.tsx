@@ -67,6 +67,7 @@ import { formatTimestampRelative } from '@/lib/format'
 import { SettingsSwitchField } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { isSettingsErrorReported } from '../lib/settings-action'
 
 type Announcement = {
   id: number
@@ -186,8 +187,10 @@ export function AnnouncementsSection({
       })
       setIsEnabled(checked)
       toast.success(t('Setting saved'))
-    } catch {
-      toast.error(t('Failed to update setting'))
+    } catch (error) {
+      if (!isSettingsErrorReported(error)) {
+        toast.error(t('Failed to update setting'))
+      }
     }
   }
 
@@ -276,8 +279,10 @@ export function AnnouncementsSection({
       })
       setHasChanges(false)
       toast.success(t('Announcements saved successfully'))
-    } catch {
-      toast.error(t('Failed to save announcements'))
+    } catch (error) {
+      if (!isSettingsErrorReported(error)) {
+        toast.error(t('Failed to save announcements'))
+      }
     }
   }
 
