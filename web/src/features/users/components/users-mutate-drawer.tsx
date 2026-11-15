@@ -315,6 +315,7 @@ export function UsersMutateDrawer({
           <Form {...form}>
             <form
               id='user-form'
+              autoComplete='off'
               onSubmit={form.handleSubmit(onSubmit)}
               className={sideDrawerFormClassName()}
             >
@@ -333,6 +334,7 @@ export function UsersMutateDrawer({
                       <FormControl>
                         <Input
                           {...field}
+                          autoComplete='off'
                           placeholder={t('Enter username')}
                           disabled={isUpdate}
                         />
@@ -391,6 +393,7 @@ export function UsersMutateDrawer({
                       <FormControl>
                         <Input
                           {...field}
+                          autoComplete='off'
                           placeholder={t('Enter display name')}
                         />
                       </FormControl>
@@ -412,6 +415,7 @@ export function UsersMutateDrawer({
                         <Input
                           {...field}
                           type='password'
+                          autoComplete='new-password'
                           placeholder={
                             isUpdate
                               ? t('Leave empty to keep unchanged')
