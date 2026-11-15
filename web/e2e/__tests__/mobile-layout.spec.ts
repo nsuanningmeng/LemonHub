@@ -306,7 +306,10 @@ test('a narrow phone can filter keys and open the full credential without horizo
 }) => {
   await page.setViewportSize({ width: 320, height: 568 })
   await page.goto('/keys')
-  const search = page.getByPlaceholder('Filter by name...')
+  const search = page.getByRole('textbox', {
+    name: 'Filter by name',
+    exact: true,
+  })
   await search.fill('Production')
   await expect(
     page.getByText('Application key 20', { exact: true })
@@ -408,7 +411,10 @@ test('keys loading on a short phone keep the search controls reachable', async (
     await expect(
       page.getByRole('region', { name: 'Access overview' })
     ).toHaveAttribute('aria-busy', 'true')
-    const search = page.getByPlaceholder('Filter by name...')
+    const search = page.getByRole('textbox', {
+      name: 'Filter by name',
+      exact: true,
+    })
     await search.scrollIntoViewIfNeeded()
     await expect(search).toBeInViewport()
     finishLoading()
@@ -453,7 +459,10 @@ test('an empty filtered keys list on a phone keeps its message and reset search 
 }) => {
   await page.setViewportSize({ width: 320, height: 568 })
   await page.goto('/keys')
-  const search = page.getByPlaceholder('Filter by name...')
+  const search = page.getByRole('textbox', {
+    name: 'Filter by name',
+    exact: true,
+  })
   await search.fill('No matching credential')
   const empty = page.getByText('No API Keys Found', { exact: true })
   await empty.scrollIntoViewIfNeeded()

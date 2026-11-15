@@ -570,8 +570,8 @@ export function OverviewDashboard() {
             wrap='wrap'
             className='min-w-0'
           >
-            <VStack gap={2}>
-              <h2 className='text-2xl font-medium tracking-tight sm:text-3xl'>
+            <VStack gap={2} className='min-w-0'>
+              <h2 className='text-2xl font-medium tracking-tight wrap-anywhere sm:text-3xl'>
                 {t('Welcome back, {{name}}.', {
                   name: user?.display_name || user?.username || t('there'),
                 })}

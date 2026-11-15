@@ -589,7 +589,7 @@ export function SubscriptionPlansCard({
                     ${price}
                   </p>
 
-                  <ul className='text-muted-foreground flex-1 space-y-1.5 text-sm'>
+                  <ul className='text-muted-foreground flex-1 space-y-1.5 text-sm wrap-anywhere'>
                     {benefits.map((label) => (
                       <li key={label}>{label}</li>
                     ))}

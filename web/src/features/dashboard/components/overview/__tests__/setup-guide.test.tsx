@@ -107,6 +107,23 @@ function renderOverview() {
   )
 }
 
+test('a long display name stays readable by wrapping within the overview heading', async () => {
+  const displayName = 'WWWWWWWWWWWWWWWWWWWW'
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'member',
+    display_name: displayName,
+    role: 1,
+  })
+  renderOverview()
+
+  const heading = await screen.findByRole('heading', {
+    name: new RegExp(displayName),
+  })
+  expect(heading).toHaveClass('wrap-anywhere')
+  expect(heading.parentElement).toHaveClass('min-w-0')
+})
+
 test('completed setup uses a compact toggle, restores focus after hiding, and preserves announcements', async () => {
   const user = userEvent.setup()
   renderOverview()

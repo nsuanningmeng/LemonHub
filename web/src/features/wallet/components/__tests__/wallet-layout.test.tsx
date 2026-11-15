@@ -141,6 +141,7 @@ test('subscription comparisons keep long plan names readable and retain purchase
     quota_reset_period: 'monthly',
     max_purchase_per_user: 1,
     total_amount: 5000000,
+    upgrade_group: 'EnterpriseProductionWorkspaceWithExtendedModelAccess',
   }
   vi.spyOn(api, 'get').mockImplementation(async (url) => ({
     data: {
@@ -172,6 +173,9 @@ test('subscription comparisons keep long plan names readable and retain purchase
   expect(within(limited).getByRole('heading', { name: title })).toHaveClass(
     'wrap-anywhere'
   )
+  const benefits = within(limited).getByRole('list')
+  expect(benefits).toHaveTextContent(plan.upgrade_group)
+  expect(benefits).toHaveClass('wrap-anywhere')
   expect(
     within(limited).getByRole('button', { name: 'Limit Reached' })
   ).toBeDisabled()
