@@ -97,10 +97,7 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
         >
           <span className='truncate'>{maskedKey}</span>
         </PopoverTrigger>
-        <PopoverContent
-          className='w-auto max-w-[min(90vw,28rem)]'
-          align='start'
-        >
+        <PopoverContent className='w-80 max-w-[min(90vw,28rem)]' align='start'>
           <div className='space-y-2'>
             <p className='text-muted-foreground text-xs'>{t('Full API Key')}</p>
             {isLoading ? (
@@ -113,10 +110,11 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
             ) : (
               <input
                 readOnly
+                aria-label={t('Full API Key')}
                 value={resolvedFullKey || maskedKey}
                 autoFocus
                 onFocus={(e) => e.target.select()}
-                className='bg-muted/50 w-full min-w-[280px] rounded-md border px-3 py-2 font-mono text-xs outline-none'
+                className='bg-muted/50 w-full min-w-0 rounded-md border px-3 py-2 font-mono text-xs outline-none'
               />
             )}
           </div>

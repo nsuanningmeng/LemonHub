@@ -44,6 +44,7 @@ import * as React from 'react'
 
 import { PageFooterPortal } from '@/components/layout/components/page-footer'
 import { useMediaQuery } from '@/hooks'
+import { useFixedContentLayout } from '@/hooks/use-fixed-content-layout'
 import { cn } from '@/lib/utils'
 
 import {
@@ -316,6 +317,8 @@ export type DataTablePageProps<TData> = {
  */
 export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
   const isMobile = useMediaQuery('(max-width: 640px)')
+  const fixedLayout = useFixedContentLayout()
+  const fixedHeight = props.fixedHeight !== false && fixedLayout
   const showMobile = isMobile && !props.hideMobile
 
   const [internalViewMode, setInternalViewMode] = useDataTableViewMode({
@@ -340,7 +343,7 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
     : renderMobile(props, showMobile, cardViewActive, viewMode)
   const desktopNode = hasError
     ? null
-    : renderDesktop(props, showMobile, cardViewActive, viewMode)
+    : renderDesktop(props, showMobile, cardViewActive, viewMode, fixedHeight)
   const paginationNode = hasError ? null : renderPagination(props)
 
   return (
@@ -349,7 +352,7 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
         gap={0}
         className={cn(
           'isolate min-w-0 overflow-hidden rounded-xl border bg-card has-[tr[data-state=selected]]:border-tone-blue-border',
-          props.fixedHeight !== false && 'h-full min-h-0',
+          fixedHeight ? 'h-full min-h-0' : 'shrink-0',
           props.className
         )}
       >
@@ -362,7 +365,7 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
           <section
             role='alert'
             aria-busy={props.isFetching}
-            className='min-h-0 flex-1 overflow-auto p-4'
+            className={cn('p-4', fixedHeight && 'min-h-0 flex-1 overflow-auto')}
           >
             {props.error}
           </section>
@@ -505,7 +508,7 @@ function renderMobile<TData>(
 
   return (
     <div
-      className='min-h-0 flex-1 overflow-y-auto p-3'
+      className='min-w-0 p-3'
       aria-busy={props.isLoading || props.isFetching}
     >
       {mobileContent}
@@ -517,14 +520,14 @@ function renderDesktop<TData>(
   props: DataTablePageProps<TData>,
   showMobile: boolean,
   cardViewActive: boolean,
-  viewMode: DataTableViewMode
+  viewMode: DataTableViewMode,
+  fixedHeight: boolean
 ): React.ReactNode {
   if (showMobile) {
     return null
   }
 
   const isFetchingOnly = props.isFetching && !props.isLoading
-  const fixedHeight = props.fixedHeight !== false
 
   if (cardViewActive && viewMode === DATA_TABLE_VIEW_MODES.CARD) {
     return (

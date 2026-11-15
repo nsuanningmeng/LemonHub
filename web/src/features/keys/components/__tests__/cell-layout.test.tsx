@@ -61,3 +61,26 @@ it('shrinks the masked key to leave room for copying the resolved key', async ()
     )
   )
 })
+
+it('lets the full key field shrink inside a phone popover while keeping it selectable', async () => {
+  const user = userEvent.setup()
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { key: 'resolved-workspace-key' } },
+  })
+  render(
+    <ApiKeysProvider>
+      <ApiKeyCell apiKey={key} />
+    </ApiKeysProvider>
+  )
+  await user.click(
+    screen.getByRole('button', { name: 'sk-long-masked-key-value' })
+  )
+  const value = await screen.findByDisplayValue('sk-resolved-workspace-key')
+  expect(value).toHaveClass('min-w-0')
+  expect(value).toHaveAccessibleName('Full API Key')
+  expect(value).toHaveAttribute('readonly')
+  await user.click(value)
+  expect((value as HTMLInputElement).selectionEnd).toBe(
+    'sk-resolved-workspace-key'.length
+  )
+})

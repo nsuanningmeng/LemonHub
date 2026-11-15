@@ -49,7 +49,7 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
       <VStack
         gap={3}
         padding={5}
-        className='surface-brand min-w-0 rounded-xl xl:col-span-5'
+        className='surface-brand hidden min-w-0 rounded-xl sm:flex xl:col-span-5'
       >
         <HStack gap={2} vAlign='center'>
           <KeyRound aria-hidden='true' className='size-4 shrink-0' />

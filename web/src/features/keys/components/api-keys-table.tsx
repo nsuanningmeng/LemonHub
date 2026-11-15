@@ -171,6 +171,7 @@ function ApiKeysMobileList({
                   label={t(statusConfig.label)}
                   variant={statusConfig.variant}
                   copyable={false}
+                  className='shrink-0'
                 />
               )}
             </div>
@@ -329,7 +330,7 @@ export function ApiKeysTable() {
   const isFiltered = shouldSearch || status !== undefined
 
   return (
-    <VStack gap={4} className='h-full min-h-0'>
+    <VStack gap={4} className='min-w-0'>
       {!isError && (
         <ApiKeysOverview
           keys={apiKeys}
@@ -362,7 +363,7 @@ export function ApiKeysTable() {
         }
         emptyIcon={<KeyRound aria-hidden='true' className='size-6' />}
         emptyAction={!isFiltered ? <ApiKeysPrimaryButtons /> : undefined}
-        className='flex-1'
+        fixedHeight={false}
         skeletonKeyPrefix='api-keys-skeleton'
         applyHeaderSize
         toolbarProps={{

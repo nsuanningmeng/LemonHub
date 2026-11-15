@@ -27,6 +27,9 @@ import {
   type ReactNode,
 } from 'react'
 
+import { useFixedContentLayout } from '@/hooks/use-fixed-content-layout'
+import { cn } from '@/lib/utils'
+
 import { Main } from './main'
 import { PageFooterProvider } from './page-footer'
 
@@ -58,6 +61,7 @@ export type SectionPageLayoutProps = {
 }
 
 export function SectionPageLayout(props: SectionPageLayoutProps) {
+  const fixedLayout = useFixedContentLayout()
   const [footerContainer, setFooterContainer] = useState<HTMLDivElement | null>(
     null
   )
@@ -82,7 +86,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
 
   return (
     <PageFooterProvider container={footerContainer}>
-      <Main>
+      <Main className={!fixedLayout ? 'overflow-y-auto' : undefined}>
         <VStack
           gap={3}
           as='header'
@@ -121,11 +125,12 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
         </VStack>
 
         <VStack
-          className={
-            props.fixedContent
-              ? 'min-h-0 flex-1 overflow-hidden px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8'
-              : 'min-h-0 flex-1 overflow-auto px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8'
-          }
+          className={cn(
+            'min-w-0 px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8',
+            fixedLayout ? 'min-h-0 flex-1' : 'shrink-0',
+            fixedLayout &&
+              (props.fixedContent ? 'overflow-hidden' : 'overflow-auto')
+          )}
         >
           {content}
         </VStack>

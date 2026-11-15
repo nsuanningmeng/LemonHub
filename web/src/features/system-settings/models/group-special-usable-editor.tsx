@@ -152,8 +152,11 @@ function GroupSelect(props: GroupSelectProps) {
         if (typeof v === 'string' && v !== '') props.onValueChange(v)
       }}
     >
-      <SelectTrigger className={props.className}>
-        <SelectValue placeholder={props.placeholder} />
+      <SelectTrigger aria-label={props.placeholder} className={props.className}>
+        <SelectValue
+          className='min-w-0 truncate'
+          placeholder={props.placeholder}
+        />
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false}>
         <SelectGroup>
@@ -192,9 +195,10 @@ function GroupSection(props: GroupSectionProps) {
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <div className='rounded-lg border'>
-        <div className='flex items-center justify-between p-3'>
-          <div className='flex items-center gap-2'>
+        <div className='flex min-w-0 flex-wrap items-center justify-between gap-2 p-3'>
+          <div className='flex min-w-0 flex-wrap items-center gap-2'>
             <CollapsibleTrigger
+              aria-label={t(open ? 'Collapse' : 'Expand')}
               render={
                 <Button variant='ghost' size='sm' className='h-6 w-6 p-0' />
               }
@@ -205,7 +209,9 @@ function GroupSection(props: GroupSectionProps) {
                 <ChevronDown className='h-4 w-4' />
               )}
             </CollapsibleTrigger>
-            <span className='font-semibold'>{props.groupName}</span>
+            <span className='min-w-0 font-semibold break-all'>
+              {props.groupName}
+            </span>
             {!isKnownGroup && (
               <StatusBadge variant='danger' copyable={false}>
                 <AlertTriangle className='mr-1 h-3 w-3' />
@@ -221,6 +227,7 @@ function GroupSection(props: GroupSectionProps) {
               variant='ghost'
               size='sm'
               className='h-7 w-7 p-0'
+              aria-label={t('Add')}
               onClick={() => props.onAdd(props.groupName)}
             >
               <Plus className='h-4 w-4' />
@@ -229,6 +236,7 @@ function GroupSection(props: GroupSectionProps) {
               variant='ghost'
               size='sm'
               className='text-destructive h-7 w-7 p-0'
+              aria-label={t('Delete group')}
               onClick={() => props.onRemoveGroup(props.groupName)}
             >
               <Trash2 className='h-4 w-4' />
@@ -238,7 +246,10 @@ function GroupSection(props: GroupSectionProps) {
         <CollapsibleContent>
           <div className='space-y-2 border-t p-3'>
             {props.items.map((rule) => (
-              <div key={rule._id} className='flex items-center gap-2'>
+              <div
+                key={rule._id}
+                className='flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center'
+              >
                 <Select
                   value={rule.visible ? 'visible' : 'hidden'}
                   onValueChange={(v) =>
@@ -246,7 +257,10 @@ function GroupSection(props: GroupSectionProps) {
                     props.onUpdate(rule._id, 'visible', v === 'visible')
                   }
                 >
-                  <SelectTrigger className='w-[130px]'>
+                  <SelectTrigger
+                    aria-label={t('Status')}
+                    className='w-full sm:w-32'
+                  >
                     <SelectValue>
                       <StatusBadge
                         label={rule.visible ? t('Extra visible') : t('Hidden')}
@@ -274,9 +288,9 @@ function GroupSection(props: GroupSectionProps) {
                     </SelectGroup>
                   </SelectContent>
                 </Select>
-                <div className='flex flex-1 items-center gap-1.5'>
+                <div className='flex min-w-0 flex-1 items-center gap-1.5'>
                   <GroupSelect
-                    className='flex-1'
+                    className='w-full min-w-0 flex-1'
                     options={props.groupOptions}
                     value={rule.targetGroup}
                     placeholder={t('Group name')}
@@ -294,7 +308,8 @@ function GroupSection(props: GroupSectionProps) {
                 </div>
                 {rule.visible ? (
                   <Input
-                    className='flex-1'
+                    aria-label={t('Description')}
+                    className='min-w-0 flex-1'
                     value={rule.description}
                     placeholder={t('Description')}
                     onChange={(e) =>
@@ -309,7 +324,8 @@ function GroupSection(props: GroupSectionProps) {
                 <Button
                   variant='ghost'
                   size='sm'
-                  className='text-destructive h-8 w-8 p-0'
+                  aria-label={t('Delete')}
+                  className='text-destructive h-8 w-8 self-end p-0 sm:self-auto'
                   onClick={() => props.onRemove(rule._id)}
                 >
                   <Trash2 className='h-4 w-4' />
@@ -437,7 +453,7 @@ export function GroupSpecialUsableRulesEditor(
 
           <div className='flex items-center justify-center pt-2'>
             <GroupSelect
-              className='w-[240px]'
+              className='w-full max-w-60 min-w-0'
               options={newGroupCandidates}
               value=''
               placeholder={t('Add rules for a user group')}

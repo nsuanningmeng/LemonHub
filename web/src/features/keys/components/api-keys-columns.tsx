@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { CellContext, ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
@@ -76,6 +76,10 @@ function useGroupRatios(): Record<string, number | string> {
   })
 
   return data ?? {}
+}
+
+function renderApiKeyCell(props: CellContext<ApiKey, unknown>) {
+  return <ApiKeyCell apiKey={props.row.original} />
 }
 
 export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
@@ -143,7 +147,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
       id: 'key',
       accessorKey: 'key',
       header: t('API Key'),
-      cell: ({ row }) => <ApiKeyCell apiKey={row.original} />,
+      cell: renderApiKeyCell,
       enableSorting: false,
       size: 260,
     },
@@ -329,7 +333,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
     {
       id: 'actions',
       header: () => t('Actions'),
-      cell: ({ row }) => <DataTableRowActions row={row} />,
+      cell: DataTableRowActions,
       meta: { pinned: 'right' as const },
     },
   ]

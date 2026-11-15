@@ -39,7 +39,9 @@ export default defineConfig({
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {
-        command: 'bun run dev --host 127.0.0.1 --port 5176',
+        command: process.env.CI
+          ? 'bun run preview --host 127.0.0.1 --port 5176'
+          : 'bun run dev --host 127.0.0.1 --port 5176',
         url: baseURL,
         reuseExistingServer: !process.env.CI,
       },
