@@ -16,18 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { Gift, ExternalLink, Loader2, Receipt } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { IconBadge } from '@/components/ui/icon-badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { TitledCard } from '@/components/ui/titled-card'
 import {
   Tooltip,
   TooltipContent,
@@ -151,12 +150,9 @@ export function RechargeFormCard({
 
   if (loading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
-        <CardHeader className='border-b p-3 !pb-3 sm:p-5 sm:!pb-5'>
-          <Skeleton className='h-6 w-32' />
-          <Skeleton className='mt-2 h-4 w-48' />
-        </CardHeader>
-        <CardContent className='space-y-4 p-3 sm:space-y-6 sm:p-5'>
+      <VStack gap={6} aria-busy='true' aria-label={t('Add Funds')}>
+        <Skeleton className='h-6 w-32' />
+        <VStack gap={6}>
           <div className='space-y-4 sm:space-y-6'>
             {/* Preset Amounts Skeleton */}
             <div className='space-y-3'>
@@ -195,44 +191,36 @@ export function RechargeFormCard({
               <Skeleton className='h-10 w-20' />
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </VStack>
+      </VStack>
     )
   }
 
   if (error) {
     return (
-      <TitledCard
-        title={<h3>{t('Add Funds')}</h3>}
-        className='border-tone-peach-border rounded-xl border shadow-none ring-0'
-        headerClassName='surface-peach px-5 py-5 sm:px-6 sm:py-6'
-        titleClassName='text-tone-peach-strong text-xl font-medium'
-        disableHoverEffect
-        contentClassName='space-y-4 p-5 sm:p-6'
-      >
+      <VStack gap={4}>
+        <h3 className='text-tone-peach-strong text-xl font-medium'>
+          {t('Add Funds')}
+        </h3>
         <Alert variant='destructive'>
           <AlertDescription>{t('Failed to load')}</AlertDescription>
         </Alert>
         {onRetry && (
-          <Button variant='outline' onClick={onRetry}>
+          <Button variant='outline' onClick={onRetry} className='w-fit'>
             {t('Retry')}
           </Button>
         )}
-      </TitledCard>
+      </VStack>
     )
   }
 
   return (
-    <TitledCard
-      title={<h3>{t('Add Funds')}</h3>}
-      description={t('Choose an amount and payment method')}
-      className='border-tone-peach-border rounded-xl border shadow-none ring-0'
-      headerClassName='surface-peach px-5 py-5 sm:px-6 sm:py-6'
-      titleClassName='text-tone-peach-strong text-xl font-medium'
-      descriptionClassName='text-tone-peach-strong'
-      disableHoverEffect
-      action={
-        onOpenBilling ? (
+    <VStack gap={6}>
+      <HStack gap={3} wrap='wrap' hAlign='between' vAlign='center'>
+        <h3 className='text-tone-peach-strong text-xl font-medium'>
+          {t('Add Funds')}
+        </h3>
+        {onOpenBilling ? (
           <Button
             variant='outline'
             size='sm'
@@ -242,10 +230,8 @@ export function RechargeFormCard({
             <Receipt className='h-4 w-4' />
             {t('Order History')}
           </Button>
-        ) : null
-      }
-      contentClassName='space-y-6 p-5 sm:space-y-8 sm:p-6'
-    >
+        ) : null}
+      </HStack>
       {/* Online Topup Section */}
       {hasAnyTopup ? (
         <div className='space-y-4 sm:space-y-6'>
@@ -253,9 +239,7 @@ export function RechargeFormCard({
             <>
               {presetAmounts.length > 0 && (
                 <div className='space-y-2.5 sm:space-y-3'>
-                  <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                    {t('Amount')}
-                  </Label>
+                  <Label className='text-sm font-medium'>{t('Amount')}</Label>
                   <div className='grid grid-cols-2 gap-1.5 sm:gap-3 md:grid-cols-4'>
                     {presetAmounts.map((preset) => {
                       const discount =
@@ -278,10 +262,10 @@ export function RechargeFormCard({
                           key={preset.value}
                           variant='outline'
                           className={cn(
-                            'flex h-auto min-h-20 flex-col items-start rounded-lg px-4 py-3 text-left whitespace-normal',
+                            'flex h-auto min-h-16 flex-col items-start rounded-lg px-3 py-3 text-left whitespace-normal',
                             selectedPreset === preset.value
-                              ? 'surface-peach border-tone-peach-border text-tone-peach-strong ring-2 ring-tone-peach-border'
-                              : 'border-muted'
+                              ? 'border-tone-peach-border bg-tone-peach text-tone-peach-strong'
+                              : 'border-border bg-transparent'
                           )}
                           aria-pressed={selectedPreset === preset.value}
                           onClick={() => onSelectPreset(preset)}
@@ -323,13 +307,10 @@ export function RechargeFormCard({
               )}
 
               <div className='space-y-2.5 sm:space-y-3'>
-                <Label
-                  htmlFor='topup-amount'
-                  className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
-                >
+                <Label htmlFor='topup-amount' className='text-sm font-medium'>
                   {t('Custom Amount')}
                 </Label>
-                <div className='grid grid-cols-[minmax(0,1fr)_minmax(110px,0.55fr)] gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
+                <section className='grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center'>
                   <Input
                     id='topup-amount'
                     type='number'
@@ -339,23 +320,23 @@ export function RechargeFormCard({
                     placeholder={t('Minimum {{amount}}', { amount: minTopup })}
                     className='h-9 text-base sm:h-10 sm:text-lg'
                   />
-                  <div className='surface-peach border-tone-peach-border flex min-h-9 items-center justify-between gap-2 rounded-md border px-3 lg:min-w-52'>
+                  <HStack gap={3} hAlign='between' vAlign='center'>
                     <span className='text-muted-foreground truncate text-xs'>
                       {t('Amount to pay:')}
                     </span>
                     {calculating ? (
                       <Skeleton className='h-5 w-16' />
                     ) : (
-                      <span className='text-sm font-semibold'>
+                      <strong className='text-tone-peach-strong text-base font-semibold'>
                         {Number.isFinite(paymentAmount) &&
                         paymentAmount > 0 &&
                         !paymentError
                           ? formatCurrency(paymentAmount)
                           : '—'}
-                      </span>
+                      </strong>
                     )}
-                  </div>
-                </div>
+                  </HStack>
+                </section>
                 {paymentError && !calculating && (
                   <Alert variant='destructive'>
                     <AlertDescription>{paymentError}</AlertDescription>
@@ -364,7 +345,7 @@ export function RechargeFormCard({
               </div>
 
               <div className='space-y-2.5 sm:space-y-3'>
-                <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                <Label className='text-sm font-medium'>
                   {t('Payment Method')}
                 </Label>
                 {hasStandardPaymentMethods ? (
@@ -449,7 +430,7 @@ export function RechargeFormCard({
                 hasWaffoPaymentMethods &&
                 onWaffoMethodSelect && (
                   <div className='space-y-2.5 sm:space-y-3'>
-                    <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+                    <Label className='text-sm font-medium'>
                       {t('Waffo Payment')}
                     </Label>
                     <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
@@ -543,9 +524,7 @@ export function RechargeFormCard({
         creemProducts.length > 0 &&
         onCreemProductSelect && (
           <div className='space-y-2.5 border-t pt-4 sm:space-y-3 sm:pt-6'>
-            <Label className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-              {t('Creem Payment')}
-            </Label>
+            <Label className='text-sm font-medium'>{t('Creem Payment')}</Label>
             <CreemProductsSection
               products={creemProducts}
               onProductSelect={onCreemProductSelect}
@@ -557,13 +536,11 @@ export function RechargeFormCard({
       {redemptionEnabled ? (
         <div className='space-y-2.5 border-t pt-4 sm:space-y-3 sm:pt-6'>
           <div className='flex items-center gap-2'>
-            <IconBadge tone='warning' size='xs'>
-              <Gift />
-            </IconBadge>
-            <Label
-              htmlFor='redemption-code'
-              className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
-            >
+            <Gift
+              className='text-tone-peach-strong size-4'
+              aria-hidden='true'
+            />
+            <Label htmlFor='redemption-code' className='text-sm font-medium'>
               {t('Have a Code?')}
             </Label>
           </div>
@@ -609,6 +586,6 @@ export function RechargeFormCard({
           </AlertDescription>
         </Alert>
       )}
-    </TitledCard>
+    </VStack>
   )
 }

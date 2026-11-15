@@ -38,11 +38,11 @@ interface PanelWrapperProps {
   children?: ReactNode
 }
 
-const HEADER_SURFACES = {
-  blue: 'surface-blue border-tone-blue-border',
-  teal: 'surface-teal border-tone-teal-border',
-  violet: 'surface-violet border-tone-violet-border',
-  peach: 'surface-peach border-tone-peach-border',
+const HEADER_TONES = {
+  blue: 'text-tone-blue-strong',
+  teal: 'text-tone-teal-strong',
+  violet: 'text-tone-violet-strong',
+  peach: 'text-tone-peach-strong',
 }
 
 export function PanelWrapper(props: PanelWrapperProps) {
@@ -89,22 +89,20 @@ export function PanelWrapper(props: PanelWrapperProps) {
     <section
       aria-labelledby={titleId}
       aria-busy={Boolean(props.loading)}
-      className={cn(
-        'h-full overflow-hidden rounded-2xl border bg-card',
-        props.className
-      )}
+      className={cn('h-full min-w-0', props.className)}
     >
       <HStack
         gap={3}
         align='start'
         justify='between'
+        wrap='wrap'
         className={cn(
-          'border-b px-5 py-4',
-          props.headerTone && HEADER_SURFACES[props.headerTone]
+          'px-3 pb-3 sm:px-5',
+          props.headerTone && HEADER_TONES[props.headerTone]
         )}
       >
-        <VStack gap={1} className='text-inherit'>
-          <h4 id={titleId} className='text-sm font-semibold'>
+        <VStack gap={1} className='min-w-0 flex-1 text-inherit'>
+          <h4 id={titleId} className='text-sm font-semibold break-words'>
             {props.title}
           </h4>
           {props.description != null && (

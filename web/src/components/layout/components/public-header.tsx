@@ -220,7 +220,7 @@ export function PublicHeader(props: PublicHeaderProps) {
     <>
       <header
         className={cn(
-          'fixed inset-x-0 top-0 z-40 h-16 px-3 py-2 sm:px-5',
+          'bg-background/95 border-border/70 fixed inset-x-0 top-0 z-40 h-16 border-b px-3 backdrop-blur-md sm:px-5',
           props.className
         )}
       >
@@ -228,7 +228,7 @@ export function PublicHeader(props: PublicHeaderProps) {
           gap={4}
           align='center'
           justify='between'
-          className='bg-background/95 border-tone-blue-border mx-auto h-full max-w-7xl rounded-xl border px-3 shadow-sm backdrop-blur-md md:px-4'
+          className='mx-auto h-full max-w-7xl px-3 md:px-4'
         >
           <HStack gap={3} align='center' className='min-w-0'>
             <Link
@@ -351,7 +351,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   <Button
                     variant='ghost'
                     size='icon'
-                    className='surface-blue size-8 rounded-lg'
+                    className='hover:bg-tone-blue size-8 rounded-lg'
                     aria-label={t('Toggle navigation menu')}
                   />
                 }
@@ -359,11 +359,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                 <Menu className='size-5' aria-hidden='true' />
               </SheetTrigger>
               <SheetContent className='w-full max-w-sm gap-3 p-4'>
-                <HStack
-                  gap={3}
-                  vAlign='center'
-                  className='surface-blue mt-6 rounded-2xl p-5'
-                >
+                <HStack gap={3} vAlign='center' className='mt-6 px-1 py-3'>
                   <HeaderLogo
                     src={system.logo}
                     loading={system.loading}

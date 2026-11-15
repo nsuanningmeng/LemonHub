@@ -67,7 +67,7 @@ export function NavGroup({ title, items }: NavGroupProps) {
 
   return (
     <SidebarGroup className='px-3 py-0 group-data-[collapsible=icon]:px-1'>
-      <SidebarGroupLabel className='text-sidebar-foreground/65 before:bg-primary/60 mb-2 px-3 text-xs font-semibold tracking-wide before:me-2 before:h-px before:w-3'>
+      <SidebarGroupLabel className='text-muted-foreground mb-2 px-3 text-xs font-medium'>
         {title}
       </SidebarGroupLabel>
       <SidebarMenu className='gap-1'>
@@ -128,7 +128,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
       <SidebarMenuButton
         isActive={checkIsActive(href, item)}
         tooltip={item.title}
-        className='text-sidebar-foreground/80 hover:bg-tone-blue data-active:bg-primary data-active:text-primary-foreground data-active:hover:bg-primary data-active:hover:text-primary-foreground h-10 rounded-xl px-3 font-medium data-active:shadow-sm'
+        className='text-sidebar-foreground/80 hover:bg-tone-blue data-active:bg-primary data-active:text-primary-foreground data-active:hover:bg-primary data-active:hover:text-primary-foreground h-10 rounded-xl px-3 font-medium'
         render={
           <Link
             aria-current={checkIsActive(href, item) ? 'page' : undefined}

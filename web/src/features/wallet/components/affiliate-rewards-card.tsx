@@ -22,9 +22,7 @@ import { Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { IconBadge } from '@/components/ui/icon-badge'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
@@ -79,21 +77,19 @@ export function AffiliateRewardsCard({
     >
       <section className='grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center'>
         <div className='flex min-w-0 items-start gap-3'>
-          <IconBadge tone='chart-3'>
-            <Share2 />
-          </IconBadge>
+          <Share2
+            className='text-tone-violet-strong mt-1 size-4 shrink-0'
+            aria-hidden='true'
+          />
           <div className='min-w-0'>
             <div className='flex flex-wrap items-center gap-2'>
               <h3 className='truncate text-sm font-semibold'>
                 {t('Referral Program')}
               </h3>
               {isCashSettled && (
-                <Badge
-                  variant='secondary'
-                  className='bg-warning/15 text-warning shrink-0'
-                >
+                <small className='text-warning shrink-0 text-xs'>
                   {t('Cash settled')}
-                </Badge>
+                </small>
               )}
               <Button
                 variant='link'

@@ -61,10 +61,7 @@ export function DataTableView<TData>(props: DataTableViewProps<TData>) {
 
   return (
     <div
-      className={cn(
-        'overflow-hidden rounded-xl border bg-card',
-        props.containerClassName
-      )}
+      className={cn('overflow-hidden bg-card', props.containerClassName)}
       {...props.containerProps}
     >
       {props.splitHeader ? (

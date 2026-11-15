@@ -148,6 +148,11 @@ test('active billing expressions keep catalog categories and sidebar selection s
     screen.getByRole('complementary', { name: 'Catalog filters' })
   )
   await user.click(categories.getByRole('button', { name: /^Per Request/ }))
+  const billingDisclosure = sidebar.getByRole('button', {
+    name: 'Pricing Type',
+  })
+  expect(billingDisclosure).toHaveTextContent('Per Request')
+  await user.click(billingDisclosure)
   expect(sidebar.getByRole('button', { name: /^Per Request/ })).toHaveAttribute(
     'aria-pressed',
     'true'

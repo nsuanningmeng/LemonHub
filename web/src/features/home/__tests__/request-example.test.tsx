@@ -69,7 +69,12 @@ test('copying a selected example uses this gateway origin and real shell line co
 
 test('long request examples scroll locally and remain keyboard reachable', () => {
   render(<HeroTerminalDemo />)
+  const region = screen.getByRole('region', { name: 'Your first request' })
   const example = screen.getByLabelText('Request example')
+  expect(region).toContainElement(example)
+  expect(region).toContainElement(
+    screen.getByRole('button', { name: 'Copy request' })
+  )
   expect(example).toHaveClass('max-w-full', 'overflow-x-auto')
   expect(example).toHaveAttribute('tabindex', '0')
 })

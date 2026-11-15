@@ -18,8 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 
+import type { ViewMode } from '../../constants'
+import type { TokenUnit } from '../../types'
 import { PricingToolbar, type PricingToolbarProps } from '../pricing-toolbar'
 
 const props: PricingToolbarProps = {
@@ -75,4 +78,56 @@ test('opening model sort keeps the page interactive and choosing a price order u
     await screen.findByRole('menuitem', { name: 'Input Price: Low to High' })
   )
   expect(onSortChange).toHaveBeenCalledWith('input-price-low')
+})
+
+function PriceControlsFixture() {
+  const [tokenUnit, setTokenUnit] = useState<TokenUnit>('M')
+  const [showRechargePrice, setShowRechargePrice] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('card')
+  return (
+    <PricingToolbar
+      {...props}
+      tokenUnit={tokenUnit}
+      onTokenUnitChange={setTokenUnit}
+      showRechargePrice={showRechargePrice}
+      onRechargePriceChange={setShowRechargePrice}
+      viewMode={viewMode}
+      onViewModeChange={setViewMode}
+    />
+  )
+}
+
+test('price and view controls retain independent selections with keyboard access', async () => {
+  const user = userEvent.setup()
+  render(<PriceControlsFixture />)
+  expect(
+    screen.getByRole('group', { name: 'Price display mode' })
+  ).toBeVisible()
+  expect(screen.getByRole('group', { name: 'Token unit' })).toBeVisible()
+  await user.click(screen.getByRole('button', { name: 'Recharge' }))
+  const unit = screen.getByRole('button', { name: '/1K' })
+  unit.focus()
+  await user.keyboard('{Enter}')
+  await user.click(screen.getByRole('button', { name: 'Table view' }))
+  expect(screen.getByRole('button', { name: 'Recharge' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(screen.getByRole('button', { name: 'Standard' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  )
+  expect(unit).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: '/1M' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  )
+  expect(screen.getByRole('button', { name: 'Table view' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(screen.getByRole('button', { name: 'Card view' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  )
 })

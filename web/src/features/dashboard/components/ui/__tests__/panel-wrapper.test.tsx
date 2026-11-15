@@ -75,3 +75,23 @@ test('an empty panel announces its configured empty state before showing loaded 
   )
   expect(screen.getByText('Route list')).toBeVisible()
 })
+
+test('a long panel title can wrap while its refresh action stays available', () => {
+  const title =
+    'Regional service health for a production workspace with a long name'
+  render(
+    <PanelWrapper
+      title={title}
+      headerActions={<button type='button'>Refresh</button>}
+    >
+      Healthy
+    </PanelWrapper>
+  )
+  expect(screen.getByRole('heading', { name: title })).toHaveClass(
+    'break-words'
+  )
+  expect(screen.getByRole('button', { name: 'Refresh' })).toBeVisible()
+  expect(screen.getByRole('region', { name: title })).toHaveTextContent(
+    'Healthy'
+  )
+})

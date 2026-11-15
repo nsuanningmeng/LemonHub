@@ -16,16 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Heading } from '@astryxdesign/core/Heading'
 import { HStack } from '@astryxdesign/core/HStack'
+import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { Link } from '@tanstack/react-router'
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Braces,
-  KeyRound,
-  Layers3,
-} from 'lucide-react'
+import { ArrowUpRight, KeyRound, Layers3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
@@ -73,7 +69,7 @@ export function AuthLayout(props: AuthLayoutProps) {
         {pricingAccess.enabled && !pricingAccess.requireAuth && (
           <Link
             to='/pricing'
-            className='surface-violet hidden shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-opacity hover:opacity-80 sm:inline-flex'
+            className='text-tone-blue-strong hidden shrink-0 items-center gap-2 py-2 text-sm font-medium underline-offset-4 hover:underline sm:inline-flex'
           >
             {t('Explore models')}
             <ArrowUpRight className='size-4' aria-hidden />
@@ -84,108 +80,74 @@ export function AuthLayout(props: AuthLayoutProps) {
       <main className='grid min-w-0 gap-6 px-5 pb-6 sm:px-8 lg:min-h-[calc(100svh-5rem)] lg:grid-cols-[1.05fr_1fr] lg:gap-8 lg:pb-8'>
         <aside
           aria-label={t('Your AI workspace')}
-          className='surface-brand relative hidden min-w-0 flex-col justify-between gap-10 overflow-hidden rounded-3xl p-8 lg:flex lg:p-10 xl:p-12'
+          className='surface-brand relative hidden min-w-0 flex-col justify-between gap-10 overflow-hidden rounded-2xl p-8 lg:flex lg:p-10 xl:p-12'
         >
-          <VStack gap={8}>
-            <HStack gap={3} vAlign='center'>
-              <HStack
-                hAlign='center'
-                vAlign='center'
-                className='border-brand-paper/30 size-10 rounded-2xl border'
-              >
-                <Braces className='text-brand-paper size-5' aria-hidden />
-              </HStack>
-              <p className='text-brand-paper/80 font-mono text-xs tracking-widest uppercase'>
-                {t('Built for what comes next')}
-              </p>
-            </HStack>
-            <VStack gap={6}>
-              <h2 className='text-brand-paper max-w-lg text-5xl leading-tight font-semibold tracking-tight xl:text-6xl'>
-                {t('Your ideas.')}
-                <br />
-                <em className='text-brand-paper font-normal not-italic'>
-                  {t('Connected.')}
-                </em>
-              </h2>
-              <p className='text-brand-paper/80 max-w-md text-base leading-relaxed'>
-                {t(
-                  'One workspace for the models, keys, and insights behind your next project.'
-                )}
-              </p>
-            </VStack>
-          </VStack>
-
-          <VStack gap={4}>
-            <HStack
-              gap={4}
-              vAlign='center'
-              className='surface-teal rounded-2xl p-5'
+          <VStack gap={6}>
+            <Heading
+              level={2}
+              color='inherit'
+              className='text-brand-paper max-w-lg text-5xl leading-tight tracking-tight xl:text-6xl'
             >
-              <HStack
-                hAlign='center'
-                vAlign='center'
-                className='border-tone-teal-border size-11 shrink-0 rounded-xl border'
+              {t('Your ideas.')}
+              <Text
+                type='inherit'
+                color='inherit'
+                display='block'
+                className='font-normal'
               >
-                <KeyRound
-                  className='text-tone-teal-strong size-5'
-                  aria-hidden
-                />
-              </HStack>
-              <VStack gap={1} className='min-w-0'>
-                <p className='text-tone-teal-strong text-sm font-semibold'>
-                  {t('One key. More possibilities.')}
-                </p>
-                <p className='text-tone-teal-strong text-xs leading-relaxed'>
-                  {t('Connect your tools through a unified API.')}
-                </p>
-              </VStack>
-              <ArrowUpRight
-                className='text-tone-teal-strong size-5 shrink-0'
+                {t('Connected.')}
+              </Text>
+            </Heading>
+            <Text
+              as='p'
+              color='inherit'
+              className='text-brand-paper/80 max-w-md leading-relaxed'
+            >
+              {t(
+                'One workspace for the models, keys, and insights behind your next project.'
+              )}
+            </Text>
+          </VStack>
+          <VStack gap={8}>
+            <HStack gap={4} align='start'>
+              <KeyRound
+                className='text-brand-paper size-5 shrink-0'
                 aria-hidden
               />
+              <VStack gap={2} className='min-w-0'>
+                <Text type='label' color='inherit' className='text-brand-paper'>
+                  {t('One key. More possibilities.')}
+                </Text>
+                <Text
+                  as='p'
+                  type='supporting'
+                  color='inherit'
+                  className='text-brand-paper/80 leading-relaxed'
+                >
+                  {t('Connect your tools through a unified API.')}
+                </Text>
+              </VStack>
             </HStack>
-            <HStack
-              gap={4}
-              vAlign='center'
-              className='surface-violet rounded-2xl p-5 lg:ml-8'
-            >
-              <HStack
-                hAlign='center'
-                vAlign='center'
-                className='border-tone-violet-border size-11 shrink-0 rounded-xl border'
-              >
-                <Layers3
-                  className='text-tone-violet-strong size-5'
-                  aria-hidden
-                />
-              </HStack>
-              <VStack gap={1} className='min-w-0'>
-                <p className='text-tone-violet-strong text-sm font-semibold'>
+            <HStack gap={4} align='start'>
+              <Layers3
+                className='text-brand-paper size-5 shrink-0'
+                aria-hidden
+              />
+              <VStack gap={2} className='min-w-0'>
+                <Text type='label' color='inherit' className='text-brand-paper'>
                   {t('A clearer view of every request.')}
-                </p>
-                <p className='text-tone-violet-strong text-xs leading-relaxed'>
+                </Text>
+                <Text
+                  as='p'
+                  type='supporting'
+                  color='inherit'
+                  className='text-brand-paper/80 leading-relaxed'
+                >
                   {t('Keep models, usage, and spending in focus.')}
-                </p>
+                </Text>
               </VStack>
             </HStack>
           </VStack>
-          <HStack
-            gap={4}
-            vAlign='center'
-            hAlign='between'
-            className='border-brand-paper/20 border-t pt-6'
-          >
-            <p className='text-brand-paper/80 max-w-xs text-sm leading-relaxed'>
-              {t('From first call to your next big idea.')}
-            </p>
-            <HStack
-              hAlign='center'
-              vAlign='center'
-              className='surface-peach size-10 shrink-0 rounded-full'
-            >
-              <ArrowRight className='size-5' aria-hidden />
-            </HStack>
-          </HStack>
         </aside>
 
         <VStack
@@ -195,21 +157,8 @@ export function AuthLayout(props: AuthLayoutProps) {
         >
           <section
             aria-label={t('Authentication')}
-            className='border-tone-blue-border bg-card mx-auto w-full max-w-md min-w-0 rounded-3xl border p-6 shadow-sm sm:p-8'
+            className='mx-auto w-full max-w-md min-w-0 py-6 sm:px-4 sm:py-8'
           >
-            <HStack
-              gap={3}
-              vAlign='center'
-              className='surface-blue mb-8 rounded-xl px-4 py-3'
-            >
-              <KeyRound
-                className='text-tone-blue-strong size-4 shrink-0'
-                aria-hidden
-              />
-              <p className='text-tone-blue-strong text-xs font-medium'>
-                {t('Your workspace starts here')}
-              </p>
-            </HStack>
             {props.children}
           </section>
         </VStack>

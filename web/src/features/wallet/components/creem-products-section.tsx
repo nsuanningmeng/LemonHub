@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
-import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatNumber } from '@/lib/format'
 
@@ -40,11 +40,11 @@ export function CreemProductsSection({
 
   if (loading) {
     return (
-      <div className='grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3'>
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className='h-24 rounded-lg' />
+      <section className='grid grid-cols-2 gap-3 md:grid-cols-3'>
+        {['first', 'second', 'third'].map((key) => (
+          <Skeleton key={key} className='h-24 rounded-lg' />
         ))}
-      </div>
+      </section>
     )
   }
 
@@ -53,25 +53,26 @@ export function CreemProductsSection({
   }
 
   return (
-    <div className='grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 md:grid-cols-3'>
+    <section className='grid grid-cols-2 gap-3 md:grid-cols-3'>
       {products.map((product) => (
-        <Card
+        <Button
           key={product.productId}
-          data-card-hover='false'
-          className='cursor-pointer'
+          type='button'
+          variant='outline'
+          className='h-auto min-w-0 flex-col items-start gap-2 bg-transparent p-3 text-left whitespace-normal'
           onClick={() => onProductSelect(product)}
         >
-          <CardContent className='p-3 text-center sm:p-4'>
-            <div className='mb-2 text-lg font-medium'>{product.name}</div>
-            <div className='text-muted-foreground mb-2 text-sm'>
-              {t('Quota')}: {formatNumber(product.quota)}
-            </div>
-            <div className='text-primary text-lg font-semibold'>
-              {formatCreemPrice(product.price, product.currency)}
-            </div>
-          </CardContent>
-        </Card>
+          <strong className='max-w-full font-medium wrap-anywhere'>
+            {product.name}
+          </strong>
+          <small className='text-muted-foreground text-xs'>
+            {t('Quota')}: {formatNumber(product.quota)}
+          </small>
+          <strong className='text-tone-peach-strong text-lg font-semibold'>
+            {formatCreemPrice(product.price, product.currency)}
+          </strong>
+        </Button>
       ))}
-    </div>
+    </section>
   )
 }

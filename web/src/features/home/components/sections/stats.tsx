@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { HStack } from '@astryxdesign/core/HStack'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
-import { Asterisk } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
@@ -40,7 +39,7 @@ export function Stats(props: StatsProps) {
           type='supporting'
           color='inherit'
           justify='center'
-          className='text-xs tracking-widest uppercase'
+          className='text-sm'
         >
           {t('One workspace for a growing model ecosystem')}
         </Text>
@@ -53,17 +52,15 @@ export function Stats(props: StatsProps) {
         >
           {['OpenAI', 'Anthropic', 'Gemini', 'DeepSeek', 'Qwen', 'Llama'].map(
             (name) => (
-              <HStack key={name} gap={3} align='center'>
-                <Asterisk className='size-4 opacity-40' aria-hidden='true' />
-                <Text
-                  type='large'
-                  color='inherit'
-                  weight='semibold'
-                  className='tracking-tight'
-                >
-                  {name}
-                </Text>
-              </HStack>
+              <Text
+                key={name}
+                type='large'
+                color='inherit'
+                weight='semibold'
+                className='tracking-tight'
+              >
+                {name}
+              </Text>
             )
           )}
         </HStack>

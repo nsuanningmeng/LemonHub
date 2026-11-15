@@ -88,9 +88,11 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
 
   return (
     <VStack
+      as='section'
+      aria-label={t('Your first request')}
       gap={0}
       className={cn(
-        'surface-base bg-card text-card-foreground min-w-0 overflow-hidden rounded-2xl border border-tone-blue-border',
+        'surface-blue min-w-0 overflow-hidden rounded-2xl',
         props.className
       )}
     >
@@ -98,7 +100,7 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
         gap={2}
         justify='between'
         align='center'
-        className='border-tone-blue-border border-b px-5 py-4'
+        className='px-5 pt-5 pb-2'
       >
         <HStack
           gap={2}
@@ -117,7 +119,7 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
       <HStack
         gap={2}
         wrap='wrap'
-        className='px-5 pt-5'
+        className='px-5 pt-3'
         aria-label={t('API protocol')}
       >
         {API_EXAMPLES.map((item, index) => (
@@ -142,21 +144,22 @@ export function HeroTerminalDemo(props: HeroTerminalDemoProps) {
         id='home-request-example'
         tabIndex={0}
         aria-label={t('Request example')}
-        className='text-foreground min-h-56 max-w-full overflow-x-auto p-5 font-mono text-xs leading-6 focus-visible:outline-offset-2'
+        className='text-tone-blue-strong min-h-56 max-w-full overflow-x-auto p-5 font-mono text-xs leading-6 focus-visible:outline-offset-2'
       >
         <code>{command}</code>
       </pre>
       <HStack
-        gap={4}
+        gap={3}
+        wrap='wrap'
         justify='between'
         align='center'
-        className='border-tone-blue-border border-t px-5 py-4'
+        className='px-5 pt-2 pb-5'
       >
         <Text
           as='p'
           type='supporting'
           color='secondary'
-          className='max-w-xs text-xs leading-relaxed'
+          className='min-w-0 flex-1 text-xs leading-relaxed'
         >
           {t('Choose an available model and replace the example key.')}
         </Text>

@@ -53,7 +53,7 @@ export function AppSidebar() {
       variant={layout.variant}
       className='border-sidebar-border top-0 h-svh py-3'
     >
-      <SidebarHeader className='surface-blue border-tone-blue-border mx-3 mt-3 mb-5 rounded-2xl border p-1.5 group-data-[collapsible=icon]:mx-1 group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 md:mt-0'>
+      <SidebarHeader className='mx-3 mt-3 mb-5 p-1.5 group-data-[collapsible=icon]:mx-1 group-data-[collapsible=icon]:p-0 md:mt-0'>
         <SystemBrand variant='sidebar' />
       </SidebarHeader>
 
@@ -79,13 +79,13 @@ export function AppSidebar() {
         </AnimatePresence>
       </SidebarContent>
 
-      <SidebarFooter className='surface-violet border-tone-violet-border mx-3 mb-3 gap-2 rounded-xl border p-2 group-data-[collapsible=icon]:mx-1 group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:p-0 md:mb-0'>
+      <SidebarFooter className='mx-3 mb-3 gap-2 p-2 group-data-[collapsible=icon]:mx-1 group-data-[collapsible=icon]:p-0 md:mb-0'>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip={t('Command palette')}
               onClick={() => search.setOpen(true)}
-              className='hover:bg-tone-violet h-10 rounded-lg font-medium'
+              className='text-muted-foreground hover:bg-tone-violet hover:text-tone-violet-strong h-10 rounded-lg font-medium'
             >
               <Command aria-hidden='true' className='size-4 shrink-0' />
               <Text
@@ -95,19 +95,12 @@ export function AppSidebar() {
               >
                 {t('Command palette')}
               </Text>
-              <kbd className='border-tone-violet-border rounded-md border px-1.5 py-0.5 font-mono text-xs group-data-[collapsible=icon]:hidden'>
+              <kbd className='text-muted-foreground px-1 py-0.5 font-mono text-xs group-data-[collapsible=icon]:hidden'>
                 ⌘ K
               </kbd>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <Text
-          type='supporting'
-          color='inherit'
-          className='px-2 pb-1 text-xs opacity-75 group-data-[collapsible=icon]:hidden'
-        >
-          {t('One connection. Endless possibilities.')}
-        </Text>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { ArrowUpDown, Check, Filter, Grid2X2, Table2 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -101,10 +103,12 @@ function SegmentedControl(props: {
   ariaLabel: string
 }) {
   return (
-    <div
+    <HStack
+      gap={1}
+      vAlign='center'
       role='group'
       aria-label={props.ariaLabel}
-      className='bg-muted/60 inline-flex h-8 items-center rounded-lg border p-0.5'
+      className='h-8 shrink-0'
     >
       {props.options.map((option) => {
         const Icon = option.icon
@@ -117,11 +121,11 @@ function SegmentedControl(props: {
             aria-pressed={isActive}
             aria-label={option.tooltip || option.label}
             className={cn(
-              'inline-flex h-full items-center justify-center rounded-md text-xs font-medium transition-all',
-              Icon && !option.label ? 'w-7' : 'gap-1.5 px-3',
+              'focus-visible:ring-ring inline-flex h-full items-center justify-center rounded-md text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
+              Icon && !option.label ? 'w-7' : 'gap-1.5 px-2',
               isActive
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'bg-muted text-foreground'
+                : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
             )}
           >
             {Icon && <Icon className='size-3.5' />}
@@ -142,7 +146,7 @@ function SegmentedControl(props: {
           </Tooltip>
         )
       })}
-    </div>
+    </HStack>
   )
 }
 
@@ -167,40 +171,74 @@ export function PricingToolbar(props: PricingToolbarProps) {
   )
 
   return (
-    <div className='rounded-xl border p-3'>
-      <div className='border-border flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-center lg:justify-between'>
-        <div className='flex items-center gap-2'>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            onClick={() => setMobileFiltersOpen(true)}
-            className='gap-1.5 xl:hidden'
-          >
-            <Filter className='size-4' />
-            {t('Filter')}
-            {props.activeFilterCount > 0 && (
-              <Badge className='ml-0.5 size-5 justify-center p-0 text-[10px]'>
-                {props.activeFilterCount}
-              </Badge>
-            )}
-          </Button>
+    <VStack gap={0}>
+      <HStack
+        gap={3}
+        hAlign='between'
+        vAlign='center'
+        wrap='wrap'
+        className='py-2'
+      >
+        <HStack
+          gap={4}
+          hAlign='between'
+          vAlign='center'
+          className='w-full lg:w-auto'
+        >
+          <HStack gap={2} vAlign='center'>
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              onClick={() => setMobileFiltersOpen(true)}
+              className='gap-1.5 xl:hidden'
+            >
+              <Filter className='size-4' />
+              {t('Filter')}
+              {props.activeFilterCount > 0 && (
+                <Badge className='ml-0.5 size-5 justify-center p-0 text-[10px]'>
+                  {props.activeFilterCount}
+                </Badge>
+              )}
+            </Button>
 
-          <div className='text-muted-foreground flex items-baseline gap-1 text-sm'>
-            <span className='text-foreground font-semibold tabular-nums'>
-              {props.filteredCount.toLocaleString()}
-            </span>
-            <span>{props.filteredCount === 1 ? t('model') : t('models')}</span>
-            {props.hasActiveFilters && props.totalCount && (
-              <span className='text-muted-foreground/60 text-xs'>
-                / {props.totalCount.toLocaleString()}
-              </span>
-            )}
-          </div>
-        </div>
+            <HStack
+              gap={1}
+              vAlign='end'
+              className='text-muted-foreground text-sm'
+            >
+              <strong className='text-foreground font-semibold tabular-nums'>
+                {props.filteredCount.toLocaleString()}
+              </strong>
+              <p>{props.filteredCount === 1 ? t('model') : t('models')}</p>
+              {props.hasActiveFilters && props.totalCount && (
+                <small className='text-muted-foreground text-xs'>
+                  / {props.totalCount.toLocaleString()}
+                </small>
+              )}
+            </HStack>
+          </HStack>
+          <SegmentedControl
+            options={[
+              {
+                value: VIEW_MODES.CARD,
+                icon: Grid2X2,
+                tooltip: t('Card view'),
+              },
+              {
+                value: VIEW_MODES.TABLE,
+                icon: Table2,
+                tooltip: t('Table view'),
+              },
+            ]}
+            value={props.viewMode}
+            onChange={handleViewModeChange}
+            ariaLabel={t('View mode')}
+          />
+        </HStack>
 
-        <div className='flex flex-wrap items-center gap-2'>
-          <div className='hidden items-center gap-2 sm:flex'>
+        <HStack gap={2} vAlign='center' wrap='wrap' className='min-w-0'>
+          <HStack gap={2} vAlign='center' wrap='wrap'>
             <SegmentedControl
               options={[
                 { value: 'standard', label: t('Standard') },
@@ -219,21 +257,21 @@ export function PricingToolbar(props: PricingToolbarProps) {
               onChange={handleTokenUnitChange}
               ariaLabel={t('Token unit')}
             />
-          </div>
+          </HStack>
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger
               render={
                 <Button
                   type='button'
-                  variant='outline'
+                  variant='ghost'
                   size='sm'
-                  className='h-8 gap-1.5 px-3 text-xs'
+                  className='h-8 gap-1.5 px-2 text-xs'
                 />
               }
             >
               <ArrowUpDown className='size-3.5' />
-              <span>{sortLabels[props.sortBy as SortOption] || t('Sort')}</span>
+              {sortLabels[props.sortBy as SortOption] || t('Sort')}
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end' className='w-44'>
               {Object.entries(sortLabels).map(([value, label]) => (
@@ -253,26 +291,8 @@ export function PricingToolbar(props: PricingToolbarProps) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <SegmentedControl
-            options={[
-              {
-                value: VIEW_MODES.CARD,
-                icon: Grid2X2,
-                tooltip: t('Card view'),
-              },
-              {
-                value: VIEW_MODES.TABLE,
-                icon: Table2,
-                tooltip: t('Table view'),
-              },
-            ]}
-            value={props.viewMode}
-            onChange={handleViewModeChange}
-            ariaLabel={t('View mode')}
-          />
-        </div>
-      </div>
+        </HStack>
+      </HStack>
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
         <SheetContent
@@ -285,7 +305,7 @@ export function PricingToolbar(props: PricingToolbarProps) {
               {t('Filter models by provider, group, type, endpoint, and tags.')}
             </SheetDescription>
           </SheetHeader>
-          <div className={sideDrawerFormClassName('gap-0')}>
+          <VStack gap={0} className={sideDrawerFormClassName('gap-0')}>
             <PricingSidebar
               quotaTypeFilter={props.quotaTypeFilter}
               endpointTypeFilter={props.endpointTypeFilter}
@@ -306,9 +326,9 @@ export function PricingToolbar(props: PricingToolbarProps) {
               onClearFilters={props.onClearFilters}
               className='border-0 bg-transparent p-0 shadow-none'
             />
-          </div>
+          </VStack>
         </SheetContent>
       </Sheet>
-    </div>
+    </VStack>
   )
 }

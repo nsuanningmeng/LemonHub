@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 
 import { filterByQuotaType } from '../../lib/filters'
@@ -123,7 +124,8 @@ test.each<{
   },
 ])(
   '$name has matching results, catalog category counts and sidebar counts',
-  ({ pricing, category }) => {
+  async ({ pricing, category }) => {
+    const user = userEvent.setup()
     const model: PricingModel = {
       id: 1,
       model_name: 'test-model',
@@ -156,6 +158,7 @@ test.each<{
         />
       </>
     )
+    await user.click(screen.getByRole('button', { name: 'Pricing Type' }))
     for (const [value, label] of [
       ['token', 'Token-based'],
       ['request', 'Per Request'],

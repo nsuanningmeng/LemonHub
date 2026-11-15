@@ -336,21 +336,8 @@ export function Wallet(props: WalletProps) {
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <VStack gap={8} className='mx-auto w-full max-w-7xl'>
-            <header className='border-brand-line border-b pb-6'>
-              <p className='text-muted-foreground text-xs font-medium tracking-widest uppercase'>
-                {t('Account ledger')}
-              </p>
-              <h3 className='mt-3 text-2xl font-medium tracking-tight sm:text-3xl'>
-                {t('Keep your ideas moving.')}
-              </h3>
-              <p className='text-muted-foreground mt-2 max-w-2xl text-sm leading-relaxed'>
-                {t(
-                  'Your balance, payment options, and subscriptions in one place.'
-                )}
-              </p>
-            </header>
             <section
-              className='grid items-start gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.8fr)]'
+              className='grid items-start gap-8 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.8fr)] lg:gap-10'
               aria-label={t('Wallet workspace')}
             >
               <aside className='min-w-0 lg:sticky lg:top-6'>
@@ -367,7 +354,7 @@ export function Wallet(props: WalletProps) {
                   }}
                 />
               </aside>
-              <VStack gap={6} className='min-w-0'>
+              <VStack gap={10} className='min-w-0'>
                 <section
                   ref={addFundsRef}
                   id='wallet-add-funds'

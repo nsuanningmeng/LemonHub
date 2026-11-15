@@ -65,7 +65,9 @@ test('an unavailable page presents a readable recovery message and returns home'
     })
   ).toBeVisible()
   expect(screen.getByText('404')).toBeVisible()
-  expect(screen.getByText('404').closest('.surface-peach')).toBeInTheDocument()
+  expect(screen.getByText('404')).toHaveClass('text-tone-blue-strong')
+  expect(screen.getByRole('main').querySelector(':scope > .border')).toBeNull()
+  expect(screen.queryByText('Connection notice')).not.toBeInTheDocument()
   expect(screen.getByRole('main').parentElement).toHaveClass('min-h-svh')
   await user.click(screen.getByRole('button', { name: 'Back to Home' }))
   expect(

@@ -348,15 +348,13 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
       <VStack
         gap={0}
         className={cn(
-          'isolate min-w-0 overflow-hidden rounded-xl border bg-card has-[tr[data-state=selected]]:border-tone-blue-border',
+          'isolate min-w-0 overflow-hidden',
           props.fixedHeight !== false && 'h-full min-h-0',
           props.className
         )}
       >
         {toolbarNode != null && (
-          <header className='surface-blue border-tone-blue-border shrink-0 border-b px-4 py-3'>
-            {toolbarNode}
-          </header>
+          <header className='shrink-0 pb-4'>{toolbarNode}</header>
         )}
         {hasError && (
           <section
@@ -505,7 +503,7 @@ function renderMobile<TData>(
 
   return (
     <div
-      className='min-h-0 flex-1 overflow-y-auto p-3'
+      className='min-h-0 flex-1 overflow-y-auto'
       aria-busy={props.isLoading || props.isFetching}
     >
       {mobileContent}
@@ -531,7 +529,7 @@ function renderDesktop<TData>(
       <div
         className={cn(
           fixedHeight && 'min-h-0 flex-1 overflow-y-auto',
-          'p-4 transition-opacity duration-150',
+          'transition-opacity duration-150',
           isFetchingOnly && 'pointer-events-none opacity-60'
         )}
       >

@@ -18,10 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Grid } from '@astryxdesign/core/Grid'
 import { Heading } from '@astryxdesign/core/Heading'
-import { HStack } from '@astryxdesign/core/HStack'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
-import { ArrowUpRight, Braces, KeyRound, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 export function HowItWorks() {
@@ -33,9 +31,7 @@ export function HowItWorks() {
       description: t(
         'Create your account, explore the available models and choose what fits your project.'
       ),
-      icon: Sparkles,
-      surface: 'surface-violet',
-      offset: '',
+      tone: 'text-tone-violet-strong',
     },
     {
       number: '02',
@@ -43,9 +39,7 @@ export function HowItWorks() {
       description: t(
         'Create an API key, point your client to this gateway and send your first request.'
       ),
-      icon: KeyRound,
-      surface: 'surface-blue',
-      offset: 'lg:mt-8',
+      tone: 'text-tone-blue-strong',
     },
     {
       number: '03',
@@ -53,54 +47,40 @@ export function HowItWorks() {
       description: t(
         'Follow your usage and costs in the console while you keep building.'
       ),
-      icon: Braces,
-      surface: 'surface-teal',
-      offset: 'lg:mt-16',
+      tone: 'text-tone-teal-strong',
     },
   ]
   return (
     <section
-      className='px-6 pt-4 pb-16 md:px-10 md:pb-20'
+      className='mx-auto max-w-7xl px-6 pt-4 pb-16 md:px-10 md:pb-20'
       aria-labelledby='home-workflow-title'
     >
-      <VStack gap={10} className='mx-auto max-w-7xl'>
-        <VStack gap={3} className='max-w-2xl'>
-          <Text
-            type='supporting'
-            className='text-tone-blue-strong font-mono tracking-widest uppercase'
-          >
-            {t('From idea to first request')}
-          </Text>
-          <Heading
-            level={2}
-            id='home-workflow-title'
-            type='display-2'
-            className='text-3xl tracking-tight md:text-4xl'
-          >
-            {t('A small setup. A wide open canvas.')}
-          </Heading>
-        </VStack>
-        <Grid columns={{ minWidth: 260, max: 3 }} gap={6} align='start'>
+      <VStack gap={10}>
+        <Heading
+          level={2}
+          id='home-workflow-title'
+          type='display-2'
+          className='text-3xl tracking-tight md:text-4xl'
+        >
+          {t('From idea to first request')}
+        </Heading>
+        <Grid
+          role='list'
+          columns={{ minWidth: 260, max: 3 }}
+          gap={8}
+          align='start'
+          className='m-0 list-none p-0'
+        >
           {steps.map((step) => (
             <VStack
-              as='article'
+              role='listitem'
               key={step.number}
-              gap={5}
-              className={step.offset}
+              gap={4}
+              className='min-w-0'
             >
-              <HStack
-                justify='between'
-                align='center'
-                className={`${step.surface} rounded-2xl px-5 py-5`}
-              >
-                <HStack align='center' gap={4}>
-                  <step.icon className='size-6' aria-hidden='true' />
-                  <Text type='display-3' color='inherit' className='font-mono'>
-                    {step.number}
-                  </Text>
-                </HStack>
-                <ArrowUpRight className='size-6' aria-hidden='true' />
-              </HStack>
+              <Text type='display-3' className={`${step.tone} font-mono`}>
+                {step.number}
+              </Text>
               <Heading level={3} className='text-lg'>
                 {step.title}
               </Heading>

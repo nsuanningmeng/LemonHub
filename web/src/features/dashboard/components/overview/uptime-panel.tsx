@@ -22,7 +22,6 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { IconBadge } from '@/components/ui/icon-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getUptimeStatus } from '@/features/dashboard/api'
 import type { UptimeMonitor } from '@/features/dashboard/types'
@@ -65,9 +64,7 @@ export function UptimePanel() {
       headerTone='teal'
       title={
         <span className='flex items-center gap-2'>
-          <IconBadge tone='success' size='sm'>
-            <Activity />
-          </IconBadge>
+          <Activity className='size-4' aria-hidden='true' />
           {t('Uptime')}
         </span>
       }
@@ -79,7 +76,7 @@ export function UptimePanel() {
           ? t('Failed to load')
           : t('No uptime monitoring configured')
       }
-      height='h-80'
+      height='h-24'
       contentClassName='p-0'
       headerActions={
         <Button
@@ -97,7 +94,7 @@ export function UptimePanel() {
         </Button>
       }
     >
-      <ScrollArea className='h-80'>
+      <ScrollArea className='max-h-80 [&>[data-slot=scroll-area-viewport]]:max-h-80'>
         <div>
           {groups.map((group, groupIdx) => (
             <div key={group.categoryName}>

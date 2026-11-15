@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
 import { useTranslation } from 'react-i18next'
 
 import { Checkbox } from '@/components/ui/checkbox'
@@ -50,12 +51,7 @@ export function LegalConsent({
   }
 
   return (
-    <div
-      className={cn(
-        'border-border/60 bg-muted/40 flex items-start gap-3 rounded-md border p-3',
-        className
-      )}
-    >
+    <HStack gap={3} align='start' className={cn('py-1', className)}>
       <Checkbox
         id='legal-consent'
         checked={checked}
@@ -89,9 +85,8 @@ export function LegalConsent({
               {t('Privacy Policy')}
             </a>
           )}
-          .
         </span>
       </Label>
-    </div>
+    </HStack>
   )
 }

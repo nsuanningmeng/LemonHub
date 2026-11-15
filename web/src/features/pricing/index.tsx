@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { HStack } from '@astryxdesign/core/HStack'
 import { VStack } from '@astryxdesign/core/VStack'
-import { BookOpen, Network } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -175,12 +174,12 @@ export function Pricing() {
           role='alert'
           gap={4}
           hAlign='center'
-          className='surface-peach rounded-3xl p-8 text-center'
+          className='py-16 text-center'
         >
-          <h1 className='text-tone-peach-strong text-2xl font-semibold'>
+          <h1 className='text-foreground text-2xl font-semibold'>
             {t('Unable to load the model catalog.')}
           </h1>
-          <p className='text-tone-peach-strong text-sm'>
+          <p className='text-muted-foreground text-sm'>
             {t('Please try again later.')}
           </p>
           <Button
@@ -199,64 +198,50 @@ export function Pricing() {
     <PublicLayout showMainContainer={false}>
       <main id='main-content' className='bg-background'>
         <PageTransition className='mx-auto w-full max-w-screen-2xl px-5 pt-24 pb-12 sm:px-8 lg:px-12'>
-          <header className='surface-violet border-tone-violet-border mb-6 grid gap-8 rounded-3xl border p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,24rem)] lg:items-end lg:p-10'>
-            <VStack gap={4}>
-              <p className='text-tone-violet-strong flex items-center gap-3 font-mono text-xs tracking-widest uppercase'>
-                <BookOpen className='size-5' aria-hidden />
-                {t('The model library')}
-              </p>
-              <h1 className='text-tone-violet-strong max-w-3xl text-4xl leading-tight font-medium tracking-tight sm:text-5xl lg:text-6xl'>
-                {t('Different strengths.')}
-                <br />
-                <em className='text-tone-blue-strong not-italic'>
-                  {t('One API.')}
-                </em>
+          <HStack
+            as='header'
+            gap={6}
+            wrap='wrap'
+            vAlign='end'
+            hAlign='between'
+            className='pb-8'
+          >
+            <VStack gap={2}>
+              <h1 className='text-foreground text-3xl font-semibold tracking-tight sm:text-4xl'>
+                {t('Model Square')}
               </h1>
-              <p className='text-tone-violet-strong max-w-xl text-sm leading-relaxed sm:text-base'>
-                {t(
-                  'Compare capabilities, understand the cost, and find the right model for your next idea.'
-                )}
+              <p className='text-muted-foreground text-sm sm:text-base'>
+                {t('Compare models and pricing')}
               </p>
             </VStack>
-            <VStack gap={6}>
-              <HStack as='dl' gap={3}>
-                <VStack
-                  gap={3}
-                  className='surface-blue min-w-0 flex-1 rounded-2xl p-4'
-                >
-                  <dt className='text-tone-blue-strong flex items-center gap-2 text-xs'>
-                    <BookOpen className='size-4' aria-hidden />
-                    {t('Available models')}
-                  </dt>
-                  <dd className='text-tone-blue-strong text-3xl font-semibold tracking-tight tabular-nums'>
-                    {(models?.length || 0).toLocaleString()}
-                  </dd>
-                </VStack>
-                <VStack
-                  gap={3}
-                  className='surface-teal min-w-0 flex-1 rounded-2xl p-4'
-                >
-                  <dt className='text-tone-teal-strong flex items-center gap-2 text-xs'>
-                    <Network className='size-4' aria-hidden />
-                    {t('Providers')}
-                  </dt>
-                  <dd className='text-tone-teal-strong text-3xl font-semibold tracking-tight tabular-nums'>
-                    {(vendors?.length || 0).toLocaleString()}
-                  </dd>
-                </VStack>
+            <HStack as='dl' gap={6} wrap='wrap'>
+              <HStack gap={2} vAlign='end'>
+                <dt className='text-muted-foreground text-sm'>
+                  {t('Available models')}
+                </dt>
+                <dd className='text-primary text-xl font-semibold tabular-nums'>
+                  {models.length.toLocaleString()}
+                </dd>
               </HStack>
-              <SearchBar
-                value={searchInput}
-                onChange={setSearchInput}
-                onClear={clearSearch}
-                placeholder={t(
-                  'Search model name, provider, endpoint, or tag...'
-                )}
-              />
-            </VStack>
-          </header>
+              <HStack gap={2} vAlign='end'>
+                <dt className='text-muted-foreground text-sm'>
+                  {t('Providers')}
+                </dt>
+                <dd className='text-tone-teal-strong text-xl font-semibold tabular-nums'>
+                  {vendors.length.toLocaleString()}
+                </dd>
+              </HStack>
+            </HStack>
+          </HStack>
 
           <section aria-label={t('Browse models')} className='mb-8'>
+            <SearchBar
+              value={searchInput}
+              onChange={setSearchInput}
+              onClear={clearSearch}
+              placeholder={t('Search models, providers, or tags')}
+              className='mb-5 max-w-2xl'
+            />
             <CatalogBillingFilter
               models={models || []}
               value={quotaTypeFilter}
@@ -264,7 +249,7 @@ export function Pricing() {
             />
           </section>
 
-          <div className='grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8'>
+          <HStack gap={8} vAlign='start'>
             <PricingSidebar
               quotaTypeFilter={quotaTypeFilter}
               endpointTypeFilter={endpointTypeFilter}
@@ -283,12 +268,12 @@ export function Pricing() {
               models={models || []}
               hasActiveFilters={hasActiveFilters}
               onClearFilters={clearFilters}
-              className='hover-scrollbar sticky top-24 hidden max-h-[calc(100dvh-7rem)] self-start overflow-y-auto xl:block'
+              className='hover-scrollbar sticky top-24 hidden max-h-[calc(100dvh-7rem)] w-56 shrink-0 self-start overflow-y-auto xl:block'
             />
 
             <section
               aria-label={t('Model catalog')}
-              className='min-w-0 space-y-6'
+              className='min-w-0 flex-1 space-y-6'
             >
               <PricingToolbar
                 filteredCount={filteredModels.length}
@@ -323,7 +308,7 @@ export function Pricing() {
 
               {renderPricingContent()}
             </section>
-          </div>
+          </HStack>
 
           {selectedModel && (
             <ModelDetailsDrawer

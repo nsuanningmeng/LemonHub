@@ -27,7 +27,7 @@ export function Header({ className, children, ...props }: HeaderProps) {
   return (
     <header
       className={cn(
-        'sticky top-0 z-40 h-[var(--app-header-height)] w-full shrink-0 border-b border-tone-blue-border bg-background/95',
+        'sticky top-0 z-40 h-[var(--app-header-height)] w-full shrink-0 border-border/70 border-b bg-background/95',
         className
       )}
       {...props}
@@ -39,7 +39,7 @@ export function Header({ className, children, ...props }: HeaderProps) {
       >
         <SidebarTrigger
           variant='ghost'
-          className='surface-blue hover:bg-tone-blue border-tone-blue-border size-8 shrink-0 rounded-lg border'
+          className='text-muted-foreground hover:bg-tone-blue hover:text-tone-blue-strong size-8 shrink-0 rounded-lg'
         />
         {children}
       </HStack>

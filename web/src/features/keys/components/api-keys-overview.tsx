@@ -16,9 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { HStack } from '@astryxdesign/core/HStack'
+import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
-import { CircleCheck, KeyRound, Layers3, PauseCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
@@ -41,44 +40,24 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
   const inactiveOnPage = props.keys.length - activeOnPage
 
   return (
-    <section
+    <VStack
+      as='section'
+      gap={4}
       aria-label={t('Access overview')}
       aria-busy={props.isLoading}
-      className='grid shrink-0 gap-3 xl:grid-cols-12'
+      className='min-w-0 shrink-0'
     >
-      <VStack
-        gap={3}
-        padding={5}
-        className='surface-brand min-w-0 rounded-xl xl:col-span-5'
-      >
-        <HStack gap={2} vAlign='center'>
-          <KeyRound aria-hidden='true' className='size-4 shrink-0' />
-          <p className='font-mono text-xs font-medium tracking-wide'>
-            {t('Workspace credentials')}
-          </p>
-        </HStack>
-        <VStack gap={1.5} className='min-w-0'>
-          <h3 className='text-lg font-semibold tracking-tight'>
-            {t('A connection for every app')}
-          </h3>
-          <p className='max-w-xl text-xs leading-relaxed opacity-85'>
-            {t(
-              'Create separate keys for your apps. Keep model access and spending limits under your control.'
-            )}
-          </p>
-        </VStack>
-      </VStack>
-      <dl className='grid min-w-0 grid-cols-3 gap-3 xl:col-span-7'>
-        <VStack
-          gap={2}
-          padding={3}
-          className='surface-violet border-tone-violet-border min-w-0 rounded-xl border sm:p-5'
-        >
-          <Layers3 aria-hidden='true' className='mb-1 size-4' />
-          <dt className='text-xs leading-relaxed'>
+      <Text color='secondary' className='max-w-3xl text-sm'>
+        {t(
+          'Create separate keys for your apps. Keep model access and spending limits under your control.'
+        )}
+      </Text>
+      <dl className='grid min-w-0 grid-cols-3 gap-4 sm:gap-8'>
+        <VStack gap={1} className='min-w-0'>
+          <dt className='text-muted-foreground text-xs leading-relaxed'>
             {props.filtered ? t('Matching keys') : t('Total keys')}
           </dt>
-          <dd className='mt-auto text-2xl font-semibold tracking-tight wrap-anywhere tabular-nums sm:text-3xl'>
+          <dd className='text-tone-violet-strong text-2xl font-semibold tracking-tight wrap-anywhere tabular-nums'>
             {props.isLoading ? (
               <Skeleton className='h-7 w-10' />
             ) : (
@@ -86,16 +65,11 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
             )}
           </dd>
         </VStack>
-        <VStack
-          gap={2}
-          padding={3}
-          className='surface-teal border-tone-teal-border min-w-0 rounded-xl border sm:p-5'
-        >
-          <CircleCheck aria-hidden='true' className='mb-1 size-4' />
-          <dt className='text-xs leading-relaxed'>
+        <VStack gap={1} className='min-w-0'>
+          <dt className='text-muted-foreground text-xs leading-relaxed'>
             {t('Active on this page')}
           </dt>
-          <dd className='mt-auto text-2xl font-semibold tracking-tight wrap-anywhere tabular-nums sm:text-3xl'>
+          <dd className='text-tone-teal-strong text-2xl font-semibold tracking-tight wrap-anywhere tabular-nums'>
             {props.isLoading ? (
               <Skeleton className='h-7 w-10' />
             ) : (
@@ -103,16 +77,11 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
             )}
           </dd>
         </VStack>
-        <VStack
-          gap={2}
-          padding={3}
-          className='surface-peach border-tone-peach-border min-w-0 rounded-xl border sm:p-5'
-        >
-          <PauseCircle aria-hidden='true' className='mb-1 size-4' />
-          <dt className='text-xs leading-relaxed'>
+        <VStack gap={1} className='min-w-0'>
+          <dt className='text-muted-foreground text-xs leading-relaxed'>
             {t('Inactive on this page')}
           </dt>
-          <dd className='mt-auto text-2xl font-semibold tracking-tight wrap-anywhere tabular-nums sm:text-3xl'>
+          <dd className='text-tone-peach-strong text-2xl font-semibold tracking-tight wrap-anywhere tabular-nums'>
             {props.isLoading ? (
               <Skeleton className='h-7 w-10' />
             ) : (
@@ -121,6 +90,6 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
           </dd>
         </VStack>
       </dl>
-    </section>
+    </VStack>
   )
 }

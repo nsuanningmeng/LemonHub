@@ -22,7 +22,7 @@ import { HStack } from '@astryxdesign/core/HStack'
 import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { Link } from '@tanstack/react-router'
-import { ArrowUpRight, Braces, Layers3, Orbit, Sparkles } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -57,27 +57,15 @@ export function Hero(props: HeroProps) {
     >
       <Grid columns={{ minWidth: 360, max: 2 }} gap={8} align='center'>
         <VStack gap={8} className='min-w-0 py-6 lg:pr-4'>
-          <HStack gap={3} align='center'>
-            <HStack
-              align='center'
-              justify='center'
-              className='surface-violet size-10 shrink-0 rounded-2xl'
-            >
-              <Sparkles className='size-5' aria-hidden='true' />
-            </HStack>
-            <Text
-              type='supporting'
-              className='text-tone-blue-strong font-semibold tracking-wide'
-            >
-              {heroBadge}
-            </Text>
-          </HStack>
+          <Text type='supporting' className='text-tone-blue-strong font-medium'>
+            {heroBadge}
+          </Text>
           <VStack gap={6}>
             <Heading
               level={1}
               id='home-title'
               type='display-1'
-              className='text-5xl leading-tight tracking-tighter text-balance md:text-6xl xl:text-7xl'
+              className='text-4xl leading-tight tracking-tighter text-balance sm:text-5xl md:text-6xl xl:text-7xl'
             >
               {heroTitleLine1}
               <Text
@@ -105,7 +93,7 @@ export function Hero(props: HeroProps) {
               role='link'
               nativeButton={false}
               size='lg'
-              className='surface-brand h-12 rounded-2xl px-6 hover:opacity-90'
+              className='surface-brand h-auto min-h-12 max-w-full rounded-xl px-6 py-3 whitespace-normal hover:opacity-90'
               render={
                 <Link to={props.isAuthenticated ? '/dashboard' : '/sign-up'} />
               }
@@ -120,109 +108,30 @@ export function Hero(props: HeroProps) {
               nativeButton={false}
               size='lg'
               variant='ghost'
-              className='h-12 rounded-2xl px-5'
+              className='h-auto min-h-12 max-w-full rounded-xl px-5 py-3 whitespace-normal'
               render={<Link to='/pricing' />}
             >
               {t('Explore the models')}
               <ArrowUpRight className='size-4' aria-hidden='true' />
             </Button>
           </HStack>
-          <HStack gap={4} align='center' className='text-muted-foreground'>
-            <HStack gap={0} aria-hidden='true'>
-              <HStack
-                justify='center'
-                align='center'
-                className='surface-blue ring-background size-9 rounded-full ring-4'
-              >
-                <Braces className='size-4' />
-              </HStack>
-              <HStack
-                justify='center'
-                align='center'
-                className='surface-teal ring-background -ml-2 size-9 rounded-full ring-4'
-              >
-                <Orbit className='size-4' />
-              </HStack>
-              <HStack
-                justify='center'
-                align='center'
-                className='surface-violet ring-background -ml-2 size-9 rounded-full ring-4'
-              >
-                <Layers3 className='size-4' />
-              </HStack>
-            </HStack>
-            <VStack gap={1}>
-              <Text type='supporting' color='inherit'>
-                {t('Your stack. Your choice.')}
-              </Text>
-              <Text type='supporting' color='inherit' className='text-xs'>
-                OpenAI · Anthropic · Gemini
-              </Text>
-            </VStack>
+          <HStack gap={4} wrap='wrap' align='center'>
+            <Text type='supporting' color='secondary'>
+              OpenAI · Anthropic · Gemini
+            </Text>
             {docsUrl && (
               <a
                 href={docsUrl}
                 target={docsUrl.startsWith('http') ? '_blank' : undefined}
                 rel='noopener noreferrer'
-                className='text-tone-blue-strong ml-auto text-sm underline underline-offset-4'
+                className='text-tone-blue-strong text-sm underline underline-offset-4'
               >
                 {t('Docs')}
               </a>
             )}
           </HStack>
         </VStack>
-        <VStack
-          gap={4}
-          className='surface-blue min-w-0 rounded-3xl rounded-tr-4xl p-4 md:p-5'
-        >
-          <HStack
-            gap={4}
-            align='center'
-            justify='between'
-            className='surface-brand rounded-2xl rounded-tr-3xl px-5 py-5'
-          >
-            <VStack gap={1}>
-              <Text
-                type='supporting'
-                color='inherit'
-                className='text-xs tracking-widest uppercase'
-              >
-                {t('The connection studio')}
-              </Text>
-              <Text type='large' color='inherit' weight='semibold'>
-                {t('Choose a protocol. Make it yours.')}
-              </Text>
-            </VStack>
-            <Orbit
-              className='size-10 shrink-0'
-              strokeWidth={1.25}
-              aria-hidden='true'
-            />
-          </HStack>
-          <HeroTerminalDemo />
-          <Grid columns={{ minWidth: 140, max: 2 }} gap={3}>
-            <HStack
-              gap={3}
-              align='center'
-              className='surface-teal rounded-2xl px-4 py-4'
-            >
-              <Braces className='size-5 shrink-0' aria-hidden='true' />
-              <Text type='supporting' color='inherit' weight='medium'>
-                {t('Familiar protocols')}
-              </Text>
-            </HStack>
-            <HStack
-              gap={3}
-              align='center'
-              className='surface-violet rounded-2xl px-4 py-4'
-            >
-              <Layers3 className='size-5 shrink-0' aria-hidden='true' />
-              <Text type='supporting' color='inherit' weight='medium'>
-                {t('Room for every model')}
-              </Text>
-            </HStack>
-          </Grid>
-        </VStack>
+        <HeroTerminalDemo />
       </Grid>
     </section>
   )

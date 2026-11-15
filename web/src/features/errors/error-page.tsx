@@ -16,12 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Heading } from '@astryxdesign/core/Heading'
 import { HStack } from '@astryxdesign/core/HStack'
+import { Text } from '@astryxdesign/core/Text'
 import { VStack } from '@astryxdesign/core/VStack'
 import { Link } from '@tanstack/react-router'
-import { ArrowUpLeft, RouteOff } from 'lucide-react'
+import { ArrowUpLeft } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useTranslation } from 'react-i18next'
 
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { cn } from '@/lib/utils'
@@ -36,7 +37,6 @@ type ErrorPageProps = {
 }
 
 export function ErrorPage(props: ErrorPageProps) {
-  const { t } = useTranslation()
   const { systemName } = useSystemConfig()
 
   return (
@@ -63,34 +63,24 @@ export function ErrorPage(props: ErrorPageProps) {
       <main
         className={cn(
           'mx-auto grid w-full max-w-5xl flex-1 content-center gap-8 py-12',
-          !props.minimal && 'md:grid-cols-[1fr_2fr] md:gap-6'
+          !props.minimal && 'md:grid-cols-[1fr_2fr] md:gap-10'
         )}
       >
         {!props.minimal && (
-          <VStack
-            gap={4}
-            className='surface-peach border-tone-peach-border justify-between rounded-3xl border p-6 sm:p-8'
+          <Text
+            type='display-1'
+            className='text-tone-blue-strong text-7xl leading-none tracking-tighter sm:text-8xl'
           >
-            <p className='text-tone-peach-strong font-mono text-xs tracking-widest uppercase'>
-              {t('Connection notice')}
-            </p>
-            <p className='text-tone-peach-strong text-7xl leading-none font-medium tracking-tighter sm:text-8xl'>
-              {props.code ?? '—'}
-            </p>
-            <RouteOff className='text-tone-peach-strong size-10' aria-hidden />
-          </VStack>
+            {props.code ?? '—'}
+          </Text>
         )}
-        <VStack
-          gap={6}
-          vAlign='center'
-          className={cn(
-            'min-w-0 rounded-3xl p-6 sm:p-10',
-            !props.minimal && 'surface-blue border-tone-blue-border border'
-          )}
-        >
-          <h1 className='text-tone-blue-strong text-3xl leading-tight font-semibold tracking-tight sm:text-4xl'>
+        <VStack gap={6} vAlign='center' className='min-w-0'>
+          <Heading
+            level={1}
+            className='text-3xl leading-tight tracking-tight sm:text-4xl'
+          >
             {props.title}
-          </h1>
+          </Heading>
           <section className='text-muted-foreground max-w-lg text-sm leading-relaxed sm:text-base'>
             {props.description}
           </section>

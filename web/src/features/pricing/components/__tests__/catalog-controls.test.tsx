@@ -116,28 +116,65 @@ test('selecting and resetting a provider exposes the selected state to assistive
   expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled()
 })
 
-test('a model dossier keeps long names readable and allows keyboard access to its details', async () => {
+test('a model entry keeps long names readable, copies without opening details and supports keyboard navigation', async () => {
   const user = userEvent.setup()
   const onDetails = vi.fn()
+  const writeText = vi
+    .spyOn(navigator.clipboard, 'writeText')
+    .mockResolvedValue()
   render(
     <QueryClientProvider client={client}>
       <ModelCard model={model} onClick={onDetails} />
     </QueryClientProvider>
   )
   expect(screen.getByRole('article', { name: model.model_name })).toBeVisible()
-  expect(screen.getByRole('article', { name: model.model_name })).toHaveClass(
-    'surface-violet'
-  )
   expect(screen.getByRole('heading', { name: model.model_name })).toHaveClass(
     '[overflow-wrap:anywhere]'
   )
   expect(screen.getByText('Example AI')).toBeVisible()
   expect(screen.getByText('A model for complex reasoning tasks.')).toBeVisible()
-  expect(screen.getByRole('button', { name: 'Copy model name' })).toBeEnabled()
+  await user.click(screen.getByRole('button', { name: 'Copy model name' }))
+  expect(writeText).toHaveBeenCalledWith(model.model_name)
+  expect(onDetails).not.toHaveBeenCalled()
   const details = screen.getByRole('button', { name: 'Details' })
   details.focus()
   await user.keyboard('{Enter}')
   expect(onDetails).toHaveBeenCalledOnce()
+})
+
+test('model metadata shows two capability tags and only the explicitly selected group', () => {
+  const item: PricingModel = {
+    ...model,
+    tags: 'chat,reasoning,vision,audio',
+    enable_groups: ['default', 'premium'],
+    supported_endpoint_types: ['openai', 'anthropic'],
+  }
+  const { rerender } = render(
+    <QueryClientProvider client={client}>
+      <ModelCard model={item} selectedGroup='all' onClick={() => {}} />
+    </QueryClientProvider>
+  )
+  expect(screen.getByText('Token-based')).toBeVisible()
+  expect(screen.getByText('chat')).toBeVisible()
+  expect(screen.getByText('reasoning')).toBeVisible()
+  expect(screen.getByText('+2')).toBeVisible()
+  for (const hidden of [
+    'vision',
+    'audio',
+    'openai',
+    'anthropic',
+    'default',
+    'premium',
+  ]) {
+    expect(screen.queryByText(hidden)).not.toBeInTheDocument()
+  }
+  rerender(
+    <QueryClientProvider client={client}>
+      <ModelCard model={item} selectedGroup='premium' onClick={() => {}} />
+    </QueryClientProvider>
+  )
+  expect(screen.getByText('premium')).toBeVisible()
+  expect(screen.getByText('+2')).toBeVisible()
 })
 
 function BillingFixture() {

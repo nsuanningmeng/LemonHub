@@ -25,7 +25,6 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
-import { IconBadge } from '@/components/ui/icon-badge'
 import { Markdown } from '@/components/ui/markdown'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useFAQ } from '@/features/dashboard/hooks/use-status-data'
@@ -42,9 +41,7 @@ export function FAQPanel() {
       headerTone='violet'
       title={
         <span className='flex items-center gap-2'>
-          <IconBadge tone='chart-4' size='sm'>
-            <HelpCircle />
-          </IconBadge>
+          <HelpCircle className='size-4' aria-hidden='true' />
           {t('FAQ')}
         </span>
       }
@@ -52,10 +49,10 @@ export function FAQPanel() {
       loading={loading}
       empty={!list.length}
       emptyMessage={t('No FAQ entries available')}
-      height='h-80'
+      height='h-24'
       contentClassName='p-0'
     >
-      <ScrollArea className='h-80'>
+      <ScrollArea className='max-h-80 [&>[data-slot=scroll-area-viewport]]:max-h-80'>
         <Accordion className='w-full px-4 sm:px-5'>
           {list.map((item: FAQItem, idx: number) => {
             const key = item.id ?? `faq-${idx}`

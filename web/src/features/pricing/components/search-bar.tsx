@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { Search, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -50,7 +52,7 @@ export function SearchBar(props: SearchBarProps) {
   }, [])
 
   return (
-    <div className={cn('relative', props.className)}>
+    <VStack className={cn('relative', props.className)}>
       <Search className='text-muted-foreground/60 pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2' />
       <input
         ref={inputRef}
@@ -66,7 +68,7 @@ export function SearchBar(props: SearchBarProps) {
         )}
         aria-label={t('Search models')}
       />
-      <div className='absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-1'>
+      <HStack gap={1} className='absolute top-1/2 right-2.5 -translate-y-1/2'>
         {props.value ? (
           <Button
             variant='ghost'
@@ -78,11 +80,11 @@ export function SearchBar(props: SearchBarProps) {
             <X className='size-4' />
           </Button>
         ) : (
-          <kbd className='bg-muted text-muted-foreground pointer-events-none hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline-block'>
+          <kbd className='text-muted-foreground pointer-events-none hidden px-1.5 py-0.5 font-mono text-xs sm:inline-block'>
             ⌘K
           </kbd>
         )}
-      </div>
-    </div>
+      </HStack>
+    </VStack>
   )
 }

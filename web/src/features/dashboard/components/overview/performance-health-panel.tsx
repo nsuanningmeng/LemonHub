@@ -16,12 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { useQuery } from '@tanstack/react-query'
 import { Gauge, HeartPulse, Timer } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getPerfMetricsSummary } from '@/features/performance-metrics/api'
 import {
@@ -96,92 +97,90 @@ export function PerformanceHealthPanel() {
   const hasData = models.length > 0
 
   return (
-    <section className='bg-card h-full overflow-hidden rounded-2xl border'>
-      <div className='surface-teal flex flex-wrap items-center gap-3 border-b px-5 py-4'>
-        <IconBadge tone='success' size='sm'>
-          <HeartPulse />
-        </IconBadge>
-        <h4 className='text-sm font-semibold'>{t('Performance health')}</h4>
-        <span className='text-muted-foreground ml-auto text-xs'>
-          {t('Performance metrics for the last 24 hours')}
+    <VStack as='section' gap={5} className='min-w-0 px-3 sm:px-5'>
+      <HStack gap={3} align='center' wrap='wrap' justify='between'>
+        <h4 className='text-tone-teal-strong text-sm font-semibold'>
+          {t('Performance health')}
+        </h4>
+        <span className='text-muted-foreground text-xs'>
+          {t('Last 24 hours')}
         </span>
-      </div>
-
-      <div className='space-y-5 p-5'>
-        <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
-          <MetricCell
-            icon={HeartPulse}
-            label={t('Success rate')}
-            value={formatSuccessRate(summary.successRate, srConfig)}
-            loading={loading}
-            valueClassName={successRateTextClass(summary.successRate, srConfig)}
-            tone='success'
-            surface='surface-teal'
-          />
-          <MetricCell
-            icon={Timer}
-            label={t('Average latency')}
-            value={formatLatency(summary.avgLatencyMs)}
-            loading={loading}
-            tone='warning'
-            surface='surface-peach'
-          />
-          <MetricCell
-            icon={Gauge}
-            label={t('Throughput')}
-            value={formatThroughput(summary.avgTps)}
-            loading={loading}
-            tone='info'
-            surface='surface-blue'
-          />
-        </div>
-
-        {loading ? (
-          <div className='space-y-1'>
-            {['success', 'latency', 'throughput'].map((key) => (
-              <Skeleton key={key} className='h-5 w-full rounded' />
-            ))}
-          </div>
-        ) : (
-          hasData && (
-            <div>
-              <span className='text-muted-foreground mb-1 block text-[11px] font-medium'>
-                {t('Top models by traffic')}
-              </span>
-              <div className='grid grid-cols-1 gap-x-4 sm:grid-cols-2'>
-                {topModels.map((model) => (
-                  <div
-                    key={model.model_name}
-                    className='flex items-center justify-between gap-2 rounded px-1.5 py-1'
+      </HStack>
+      <dl className='grid grid-cols-1 gap-5 sm:grid-cols-3'>
+        <MetricCell
+          icon={HeartPulse}
+          label={t('Success rate')}
+          value={formatSuccessRate(summary.successRate, srConfig)}
+          loading={loading}
+          valueClassName={successRateTextClass(summary.successRate, srConfig)}
+          tone='text-tone-teal-strong'
+        />
+        <MetricCell
+          icon={Timer}
+          label={t('Average latency')}
+          value={formatLatency(summary.avgLatencyMs)}
+          loading={loading}
+          tone='text-tone-peach-strong'
+        />
+        <MetricCell
+          icon={Gauge}
+          label={t('Throughput')}
+          value={formatThroughput(summary.avgTps)}
+          loading={loading}
+          tone='text-tone-blue-strong'
+        />
+      </dl>
+      {loading ? (
+        <VStack gap={1}>
+          {['success', 'latency', 'throughput'].map((key) => (
+            <Skeleton key={key} className='h-5 w-full rounded' />
+          ))}
+        </VStack>
+      ) : (
+        hasData && (
+          <VStack gap={2}>
+            <p className='text-muted-foreground text-xs font-medium'>
+              {t('Top models by traffic')}
+            </p>
+            <ul className='grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2'>
+              {topModels.map((model) => (
+                <HStack
+                  as='li'
+                  key={model.model_name}
+                  gap={2}
+                  align='center'
+                  justify='between'
+                >
+                  <span
+                    className='min-w-0 flex-1 truncate font-mono text-xs'
+                    title={model.model_name}
                   >
-                    <span className='min-w-0 flex-1 truncate font-mono text-[11px]'>
-                      {model.model_name}
+                    {model.model_name}
+                  </span>
+                  <span className='inline-flex shrink-0 items-center gap-1.5'>
+                    <span
+                      className={cn(
+                        'size-1.5 rounded-full',
+                        successRateDotClass(model.success_rate, srConfig)
+                      )}
+                      aria-hidden='true'
+                    />
+                    <span
+                      className={cn(
+                        'font-mono text-xs tabular-nums',
+                        successRateTextClass(model.success_rate, srConfig)
+                      )}
+                    >
+                      {formatSuccessRate(model.success_rate, srConfig)}
                     </span>
-                    <span className='inline-flex shrink-0 items-center gap-1'>
-                      <span
-                        className={cn(
-                          'size-1.5 rounded-full',
-                          successRateDotClass(model.success_rate, srConfig)
-                        )}
-                        aria-hidden='true'
-                      />
-                      <span
-                        className={cn(
-                          'font-mono text-[11px] font-semibold tabular-nums',
-                          successRateTextClass(model.success_rate, srConfig)
-                        )}
-                      >
-                        {formatSuccessRate(model.success_rate, srConfig)}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )
-        )}
-      </div>
-    </section>
+                  </span>
+                </HStack>
+              ))}
+            </ul>
+          </VStack>
+        )
+      )}
+    </VStack>
   )
 }
 
@@ -191,30 +190,34 @@ function MetricCell(props: {
   value: string
   loading: boolean
   valueClassName?: string
-  tone: IconBadgeTone
-  surface: string
+  tone: string
 }) {
   const Icon = props.icon
   return (
-    <div className={cn('min-w-0 rounded-xl p-4', props.surface)}>
-      <div className='text-muted-foreground flex items-center gap-1.5 text-[11px] font-medium'>
-        <IconBadge tone={props.tone} size='xs'>
-          <Icon />
-        </IconBadge>
-        <span className='truncate'>{props.label}</span>
-      </div>
-      {props.loading ? (
-        <Skeleton className='mt-1.5 h-5 w-16' />
-      ) : (
-        <div
-          className={cn(
-            'mt-3 overflow-x-auto font-mono text-xl font-medium tracking-tight whitespace-nowrap tabular-nums',
-            props.valueClassName
-          )}
-        >
-          {props.value}
-        </div>
-      )}
-    </div>
+    <VStack gap={2} className='min-w-0'>
+      <HStack
+        as='dt'
+        gap={2}
+        align='center'
+        className='text-muted-foreground text-xs'
+      >
+        <Icon className={cn('size-4 shrink-0', props.tone)} />
+        {props.label}
+      </HStack>
+      <dd>
+        {props.loading ? (
+          <Skeleton className='h-6 w-16' />
+        ) : (
+          <p
+            className={cn(
+              'overflow-x-auto font-mono text-xl font-medium tracking-tight whitespace-nowrap tabular-nums',
+              props.valueClassName ?? props.tone
+            )}
+          >
+            {props.value}
+          </p>
+        )}
+      </dd>
+    </VStack>
   )
 }

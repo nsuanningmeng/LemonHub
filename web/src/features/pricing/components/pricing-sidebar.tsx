@@ -16,11 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { ChevronDown, RotateCcw } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible,
@@ -53,6 +54,7 @@ type FilterSectionProps = {
   value: string
   options: FilterOption[]
   onChange: (value: string) => void
+  defaultOpen?: boolean
 }
 
 export interface PricingSidebarProps {
@@ -91,7 +93,7 @@ function formatGroupRatio(ratio: number | undefined): string | undefined {
   return `x${formatted}`
 }
 
-function FilterChip(props: {
+function FilterOptionButton(props: {
   option: FilterOption
   active: boolean
   onClick: () => void
@@ -102,56 +104,70 @@ function FilterChip(props: {
       onClick={props.onClick}
       aria-pressed={props.active}
       className={cn(
-        'group inline-flex max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
+        'focus-visible:ring-ring flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none',
         props.active
-          ? 'border-primary/30 bg-accent text-accent-foreground'
-          : 'border-border/70 bg-background text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground'
+          ? 'bg-accent text-accent-foreground font-medium'
+          : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
       )}
       title={props.option.label}
     >
       {props.option.icon && (
-        <span className='shrink-0'>{props.option.icon}</span>
+        <HStack as='span' className='shrink-0'>
+          {props.option.icon}
+        </HStack>
       )}
-      <span className='truncate'>{props.option.label}</span>
+      <strong className='min-w-0 flex-1 truncate font-normal'>
+        {props.option.label}
+      </strong>
       {(props.option.suffix || props.option.count != null) && (
-        <span
-          className={cn(
-            'rounded-md px-1.5 py-0.5 text-[12px]',
-            props.active
-              ? 'bg-background text-foreground'
-              : 'bg-muted text-muted-foreground'
-          )}
-        >
+        <small className='shrink-0 text-xs tabular-nums'>
           {props.option.suffix ?? props.option.count}
-        </span>
+        </small>
       )}
     </button>
   )
 }
 
 function FilterSection(props: FilterSectionProps) {
+  const selectedOption =
+    props.value !== FILTER_ALL
+      ? props.options.find((option) => option.value === props.value)
+      : undefined
   return (
     <Collapsible
-      defaultOpen
-      className='border-border border-b py-3 last:border-b-0'
+      defaultOpen={props.defaultOpen ?? Boolean(selectedOption)}
+      className='py-2'
     >
-      <CollapsibleTrigger className='group flex w-full items-center justify-between py-2.5 text-left'>
-        <span className='text-foreground text-sm font-semibold'>
-          {props.title}
-        </span>
-        <ChevronDown className='text-muted-foreground size-4 transition-transform group-data-[panel-open]:rotate-180' />
+      <CollapsibleTrigger
+        aria-label={props.title}
+        className='focus-visible:ring-ring group flex w-full items-center justify-between gap-2 rounded-md px-2 py-2.5 text-left focus-visible:ring-2 focus-visible:outline-none'
+      >
+        <VStack as='span' gap={1} className='min-w-0'>
+          <strong className='text-foreground text-sm font-medium'>
+            {props.title}
+          </strong>
+          {selectedOption && (
+            <small className='text-primary truncate text-xs'>
+              {selectedOption.label}
+            </small>
+          )}
+        </VStack>
+        <ChevronDown
+          aria-hidden
+          className='text-muted-foreground size-3.5 shrink-0 transition-transform group-data-[panel-open]:rotate-180'
+        />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className='flex flex-wrap gap-1.5'>
+        <VStack gap={0.5} className='max-h-64 overflow-y-auto'>
           {props.options.map((option) => (
-            <FilterChip
+            <FilterOptionButton
               key={option.value}
               option={option}
               active={props.value === option.value}
               onClick={() => props.onChange(option.value)}
             />
           ))}
-        </div>
+        </VStack>
       </CollapsibleContent>
     </Collapsible>
   )
@@ -255,18 +271,10 @@ export function PricingSidebar(props: PricingSidebarProps) {
   return (
     <aside
       aria-label={t('Catalog filters')}
-      className={cn(
-        'bg-card border-tone-violet-border min-w-0 rounded-2xl border p-4',
-        props.className
-      )}
+      className={cn('min-w-0', props.className)}
     >
-      <div className='mb-4 flex items-start justify-between gap-2'>
-        <div>
-          <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>
-          <p className='text-muted-foreground mt-1 text-xs'>
-            {t('Refine models by provider, group, type, and tags.')}
-          </p>
-        </div>
+      <HStack gap={2} hAlign='between' vAlign='center' className='mb-2 px-2'>
+        <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>
         <Button
           type='button'
           variant='ghost'
@@ -278,26 +286,22 @@ export function PricingSidebar(props: PricingSidebarProps) {
           <RotateCcw className='size-3.5' />
           {t('Reset')}
         </Button>
-      </div>
+      </HStack>
 
-      {props.hasActiveFilters && (
-        <Badge variant='secondary' className='mb-3'>
-          {t('Filters active')}
-        </Badge>
-      )}
-
-      <div className='space-y-1'>
+      <VStack gap={0}>
         <FilterSection
           title={t('Groups')}
           value={props.groupFilter}
           options={groupOptions}
           onChange={props.onGroupChange}
+          defaultOpen={props.groups.length > 1}
         />
         <FilterSection
           title={t('All Vendors')}
           value={props.vendorFilter}
           options={vendorOptions}
           onChange={props.onVendorChange}
+          defaultOpen
         />
         <FilterSection
           title={t('Model Tags')}
@@ -317,7 +321,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
           options={endpointOptions}
           onChange={props.onEndpointTypeChange}
         />
-      </div>
+      </VStack>
     </aside>
   )
 }

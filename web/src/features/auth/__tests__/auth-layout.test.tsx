@@ -165,16 +165,24 @@ test('translated password reset actions wrap and grow instead of forcing a wider
   )
 })
 
-test('brand and feature panels keep readable semantic foreground colors', async () => {
+test('authentication keeps a readable brand surface and an unboxed form', async () => {
   renderAuthLayout()
   const heading = await screen.findByRole('heading', {
     name: /^Your ideas\./,
   })
   expect(heading).toHaveClass('text-brand-paper')
+  const form = screen.getByRole('region', { name: 'Authentication' })
+  expect(form).not.toHaveClass('border')
+  expect(form).not.toHaveClass('shadow-sm')
+  expect(
+    screen.queryByText('Your workspace starts here')
+  ).not.toBeInTheDocument()
+  const brand = screen.getByRole('complementary', { name: 'Your AI workspace' })
+  expect(brand.querySelector('.surface-teal, .surface-violet')).toBeNull()
   expect(screen.getByText('One key. More possibilities.')).toHaveClass(
-    'text-tone-teal-strong'
+    'text-brand-paper'
   )
   expect(screen.getByText('A clearer view of every request.')).toHaveClass(
-    'text-tone-violet-strong'
+    'text-brand-paper'
   )
 })

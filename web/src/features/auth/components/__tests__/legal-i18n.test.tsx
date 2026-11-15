@@ -91,6 +91,9 @@ test.each(cases)(
     const consent = screen.getByRole('region', { name: 'Consent' })
     const footer = screen.getByRole('region', { name: 'Terms' })
     expect(consent).not.toHaveTextContent('and the')
+    expect(consent.firstElementChild).not.toHaveClass('border')
+    expect(consent.textContent?.trim()).not.toMatch(/[.。]$/)
+    expect(footer.textContent?.trim()).not.toMatch(/[.。]$/)
     expect(footer).toHaveTextContent(item.prefix)
     for (const surface of [consent, footer]) {
       expect(

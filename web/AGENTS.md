@@ -196,6 +196,8 @@
 
 ## LemonHub 界面体系
 
+- 页面分组优先使用留白、文字层级和轻量分隔，避免整页卡片、卡中卡、重复彩色底板及装饰标签；输入控件、选中状态和有实际意义的独立内容块保留必要边界。密集信息使用列表或表格，次要筛选按需展开。
+- 标题、按钮、标签、占位符及简短提示省略多余的句末句号或装饰性省略号。长段正文保留必要标点，代码、链接、价格单位和用户内容不做统一去标点处理。
 - 页面采用冷白底色、钴蓝主操作、薄荷青连接/用量、紫色模型/智能、杏桃色账户/资金；重点区使用饱和主色，辅助色用于分区，颜色不代替业务状态文字。
 - Astryx 提供布局组件与模板参考，现有 Base UI / TanStack 控件保留业务、键盘和权限行为。
 - `themes/lemonhub/lemonhub.theme.ts` 是色彩来源：主色由 Astryx theme editor 生成，辅助色由 `studio.palette.config.json` 经 Astryx palette generator 生成，`localTokens` 分配明暗模式角色。`src/styles/theme.css` 将这些主题变量映射给旧组件，保留用户主题偏好；Astryx portable tokens 再读取同一映射。不要引入 `tailwind-theme.css` 覆盖现有同名 utilities。

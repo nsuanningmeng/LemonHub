@@ -70,7 +70,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
             <SidebarInset
               id='content'
               tabIndex={-1}
-              className='md:peer-data-[variant=inset]:border-tone-blue-border @container/content h-svh min-h-0 min-w-0 overflow-hidden md:peer-data-[variant=inset]:my-3 md:peer-data-[variant=inset]:me-3 md:peer-data-[variant=inset]:h-[calc(100svh-(var(--spacing)*6))] md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:shadow-sm'
+              className='@container/content h-svh min-h-0 min-w-0 overflow-hidden md:peer-data-[variant=inset]:my-3 md:peer-data-[variant=inset]:me-3 md:peer-data-[variant=inset]:h-[calc(100svh-(var(--spacing)*6))] md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:shadow-none'
             >
               <AppHeader />
               <AnnouncementBanner />

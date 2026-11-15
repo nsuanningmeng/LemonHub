@@ -30,10 +30,7 @@ export function RewardSummaryCards() {
   const summary = useRewardSummary()
   if (summary.isError) {
     return (
-      <div
-        role='alert'
-        className='flex items-center gap-3 rounded-2xl border p-5'
-      >
+      <div role='alert' className='flex items-center gap-3 py-5'>
         <p className='text-sm'>{t('Unable to load rewards')}</p>
         <Button
           type='button'
@@ -46,29 +43,29 @@ export function RewardSummaryCards() {
     )
   }
   return (
-    <div className='grid gap-5 md:grid-cols-2'>
+    <div className='grid gap-6 md:grid-cols-2'>
       <section
         aria-labelledby='reward-credit-heading'
-        className='bg-card flex min-h-64 flex-col rounded-3xl border p-6 sm:p-8'
+        className='flex min-w-0 flex-col py-3'
       >
         <div className='flex justify-between gap-4'>
           <div>
-            <h2 id='reward-credit-heading' className='text-lg font-semibold'>
+            <h2 id='reward-credit-heading' className='text-base font-semibold'>
               {t('Rewards to claim')}
             </h2>
             <p className='text-muted-foreground mt-1 text-sm'>
               {t('A little appreciation, just for you.')}
             </p>
           </div>
-          <div className='bg-muted flex size-10 shrink-0 items-center justify-center rounded-full'>
+          <div className='text-tone-teal-strong flex size-8 shrink-0 items-center justify-center'>
             <Gift className='size-5' aria-hidden='true' />
           </div>
         </div>
-        <div className='my-8 flex items-baseline gap-3'>
+        <div className='my-4 flex items-baseline gap-3'>
           {summary.isPending ? (
             <Skeleton className='h-12 w-16' />
           ) : (
-            <span className='text-5xl font-semibold tabular-nums'>
+            <span className='text-3xl font-semibold tabular-nums'>
               {summary.data?.fixed_count ?? 0}
             </span>
           )}
@@ -76,7 +73,7 @@ export function RewardSummaryCards() {
             {t('ready to claim')}
           </span>
         </div>
-        <div className='text-muted-foreground mt-auto border-t pt-5 text-sm'>
+        <div className='text-muted-foreground mt-auto text-sm'>
           {t('Available reward credit')}:{' '}
           {summary.isPending
             ? '—'
@@ -85,26 +82,26 @@ export function RewardSummaryCards() {
       </section>
       <section
         aria-labelledby='reward-packets-heading'
-        className='bg-card flex min-h-64 flex-col rounded-3xl border p-6 sm:p-8'
+        className='flex min-w-0 flex-col py-3'
       >
         <div className='flex justify-between gap-4'>
           <div>
-            <h2 id='reward-packets-heading' className='text-lg font-semibold'>
+            <h2 id='reward-packets-heading' className='text-base font-semibold'>
               {t('My red packets')}
             </h2>
             <p className='text-muted-foreground mt-1 text-sm'>
               {t('Open a little surprise, straight to your balance')}
             </p>
           </div>
-          <div className='bg-muted flex size-10 shrink-0 items-center justify-center rounded-full'>
+          <div className='text-tone-peach-strong flex size-8 shrink-0 items-center justify-center'>
             <Sparkles className='size-5' aria-hidden='true' />
           </div>
         </div>
-        <div className='my-8 flex items-baseline gap-3'>
+        <div className='my-4 flex items-baseline gap-3'>
           {summary.isPending ? (
             <Skeleton className='h-12 w-16' />
           ) : (
-            <span className='text-5xl font-semibold tabular-nums'>
+            <span className='text-3xl font-semibold tabular-nums'>
               {summary.data?.random_count ?? 0}
             </span>
           )}
@@ -112,7 +109,7 @@ export function RewardSummaryCards() {
             {t('ready to claim')}
           </span>
         </div>
-        <p className='text-muted-foreground mt-auto border-t pt-5 text-sm'>
+        <p className='text-muted-foreground mt-auto text-sm'>
           {t('Your lucky amount will be revealed when opened')}
         </p>
       </section>

@@ -412,9 +412,9 @@ function AudienceSection() {
               key={name}
               delay={i * 100}
               animation='fade-up'
-              className='border-border/50 bg-card hover:border-border hover:bg-muted/30 group flex flex-col rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-1'
+              className='flex flex-col py-4'
             >
-              <span className='border-border/50 bg-muted/30 text-foreground mb-5 flex size-12 items-center justify-center rounded-xl border transition-colors'>
+              <span className='text-tone-blue-strong mb-4 flex size-8 items-center'>
                 <Icon className='size-5' strokeWidth={1.75} />
               </span>
               <h3 className='mb-2 text-base font-semibold'>{t(name)}</h3>
@@ -453,9 +453,9 @@ function AdvantagesSection() {
               key={title}
               delay={(i % 3) * 120}
               animation='fade-up'
-              className='border-border/50 bg-card hover:border-border hover:bg-muted/30 flex flex-col rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-1'
+              className='flex flex-col py-4'
             >
-              <span className='border-border/50 bg-muted/30 text-foreground mb-5 flex size-12 items-center justify-center rounded-xl border'>
+              <span className='text-tone-teal-strong mb-4 flex size-8 items-center'>
                 <Icon className='size-5' strokeWidth={1.75} />
               </span>
               <h3 className='mb-2 text-base font-semibold'>{t(title)}</h3>
@@ -594,7 +594,7 @@ function ReferralProgramSection() {
               animation='fade-up'
               className='border-border/50 bg-card flex flex-col rounded-2xl border p-7'
             >
-              <span className='border-border/50 bg-muted/30 text-foreground mb-5 flex size-12 items-center justify-center rounded-xl border'>
+              <span className='text-tone-teal-strong mb-4 flex size-8 items-center'>
                 <Icon className='size-5' strokeWidth={1.75} />
               </span>
               <h3 className='mb-2 text-base font-semibold'>{t(title)}</h3>
@@ -677,7 +677,7 @@ function FaqSection() {
       <div className='mx-auto max-w-3xl'>
         <SectionHeading eyebrow='FAQ' title='Frequently Asked Questions' />
         <AnimateInView>
-          <Accordion className='border-border/60 bg-card rounded-2xl border px-5'>
+          <Accordion>
             {FAQS.map((f, i) => (
               <AccordionItem key={f.q} value={`faq-${i}`}>
                 <AccordionTrigger className='py-4 text-[15px]'>
@@ -710,7 +710,7 @@ function CtaSection() {
       <div className='mx-auto max-w-5xl'>
         <AnimateInView
           animation='scale-in'
-          className='border-border/60 bg-card relative overflow-hidden rounded-3xl border px-6 py-16 text-center shadow-sm md:px-12'
+          className='relative overflow-hidden py-8 text-center'
         >
           <div
             aria-hidden

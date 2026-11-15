@@ -94,10 +94,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
             </HStack>
           )}
           <HStack gap={4} wrap='wrap' vAlign='center' hAlign='between'>
-            <VStack
-              gap={1}
-              className='border-primary min-w-0 flex-1 basis-32 border-s-4 ps-3'
-            >
+            <VStack gap={1} className='min-w-0 flex-1 basis-32'>
               <Heading
                 level={1}
                 weight='semibold'

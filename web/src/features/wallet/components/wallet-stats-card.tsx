@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { HStack } from '@astryxdesign/core/HStack'
 import { VStack } from '@astryxdesign/core/VStack'
-import { Activity, ArrowUpRight, BarChart3, WalletCards } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -45,42 +45,27 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
     {
       label: t('Total Usage'),
       value: unavailable ? t('N/A') : formatQuota(props.user?.used_quota ?? 0),
-      description: t('Total consumed quota'),
-      icon: BarChart3,
     },
     {
       label: t('API Requests'),
       value: unavailable
         ? t('N/A')
         : (props.user?.request_count ?? 0).toLocaleString(),
-      description: t('Total requests made'),
-      icon: Activity,
     },
   ]
 
   return (
     <VStack
       as='section'
-      gap={0}
+      gap={6}
       aria-labelledby={titleId}
       aria-busy={Boolean(props.loading)}
-      className='border-brand-line bg-card min-w-0 overflow-hidden rounded-xl border'
+      className='min-w-0'
     >
-      <VStack gap={6} padding={6} className='surface-brand'>
-        <HStack
-          gap={3}
-          justify='between'
-          align='center'
-          className='text-inherit'
-        >
-          <h3
-            id={titleId}
-            className='text-xs font-semibold tracking-widest uppercase'
-          >
-            {t('Current Balance')}
-          </h3>
-          <WalletCards className='size-5' aria-hidden='true' />
-        </HStack>
+      <VStack gap={5} padding={6} className='surface-brand rounded-xl'>
+        <h3 id={titleId} className='text-sm font-medium'>
+          {t('Current Balance')}
+        </h3>
         <VStack gap={2} className='text-inherit'>
           {props.loading ? (
             <Skeleton className='h-12 w-full max-w-60' />
@@ -105,9 +90,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
                 </Button>
               )}
             </VStack>
-          ) : (
-            <p className='text-sm'>{t('Ready for your next request.')}</p>
-          )}
+          ) : null}
         </VStack>
         {props.onAddFunds && (
           <Button
@@ -120,21 +103,15 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
         )}
       </VStack>
 
-      <dl className='surface-teal divide-tone-teal-border divide-y px-6'>
+      <dl className='border-tone-teal-border grid grid-cols-2 gap-5 border-t pt-5'>
         {stats.map((item) => (
-          <VStack
-            key={item.label}
-            gap={2}
-            paddingBlock={5}
-            className='text-inherit'
-          >
+          <VStack key={item.label} gap={2} className='min-w-0'>
             <HStack
               as='dt'
               gap={2}
               align='center'
-              className='text-tone-teal-strong text-xs'
+              className='text-tone-teal-strong text-sm'
             >
-              <item.icon className='size-3.5' aria-hidden='true' />
               {item.label}
             </HStack>
             <dd>
@@ -148,9 +125,6 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
                   {item.value}
                 </p>
               )}
-              <p className='text-muted-foreground mt-1 text-xs'>
-                {item.description}
-              </p>
             </dd>
           </VStack>
         ))}

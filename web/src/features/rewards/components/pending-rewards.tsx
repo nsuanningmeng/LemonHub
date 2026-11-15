@@ -59,7 +59,7 @@ export function PendingRewards(props: { type: RewardType }) {
   }
   if (rewards.isError) {
     return (
-      <div role='alert' className='space-y-3 rounded-3xl border p-6'>
+      <div role='alert' className='space-y-3 py-6'>
         <p className='text-sm'>{t('Unable to load rewards')}</p>
         <Button
           type='button'
@@ -74,7 +74,7 @@ export function PendingRewards(props: { type: RewardType }) {
   return (
     <div>
       {rewards.data.items.length === 0 ? (
-        <div className='text-muted-foreground flex min-h-52 flex-col items-center justify-center gap-3 rounded-3xl border border-dashed p-6 text-center'>
+        <div className='text-muted-foreground flex min-h-52 flex-col items-center justify-center gap-3 py-6 text-center'>
           <Gift className='size-8' aria-hidden='true' />
           <p>
             {isRandom

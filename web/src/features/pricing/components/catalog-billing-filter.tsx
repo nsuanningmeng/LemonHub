@@ -51,7 +51,13 @@ export function CatalogBillingFilter(props: CatalogBillingFilterProps) {
   ]
 
   return (
-    <HStack gap={3} wrap='wrap' role='group' aria-label={t('Pricing Type')}>
+    <HStack
+      gap={6}
+      wrap='wrap'
+      role='group'
+      aria-label={t('Pricing Type')}
+      className='border-border/60 border-b'
+    >
       {options.map((option) => (
         <button
           key={option.value}
@@ -59,14 +65,14 @@ export function CatalogBillingFilter(props: CatalogBillingFilterProps) {
           aria-pressed={props.value === option.value}
           onClick={() => props.onChange(option.value)}
           className={cn(
-            'focus-visible:ring-ring flex min-w-0 items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
+            'focus-visible:ring-ring flex min-w-0 items-center gap-2 border-b-2 py-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
             props.value === option.value
-              ? 'surface-brand border-transparent'
-              : 'border-tone-violet-border bg-card text-tone-violet-strong hover:bg-tone-violet'
+              ? 'text-primary border-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
           )}
         >
           {labels[option.value]}
-          <b className='font-mono text-xs font-normal opacity-75'>
+          <b className='text-xs font-normal tabular-nums'>
             {option.count.toLocaleString()}
           </b>
         </button>

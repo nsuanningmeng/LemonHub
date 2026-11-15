@@ -18,10 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Heading } from '@astryxdesign/core/Heading'
 import { HStack } from '@astryxdesign/core/HStack'
-import { Text } from '@astryxdesign/core/Text'
-import { VStack } from '@astryxdesign/core/VStack'
 import { Link } from '@tanstack/react-router'
-import { ArrowUpRight, Orbit } from 'lucide-react'
+import { ArrowUpRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -47,35 +45,23 @@ export function CTA(props: CTAProps) {
         wrap='wrap'
         align='center'
         justify='between'
-        className='surface-brand rounded-3xl rounded-tr-4xl p-8 md:p-12'
+        className='surface-brand rounded-2xl p-8 md:p-12'
       >
-        <VStack gap={6} className='max-w-2xl'>
-          <HStack gap={3} align='center'>
-            <Orbit className='size-6' aria-hidden='true' />
-            <Text
-              type='supporting'
-              color='inherit'
-              className='tracking-widest uppercase'
-            >
-              {t('Your next chapter starts here')}
-            </Text>
-          </HStack>
-          <Heading
-            level={2}
-            id='home-cta-title'
-            type='display-2'
-            color='inherit'
-            className='text-3xl tracking-tight text-balance md:text-5xl'
-          >
-            {t('Good ideas deserve a clear runway.')}
-          </Heading>
-        </VStack>
+        <Heading
+          level={2}
+          id='home-cta-title'
+          type='display-2'
+          color='inherit'
+          className='max-w-2xl text-3xl tracking-tight text-balance md:text-5xl'
+        >
+          {t('Good ideas deserve a clear runway.')}
+        </Heading>
         <Button
           role='link'
           nativeButton={false}
           size='lg'
           variant='ghost'
-          className='surface-teal hover:bg-tone-teal hover:text-tone-teal-foreground h-12 rounded-2xl px-6 hover:opacity-90'
+          className='surface-teal hover:bg-tone-teal hover:text-tone-teal-foreground h-auto min-h-12 rounded-xl px-6 py-3 whitespace-normal hover:opacity-90'
           render={
             <Link to={props.isAuthenticated ? '/dashboard' : '/sign-up'} />
           }

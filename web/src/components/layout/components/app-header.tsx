@@ -85,7 +85,7 @@ export function AppHeader(props: AppHeaderProps) {
             <Text
               type='supporting'
               color='inherit'
-              className='surface-blue max-w-32 shrink-0 truncate rounded-md px-2.5 py-1.5 text-xs font-medium'
+              className='text-muted-foreground max-w-32 shrink-0 truncate text-sm'
             >
               {activeGroup?.title ?? t('Workspace')}
             </Text>
@@ -112,7 +112,7 @@ export function AppHeader(props: AppHeaderProps) {
             </HStack>
           )}
           {(props.showSearch ?? true) && (
-            <Search className='surface-blue border-tone-blue-border hover:bg-tone-blue rounded-lg sm:w-32 lg:w-40 xl:w-44' />
+            <Search className='border-border hover:bg-muted rounded-lg sm:w-32 lg:w-40 xl:w-44' />
           )}
           {(props.showNotifications ?? true) && (
             <NotificationPopover

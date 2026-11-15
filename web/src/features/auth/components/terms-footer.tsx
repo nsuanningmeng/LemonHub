@@ -88,7 +88,6 @@ export function TermsFooter({
           </a>
         </>
       )}
-      .
     </p>
   )
 }

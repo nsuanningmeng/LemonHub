@@ -16,6 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Grid } from '@astryxdesign/core/Grid'
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -77,8 +80,8 @@ export function ModelCardGrid(props: ModelCardGridProps) {
   }
 
   return (
-    <div className='space-y-4 sm:space-y-5'>
-      <div className='grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3'>
+    <VStack gap={4}>
+      <Grid columns={{ minWidth: 360, max: 2 }} columnGap={8} rowGap={0}>
         {pagedModels.map((model) => (
           <ModelCard
             key={model.id ?? model.model_name}
@@ -93,20 +96,26 @@ export function ModelCardGrid(props: ModelCardGridProps) {
             onClick={() => props.onModelClick(model.model_name || '')}
           />
         ))}
-      </div>
+      </Grid>
 
       {totalPages > 1 && (
-        <div className='text-muted-foreground flex flex-col items-center justify-between gap-3 border-t px-4 py-3 text-sm sm:flex-row'>
+        <HStack
+          gap={3}
+          hAlign='between'
+          vAlign='center'
+          wrap='wrap'
+          className='text-muted-foreground py-2 text-sm'
+        >
           <p className='text-muted-foreground'>
             {t('Page {{current}} of {{total}}', {
               current: currentPage,
               total: totalPages,
             })}
           </p>
-          <div className='flex items-center gap-2'>
+          <HStack gap={2}>
             <Button
               type='button'
-              variant='outline'
+              variant='ghost'
               size='sm'
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               disabled={currentPage <= 1}
@@ -117,7 +126,7 @@ export function ModelCardGrid(props: ModelCardGridProps) {
             </Button>
             <Button
               type='button'
-              variant='outline'
+              variant='ghost'
               size='sm'
               onClick={() =>
                 setPage((current) => Math.min(totalPages, current + 1))
@@ -128,9 +137,9 @@ export function ModelCardGrid(props: ModelCardGridProps) {
               {t('Next page')}
               <ChevronRight className='size-4' />
             </Button>
-          </div>
-        </div>
+          </HStack>
+        </HStack>
       )}
-    </div>
+    </VStack>
   )
 }

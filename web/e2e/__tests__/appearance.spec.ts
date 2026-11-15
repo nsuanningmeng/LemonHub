@@ -109,13 +109,18 @@ test.beforeEach(async ({ page }) => {
   ).toBeVisible()
 })
 
-test('choosing a color preset updates the new colored panels as well as controls', async ({
+test('choosing a color preset updates colored statistics as well as controls', async ({
   page,
 }) => {
-  const panel = page
+  const statistic = page
     .getByRole('region', { name: 'Access overview' })
-    .locator('.surface-brand')
-  const before = await panel.evaluate(
+    .locator('dd')
+    .first()
+  const action = page
+    .getByRole('button', { name: 'Create API Key', exact: true })
+    .first()
+  const before = await statistic.evaluate((el) => getComputedStyle(el).color)
+  const actionBefore = await action.evaluate(
     (el) => getComputedStyle(el).backgroundColor
   )
   await page.getByRole('button', { name: 'Open theme settings' }).click()
@@ -127,15 +132,18 @@ test('choosing a color preset updates the new colored panels as well as controls
     'rose-garden'
   )
   await expect
-    .poll(() => panel.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .poll(() => statistic.evaluate((el) => getComputedStyle(el).color))
     .not.toBe(before)
+  await expect
+    .poll(() => action.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .not.toBe(actionBefore)
   await page.reload()
   await expect(page.locator('body')).toHaveAttribute(
     'data-theme-preset',
     'rose-garden'
   )
   await expect
-    .poll(() => panel.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .poll(() => statistic.evaluate((el) => getComputedStyle(el).color))
     .not.toBe(before)
   await page.getByRole('button', { name: 'Open theme settings' }).click()
   await page
@@ -143,8 +151,11 @@ test('choosing a color preset updates the new colored panels as well as controls
     .click()
   await page.keyboard.press('Escape')
   await expect
-    .poll(() => panel.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .poll(() => statistic.evaluate((el) => getComputedStyle(el).color))
     .toBe(before)
+  await expect
+    .poll(() => action.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .toBe(actionBefore)
 })
 
 test('serif preference reaches Astryx headings after navigation and reload', async ({
@@ -163,16 +174,19 @@ test('serif preference reaches Astryx headings after navigation and reload', asy
   await expect(heading).toHaveCSS('font-family', /Lora/)
 })
 
-test('density and radius preferences update the visible workspace panels', async ({
+test('density and radius preferences update the open workspace layout and controls', async ({
   page,
 }) => {
-  const panel = page
-    .getByRole('region', { name: 'Access overview' })
-    .locator('.surface-brand')
+  const panel = page.getByRole('region', { name: 'Access overview' })
+  const action = page
+    .getByRole('button', { name: 'Create API Key', exact: true })
+    .first()
   const before = await panel.evaluate((el) => ({
     gap: Number.parseFloat(getComputedStyle(el).rowGap),
-    padding: Number.parseFloat(getComputedStyle(el).paddingTop),
   }))
+  const beforeHeight = await action.evaluate(
+    (el) => el.getBoundingClientRect().height
+  )
   await page.getByRole('button', { name: 'Open theme settings' }).click()
   await page
     .getByRole('radiogroup', { name: 'Select interface density' })
@@ -183,17 +197,15 @@ test('density and radius preferences update the visible workspace panels', async
     .getByRole('radio', { name: '0', exact: true })
     .click()
   await page.keyboard.press('Escape')
-  await expect(panel).toHaveCSS('border-top-left-radius', '0px')
+  await expect(action).toHaveCSS('border-top-left-radius', '0px')
   await expect
     .poll(() =>
       panel.evaluate((el) => Number.parseFloat(getComputedStyle(el).rowGap))
     )
     .toBeGreaterThan(before.gap)
   await expect
-    .poll(() =>
-      panel.evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingTop))
-    )
-    .toBeGreaterThan(before.padding)
+    .poll(() => action.evaluate((el) => el.getBoundingClientRect().height))
+    .toBeGreaterThan(beforeHeight)
 })
 
 test('centered content keeps the workspace toolbar full width on large screens', async ({

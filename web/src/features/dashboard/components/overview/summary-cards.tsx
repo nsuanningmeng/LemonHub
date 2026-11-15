@@ -254,7 +254,6 @@ export function SummaryCards() {
     currencyLabel,
   }).map((config, index) => {
     const tones = ['accent-1', 'accent-2', 'accent-3'] as const
-    const surfaces = ['surface-teal', 'surface-violet', 'surface-blue'] as const
 
     return {
       key: config.key,
@@ -263,7 +262,6 @@ export function SummaryCards() {
       desc: config.description,
       icon: config.icon,
       tone: tones[index] ?? 'accent-3',
-      surface: surfaces[index] ?? 'surface-blue',
       sparkline:
         config.key === 'todayUsage'
           ? sparklineData.usage
@@ -285,16 +283,13 @@ export function SummaryCards() {
           <h3 id={headingId} className='text-sm font-semibold tracking-tight'>
             {t('Account pulse')}
           </h3>
-          <p className='text-muted-foreground text-xs'>
-            {t('Your balance and activity, in one place.')}
-          </p>
         </VStack>
         <p className='text-muted-foreground font-mono text-xs'>
           {t('Last 24 hours')}
         </p>
       </HStack>
       <section
-        className='grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]'
+        className='grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]'
         aria-label={t('Usage at a glance')}
       >
         <VStack
@@ -313,11 +308,7 @@ export function SummaryCards() {
             <p className='text-xs font-medium tracking-wide'>
               {t('Credit remaining')}
             </p>
-            <HStack
-              gap={1.5}
-              align='center'
-              className='rounded-full border border-current/20 px-2 py-1 text-xs text-inherit'
-            >
+            <HStack gap={1.5} align='center' className='text-xs text-inherit'>
               <i
                 className={cn('size-1.5 rounded-full', healthCfg.dotClass)}
                 aria-hidden='true'
@@ -368,12 +359,9 @@ export function SummaryCards() {
             </Link>
           )}
         </VStack>
-        <StaggerContainer className='@container/summary grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3'>
+        <StaggerContainer className='@container/summary grid min-w-0 grid-cols-1 gap-8 py-4 sm:grid-cols-3 lg:py-6'>
           {items.map((item) => (
-            <StaggerItem
-              key={item.key}
-              className={cn('min-w-0 rounded-2xl p-5 sm:p-6', item.surface)}
-            >
+            <StaggerItem key={item.key} className='min-w-0'>
               <StatCard
                 title={item.title}
                 value={item.value}

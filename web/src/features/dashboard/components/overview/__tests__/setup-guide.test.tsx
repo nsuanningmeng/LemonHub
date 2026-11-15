@@ -121,7 +121,7 @@ test('completed setup uses a compact toggle, restores focus after hiding, and pr
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
   expect(
     screen.getByRole('heading', {
-      name: 'Build on your API gateway in minutes',
+      name: 'Get started',
     })
   ).toBeVisible()
   screen.getByRole('button', { name: 'Hide setup guide' }).focus()
@@ -130,7 +130,7 @@ test('completed setup uses a compact toggle, restores focus after hiding, and pr
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
   expect(
     screen.queryByRole('heading', {
-      name: 'Build on your API gateway in minutes',
+      name: 'Get started',
     })
   ).not.toBeInTheDocument()
   expect(localStorage.getItem('dashboard_overview_setup_guide_expanded')).toBe(
@@ -281,4 +281,42 @@ test('status content changes replace visible dashboard panels without reloading 
   expect(
     screen.getByRole('button', { name: 'How do I connect?' })
   ).toBeVisible()
+})
+
+test('the open setup guide keeps long request details readable and copies the complete authorized request', async () => {
+  const endpoint = 'https://regional-endpoint-with-a-long-name.example.test/v1'
+  const model = 'provider/production-reasoning-model-with-a-long-name'
+  localStorage.setItem('dashboard_overview_setup_guide_expanded', 'expanded')
+  client.setQueryData(['status'], {
+    api_info_enabled: true,
+    api_info: [{ route: 'Production', url: endpoint }],
+    announcements_enabled: false,
+    faq_enabled: false,
+    uptime_kuma_enabled: false,
+  })
+  client.setQueryData(['dashboard', 'overview', 'user-models'], [model])
+  const user = userEvent.setup()
+  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { key: 'actual-authorized-key' } },
+  })
+  renderOverview()
+  const preview = await screen.findByRole('region', {
+    name: 'First API request',
+  })
+  const request = within(preview).getByText(
+    (_, element) =>
+      element?.tagName === 'CODE' &&
+      element.textContent?.includes(model) === true
+  )
+  expect(request).toHaveTextContent(`${endpoint}/chat/completions`)
+  expect(request.closest('pre')).toHaveClass('overflow-x-auto')
+  expect(request).not.toHaveTextContent('actual-authorized-key')
+  await user.click(
+    within(preview).getByRole('button', { name: 'Copy ready-to-run curl' })
+  )
+  expect(copy).toHaveBeenCalledWith(
+    expect.stringContaining('Bearer sk-actual-authorized-key')
+  )
+  expect(copy).toHaveBeenCalledWith(expect.stringContaining(model))
 })

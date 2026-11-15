@@ -26,9 +26,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Circle,
   Copy,
-  CreditCard,
   FileText,
   KeyRound,
   ListChecks,
@@ -49,7 +47,6 @@ import {
   CardStaggerItem,
 } from '@/components/page-transition'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -86,23 +83,21 @@ interface StartStep {
   title: string
   description: string
   to: DashboardActionPath
-  icon: LucideIcon
   completed: boolean
 }
 
 interface QuickAction {
   title: string
-  description: string
   to: DashboardActionPath
   icon: LucideIcon
   tone: 'blue' | 'teal' | 'violet'
   adminOnly?: boolean
 }
 
-const QUICK_ACTION_SURFACES = {
-  blue: 'surface-blue border-tone-blue-border',
-  teal: 'surface-teal border-tone-teal-border',
-  violet: 'surface-violet border-tone-violet-border',
+const ACTION_TONES = {
+  blue: 'text-tone-blue-strong',
+  teal: 'text-tone-teal-strong',
+  violet: 'text-tone-violet-strong',
 }
 
 interface RequestExample {
@@ -118,7 +113,7 @@ interface HeroSignal {
   label: string
   value: string
   icon: LucideIcon
-  tone: IconBadgeTone
+  tone: 'blue' | 'teal' | 'violet'
 }
 
 function getSavedSetupGuideExpanded(): boolean | null {
@@ -180,52 +175,24 @@ function buildCurlCommand(args: {
   ].join('\n')
 }
 
-function StartStepItem(props: {
-  step: StartStep
-  index: number
-  isLast: boolean
-}) {
-  const Icon = props.step.icon
-  const StatusIcon = props.step.completed ? Check : Circle
-
+function StartStepItem(props: { step: StartStep; index: number }) {
   return (
-    <li className='relative flex gap-3 pb-2.5 last:pb-0'>
-      {!props.isLast && (
-        <span
-          className='bg-border absolute top-9 bottom-0 left-4 w-px'
-          aria-hidden='true'
-        />
-      )}
-      <span
-        className={cn(
-          'bg-background relative z-10 flex size-8 shrink-0 items-center justify-center rounded-lg border shadow-xs',
-          props.step.completed && 'border-success/30 bg-success/10'
-        )}
-      >
-        <StatusIcon
-          className={props.step.completed ? 'text-success size-4' : 'size-4'}
-          aria-hidden='true'
-        />
-      </span>
-
+    <li>
       <Link
         to={props.step.to}
-        className='bg-background/70 hover:bg-muted/50 focus-visible:ring-ring flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left shadow-xs transition-colors outline-none focus-visible:ring-2'
+        className='group hover:bg-tone-violet focus-visible:ring-ring flex min-w-0 items-center gap-3 rounded-lg py-3 pr-2 text-left transition-colors outline-none focus-visible:ring-2'
       >
-        <span className='flex min-w-0 items-start gap-2.5'>
-          <span className='bg-muted mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg'>
-            <Icon className='size-3.5' aria-hidden='true' />
-          </span>
-          <span className='flex min-w-0 flex-col gap-0.5'>
-            <span className='flex items-center gap-2 text-sm font-medium'>
-              <span className='text-muted-foreground font-mono text-xs tabular-nums'>
-                {props.index + 1}.
-              </span>
-              <span className='truncate'>{props.step.title}</span>
-            </span>
-            <span className='text-muted-foreground line-clamp-1 text-xs'>
-              {props.step.description}
-            </span>
+        <span className='text-tone-violet-strong flex size-8 shrink-0 items-center justify-center font-mono text-sm'>
+          {props.step.completed ? (
+            <Check className='text-success size-4' aria-hidden='true' />
+          ) : (
+            props.index + 1
+          )}
+        </span>
+        <span className='flex min-w-0 flex-1 flex-col gap-1'>
+          <span className='text-sm font-medium'>{props.step.title}</span>
+          <span className='text-muted-foreground text-xs leading-relaxed'>
+            {props.step.description}
           </span>
         </span>
         <ArrowRight
@@ -250,7 +217,6 @@ function RequestPreview(props: {
     apiKey: props.example.displayKey,
     model: props.example.model,
   })
-  const previewLines = previewCurl.split('\n')
   const handleCopyRequest = async () => {
     if (!props.example.keyId || isCopying) return
 
@@ -280,33 +246,29 @@ function RequestPreview(props: {
   }
 
   return (
-    <motion.div
+    <motion.section
       initial={shouldReduceMotion ? false : { opacity: 0, y: 10, scale: 0.98 }}
       animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
       transition={MOTION_TRANSITION.slow}
-      className='bg-card relative min-w-0 overflow-hidden rounded-lg border p-4'
+      className='min-w-0'
+      aria-label={t('First API request')}
     >
-      <div className='flex items-center justify-between gap-3 border-b pb-3'>
-        <div className='flex min-w-0 items-center gap-2'>
-          <IconBadge tone='info'>
-            <TerminalSquare />
-          </IconBadge>
-          <div className='min-w-0'>
-            <div className='truncate text-sm font-medium'>
-              {t('First API request')}
-            </div>
-            <div className='text-muted-foreground truncate text-xs'>
-              {props.example.ready
-                ? props.example.keyName
-                : t('Create an API key to unlock the real request')}
-            </div>
-          </div>
-        </div>
+      <HStack gap={3} align='center' justify='between' wrap='wrap'>
+        <VStack gap={1} className='min-w-0'>
+          <h4 className='text-sm font-medium'>{t('First API request')}</h4>
+          <p
+            className='text-muted-foreground truncate text-xs'
+            title={props.example.keyName}
+          >
+            {props.example.ready
+              ? props.example.keyName
+              : t('Create an API key to unlock the real request')}
+          </p>
+        </VStack>
         {props.example.ready ? (
           <Button
-            variant='outline'
+            variant='ghost'
             size='sm'
-            className='h-7 gap-1.5 px-2 text-xs'
             disabled={isCopying}
             onClick={handleCopyRequest}
             aria-label={t('Copy ready-to-run curl')}
@@ -319,76 +281,64 @@ function RequestPreview(props: {
             {t('Create API Key')}
           </Button>
         )}
-      </div>
-
-      <div className='brand-inverse bg-brand-ink text-brand-paper my-4 overflow-hidden rounded-lg p-4 font-mono text-xs'>
-        <div className='mb-2 flex items-center gap-1.5'>
-          <span className='bg-destructive size-2 rounded-full' />
-          <span className='bg-warning size-2 rounded-full' />
-          <span className='bg-success size-2 rounded-full' />
-        </div>
-        <div className='flex flex-col gap-1 overflow-hidden'>
-          {previewLines.map((line) => (
-            <code key={line} className='truncate' title={line}>
-              {line}
-            </code>
-          ))}
-        </div>
-      </div>
-
-      <div className='grid gap-2'>
+      </HStack>
+      <pre
+        className='brand-inverse bg-brand-ink text-brand-paper my-4 overflow-x-auto rounded-xl p-5 font-mono text-xs leading-relaxed'
+        tabIndex={0}
+        aria-label={t('First API request')}
+      >
+        <code>{previewCurl}</code>
+      </pre>
+      <dl className='space-y-3'>
         {props.signals.map((signal) => {
           const Icon = signal.icon
-
           return (
-            <div
-              key={signal.label}
-              className='flex items-center justify-between gap-3 border-t py-2.5'
-            >
-              <span className='flex min-w-0 items-center gap-2'>
-                <IconBadge tone={signal.tone} size='xs'>
-                  <Icon />
-                </IconBadge>
-                <span className='truncate text-xs font-medium'>
-                  {signal.label}
-                </span>
-              </span>
-              <span className='text-muted-foreground shrink-0 text-xs'>
+            <HStack key={signal.label} gap={3} align='center' justify='between'>
+              <HStack
+                as='dt'
+                gap={2}
+                align='center'
+                className='min-w-0 text-xs'
+              >
+                <Icon
+                  className={cn('size-3.5 shrink-0', ACTION_TONES[signal.tone])}
+                  aria-hidden='true'
+                />
+                {signal.label}
+              </HStack>
+              <dd
+                className='text-muted-foreground min-w-0 truncate text-xs'
+                title={signal.value}
+              >
                 {signal.value}
-              </span>
-            </div>
+              </dd>
+            </HStack>
           )
         })}
-      </div>
-    </motion.div>
+      </dl>
+    </motion.section>
   )
 }
 
 function QuickActionItem(props: { action: QuickAction }) {
   const Icon = props.action.icon
-
   return (
     <Link
       to={props.action.to}
       aria-label={props.action.title}
-      className={cn(
-        'group focus-visible:ring-ring flex h-full min-w-0 flex-col gap-5 rounded-2xl border p-5 text-left transition-shadow outline-none hover:shadow-md focus-visible:ring-2',
-        QUICK_ACTION_SURFACES[props.action.tone]
-      )}
+      className='group hover:bg-muted/40 focus-visible:ring-ring flex min-w-0 items-center gap-3 rounded-lg px-3 py-4 text-left transition-colors outline-none focus-visible:ring-2'
     >
-      <HStack gap={3} justify='between' align='center' className='text-inherit'>
-        <Icon className='size-6' aria-hidden='true' />
-        <ArrowRight
-          className='size-4 transition-transform motion-safe:group-hover:translate-x-1'
-          aria-hidden='true'
-        />
-      </HStack>
-      <VStack gap={1.5} className='min-w-0 text-inherit'>
-        <span className='text-sm font-semibold'>{props.action.title}</span>
-        <span className='line-clamp-2 text-xs leading-relaxed'>
-          {props.action.description}
-        </span>
-      </VStack>
+      <Icon
+        className={cn('size-5 shrink-0', ACTION_TONES[props.action.tone])}
+        aria-hidden='true'
+      />
+      <span className='min-w-0 flex-1 text-sm font-medium'>
+        {props.action.title}
+      </span>
+      <ArrowRight
+        className='text-muted-foreground size-4 shrink-0'
+        aria-hidden='true'
+      />
     </Link>
   )
 }
@@ -461,21 +411,18 @@ export function OverviewDashboard() {
         title: t('Create API Key'),
         description: t('Create a key for your app or service'),
         to: '/keys',
-        icon: KeyRound,
         completed: Boolean(preferredKey),
       },
       {
         title: t('Add credits'),
         description: t('Keep enough balance before production traffic'),
         to: '/wallet',
-        icon: CreditCard,
         completed: remainQuota > 0 || usedQuota > 0,
       },
       {
         title: t('Send a request'),
         description: t('Verify routing with Playground or your client'),
         to: '/playground',
-        icon: TerminalSquare,
         completed: requestCount > 0,
       },
     ],
@@ -491,14 +438,12 @@ export function OverviewDashboard() {
     () => [
       {
         title: t('API Keys'),
-        description: t('Create a key for your app or service'),
         to: '/keys',
         icon: KeyRound,
         tone: 'blue',
       },
       {
         title: t('Channels'),
-        description: t('Configure upstream providers and routing.'),
         to: '/channels',
         icon: RadioTower,
         tone: 'teal',
@@ -506,14 +451,12 @@ export function OverviewDashboard() {
       },
       {
         title: t('Usage Logs'),
-        description: t('Inspect requests, errors, and billing details'),
         to: '/usage-logs',
         icon: FileText,
         tone: 'teal',
       },
       {
         title: t('Pricing'),
-        description: t('Review model rates before scaling traffic'),
         to: '/pricing',
         icon: BookOpen,
         tone: 'violet',
@@ -536,19 +479,19 @@ export function OverviewDashboard() {
         label: t('Route active'),
         value: apiInfoItems.length > 0 ? t('Online') : t('Current domain'),
         icon: RadioTower,
-        tone: 'info',
+        tone: 'teal',
       },
       {
         label: t('Auth configured'),
         value: preferredKey ? t('Secured') : t('Needs API key'),
         icon: ShieldCheck,
-        tone: 'success',
+        tone: 'blue',
       },
       {
         label: t('Model selected'),
         value: modelsQuery.data?.[0] ?? t('Loading'),
         icon: Timer,
-        tone: 'chart-4',
+        tone: 'violet',
       },
     ],
     [apiInfoItems.length, modelsQuery.data, preferredKey, t]
@@ -625,22 +568,14 @@ export function OverviewDashboard() {
             align='end'
             justify='between'
             wrap='wrap'
-            className='border-tone-blue-border border-l-4 pl-5'
+            className='min-w-0'
           >
             <VStack gap={2}>
-              <p className='text-tone-blue-strong font-mono text-xs'>
-                {t('Your workspace, at a glance')}
-              </p>
               <h2 className='text-2xl font-medium tracking-tight sm:text-3xl'>
                 {t('Welcome back, {{name}}.', {
                   name: user?.display_name || user?.username || t('there'),
                 })}
               </h2>
-              <p className='text-muted-foreground max-w-xl text-sm leading-relaxed'>
-                {t(
-                  'A clear view of your usage. A direct path to your next build.'
-                )}
-              </p>
             </VStack>
             {showKeys && (
               <Link
@@ -662,15 +597,12 @@ export function OverviewDashboard() {
             </h3>
             <CardStaggerContainer
               className={cn(
-                'grid grid-cols-2 gap-3',
+                'grid grid-cols-1 gap-x-6 sm:grid-cols-2',
                 isAdmin ? 'xl:grid-cols-4' : 'xl:grid-cols-3'
               )}
             >
               {visibleQuickActions.map((action) => (
-                <CardStaggerItem
-                  key={action.title}
-                  className='min-w-0 last:odd:col-span-2 xl:last:odd:col-span-1 [&>a]:h-full [&>a]:w-full'
-                >
+                <CardStaggerItem key={action.title} className='min-w-0'>
                   <QuickActionItem action={action} />
                 </CardStaggerItem>
               ))}
@@ -685,28 +617,21 @@ export function OverviewDashboard() {
             {setupGuideExpanded && (
               <section
                 className={cn(
-                  'surface-violet border-tone-violet-border grid gap-6 rounded-2xl border p-5 sm:p-6',
+                  'grid gap-8 py-2',
                   showKeys && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]'
                 )}
               >
                 <VStack gap={6}>
                   <HStack gap={3} justify='between' align='start' wrap='wrap'>
                     <VStack gap={2} className='min-w-0 flex-1'>
-                      <p className='text-tone-violet-strong font-mono text-xs'>
+                      <h3 className='text-tone-violet-strong text-lg font-medium'>
                         {t('Get started')}
-                      </p>
-                      <h3 className='text-xl font-medium tracking-tight'>
-                        {t('Build on your API gateway in minutes')}
                       </h3>
                       <p className='text-muted-foreground text-sm leading-relaxed'>
-                        {startSteps.length === 3
-                          ? t(
-                              'Three small steps. Your first successful request.'
-                            )
-                          : t('Setup progress: {{completed}}/{{total}}', {
-                              completed: completedStepCount,
-                              total: startSteps.length,
-                            })}
+                        {t('Setup progress: {{completed}}/{{total}}', {
+                          completed: completedStepCount,
+                          total: startSteps.length,
+                        })}
                       </p>
                     </VStack>
                     <Button
@@ -726,7 +651,6 @@ export function OverviewDashboard() {
                         key={step.title}
                         step={step}
                         index={index}
-                        isLast={index === startSteps.length - 1}
                       />
                     ))}
                   </ol>
@@ -747,7 +671,7 @@ export function OverviewDashboard() {
               wrap='wrap'
               align='center'
               justify='between'
-              className='surface-violet border-tone-violet-border rounded-xl border-l-4 px-5 py-4'
+              className='py-3'
             >
               <VStack gap={1}>
                 <h3 className='text-sm font-semibold'>{t('Setup guide')}</h3>
@@ -778,20 +702,17 @@ export function OverviewDashboard() {
                 wrap='wrap'
                 align='end'
                 justify='between'
-                className='mb-4 border-t pt-6'
+                className='mb-5'
               >
                 <VStack gap={1}>
                   <h3 id={serviceDeskId} className='text-sm font-semibold'>
                     {t('Service desk')}
                   </h3>
-                  <p className='text-muted-foreground text-xs'>
-                    {t('Connections, platform updates, and support.')}
-                  </p>
                 </VStack>
               </HStack>
               <CardStaggerContainer
                 className={cn(
-                  'grid grid-cols-1 gap-4',
+                  'grid grid-cols-1 gap-8',
                   showLeftContentPanels &&
                     showUptimePanel &&
                     'xl:grid-cols-[minmax(0,1fr)_20rem]'
@@ -800,7 +721,7 @@ export function OverviewDashboard() {
                 {showLeftContentPanels && (
                   <section
                     className={cn(
-                      'grid min-w-0 grid-cols-1 gap-4',
+                      'grid min-w-0 grid-cols-1 gap-x-8 gap-y-6',
                       (showApiInfoPanel ||
                         showAnnouncementsPanel ||
                         showFAQPanel) &&

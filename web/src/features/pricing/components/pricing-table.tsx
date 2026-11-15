@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { VStack } from '@astryxdesign/core/VStack'
 import type { Row, PaginationState } from '@tanstack/react-table'
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -26,6 +27,7 @@ import {
   DataTableView,
   useDataTable,
 } from '@/components/data-table'
+import { StatusBadgeTypeContext } from '@/components/status-badge'
 
 import { DEFAULT_PRICING_PAGE_SIZE, DEFAULT_TOKEN_UNIT } from '../constants'
 import type { PricingModel, TokenUnit } from '../types'
@@ -88,28 +90,47 @@ export function PricingTable(props: PricingTableProps) {
   )
 
   return (
-    <div className='space-y-4'>
-      <DataTableView
-        table={table}
-        isLoading={isLoading}
-        emptyTitle={t('No Models Found')}
-        emptyDescription={t('No models match your current filters.')}
-        skeletonKeyPrefix='pricing-skeleton'
-        applyHeaderSize
-        getColumnClassName={(_columnId, kind) =>
-          kind === 'header' ? 'text-muted-foreground font-medium' : undefined
-        }
-        renderRow={(row: Row<PricingModel>) => (
-          <DataTableRow
-            key={row.id}
-            row={row}
-            className='hover:bg-muted/30 cursor-pointer transition-colors'
-            onClick={() => handleRowClick(row.original)}
-          />
-        )}
-      />
+    <VStack gap={4}>
+      <StatusBadgeTypeContext value='text'>
+        <DataTableView
+          containerClassName='rounded-none border-0 bg-transparent'
+          tableHeaderClassName='bg-transparent'
+          table={table}
+          isLoading={isLoading}
+          emptyTitle={t('No Models Found')}
+          emptyDescription={t('No models match your current filters.')}
+          skeletonKeyPrefix='pricing-skeleton'
+          applyHeaderSize
+          getColumnClassName={(_columnId, kind) =>
+            kind === 'header' ? 'text-muted-foreground font-medium' : undefined
+          }
+          renderRow={(row: Row<PricingModel>) => (
+            <DataTableRow
+              key={row.id}
+              row={row}
+              cellRenderColumns={columns}
+              tabIndex={onModelClick ? 0 : undefined}
+              className={
+                onModelClick
+                  ? 'hover:bg-muted/30 focus-visible:ring-ring cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset'
+                  : undefined
+              }
+              onKeyDown={(event) => {
+                if (event.target !== event.currentTarget || !onModelClick) {
+                  return
+                }
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleRowClick(row.original)
+                }
+              }}
+              onClick={() => handleRowClick(row.original)}
+            />
+          )}
+        />
+      </StatusBadgeTypeContext>
 
       {!isLoading && models.length > 0 && <DataTablePagination table={table} />}
-    </div>
+    </VStack>
   )
 }

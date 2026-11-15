@@ -37,15 +37,15 @@ export function EmptyState(props: EmptyStateProps) {
       gap={4}
       hAlign='center'
       vAlign='center'
-      className='surface-peach border-tone-peach-border min-h-80 rounded-2xl border px-6 py-12 text-center'
+      className='min-h-80 px-6 py-12 text-center'
     >
       <Search className='text-tone-peach-strong size-8' aria-hidden />
 
-      <h3 className='text-tone-peach-strong text-lg font-semibold'>
+      <h3 className='text-foreground text-lg font-semibold'>
         {t('No models found')}
       </h3>
 
-      <p className='text-tone-peach-strong max-w-sm text-sm leading-relaxed'>
+      <p className='text-muted-foreground max-w-sm text-sm leading-relaxed'>
         {hasSearch
           ? t(
               'No results for "{{query}}". Try adjusting your search or filters.',
