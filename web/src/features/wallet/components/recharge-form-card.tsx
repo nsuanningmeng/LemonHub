@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Gift, ExternalLink, Loader2, Receipt, WalletCards } from 'lucide-react'
+import { Gift, ExternalLink, Loader2, Receipt } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 
@@ -71,6 +71,8 @@ interface RechargeFormCardProps {
   redeeming: boolean
   topupLink?: string
   loading?: boolean
+  error?: boolean
+  onRetry?: () => void
   priceRatio?: number
   usdExchangeRate?: number
   onOpenBilling?: () => void
@@ -102,6 +104,8 @@ export function RechargeFormCard({
   redeeming,
   topupLink,
   loading,
+  error,
+  onRetry,
   priceRatio = 1,
   usdExchangeRate = 1,
   onOpenBilling,
@@ -196,12 +200,36 @@ export function RechargeFormCard({
     )
   }
 
+  if (error) {
+    return (
+      <TitledCard
+        title={<h3>{t('Add Funds')}</h3>}
+        className='border-tone-peach-border rounded-xl border shadow-none ring-0'
+        headerClassName='surface-peach px-5 py-5 sm:px-6 sm:py-6'
+        titleClassName='text-tone-peach-strong text-xl font-medium'
+        disableHoverEffect
+        contentClassName='space-y-4 p-5 sm:p-6'
+      >
+        <Alert variant='destructive'>
+          <AlertDescription>{t('Failed to load')}</AlertDescription>
+        </Alert>
+        {onRetry && (
+          <Button variant='outline' onClick={onRetry}>
+            {t('Retry')}
+          </Button>
+        )}
+      </TitledCard>
+    )
+  }
+
   return (
     <TitledCard
-      title={t('Add Funds')}
+      title={<h3>{t('Add Funds')}</h3>}
       description={t('Choose an amount and payment method')}
-      icon={<WalletCards className='h-4 w-4' />}
-      iconTone='success'
+      className='border-tone-peach-border rounded-xl border shadow-none ring-0'
+      headerClassName='surface-peach px-5 py-5 sm:px-6 sm:py-6'
+      titleClassName='text-tone-peach-strong text-xl font-medium'
+      descriptionClassName='text-tone-peach-strong'
       disableHoverEffect
       action={
         onOpenBilling ? (
@@ -216,7 +244,7 @@ export function RechargeFormCard({
           </Button>
         ) : null
       }
-      contentClassName='space-y-4 sm:space-y-6'
+      contentClassName='space-y-6 p-5 sm:space-y-8 sm:p-6'
     >
       {/* Online Topup Section */}
       {hasAnyTopup ? (
@@ -250,11 +278,12 @@ export function RechargeFormCard({
                           key={preset.value}
                           variant='outline'
                           className={cn(
-                            'flex min-h-16 flex-col items-start rounded-lg px-3 py-2.5 text-left whitespace-normal sm:min-h-[72px] sm:p-4',
+                            'flex h-auto min-h-20 flex-col items-start rounded-lg px-4 py-3 text-left whitespace-normal',
                             selectedPreset === preset.value
-                              ? 'border-foreground bg-foreground/5 dark:border-foreground dark:bg-foreground/10'
+                              ? 'surface-peach border-tone-peach-border text-tone-peach-strong ring-2 ring-tone-peach-border'
                               : 'border-muted'
                           )}
+                          aria-pressed={selectedPreset === preset.value}
                           onClick={() => onSelectPreset(preset)}
                         >
                           <div className='flex w-full items-center justify-between'>
@@ -262,7 +291,7 @@ export function RechargeFormCard({
                               {formatNumber(displayValue)}
                             </div>
                             {hasDiscount && (
-                              <div className='text-xs font-medium text-green-600'>
+                              <div className='text-success text-xs font-medium'>
                                 {getDiscountLabel(discount, t)}
                               </div>
                             )}
@@ -277,7 +306,7 @@ export function RechargeFormCard({
                                   saved: formatCurrency(savedAmount),
                                 }}
                                 components={{
-                                  saving: <span className='text-green-600' />,
+                                  saving: <span className='text-success' />,
                                 }}
                               />
                             ) : (
@@ -310,7 +339,7 @@ export function RechargeFormCard({
                     placeholder={t('Minimum {{amount}}', { amount: minTopup })}
                     className='h-9 text-base sm:h-10 sm:text-lg'
                   />
-                  <div className='bg-muted/30 flex min-h-9 items-center justify-between gap-2 rounded-md border px-3 lg:min-w-52'>
+                  <div className='surface-peach border-tone-peach-border flex min-h-9 items-center justify-between gap-2 rounded-md border px-3 lg:min-w-52'>
                     <span className='text-muted-foreground truncate text-xs'>
                       {t('Amount to pay:')}
                     </span>
@@ -367,7 +396,7 @@ export function RechargeFormCard({
                               ? `${method.name}. ${disabledReason}`
                               : method.name
                           }
-                          className='min-h-14 min-w-0 justify-start gap-2 rounded-lg px-3 py-2 text-left'
+                          className='border-border min-h-14 min-w-0 justify-start gap-3 rounded-lg px-4 py-3 text-left'
                         >
                           {paymentLoading === method.type ? (
                             <Loader2 className='h-4 w-4 animate-spin' />
@@ -465,7 +494,7 @@ export function RechargeFormCard({
                                 ? `${method.name}. ${disabledReason}`
                                 : method.name
                             }
-                            className='min-h-14 min-w-0 justify-start gap-2 rounded-lg px-3 py-2 text-left'
+                            className='border-border min-h-14 min-w-0 justify-start gap-3 rounded-lg px-4 py-3 text-left'
                           >
                             {methodIcon}
                             <span className='flex min-w-0 flex-col items-start gap-0.5'>

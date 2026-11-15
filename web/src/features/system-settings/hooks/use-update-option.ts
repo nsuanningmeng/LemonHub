@@ -25,6 +25,14 @@ import type { UpdateOptionRequest } from '../types'
 
 // Configuration keys that require status refresh
 const STATUS_RELATED_KEYS = new Set([
+  'SystemName',
+  'Logo',
+  'Footer',
+  'ServerAddress',
+  'DefaultCollapseSidebar',
+  'DemoSiteEnabled',
+  'SelfUseModeEnabled',
+  'general_setting.docs_link',
   'QuotaRemindEnabled',
   'QuotaRemindThreshold',
   'HeaderNavModules',
@@ -53,28 +61,98 @@ const STATUS_RELATED_KEYS = new Set([
   'TurnstileSiteKey',
   'GeetestCaptchaId',
   'TencentCaptchaAppId',
+  'RegisterEnabled',
+  'PasswordLoginEnabled',
+  'PasswordRegisterEnabled',
+  'EmailVerificationEnabled',
+  'GitHubOAuthEnabled',
+  'GitHubClientId',
+  'discord.enabled',
+  'discord.client_id',
+  'oidc.enabled',
+  'oidc.client_id',
+  'oidc.authorization_endpoint',
+  'LinuxDOOAuthEnabled',
+  'LinuxDOClientId',
+  'LinuxDOMinimumTrustLevel',
+  'TelegramOAuthEnabled',
+  'TelegramBotName',
+  'WeChatAuthEnabled',
+  'WeChatAccountQRCodeImageURL',
+  'passkey.enabled',
+  'passkey.rp_display_name',
+  'passkey.rp_id',
+  'passkey.origins',
+  'passkey.allow_insecure_origin',
+  'passkey.user_verification',
+  'passkey.attachment_preference',
+  'legal.user_agreement',
+  'legal.privacy_policy',
+  'Chats',
+  'DataExportEnabled',
+  'DataExportDefaultTime',
+  'DrawingEnabled',
+  'TaskEnabled',
+  'MjNotifyEnabled',
+  'BatchUpdateEnabled',
+  'DefaultUseAutoGroup',
+  'console_setting.api_info_enabled',
+  'console_setting.api_info',
+  'console_setting.announcements_enabled',
+  'console_setting.announcements',
+  'console_setting.faq_enabled',
+  'console_setting.faq',
+  'console_setting.uptime_kuma_enabled',
 ])
+
+const CONTENT_QUERY_KEYS: Record<string, string[]> = {
+  Notice: ['notice'],
+  HomePageContent: ['home-page-content'],
+  About: ['about-content'],
+  Contact: ['contact-content'],
+  'legal.user_agreement': ['user-agreement'],
+  'legal.privacy_policy': ['privacy-policy'],
+  'console_setting.uptime_kuma_groups': ['uptime-status'],
+}
 
 export function useUpdateOption() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: (request: UpdateOptionRequest) => updateSystemOption(request),
-    onSuccess: (data, variables) => {
+    onSuccess: async (data, variables) => {
       if (data.success) {
         // Always refresh system-options
-        queryClient.invalidateQueries({ queryKey: ['system-options'] })
+        const refreshes = [
+          queryClient.invalidateQueries({ queryKey: ['system-options'] }),
+        ]
 
         // If updating frontend-display-related config, also refresh status
         if (STATUS_RELATED_KEYS.has(variables.key)) {
-          queryClient.invalidateQueries({ queryKey: ['status'] })
           try {
             window.localStorage.removeItem('status')
           } catch {
             /* empty */
           }
+          refreshes.push(
+            queryClient.invalidateQueries({ queryKey: ['status'] })
+          )
         }
 
+        const contentQueryKey = CONTENT_QUERY_KEYS[variables.key]
+        if (contentQueryKey) {
+          if (variables.key === 'HomePageContent') {
+            try {
+              window.localStorage.removeItem('home_page_content')
+            } catch {
+              /* empty */
+            }
+          }
+          refreshes.push(
+            queryClient.invalidateQueries({ queryKey: contentQueryKey })
+          )
+        }
+        await Promise.all(refreshes)
         toast.success(i18next.t('Setting updated successfully'))
       } else {
         toast.error(data.message || i18next.t('Failed to update setting'))

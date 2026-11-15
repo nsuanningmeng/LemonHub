@@ -16,6 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Heading } from '@astryxdesign/core/Heading'
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import {
   Children,
   isValidElement,
@@ -80,37 +83,56 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
   return (
     <PageFooterProvider container={footerContainer}>
       <Main>
-        <div className='shrink-0 px-3 pt-3 pb-2.5 sm:px-4 sm:pt-5 sm:pb-3'>
+        <VStack
+          gap={3}
+          as='header'
+          className='shrink-0 px-4 pt-5 pb-4 sm:px-6 sm:pt-7 sm:pb-5 lg:px-8'
+        >
           {breadcrumb != null && (
-            <div className='mb-2 sm:mb-3'>{breadcrumb}</div>
+            <HStack className='text-muted-foreground text-xs'>
+              {breadcrumb}
+            </HStack>
           )}
-          <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-2 sm:gap-x-4'>
-            <div className='min-w-0 flex-1 basis-32'>
-              <h2 className='truncate text-base font-bold tracking-tight sm:text-lg'>
+          <HStack gap={4} wrap='wrap' vAlign='center' hAlign='between'>
+            <VStack
+              gap={1}
+              className='border-primary min-w-0 flex-1 basis-32 border-s-4 ps-3'
+            >
+              <Heading
+                level={1}
+                weight='semibold'
+                className='text-foreground truncate text-xl tracking-tight sm:text-2xl'
+              >
                 {title}
-              </h2>
-            </div>
+              </Heading>
+            </VStack>
             {actions != null && (
-              <div className='flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-x-4'>
+              <HStack
+                gap={2}
+                wrap='wrap'
+                vAlign='center'
+                hAlign='end'
+                className='max-w-full min-w-0'
+              >
                 {actions}
-              </div>
+              </HStack>
             )}
-          </div>
-        </div>
+          </HStack>
+        </VStack>
 
-        <div
+        <VStack
           className={
             props.fixedContent
-              ? 'min-h-0 flex-1 overflow-hidden px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
-              : 'min-h-0 flex-1 overflow-auto px-3 pt-1 pb-3 sm:px-4 sm:pt-1.5 sm:pb-4'
+              ? 'min-h-0 flex-1 overflow-hidden px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8'
+              : 'min-h-0 flex-1 overflow-auto px-4 pb-4 sm:px-6 sm:pb-6 lg:px-8'
           }
         >
           {content}
-        </div>
+        </VStack>
 
         <div
           ref={setFooterContainer}
-          className='bg-background shrink-0 border-t px-3 py-2.5 empty:hidden sm:px-4 sm:py-3'
+          className='bg-background shrink-0 border-t px-4 py-3 empty:hidden sm:px-6 lg:px-8'
         />
       </Main>
     </PageFooterProvider>

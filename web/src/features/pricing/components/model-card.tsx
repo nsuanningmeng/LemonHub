@@ -16,13 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { ChevronRight, Copy } from 'lucide-react'
 import { memo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getLobeIcon } from '@/lib/lobe-icon'
-import { cn } from '@/lib/utils'
 
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import {
@@ -201,89 +202,88 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
 
   return (
-    <div
-      className={cn(
-        'group relative flex flex-col rounded-xl border p-3 transition-colors sm:p-5',
-        'hover:bg-muted/20'
-      )}
+    <VStack
+      as='article'
+      gap={4}
+      aria-label={props.model.model_name}
+      className='surface-violet group border-tone-violet-border hover:border-primary/50 min-w-0 overflow-hidden rounded-2xl border p-5 transition-colors sm:p-6'
     >
-      {/* Header: icon + name + price + actions */}
-      <div className='flex items-start justify-between gap-2.5 sm:gap-3'>
-        <div className='flex min-w-0 items-start gap-2.5 sm:gap-3'>
-          <div className='bg-muted/40 flex size-9 shrink-0 items-center justify-center rounded-lg sm:size-10 sm:rounded-xl'>
+      <HStack gap={3} hAlign='between' vAlign='start'>
+        <HStack gap={3} vAlign='start' className='min-w-0'>
+          <HStack
+            hAlign='center'
+            vAlign='center'
+            className='surface-blue border-tone-blue-border size-11 shrink-0 rounded-2xl border'
+          >
             {modelIcon || (
-              <span className='text-muted-foreground text-sm font-bold'>
-                {initial}
-              </span>
+              <b className='text-tone-blue-strong text-sm'>{initial}</b>
             )}
-          </div>
-          <div className='min-w-0'>
-            <h3 className='text-foreground truncate font-mono text-[15px] leading-tight font-bold'>
+          </HStack>
+          <VStack gap={1} className='min-w-0'>
+            {props.model.vendor_name && (
+              <p className='text-tone-violet-strong text-xs'>
+                {props.model.vendor_name}
+              </p>
+            )}
+            <h3 className='text-tone-violet-strong text-base leading-snug font-semibold [overflow-wrap:anywhere]'>
               {props.model.model_name}
             </h3>
-            <div className='mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm sm:mt-1 sm:gap-x-3'>
-              {priceSummary}
-            </div>
-          </div>
-        </div>
+          </VStack>
+        </HStack>
+        <button
+          type='button'
+          onClick={handleCopy}
+          className='text-tone-violet-strong hover:bg-tone-violet focus-visible:ring-ring shrink-0 rounded-md p-2 transition-colors focus-visible:ring-2 focus-visible:outline-none'
+          aria-label={t('Copy model name')}
+          title={t('Copy')}
+        >
+          <Copy className='size-4' aria-hidden />
+        </button>
+      </HStack>
 
-        <div className='flex shrink-0 items-center gap-1.5'>
-          <button
-            type='button'
-            onClick={props.onClick}
-            className='text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors sm:px-2.5 sm:py-1.5'
-          >
-            {t('Details')}
-            <ChevronRight className='size-3.5' />
-          </button>
-          <button
-            type='button'
-            onClick={handleCopy}
-            className='text-muted-foreground hover:text-foreground hover:bg-muted rounded-md border p-1.5 transition-colors'
-            title={t('Copy')}
-          >
-            <Copy className='size-3.5' />
-          </button>
-        </div>
-      </div>
-
-      {/* Description */}
-      <p className='text-muted-foreground mt-2 line-clamp-1 flex-1 text-[13px] leading-relaxed sm:mt-4 sm:line-clamp-2 sm:min-h-[2.5rem]'>
+      <p className='text-tone-violet-strong line-clamp-2 flex-1 text-sm leading-relaxed'>
         {props.model.description || t('No description available.')}
       </p>
 
-      {/* Footer: left metadata and right performance summary share row alignment */}
-      <div className='mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 sm:mt-4'>
-        <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
-          {primaryGroup && (
-            <span className='text-muted-foreground text-sm font-medium'>
-              {primaryGroup}
-            </span>
-          )}
-          <ModelBillingModeBadge model={props.model} />
-        </div>
-        <ModelPerfBadge
-          perf={props.perf}
-          status={props.perfStatus}
-          className='row-span-2 self-start'
-        />
+      <HStack gap={2} wrap='wrap' className='min-w-0'>
+        {primaryGroup && (
+          <p className='text-muted-foreground text-xs font-medium'>
+            {primaryGroup}
+          </p>
+        )}
+        <ModelBillingModeBadge model={props.model} />
+        {bottomTags.map((item) => (
+          <p key={item} className='surface-teal rounded-md px-2 py-1 text-xs'>
+            {item}
+          </p>
+        ))}
+        {hiddenCount > 0 && (
+          <p className='text-muted-foreground text-xs'>+{hiddenCount}</p>
+        )}
+      </HStack>
 
-        <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
-          {bottomTags.map((item) => (
-            <span key={item} className='text-muted-foreground/70 text-xs'>
-              {item}
-            </span>
-          ))}
-          <span className='text-muted-foreground/50 text-xs'>
-            {tokenUnitLabel}
-          </span>
-          {hiddenCount > 0 && (
-            <span className='text-muted-foreground/40 text-xs'>
-              +{hiddenCount}
-            </span>
+      <VStack
+        gap={3}
+        className='border-tone-violet-border bg-card rounded-xl border p-4'
+      >
+        <HStack gap={3} wrap='wrap' vAlign='center' className='text-xs'>
+          {priceSummary}
+          {isTokenBased && (
+            <small className='text-muted-foreground'>/ {tokenUnitLabel}</small>
           )}
-        </div>
-      </div>
-    </div>
+        </HStack>
+        <HStack gap={3} hAlign='between' vAlign='center' wrap='wrap'>
+          <ModelPerfBadge perf={props.perf} status={props.perfStatus} />
+          <button
+            type='button'
+            onClick={props.onClick}
+            className='surface-blue text-tone-blue-strong focus-visible:ring-ring inline-flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-semibold transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:outline-none'
+          >
+            {t('Details')}
+            <ChevronRight className='size-3.5' aria-hidden />
+          </button>
+        </HStack>
+      </VStack>
+    </VStack>
   )
 })

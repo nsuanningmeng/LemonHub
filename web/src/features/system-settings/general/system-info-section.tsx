@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { DEFAULT_SYSTEM_NAME } from '@/lib/constants'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -49,7 +50,7 @@ const _systemInfoSchema = z.object({
   SystemName: z.string().min(1),
   ServerAddress: z.string().optional(),
   TrustedRedirectDomains: z.string().optional(),
-  Logo: z.string().url().optional().or(z.literal('')),
+  Logo: z.string().optional(),
   Footer: z.string().optional(),
   SeoDescription: z.string().optional(),
   SeoKeywords: z.string().optional(),
@@ -102,7 +103,16 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     }),
     ServerAddress: z.string().optional(),
     TrustedRedirectDomains: z.string().optional(),
-    Logo: z.string().url().optional().or(z.literal('')),
+    Logo: z
+      .string()
+      .refine(
+        (value) =>
+          value === '' ||
+          /^\/(?!\/)\S*$/.test(value) ||
+          z.url().safeParse(value).success,
+        { message: t('Enter a valid URL or a path starting with /.') }
+      )
+      .optional(),
     Footer: z.string().optional(),
     SeoDescription: z.string().optional(),
     SeoKeywords: z.string().optional(),
@@ -159,7 +169,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                   <FormItem>
                     <FormLabel>{t('System Name')}</FormLabel>
                     <FormControl>
-                      <Input placeholder={t('New API')} {...field} />
+                      <Input placeholder={DEFAULT_SYSTEM_NAME} {...field} />
                     </FormControl>
                     <FormDescription>
                       {t('The name displayed across the application')}
@@ -224,7 +234,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                       />
                     </FormControl>
                     <FormDescription>
-                      {t('URL to your logo image (optional)')}
+                      {t('Logo image URL or a path starting with / (optional)')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -247,7 +257,9 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                       />
                     </FormControl>
                     <FormDescription>
-                      {t('Footer text displayed at the bottom of pages')}
+                      {t(
+                        'Footer content displayed at the bottom of pages (supports safe HTML)'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -360,14 +372,14 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                       <FormLabel>{t('Home Page Content')}</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder={t('Welcome to our New API...')}
+                          placeholder={t('Welcome to your workspace...')}
                           rows={6}
                           {...field}
                         />
                       </FormControl>
                       <FormDescription>
                         {t(
-                          'Content displayed on the home page (supports Markdown)'
+                          'Custom home page: Markdown, HTML, or an HTTP(S) URL. Leave empty to use the default home page.'
                         )}
                       </FormDescription>
                       <FormMessage />

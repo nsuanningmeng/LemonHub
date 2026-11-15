@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { VStack } from '@astryxdesign/core/VStack'
 import { Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -32,14 +33,19 @@ export function EmptyState(props: EmptyStateProps) {
   const hasSearch = Boolean(props.searchQuery?.trim())
 
   return (
-    <div className='flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed px-6 py-12 text-center'>
-      <Search className='text-muted-foreground/40 mb-3 size-10' />
+    <VStack
+      gap={4}
+      hAlign='center'
+      vAlign='center'
+      className='surface-peach border-tone-peach-border min-h-80 rounded-2xl border px-6 py-12 text-center'
+    >
+      <Search className='text-tone-peach-strong size-8' aria-hidden />
 
-      <h3 className='text-foreground mb-1 text-base font-semibold'>
+      <h3 className='text-tone-peach-strong text-lg font-semibold'>
         {t('No models found')}
       </h3>
 
-      <p className='text-muted-foreground mb-5 max-w-xs text-sm'>
+      <p className='text-tone-peach-strong max-w-sm text-sm leading-relaxed'>
         {hasSearch
           ? t(
               'No results for "{{query}}". Try adjusting your search or filters.',
@@ -53,6 +59,6 @@ export function EmptyState(props: EmptyStateProps) {
           {t('Clear all filters')}
         </Button>
       )}
-    </div>
+    </VStack>
   )
 }

@@ -16,8 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import type { Table } from '@tanstack/react-table'
-import { ChevronDown, Loader2, X as Cross2Icon } from 'lucide-react'
+import { ChevronDown, Loader2, Search, X as Cross2Icon } from 'lucide-react'
 import * as React from 'react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -124,11 +126,8 @@ export type DataTableToolbarProps<TData> = {
    */
   viewToggle?: ReactNode
   /**
-   * Content rendered on the LEFT side of the secondary action row. When
-   * provided the toolbar splits into two visual rows:
-   *   Row 1: search inputs / filter chips …… Expand
-   *   Row 2: expanded filters
-   *   Row 3: leftActions …… Reset / Search / ViewOptions
+   * Secondary actions rendered below the search rail and advanced filters.
+   * Display controls and search actions remain beside the primary filters.
    */
   leftActions?: ReactNode
   /**
@@ -137,22 +136,10 @@ export type DataTableToolbarProps<TData> = {
   className?: string
 }
 
-/**
- * Unified data-table filter panel — Ant Design Pro inspired.
- *
- * Layout (single flex-wrap row):
- * - Filters (search input + additional inputs + filter chips + expandable
- *   inputs) flow horizontally and wrap as needed.
- * - The action cluster (Reset / Search / View / Expand) hugs the right
- *   edge via `ms-auto`. When filters fill a row, the cluster naturally
- *   wraps to the next line — still right-aligned — matching the
- *   collapsed/expanded states from the user's reference design.
- *
- * No background panel, no row separators — relies on whitespace and the
- * adjacent table border for visual hierarchy.
- */
+/** Search, filters and display controls share a persistent record-workspace rail. */
 export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   const { t } = useTranslation()
+  const expandedFiltersId = React.useId()
   const [expanded, setExpanded] = useState(false)
   const [isSearchComposing, setIsSearchComposing] = useState(false)
 
@@ -244,14 +231,21 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   }
 
   const searchInput = (
-    <Input
-      placeholder={placeholder}
-      value={searchValue}
-      onChange={handleSearchChange}
-      onCompositionStart={handleSearchCompositionStart}
-      onCompositionEnd={handleSearchCompositionEnd}
-      className='w-full sm:w-[200px] lg:w-[240px]'
-    />
+    <label className='relative block min-w-0 flex-1 basis-full sm:max-w-72 sm:min-w-48 sm:basis-auto'>
+      <Search
+        aria-hidden='true'
+        className='text-tone-blue-strong pointer-events-none absolute top-1/2 left-3 z-10 size-4 -translate-y-1/2'
+      />
+      <Input
+        aria-label={placeholder}
+        placeholder={placeholder}
+        value={searchValue}
+        onChange={handleSearchChange}
+        onCompositionStart={handleSearchCompositionStart}
+        onCompositionEnd={handleSearchCompositionEnd}
+        className='bg-card border-tone-blue-border w-full ps-9 shadow-none'
+      />
+    </label>
   )
 
   const filterChips = React.useMemo(
@@ -305,7 +299,11 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   }
 
   const searchButton = hasSearch ? (
-    <Button onClick={props.onSearch} disabled={props.searchLoading}>
+    <Button
+      className='surface-brand bg-(--studio-brand) text-(--studio-on-brand) hover:bg-(--studio-brand) hover:brightness-110'
+      onClick={props.onSearch}
+      disabled={props.searchLoading}
+    >
       {props.searchLoading && <Loader2 className='animate-spin' />}
       {t('Search')}
     </Button>
@@ -322,6 +320,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
       variant='ghost'
       onClick={() => setExpanded((p) => !p)}
       aria-expanded={expanded}
+      aria-controls={expandedFiltersId}
       className={cn(
         'text-muted-foreground hover:text-foreground gap-1 px-2',
         props.hasExpandedActiveFilters &&
@@ -339,60 +338,54 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     </Button>
   ) : null
 
-  const hasLeftActions = props.leftActions != null
-
-  if (hasLeftActions) {
-    return (
-      <div className={cn('flex flex-col gap-2', props.className)}>
-        <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
-          {props.customSearch !== undefined ? props.customSearch : searchInput}
-          {props.additionalSearch}
-          {filterChips}
-          <div className='ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2'>
-            {expandToggle}
-          </div>
-        </div>
-
-        {expanded && hasExpandable && (
-          <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
-            {props.expandable}
-          </div>
-        )}
-
-        <div className='flex flex-wrap items-center gap-2 sm:gap-3'>
-          {props.leftActions}
-          <div className='ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2'>
-            {props.preActions}
-            {resetButton}
-            {searchButton}
-            {viewToggleNode}
-            {viewOptionsNode}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div
-      className={cn(
-        'flex flex-wrap items-center gap-2 sm:gap-3',
-        props.className
-      )}
+    <VStack
+      as='section'
+      gap={3}
+      role='search'
+      aria-label={t('Filter records')}
+      className={cn('min-w-0', props.className)}
     >
-      {props.customSearch !== undefined ? props.customSearch : searchInput}
-      {props.additionalSearch}
-      {filterChips}
-      {expanded && hasExpandable && props.expandable}
-
-      <div className='ms-auto flex shrink-0 items-center gap-1.5 sm:gap-2'>
-        {props.preActions}
-        {resetButton}
-        {searchButton}
-        {viewToggleNode}
-        {viewOptionsNode}
-        {expandToggle}
-      </div>
-    </div>
+      <HStack gap={2} wrap='wrap' vAlign='center'>
+        {props.customSearch !== undefined ? props.customSearch : searchInput}
+        {props.additionalSearch}
+        {filterChips}
+        <HStack
+          gap={1.5}
+          wrap='wrap'
+          vAlign='center'
+          hAlign='end'
+          className='ms-auto max-w-full'
+        >
+          {props.preActions}
+          {resetButton}
+          {searchButton}
+          {expandToggle}
+          {viewToggleNode}
+          {viewOptionsNode}
+        </HStack>
+      </HStack>
+      {hasExpandable && (
+        <section
+          id={expandedFiltersId}
+          hidden={!expanded}
+          className='border-tone-blue-border border-t pt-3'
+        >
+          <HStack gap={3} wrap='wrap' vAlign='center'>
+            {props.expandable}
+          </HStack>
+        </section>
+      )}
+      {props.leftActions != null && (
+        <HStack
+          gap={2}
+          wrap='wrap'
+          vAlign='center'
+          className='border-tone-blue-border border-t pt-3'
+        >
+          {props.leftActions}
+        </HStack>
+      )}
+    </VStack>
   )
 }

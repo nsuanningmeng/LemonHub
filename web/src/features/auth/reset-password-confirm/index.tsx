@@ -105,14 +105,21 @@ export function ResetPasswordConfirm({
     }
   }
 
+  let submitLabel = t('auth.resetPasswordConfirm.confirm')
+  if (newPassword) {
+    submitLabel = t('auth.resetPasswordConfirm.backToLogin')
+  } else if (isActive) {
+    submitLabel = t('auth.resetPasswordConfirm.retry', { seconds: secondsLeft })
+  }
+
   return (
     <AuthLayout>
       <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h2 className='text-center text-2xl font-semibold tracking-tight sm:text-left'>
+        <div className='space-y-4'>
+          <h2 className='text-left text-3xl font-semibold tracking-tight sm:text-4xl'>
             {t('Reset password')}
           </h2>
-          <p className='text-muted-foreground text-left text-sm sm:text-base'>
+          <p className='text-muted-foreground text-left text-sm leading-relaxed'>
             {newPassword
               ? t('auth.resetPasswordConfirm.success')
               : t('auth.resetPasswordConfirm.description')}
@@ -179,13 +186,7 @@ export function ResetPasswordConfirm({
               newPassword ? false : loading || isActive || !isValidResetLink
             }
           >
-            {newPassword
-              ? t('auth.resetPasswordConfirm.backToLogin')
-              : isActive
-                ? t('auth.resetPasswordConfirm.retry', {
-                    seconds: secondsLeft,
-                  })
-                : t('auth.resetPasswordConfirm.confirm')}
+            {submitLabel}
           </Button>
 
           {!newPassword && (

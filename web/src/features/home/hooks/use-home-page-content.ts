@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import i18next from 'i18next'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { toast } from 'sonner'
 
 import { isHttpUrl } from '@/lib/content-format'
@@ -27,58 +28,47 @@ import type { HomePageContentResult } from '../types'
 
 const STORAGE_KEY = 'home_page_content'
 
-/**
- * Hook to load and manage custom home page content
- * Supports both Markdown/HTML content and iframe URLs
- */
+function getCachedHomeContent(): string | undefined {
+  try {
+    return localStorage.getItem(STORAGE_KEY) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Load admin-configured Markdown, HTML, or an embedded URL. */
 export function useHomePageContent(): HomePageContentResult {
-  const [content, setContent] = useState<string>('')
-  const [isLoaded, setIsLoaded] = useState(false)
+  const { data, isPending, error } = useQuery({
+    queryKey: ['home-page-content'],
+    queryFn: async () => {
+      const response = await getHomePageContent().catch((cause: unknown) => {
+        // This optional content has a local fallback, so a failed request must
+        // not trigger the application's global Axios error-page redirect.
+        throw new Error('Failed to load home page content', { cause })
+      })
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to load home page content')
+      }
+      const content = response.data ?? ''
+      try {
+        if (content) localStorage.setItem(STORAGE_KEY, content)
+        else localStorage.removeItem(STORAGE_KEY)
+      } catch {
+        // Storage is an optional cache; live content remains usable without it.
+      }
+      return content
+    },
+    placeholderData: getCachedHomeContent,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    retry: false,
+  })
 
   useEffect(() => {
-    let mounted = true
+    if (error) toast.error(i18next.t('Failed to load home page content'))
+  }, [error])
 
-    const loadContent = async () => {
-      // Load from localStorage first for immediate display
-      const cached = localStorage.getItem(STORAGE_KEY)
-      if (cached && mounted) {
-        setContent(cached)
-      }
-
-      try {
-        const response = await getHomePageContent()
-        const { success, data } = response
-
-        if (!mounted) return
-
-        if (success && data) {
-          setContent(data)
-          localStorage.setItem(STORAGE_KEY, data)
-        } else {
-          // Clear content if API returns empty
-          setContent('')
-          localStorage.removeItem(STORAGE_KEY)
-        }
-      } catch (error) {
-        if (!mounted) return
-        // eslint-disable-next-line no-console
-        console.error('Failed to load home page content:', error)
-        toast.error(i18next.t('Failed to load home page content'))
-      } finally {
-        if (mounted) {
-          setIsLoaded(true)
-        }
-      }
-    }
-
-    loadContent()
-
-    return () => {
-      mounted = false
-    }
-  }, [])
-
-  const isUrl = isHttpUrl(content)
-
-  return { content, isLoaded, isUrl }
+  // Query errors discard placeholderData, but cached content is still useful.
+  const content = data ?? getCachedHomeContent() ?? ''
+  return { content, isLoaded: !isPending, isUrl: isHttpUrl(content) }
 }

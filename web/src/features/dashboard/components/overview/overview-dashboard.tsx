@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
@@ -46,11 +48,12 @@ import {
   CardStaggerContainer,
   CardStaggerItem,
 } from '@/components/page-transition'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { getUserModels } from '@/lib/api'
 import { MOTION_TRANSITION } from '@/lib/motion'
 import { ROLE } from '@/lib/roles'
@@ -70,17 +73,6 @@ import { UptimePanel } from './uptime-panel'
 
 const SETUP_GUIDE_VISIBILITY_STORAGE_KEY =
   'dashboard_overview_setup_guide_expanded'
-
-const SETUP_GUIDE_CODE_PATTERN = [
-  'const request = await client.responses.create({',
-  "  model: 'gpt-4.1-mini',",
-  "  input: 'Start routing traffic',",
-  '})',
-  '',
-  'if (request.output_text) {',
-  '  console.log(request.output_text)',
-  '}',
-].join('\n')
 
 type DashboardActionPath =
   | '/keys'
@@ -103,7 +95,14 @@ interface QuickAction {
   description: string
   to: DashboardActionPath
   icon: LucideIcon
+  tone: 'blue' | 'teal' | 'violet'
   adminOnly?: boolean
+}
+
+const QUICK_ACTION_SURFACES = {
+  blue: 'surface-blue border-tone-blue-border',
+  teal: 'surface-teal border-tone-teal-border',
+  violet: 'surface-violet border-tone-violet-border',
 }
 
 interface RequestExample {
@@ -179,44 +178,6 @@ function buildCurlCommand(args: {
     `  -H "Authorization: Bearer ${args.apiKey}" \\`,
     `  -d '{"model":"${args.model}","messages":[{"role":"user","content":"Say hello in one sentence."}]}'`,
   ].join('\n')
-}
-
-function SetupGuideBackdrop(props: { compact?: boolean }) {
-  return (
-    <>
-      <div
-        className={cn(
-          'pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_48%_120%_at_78%_0%,color-mix(in_oklch,var(--overview-accent-1)_14%,transparent)_0%,transparent_62%),linear-gradient(112deg,color-mix(in_oklch,var(--card)_94%,var(--overview-accent-2)_6%)_0%,color-mix(in_oklch,var(--card)_94%,var(--overview-accent-3)_6%)_48%,color-mix(in_oklch,var(--background)_90%,var(--overview-accent-1)_10%)_100%)] dark:opacity-60',
-          props.compact
-            ? '[mask-image:linear-gradient(90deg,black_0%,black_48%,transparent_74%)] opacity-55'
-            : 'opacity-85'
-        )}
-        aria-hidden='true'
-      />
-      <div
-        className={cn(
-          'text-foreground/5 dark:text-foreground/8 pointer-events-none absolute inset-y-0 right-0 hidden overflow-hidden font-mono sm:block',
-          props.compact ? 'w-1/2 opacity-45' : 'w-[58%] opacity-75'
-        )}
-        aria-hidden='true'
-      >
-        <pre
-          className={cn(
-            'absolute right-3 [mask-image:linear-gradient(90deg,transparent_0%,black_30%,black_82%,transparent_100%)] text-right tracking-[0.38em] whitespace-pre',
-            props.compact
-              ? '-top-6 text-[9px] leading-4'
-              : 'top-1 text-[11px] leading-5'
-          )}
-        >
-          {SETUP_GUIDE_CODE_PATTERN}
-        </pre>
-      </div>
-      <div
-        className='from-background/35 to-background/70 dark:from-background/20 dark:to-background/80 pointer-events-none absolute inset-0 bg-linear-to-b via-transparent'
-        aria-hidden='true'
-      />
-    </>
-  )
 }
 
 function StartStepItem(props: {
@@ -323,17 +284,8 @@ function RequestPreview(props: {
       initial={shouldReduceMotion ? false : { opacity: 0, y: 10, scale: 0.98 }}
       animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0, scale: 1 }}
       transition={MOTION_TRANSITION.slow}
-      className='bg-background/75 relative overflow-hidden rounded-2xl border p-3 shadow-sm backdrop-blur'
+      className='bg-card relative min-w-0 overflow-hidden rounded-lg border p-4'
     >
-      {!shouldReduceMotion && (
-        <motion.div
-          className='via-foreground/30 pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent to-transparent'
-          animate={{ x: ['-100%', '100%'] }}
-          transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
-          aria-hidden='true'
-        />
-      )}
-
       <div className='flex items-center justify-between gap-3 border-b pb-3'>
         <div className='flex min-w-0 items-center gap-2'>
           <IconBadge tone='info'>
@@ -369,7 +321,7 @@ function RequestPreview(props: {
         )}
       </div>
 
-      <div className='bg-foreground/[0.035] my-3 rounded-xl p-3 font-mono text-xs'>
+      <div className='brand-inverse bg-brand-ink text-brand-paper my-4 overflow-hidden rounded-lg p-4 font-mono text-xs'>
         <div className='mb-2 flex items-center gap-1.5'>
           <span className='bg-destructive size-2 rounded-full' />
           <span className='bg-warning size-2 rounded-full' />
@@ -377,11 +329,7 @@ function RequestPreview(props: {
         </div>
         <div className='flex flex-col gap-1 overflow-hidden'>
           {previewLines.map((line) => (
-            <code
-              key={line}
-              className='text-muted-foreground truncate'
-              title={line}
-            >
+            <code key={line} className='truncate' title={line}>
               {line}
             </code>
           ))}
@@ -395,7 +343,7 @@ function RequestPreview(props: {
           return (
             <div
               key={signal.label}
-              className='bg-muted/40 flex items-center justify-between gap-3 rounded-xl px-3 py-2'
+              className='flex items-center justify-between gap-3 border-t py-2.5'
             >
               <span className='flex min-w-0 items-center gap-2'>
                 <IconBadge tone={signal.tone} size='xs'>
@@ -420,48 +368,55 @@ function QuickActionItem(props: { action: QuickAction }) {
   const Icon = props.action.icon
 
   return (
-    <Button
-      variant='outline'
-      className='h-auto justify-start rounded-xl px-3 py-3 text-left'
-      render={<Link to={props.action.to} />}
+    <Link
+      to={props.action.to}
+      aria-label={props.action.title}
+      className={cn(
+        'group focus-visible:ring-ring flex h-full min-w-0 flex-col gap-5 rounded-2xl border p-5 text-left transition-shadow outline-none hover:shadow-md focus-visible:ring-2',
+        QUICK_ACTION_SURFACES[props.action.tone]
+      )}
     >
-      <span className='bg-muted flex size-9 shrink-0 items-center justify-center rounded-lg'>
-        <Icon className='size-4' aria-hidden='true' />
-      </span>
-      <span className='flex min-w-0 flex-1 flex-col gap-0.5'>
-        <span className='truncate text-sm font-medium'>
-          {props.action.title}
-        </span>
-        <span className='text-muted-foreground line-clamp-2 text-xs leading-relaxed'>
+      <HStack gap={3} justify='between' align='center' className='text-inherit'>
+        <Icon className='size-6' aria-hidden='true' />
+        <ArrowRight
+          className='size-4 transition-transform motion-safe:group-hover:translate-x-1'
+          aria-hidden='true'
+        />
+      </HStack>
+      <VStack gap={1.5} className='min-w-0 text-inherit'>
+        <span className='text-sm font-semibold'>{props.action.title}</span>
+        <span className='line-clamp-2 text-xs leading-relaxed'>
           {props.action.description}
         </span>
-      </span>
-    </Button>
-  )
-}
-
-function CompactQuickAction(props: { action: QuickAction }) {
-  const Icon = props.action.icon
-
-  return (
-    <Button
-      variant='outline'
-      size='sm'
-      className='bg-background/70 h-8 min-w-24 gap-1.5 px-2.5'
-      render={<Link to={props.action.to} />}
-    >
-      <Icon data-icon='inline-start' />
-      <span>{props.action.title}</span>
-    </Button>
+      </VStack>
+    </Link>
   )
 }
 
 export function OverviewDashboard() {
   const { t } = useTranslation()
   const setupGuideId = useId()
+  const workspaceActionsId = useId()
+  const serviceDeskId = useId()
   const setupGuideToggleRef = useRef<HTMLButtonElement>(null)
   const user = useAuthStore((state) => state.auth.user)
   const { items: apiInfoItems } = useApiInfo()
+  const showKeys = useIsSidebarModuleVisible('/keys')
+  const showWallet = useIsSidebarModuleVisible('/wallet')
+  const showPlayground = useIsSidebarModuleVisible('/playground')
+  const showChannels = useIsSidebarModuleVisible('/channels')
+  const showUsageLogs = useIsSidebarModuleVisible('/usage-logs')
+  const visiblePaths = useMemo<Record<DashboardActionPath, boolean>>(
+    () => ({
+      '/keys': showKeys,
+      '/wallet': showWallet,
+      '/playground': showPlayground,
+      '/channels': showChannels,
+      '/usage-logs': showUsageLogs,
+      '/pricing': true,
+    }),
+    [showKeys, showWallet, showPlayground, showChannels, showUsageLogs]
+  )
   const {
     apiInfo: showApiInfoPanel,
     announcements: showAnnouncementsPanel,
@@ -500,7 +455,7 @@ export function OverviewDashboard() {
     [apiKeysQuery.data]
   )
 
-  const startSteps = useMemo<StartStep[]>(
+  const allStartSteps = useMemo<StartStep[]>(
     () => [
       {
         title: t('Create API Key'),
@@ -527,6 +482,11 @@ export function OverviewDashboard() {
     [preferredKey, remainQuota, requestCount, t, usedQuota]
   )
 
+  const startSteps = useMemo(
+    () => allStartSteps.filter((step) => visiblePaths[step.to]),
+    [allStartSteps, visiblePaths]
+  )
+
   const quickActions = useMemo<QuickAction[]>(
     () => [
       {
@@ -534,12 +494,14 @@ export function OverviewDashboard() {
         description: t('Create a key for your app or service'),
         to: '/keys',
         icon: KeyRound,
+        tone: 'blue',
       },
       {
         title: t('Channels'),
         description: t('Configure upstream providers and routing.'),
         to: '/channels',
         icon: RadioTower,
+        tone: 'teal',
         adminOnly: true,
       },
       {
@@ -547,20 +509,25 @@ export function OverviewDashboard() {
         description: t('Inspect requests, errors, and billing details'),
         to: '/usage-logs',
         icon: FileText,
+        tone: 'teal',
       },
       {
         title: t('Pricing'),
         description: t('Review model rates before scaling traffic'),
         to: '/pricing',
         icon: BookOpen,
+        tone: 'violet',
       },
     ],
     [t]
   )
 
   const visibleQuickActions = useMemo(
-    () => quickActions.filter((action) => !action.adminOnly || isAdmin),
-    [isAdmin, quickActions]
+    () =>
+      quickActions.filter(
+        (action) => visiblePaths[action.to] && (!action.adminOnly || isAdmin)
+      ),
+    [isAdmin, quickActions, visiblePaths]
   )
 
   const heroSignals = useMemo<HeroSignal[]>(
@@ -608,8 +575,10 @@ export function OverviewDashboard() {
   const completedStepCount = startSteps.filter((step) => step.completed).length
   const setupComplete = completedStepCount === startSteps.length
   const setupStatusReady = apiKeysQuery.isFetched && Boolean(user)
+  const hasSetupSteps = startSteps.length > 0
   const setupGuideExpanded =
-    manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete)
+    hasSetupSteps &&
+    (manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete))
   const showLeftContentPanels =
     isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
   const showContentPanels = showLeftContentPanels || showUptimePanel
@@ -625,215 +594,250 @@ export function OverviewDashboard() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>{t('Overview')}</SectionPageLayout.Title>
+      <SectionPageLayout.Title>
+        {t('Workspace overview')}
+      </SectionPageLayout.Title>
       <SectionPageLayout.Actions>
-        {setupStatusReady && setupComplete && (
+        {hasSetupSteps && setupStatusReady && setupComplete && (
           <Button
             ref={setupGuideToggleRef}
             variant='ghost'
             size='sm'
-            className='text-muted-foreground hover:text-foreground h-auto min-h-7 max-w-[60vw] whitespace-normal'
             aria-expanded={setupGuideExpanded}
             aria-controls={setupGuideId}
             onClick={handleSetupGuideToggle}
           >
+            <ListChecks data-icon='inline-start' />
             {t('Setup guide')}
           </Button>
         )}
+        {showPlayground && (
+          <Link to='/playground' className={buttonVariants({ size: 'sm' })}>
+            <TerminalSquare data-icon='inline-start' />
+            {t('Open playground')}
+          </Link>
+        )}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
-        <div className='flex flex-col gap-4'>
-          <div id={setupGuideId} hidden={!setupGuideExpanded}>
-            {setupGuideExpanded && (
-              <CardStaggerContainer className='grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]'>
-                <CardStaggerItem className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>
-                  <div className='relative h-full overflow-hidden p-4 sm:p-5'>
-                    <SetupGuideBackdrop />
-                    <div className='relative grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]'>
-                      <div className='flex min-w-0 flex-col gap-5'>
-                        <div className='flex flex-wrap items-start justify-between gap-3'>
-                          <div className='flex max-w-2xl flex-col gap-1'>
-                            <div className='text-muted-foreground flex items-center gap-2 text-xs font-medium tracking-wider uppercase'>
-                              <ListChecks
-                                className='size-3.5'
-                                aria-hidden='true'
-                              />
-                              {t('Get started')}
-                            </div>
-                            <h3 className='text-xl font-semibold tracking-tight sm:text-2xl'>
-                              {t('Build on your API gateway in minutes')}
-                            </h3>
-                            <p className='text-muted-foreground max-w-xl text-sm leading-relaxed'>
-                              {t(
-                                'A focused home for keys, balance, routing, and service health.'
-                              )}
-                            </p>
-                          </div>
-                          <div className='flex flex-wrap items-center gap-2'>
-                            <Button
-                              variant='outline'
-                              size='sm'
-                              aria-expanded={setupGuideExpanded}
-                              aria-controls={setupGuideId}
-                              onClick={handleSetupGuideToggle}
-                            >
-                              <ChevronUp data-icon='inline-start' />
-                              {t('Hide setup guide')}
-                            </Button>
-                            <Button size='sm' render={<Link to='/keys' />}>
-                              <KeyRound data-icon='inline-start' />
-                              {t('Create API Key')}
-                            </Button>
-                          </div>
-                        </div>
-
-                        <ol className='bg-background/45 rounded-2xl border p-2 backdrop-blur'>
-                          {startSteps.map((step, index) => (
-                            <StartStepItem
-                              key={step.title}
-                              step={step}
-                              index={index}
-                              isLast={index === startSteps.length - 1}
-                            />
-                          ))}
-                        </ol>
-                      </div>
-
-                      <RequestPreview
-                        example={requestExample}
-                        signals={heroSignals}
-                      />
-                    </div>
-                  </div>
-                </CardStaggerItem>
-
-                <CardStaggerItem className='bg-card h-full rounded-2xl border p-4 shadow-xs sm:p-5'>
-                  <div className='flex h-full flex-col gap-4'>
-                    <div className='flex flex-col gap-1'>
-                      <div className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-                        {t('Recommended actions')}
-                      </div>
-                      <h3 className='text-lg font-semibold tracking-tight'>
-                        {t('Keep the platform ready')}
-                      </h3>
-                    </div>
-                    <div className='grid gap-2'>
-                      {visibleQuickActions.map((action) => (
-                        <QuickActionItem key={action.title} action={action} />
-                      ))}
-                    </div>
-                  </div>
-                </CardStaggerItem>
-              </CardStaggerContainer>
+        <VStack gap={8} className='pb-4'>
+          <HStack
+            gap={4}
+            align='end'
+            justify='between'
+            wrap='wrap'
+            className='border-tone-blue-border border-l-4 pl-5'
+          >
+            <VStack gap={2}>
+              <p className='text-tone-blue-strong font-mono text-xs'>
+                {t('Your workspace, at a glance')}
+              </p>
+              <h2 className='text-2xl font-medium tracking-tight sm:text-3xl'>
+                {t('Welcome back, {{name}}.', {
+                  name: user?.display_name || user?.username || t('there'),
+                })}
+              </h2>
+              <p className='text-muted-foreground max-w-xl text-sm leading-relaxed'>
+                {t(
+                  'A clear view of your usage. A direct path to your next build.'
+                )}
+              </p>
+            </VStack>
+            {showKeys && (
+              <Link
+                to='/keys'
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
+                <KeyRound data-icon='inline-start' />
+                {t('Create API Key')}
+                <ArrowRight data-icon='inline-end' />
+              </Link>
             )}
-          </div>
-          {!setupGuideExpanded && !setupComplete && (
-            <CardStaggerContainer>
-              <CardStaggerItem className='bg-card overflow-hidden rounded-2xl border shadow-xs'>
-                <div className='relative overflow-hidden px-4 py-3 sm:px-5'>
-                  <SetupGuideBackdrop compact />
-                  <div className='relative flex flex-wrap items-center justify-between gap-3'>
-                    <div className='flex min-w-0 items-center gap-3'>
-                      <span className='bg-background/70 flex size-9 shrink-0 items-center justify-center rounded-xl border shadow-xs'>
-                        <Check
-                          className='text-success size-4'
-                          aria-hidden='true'
-                        />
-                      </span>
-                      <div className='min-w-0'>
-                        <div className='flex items-center gap-2'>
-                          <h3 className='truncate text-sm font-semibold'>
-                            {t('Setup guide')}
-                          </h3>
-                          <span className='text-muted-foreground bg-background/60 rounded-md border px-2 py-0.5 text-xs'>
-                            {t('Setup progress: {{completed}}/{{total}}', {
-                              completed: completedStepCount,
-                              total: startSteps.length,
-                            })}
-                          </span>
-                        </div>
-                        <p className='text-muted-foreground line-clamp-1 text-xs'>
-                          {t('Setup guide is collapsed. Expand it anytime.')}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className='flex flex-wrap items-center gap-2'>
-                      {visibleQuickActions.map((action) => (
-                        <CompactQuickAction
-                          key={action.title}
-                          action={action}
-                        />
-                      ))}
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        className='bg-background/70 h-8 min-w-28'
-                        aria-expanded={setupGuideExpanded}
-                        aria-controls={setupGuideId}
-                        onClick={handleSetupGuideToggle}
-                      >
-                        <ChevronDown data-icon='inline-start' />
-                        {t('Show setup guide')}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </CardStaggerItem>
-            </CardStaggerContainer>
-          )}
+          </HStack>
 
           <SummaryCards />
 
-          {showContentPanels && (
+          <section aria-labelledby={workspaceActionsId}>
+            <h3 id={workspaceActionsId} className='mb-4 text-sm font-semibold'>
+              {t('Workspace shortcuts')}
+            </h3>
             <CardStaggerContainer
               className={cn(
-                'grid grid-cols-1 gap-4',
-                showLeftContentPanels &&
-                  showUptimePanel &&
-                  'xl:grid-cols-[minmax(0,1fr)_22rem]'
+                'grid grid-cols-2 gap-3',
+                isAdmin ? 'xl:grid-cols-4' : 'xl:grid-cols-3'
               )}
             >
-              {showLeftContentPanels && (
-                <div
-                  className={cn(
-                    'grid min-w-0 grid-cols-1 gap-4',
-                    (showApiInfoPanel ||
-                      showAnnouncementsPanel ||
-                      showFAQPanel) &&
-                      'lg:grid-cols-2'
-                  )}
+              {visibleQuickActions.map((action) => (
+                <CardStaggerItem
+                  key={action.title}
+                  className='min-w-0 last:odd:col-span-2 xl:last:odd:col-span-1 [&>a]:h-full [&>a]:w-full'
                 >
-                  {isAdmin && (
-                    <CardStaggerItem className='lg:col-span-2'>
-                      <PerformanceHealthPanel />
-                    </CardStaggerItem>
-                  )}
-                  {showApiInfoPanel && (
-                    <CardStaggerItem>
-                      <ApiInfoPanel />
-                    </CardStaggerItem>
-                  )}
-                  {showAnnouncementsPanel && (
-                    <CardStaggerItem>
-                      <AnnouncementsPanel />
-                    </CardStaggerItem>
-                  )}
-                  {showFAQPanel && (
-                    <CardStaggerItem>
-                      <FAQPanel />
-                    </CardStaggerItem>
-                  )}
-                </div>
-              )}
-              {showUptimePanel && (
-                <CardStaggerItem>
-                  <UptimePanel />
+                  <QuickActionItem action={action} />
                 </CardStaggerItem>
-              )}
+              ))}
             </CardStaggerContainer>
+          </section>
+
+          <section
+            id={setupGuideId}
+            hidden={!setupGuideExpanded}
+            aria-label={t('Setup guide')}
+          >
+            {setupGuideExpanded && (
+              <section
+                className={cn(
+                  'surface-violet border-tone-violet-border grid gap-6 rounded-2xl border p-5 sm:p-6',
+                  showKeys && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]'
+                )}
+              >
+                <VStack gap={6}>
+                  <HStack gap={3} justify='between' align='start' wrap='wrap'>
+                    <VStack gap={2} className='min-w-0 flex-1'>
+                      <p className='text-tone-violet-strong font-mono text-xs'>
+                        {t('Get started')}
+                      </p>
+                      <h3 className='text-xl font-medium tracking-tight'>
+                        {t('Build on your API gateway in minutes')}
+                      </h3>
+                      <p className='text-muted-foreground text-sm leading-relaxed'>
+                        {startSteps.length === 3
+                          ? t(
+                              'Three small steps. Your first successful request.'
+                            )
+                          : t('Setup progress: {{completed}}/{{total}}', {
+                              completed: completedStepCount,
+                              total: startSteps.length,
+                            })}
+                      </p>
+                    </VStack>
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      aria-expanded={setupGuideExpanded}
+                      aria-controls={setupGuideId}
+                      onClick={handleSetupGuideToggle}
+                    >
+                      <ChevronUp data-icon='inline-start' />
+                      {t('Hide setup guide')}
+                    </Button>
+                  </HStack>
+                  <ol>
+                    {startSteps.map((step, index) => (
+                      <StartStepItem
+                        key={step.title}
+                        step={step}
+                        index={index}
+                        isLast={index === startSteps.length - 1}
+                      />
+                    ))}
+                  </ol>
+                </VStack>
+                {showKeys && (
+                  <RequestPreview
+                    example={requestExample}
+                    signals={heroSignals}
+                  />
+                )}
+              </section>
+            )}
+          </section>
+
+          {!setupGuideExpanded && !setupComplete && (
+            <HStack
+              gap={4}
+              wrap='wrap'
+              align='center'
+              justify='between'
+              className='surface-violet border-tone-violet-border rounded-xl border-l-4 px-5 py-4'
+            >
+              <VStack gap={1}>
+                <h3 className='text-sm font-semibold'>{t('Setup guide')}</h3>
+                <p className='text-muted-foreground text-xs'>
+                  {t('Setup progress: {{completed}}/{{total}}', {
+                    completed: completedStepCount,
+                    total: startSteps.length,
+                  })}
+                </p>
+              </VStack>
+              <Button
+                variant='outline'
+                size='sm'
+                aria-expanded={setupGuideExpanded}
+                aria-controls={setupGuideId}
+                onClick={handleSetupGuideToggle}
+              >
+                <ChevronDown data-icon='inline-start' />
+                {t('Show setup guide')}
+              </Button>
+            </HStack>
           )}
-        </div>
+
+          {showContentPanels && (
+            <section aria-labelledby={serviceDeskId}>
+              <HStack
+                gap={4}
+                wrap='wrap'
+                align='end'
+                justify='between'
+                className='mb-4 border-t pt-6'
+              >
+                <VStack gap={1}>
+                  <h3 id={serviceDeskId} className='text-sm font-semibold'>
+                    {t('Service desk')}
+                  </h3>
+                  <p className='text-muted-foreground text-xs'>
+                    {t('Connections, platform updates, and support.')}
+                  </p>
+                </VStack>
+              </HStack>
+              <CardStaggerContainer
+                className={cn(
+                  'grid grid-cols-1 gap-4',
+                  showLeftContentPanels &&
+                    showUptimePanel &&
+                    'xl:grid-cols-[minmax(0,1fr)_20rem]'
+                )}
+              >
+                {showLeftContentPanels && (
+                  <section
+                    className={cn(
+                      'grid min-w-0 grid-cols-1 gap-4',
+                      (showApiInfoPanel ||
+                        showAnnouncementsPanel ||
+                        showFAQPanel) &&
+                        'lg:grid-cols-2'
+                    )}
+                  >
+                    {isAdmin && (
+                      <CardStaggerItem className='lg:col-span-2'>
+                        <PerformanceHealthPanel />
+                      </CardStaggerItem>
+                    )}
+                    {showApiInfoPanel && (
+                      <CardStaggerItem>
+                        <ApiInfoPanel />
+                      </CardStaggerItem>
+                    )}
+                    {showAnnouncementsPanel && (
+                      <CardStaggerItem>
+                        <AnnouncementsPanel />
+                      </CardStaggerItem>
+                    )}
+                    {showFAQPanel && (
+                      <CardStaggerItem>
+                        <FAQPanel />
+                      </CardStaggerItem>
+                    )}
+                  </section>
+                )}
+                {showUptimePanel && (
+                  <CardStaggerItem>
+                    <UptimePanel />
+                  </CardStaggerItem>
+                )}
+              </CardStaggerContainer>
+            </section>
+          )}
+        </VStack>
       </SectionPageLayout.Content>
     </SectionPageLayout>
   )

@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 /*
 Copyright (C) 2023-2026 QuantumNous
 
@@ -17,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -90,14 +90,22 @@ test('both exchange rates accept and save 6.7081 exactly', async () => {
   }
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
   await waitFor(() => expect(put).toHaveBeenCalledTimes(2))
-  expect(put).toHaveBeenCalledWith('/api/option/', {
-    key: 'USDExchangeRate',
-    value: '6.7081',
-  })
-  expect(put).toHaveBeenCalledWith('/api/option/', {
-    key: 'general_setting.custom_currency_exchange_rate',
-    value: '6.7081',
-  })
+  expect(put).toHaveBeenCalledWith(
+    '/api/option/',
+    {
+      key: 'USDExchangeRate',
+      value: '6.7081',
+    },
+    expect.objectContaining({ skipBusinessError: true, skipErrorHandler: true })
+  )
+  expect(put).toHaveBeenCalledWith(
+    '/api/option/',
+    {
+      key: 'general_setting.custom_currency_exchange_rate',
+      value: '6.7081',
+    },
+    expect.objectContaining({ skipBusinessError: true, skipErrorHandler: true })
+  )
 })
 test.each(['USD Exchange Rate', 'Units per USD'])(
   '%s rejects zero and negatives',

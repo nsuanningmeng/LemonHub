@@ -16,12 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Heading } from '@astryxdesign/core/Heading'
+import { HStack } from '@astryxdesign/core/HStack'
+import { Text } from '@astryxdesign/core/Text'
+import { VStack } from '@astryxdesign/core/VStack'
 import { Link } from '@tanstack/react-router'
-import { ArrowRight } from 'lucide-react'
+import { ArrowUpRight, Orbit } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { AnimateInView } from '@/components/animate-in-view'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 interface CTAProps {
   className?: string
@@ -30,55 +34,58 @@ interface CTAProps {
 
 export function CTA(props: CTAProps) {
   const { t } = useTranslation()
-
-  if (props.isAuthenticated) {
-    return null
-  }
-
   return (
-    <section className='relative z-10 overflow-hidden px-6 py-24 md:py-32'>
-      {/* Gradient mesh background */}
-      <div
-        aria-hidden
-        className='absolute inset-0 -z-10 opacity-20 dark:opacity-[0.08]'
-        style={{
-          background: [
-            'radial-gradient(ellipse 50% 50% at 30% 50%, oklch(0.7 0.15 250 / 70%) 0%, transparent 70%)',
-            'radial-gradient(ellipse 40% 40% at 70% 40%, oklch(0.65 0.12 200 / 50%) 0%, transparent 70%)',
-          ].join(', '),
-        }}
-      />
-
-      <AnimateInView
-        className='mx-auto max-w-2xl text-center'
-        animation='scale-in'
+    <section
+      className={cn(
+        'mx-auto max-w-7xl px-6 pb-16 md:px-10 md:pb-24',
+        props.className
+      )}
+      aria-labelledby='home-cta-title'
+    >
+      <HStack
+        gap={8}
+        wrap='wrap'
+        align='center'
+        justify='between'
+        className='surface-brand rounded-3xl rounded-tr-4xl p-8 md:p-12'
       >
-        <h2 className='text-2xl leading-tight font-bold tracking-tight md:text-4xl'>
-          {t('Ready to simplify')}
-          <br />
-          <span className='bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent'>
-            {t('your AI integration?')}
-          </span>
-        </h2>
-        <p className='text-muted-foreground/80 mx-auto mt-5 max-w-md text-sm leading-relaxed md:text-base'>
-          {t(
-            'Deploy your own gateway and start routing requests through your configured upstream services.'
-          )}
-        </p>
-        <div className='mt-8 flex items-center justify-center gap-3'>
-          <Button className='group rounded-lg' render={<Link to='/sign-up' />}>
-            {t('Get Started')}
-            <ArrowRight className='ml-1 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5' />
-          </Button>
-          <Button
-            variant='outline'
-            className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
-            render={<Link to='/pricing' />}
+        <VStack gap={6} className='max-w-2xl'>
+          <HStack gap={3} align='center'>
+            <Orbit className='size-6' aria-hidden='true' />
+            <Text
+              type='supporting'
+              color='inherit'
+              className='tracking-widest uppercase'
+            >
+              {t('Your next chapter starts here')}
+            </Text>
+          </HStack>
+          <Heading
+            level={2}
+            id='home-cta-title'
+            type='display-2'
+            color='inherit'
+            className='text-3xl tracking-tight text-balance md:text-5xl'
           >
-            {t('View Pricing')}
-          </Button>
-        </div>
-      </AnimateInView>
+            {t('Good ideas deserve a clear runway.')}
+          </Heading>
+        </VStack>
+        <Button
+          role='link'
+          nativeButton={false}
+          size='lg'
+          variant='ghost'
+          className='surface-teal hover:bg-tone-teal hover:text-tone-teal-foreground h-12 rounded-2xl px-6 hover:opacity-90'
+          render={
+            <Link to={props.isAuthenticated ? '/dashboard' : '/sign-up'} />
+          }
+        >
+          {props.isAuthenticated
+            ? t('Open your workspace')
+            : t('Create your workspace')}
+          <ArrowUpRight className='size-4' aria-hidden='true' />
+        </Button>
+      </HStack>
     </section>
   )
 }

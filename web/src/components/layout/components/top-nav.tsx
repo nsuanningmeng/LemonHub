@@ -99,8 +99,9 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
 
       {/* 桌面端水平导航 */}
       <nav
+        aria-label={t('Resources')}
         className={cn(
-          'hidden items-center space-x-4 whitespace-nowrap 2xl:flex',
+          'hidden items-center gap-1 whitespace-nowrap 2xl:flex',
           className
         )}
         {...props}
@@ -112,7 +113,8 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
               href={href}
               target='_blank'
               rel='noopener noreferrer'
-              className={`hover:text-primary text-sm font-medium transition-colors ${isActive ? '' : 'text-muted-foreground'}`}
+              aria-current={isActive ? 'page' : undefined}
+              className={`hover:bg-muted hover:text-foreground rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${isActive ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
             >
               {title}
             </a>
@@ -121,7 +123,8 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
               key={`${title}-${href}`}
               to={href}
               disabled={disabled}
-              className={`hover:text-primary text-sm font-medium transition-colors ${isActive ? '' : 'text-muted-foreground'}`}
+              aria-current={isActive ? 'page' : undefined}
+              className={`hover:bg-muted hover:text-foreground rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${isActive ? 'bg-muted text-foreground' : 'text-muted-foreground'}`}
             >
               {title}
             </Link>

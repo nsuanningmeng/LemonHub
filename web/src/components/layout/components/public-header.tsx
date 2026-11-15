@@ -16,7 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { Text } from '@astryxdesign/core/Text'
+import { VStack } from '@astryxdesign/core/VStack'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { ArrowUpRight, ChevronDown, ChevronRight, Menu } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -26,6 +30,19 @@ import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -39,10 +56,7 @@ import { HeaderLogo } from './header-logo'
 
 const AUTH_PROMPT_SECONDS = 5
 
-type AuthPromptTarget = {
-  title: string
-  href: string
-}
+type AuthPromptTarget = { title: string; href: string }
 
 export interface PublicHeaderProps {
   navLinks?: TopNavLink[]
@@ -61,70 +75,92 @@ export interface PublicHeaderProps {
   className?: string
 }
 
-export function PublicHeader(props: PublicHeaderProps) {
-  const {
-    navLinks = defaultTopNavLinks,
-    showThemeSwitch = true,
-    showLanguageSwitcher = true,
-    logo: customLogo,
-    siteName: customSiteName,
-    homeUrl = '/',
-    showAuthButtons = true,
-    showNotifications = true,
-  } = props
+function PublicNavLink(props: {
+  link: TopNavLink
+  pathname: string
+  className?: string
+  onClick: (event: React.MouseEvent<HTMLAnchorElement>) => void
+}) {
+  const { t } = useTranslation()
+  const className = cn(
+    'hover:text-tone-blue-strong hover:bg-tone-blue focus-visible:ring-ring inline-flex min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none',
+    props.pathname === props.link.href
+      ? 'surface-blue font-semibold'
+      : 'text-muted-foreground',
+    props.link.disabled && 'pointer-events-none opacity-50',
+    props.className
+  )
 
+  if (props.link.external) {
+    return (
+      <a
+        href={props.link.href}
+        target='_blank'
+        rel='noopener noreferrer'
+        aria-disabled={props.link.disabled}
+        tabIndex={props.link.disabled ? -1 : undefined}
+        onClick={props.onClick}
+        className={className}
+      >
+        {t(props.link.title)}
+        <ArrowUpRight className='size-3' aria-hidden='true' />
+      </a>
+    )
+  }
+  return (
+    <Link
+      to={props.link.href}
+      disabled={props.link.disabled}
+      aria-current={props.pathname === props.link.href ? 'page' : undefined}
+      onClick={props.onClick}
+      className={className}
+    >
+      {t(props.link.title)}
+      <ChevronRight
+        className='ms-auto size-4 opacity-50 lg:hidden'
+        aria-hidden='true'
+      />
+    </Link>
+  )
+}
+
+export function PublicHeader(props: PublicHeaderProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [authPromptTarget, setAuthPromptTarget] =
     useState<AuthPromptTarget | null>(null)
   const [authPromptSecondsLeft, setAuthPromptSecondsLeft] =
     useState(AUTH_PROMPT_SECONDS)
-  const { auth } = useAuthStore()
-  const {
-    systemName,
-    logo: systemLogo,
-    loading,
-    logoLoaded,
-  } = useSystemConfig()
+  const user = useAuthStore((state) => state.auth.user)
+  const system = useSystemConfig()
   const dynamicLinks = useTopNavLinks()
   const notifications = useNotifications()
-  const routerState = useRouterState()
-  const pathname = routerState.location.pathname
-
-  const user = auth.user
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+  const links =
+    dynamicLinks.length > 0
+      ? dynamicLinks
+      : props.navLinks || defaultTopNavLinks
+  const mobileLinks = props.mobileLinks || links
   const isAuthenticated = !!user
-  const displaySiteName = customSiteName || systemName
-  const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  useEffect(() => {
-    document.body.style.overflow = mobileOpen ? 'hidden' : ''
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [mobileOpen])
+  const showNavigation = props.showNavigation !== false
+  const showAuthButtons = props.showAuthButtons !== false
+  const showLanguageSwitcher = props.showLanguageSwitcher !== false
+  const showThemeSwitch = props.showThemeSwitch !== false
+  const showNotifications = props.showNotifications !== false
 
   useEffect(() => {
     if (!authPromptTarget) return
-
     const intervalId = window.setInterval(() => {
       setAuthPromptSecondsLeft((seconds) => Math.max(seconds - 1, 0))
     }, 1000)
-
     const timeoutId = window.setTimeout(() => {
       const redirect = authPromptTarget.href
       setAuthPromptTarget(null)
       navigate({ to: '/sign-in', search: { redirect } })
     }, AUTH_PROMPT_SECONDS * 1000)
-
     return () => {
       window.clearInterval(intervalId)
       window.clearTimeout(timeoutId)
@@ -142,126 +178,152 @@ export function PublicHeader(props: PublicHeaderProps) {
     navigate({ to: '/sign-in', search: { redirect } })
   }, [authPromptTarget?.href, navigate])
 
-  const handleNavLinkClick = useCallback(
-    (
-      event: React.MouseEvent<HTMLAnchorElement>,
-      link: TopNavLink,
-      closeMobile = false
-    ) => {
-      if (link.disabled) {
-        event.preventDefault()
-        return
-      }
+  const handleNavLinkClick = (
+    event: React.MouseEvent<HTMLElement>,
+    link: TopNavLink
+  ) => {
+    if (link.disabled) {
+      event.preventDefault()
+      return
+    }
+    setMobileOpen(false)
+    if (link.requiresAuth) {
+      event.preventDefault()
+      setAuthPromptSecondsLeft(AUTH_PROMPT_SECONDS)
+      setAuthPromptTarget({ title: t(link.title), href: link.href })
+    }
+  }
 
-      if (link.requiresAuth) {
-        event.preventDefault()
-        if (closeMobile) {
-          setMobileOpen(false)
-        }
-        setAuthPromptSecondsLeft(AUTH_PROMPT_SECONDS)
-        setAuthPromptTarget({
-          title: t(link.title),
-          href: link.href,
-        })
-        return
-      }
-
-      if (closeMobile) {
-        setMobileOpen(false)
-      }
-    },
-    [t]
-  )
+  let desktopAuthContent: React.ReactNode = null
+  if (showAuthButtons) {
+    if (system.loading) {
+      desktopAuthContent = <Skeleton className='h-9 w-20 rounded-full' />
+    } else if (isAuthenticated) {
+      desktopAuthContent = <ProfileDropdown />
+    } else {
+      desktopAuthContent = (
+        <Button
+          role='link'
+          nativeButton={false}
+          size='sm'
+          className='surface-brand hover:bg-primary/90 ml-2 h-8 rounded-lg px-4'
+          render={<Link to='/sign-in' />}
+        >
+          {t('Sign in')}
+          <ArrowUpRight className='size-3.5' aria-hidden='true' />
+        </Button>
+      )
+    }
+  }
 
   return (
     <>
-      <header className='pointer-events-none fixed inset-x-0 top-0 z-50'>
-        <div
-          className={cn(
-            'pointer-events-auto mx-auto transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            scrolled ? 'max-w-[52rem] px-3 pt-3' : 'max-w-7xl px-4 pt-0 md:px-6'
-          )}
+      <header
+        className={cn(
+          'fixed inset-x-0 top-0 z-40 h-16 px-3 py-2 sm:px-5',
+          props.className
+        )}
+      >
+        <HStack
+          gap={4}
+          align='center'
+          justify='between'
+          className='bg-background/95 border-tone-blue-border mx-auto h-full max-w-7xl rounded-xl border px-3 shadow-sm backdrop-blur-md md:px-4'
         >
-          <nav
-            className={cn(
-              'flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-              scrolled
-                ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
-                : 'h-16 px-2'
-            )}
-          >
-            {/* Logo */}
+          <HStack gap={3} align='center' className='min-w-0'>
             <Link
-              to={homeUrl}
-              className='group flex shrink-0 items-center gap-2.5'
+              to={props.homeUrl || '/'}
+              className='inline-flex max-w-64 min-w-0 items-center gap-2.5'
             >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
-                {loading ? (
-                  <Skeleton className='size-full rounded-lg' />
-                ) : customLogo ? (
-                  customLogo
-                ) : (
-                  <HeaderLogo
-                    src={systemLogo}
-                    loading={loading}
-                    logoLoaded={logoLoaded}
-                    className='size-full rounded-lg object-contain'
-                  />
-                )}
-              </div>
-              <span className='text-sm font-semibold tracking-tight'>
-                {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
-              </span>
-            </Link>
-
-            {/* Desktop nav */}
-            <div className='hidden items-center gap-0.5 sm:flex'>
-              {links.map((link, i) => {
-                const isActive = pathname === link.href
-                if (link.external) {
-                  return (
-                    <a
-                      key={i}
-                      href={link.href}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      aria-disabled={link.disabled}
-                      tabIndex={link.disabled ? -1 : undefined}
-                      onClick={(event) => handleNavLinkClick(event, link)}
-                      className={cn(
-                        'text-muted-foreground hover:text-foreground rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
-                        link.disabled && 'pointer-events-none opacity-50'
-                      )}
-                    >
-                      {t(link.title)}
-                    </a>
-                  )
-                }
-                return (
-                  <Link
-                    key={i}
-                    to={link.href}
-                    disabled={link.disabled}
-                    onClick={(event) => handleNavLinkClick(event, link)}
-                    className={cn(
-                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
-                      isActive
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
-                      link.disabled && 'pointer-events-none opacity-50'
-                    )}
-                  >
-                    {t(link.title)}
-                  </Link>
-                )
-              })}
-
-              {(showLanguageSwitcher ||
-                showThemeSwitch ||
-                showNotifications) && (
-                <div className='bg-border/40 mx-2 h-4 w-px' />
+              {props.logo || (
+                <HeaderLogo
+                  src={system.logo}
+                  loading={system.loading}
+                  logoLoaded={system.logoLoaded}
+                  className='size-8 shrink-0 rounded-lg object-contain'
+                />
               )}
-
+              {system.loading ? (
+                <Skeleton className='h-5 w-24' />
+              ) : (
+                <Text
+                  type='label'
+                  color='inherit'
+                  className='min-w-0 truncate text-base font-semibold tracking-tight'
+                >
+                  {props.siteName || system.systemName}
+                </Text>
+              )}
+            </Link>
+            {props.leftContent}
+          </HStack>
+          <HStack gap={1} align='center' className='hidden lg:flex'>
+            {showNavigation && (
+              <nav
+                aria-label={t('Main navigation')}
+                className='flex items-center gap-0.5'
+              >
+                {props.navContent ||
+                  links
+                    .slice(0, 4)
+                    .map((link) => (
+                      <PublicNavLink
+                        key={link.href}
+                        link={link}
+                        pathname={pathname}
+                        onClick={(event) => handleNavLinkClick(event, link)}
+                      />
+                    ))}
+                {!props.navContent && links.length > 4 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          variant='ghost'
+                          className='text-muted-foreground text-sm font-normal'
+                        />
+                      }
+                    >
+                      {t('More')}{' '}
+                      <ChevronDown className='size-3.5' aria-hidden='true' />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align='end'>
+                      {links.slice(4).map((link) => (
+                        <DropdownMenuItem
+                          key={link.href}
+                          disabled={link.disabled}
+                          onClick={(event) => handleNavLinkClick(event, link)}
+                          render={
+                            link.external ? (
+                              <a
+                                href={link.href}
+                                target='_blank'
+                                rel='noopener noreferrer'
+                              />
+                            ) : (
+                              <Link to={link.href} />
+                            )
+                          }
+                        >
+                          {t(link.title)}
+                          {link.external && (
+                            <ArrowUpRight
+                              className='size-3.5'
+                              aria-hidden='true'
+                            />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </nav>
+            )}
+            <HStack
+              gap={1}
+              align='center'
+              className='border-tone-blue-border ml-2 border-l pl-3'
+            >
               {showLanguageSwitcher && <LanguageSwitcher />}
               {showThemeSwitch && <ThemeSwitch />}
               {showNotifications && (
@@ -276,151 +338,108 @@ export function PublicHeader(props: PublicHeaderProps) {
                   loading={notifications.loading}
                 />
               )}
-
-              {showAuthButtons && (
-                <>
-                  <div className='bg-border/40 mx-1 h-4 w-px' />
-                  {loading ? (
-                    <Skeleton className='h-8 w-20 rounded-lg' />
-                  ) : isAuthenticated ? (
-                    <ProfileDropdown />
-                  ) : (
-                    <Button
-                      size='sm'
-                      className='h-8 rounded-lg px-3.5 text-xs font-medium'
-                      render={<Link to='/sign-in' />}
-                    >
-                      {t('Sign in')}
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Mobile: compact actions + hamburger */}
-            <div className='flex items-center gap-2 sm:hidden'>
-              {showThemeSwitch && <ThemeSwitch />}
-              {showAuthButtons && !loading && isAuthenticated && (
-                <ProfileDropdown />
-              )}
-              <Button
-                type='button'
-                variant='ghost'
-                size='icon'
-                className='size-9'
-                onClick={() => setMobileOpen((v) => !v)}
-                aria-label={t('Toggle navigation menu')}
+              {props.rightContent}
+              {desktopAuthContent}
+            </HStack>
+          </HStack>
+          <HStack gap={2} align='center' className='lg:hidden'>
+            {showThemeSwitch && <ThemeSwitch />}
+            {showAuthButtons && isAuthenticated && <ProfileDropdown />}
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger
+                render={
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='surface-blue size-8 rounded-lg'
+                    aria-label={t('Toggle navigation menu')}
+                  />
+                }
               >
-                <div className='relative size-4'>
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 block h-[1.5px] origin-center rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'top-[7px] rotate-45' : 'top-[3px]'
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 top-[7px] block h-[1.5px] rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'scale-x-0 opacity-0' : 'opacity-100'
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 block h-[1.5px] origin-center rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'top-[7px] -rotate-45' : 'top-[11px]'
-                    )}
-                  />
-                </div>
-              </Button>
-            </div>
-          </nav>
-        </div>
-      </header>
-
-      {/* Mobile full-screen overlay */}
-      <div
-        className={cn(
-          'bg-background/98 fixed inset-0 z-40 backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] sm:pointer-events-none sm:hidden',
-          mobileOpen
-            ? 'pointer-events-auto opacity-100'
-            : 'pointer-events-none opacity-0'
-        )}
-      >
-        <div className='flex h-full flex-col justify-between px-8 pt-20 pb-10'>
-          <nav className='flex flex-col gap-1'>
-            {links.map((link, i) => {
-              const isActive = pathname === link.href
-              const linkClassName = cn(
-                'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                mobileOpen
-                  ? 'translate-y-0 opacity-100'
-                  : 'translate-y-4 opacity-0',
-                isActive ? 'text-foreground' : 'text-muted-foreground',
-                link.disabled && 'pointer-events-none opacity-50'
-              )
-              const transitionStyle = {
-                transitionDelay: mobileOpen ? `${100 + i * 50}ms` : '0ms',
-              }
-              if (link.external) {
-                return (
-                  <a
-                    key={i}
-                    href={link.href}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    aria-disabled={link.disabled}
-                    tabIndex={link.disabled ? -1 : undefined}
-                    onClick={(event) => handleNavLinkClick(event, link, true)}
-                    className={linkClassName}
-                    style={transitionStyle}
-                  >
-                    {t(link.title)}
-                  </a>
-                )
-              }
-              return (
-                <Link
-                  key={i}
-                  to={link.href}
-                  disabled={link.disabled}
-                  onClick={(event) => handleNavLinkClick(event, link, true)}
-                  className={linkClassName}
-                  style={transitionStyle}
+                <Menu className='size-5' aria-hidden='true' />
+              </SheetTrigger>
+              <SheetContent className='w-full max-w-sm gap-3 p-4'>
+                <HStack
+                  gap={3}
+                  vAlign='center'
+                  className='surface-blue mt-6 rounded-2xl p-5'
                 >
-                  {t(link.title)}
-                </Link>
-              )
-            })}
-          </nav>
-
-          <div
-            className={cn(
-              'flex flex-col gap-3 transition-all duration-500',
-              mobileOpen
-                ? 'translate-y-0 opacity-100'
-                : 'translate-y-4 opacity-0'
-            )}
-            style={{ transitionDelay: mobileOpen ? '250ms' : '0ms' }}
-          >
-            {showAuthButtons && (
-              <Link
-                to={isAuthenticated ? '/dashboard' : '/sign-in'}
-                onClick={() => setMobileOpen(false)}
-                className='bg-foreground text-background inline-flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
-              >
-                {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
-
+                  <HeaderLogo
+                    src={system.logo}
+                    loading={system.loading}
+                    logoLoaded={system.logoLoaded}
+                    className='size-10 shrink-0 rounded-xl object-contain'
+                  />
+                  <VStack gap={2} className='min-w-0'>
+                    <SheetTitle className='truncate text-xl font-semibold'>
+                      {props.siteName || system.systemName}
+                    </SheetTitle>
+                    <SheetDescription className='text-tone-blue-strong'>
+                      {t('Your models. Your workspace.')}
+                    </SheetDescription>
+                  </VStack>
+                </HStack>
+                <VStack gap={2} className='min-h-0 flex-1 overflow-y-auto py-6'>
+                  {showNavigation && (
+                    <nav
+                      aria-label={t('Mobile navigation')}
+                      className='flex flex-col gap-2'
+                    >
+                      {mobileLinks.map((link) => (
+                        <PublicNavLink
+                          key={link.href}
+                          link={link}
+                          pathname={pathname}
+                          className='border-border border-b py-4 text-base font-medium'
+                          onClick={(event) => handleNavLinkClick(event, link)}
+                        />
+                      ))}
+                    </nav>
+                  )}
+                  {props.navContent}
+                </VStack>
+                <HStack gap={2} align='center'>
+                  {showLanguageSwitcher && <LanguageSwitcher />}
+                  {showNotifications && (
+                    <NotificationPopover
+                      open={notifications.popoverOpen}
+                      onOpenChange={notifications.setPopoverOpen}
+                      unreadCount={notifications.unreadCount}
+                      activeTab={notifications.activeTab}
+                      onTabChange={notifications.setActiveTab}
+                      notice={notifications.notice}
+                      announcements={notifications.announcements}
+                      loading={notifications.loading}
+                    />
+                  )}
+                  {props.rightContent}
+                </HStack>
+                {showAuthButtons && (
+                  <Button
+                    role='link'
+                    nativeButton={false}
+                    size='lg'
+                    className='surface-brand rounded-xl'
+                    render={
+                      <Link
+                        to={isAuthenticated ? '/dashboard' : '/sign-in'}
+                        onClick={() => setMobileOpen(false)}
+                      />
+                    }
+                  >
+                    {isAuthenticated ? t('Open your workspace') : t('Sign in')}
+                    <ArrowUpRight className='size-4' aria-hidden='true' />
+                  </Button>
+                )}
+              </SheetContent>
+            </Sheet>
+          </HStack>
+        </HStack>
+      </header>
       <Dialog
         open={!!authPromptTarget}
         onOpenChange={(open) => {
-          if (!open) {
-            closeAuthPrompt()
-          }
+          if (!open) closeAuthPrompt()
         }}
         title={t('Sign in required')}
         description={t('Please sign in to view {{module}}.', {
@@ -437,11 +456,16 @@ export function PublicHeader(props: PublicHeaderProps) {
           </>
         }
       >
-        <div className='bg-muted/40 text-muted-foreground rounded-lg px-3 py-2 text-sm'>
+        <Text
+          as='p'
+          type='supporting'
+          color='inherit'
+          className='surface-blue rounded-lg px-3 py-2 text-sm'
+        >
           {t('Redirecting to sign in in {{seconds}} seconds.', {
             seconds: authPromptSecondsLeft,
           })}
-        </div>
+        </Text>
       </Dialog>
     </>
   )

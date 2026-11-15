@@ -60,8 +60,10 @@ interface SystemConfigState {
   config: SystemConfig
   loading: boolean
   loadedLogoUrl: string
+  failedLogoUrl: string | null
   setConfig: (config: Partial<SystemConfig>) => void
   setLoadedLogoUrl: (url: string) => void
+  setFailedLogoUrl: (url: string | null) => void
   setLoading: (loading: boolean) => void
 }
 
@@ -79,6 +81,7 @@ export const useSystemConfigStore = create<SystemConfigState>()(
       },
       loading: true,
       loadedLogoUrl: DEFAULT_LOGO,
+      failedLogoUrl: null,
       setConfig: (newConfig) =>
         set((state) => ({
           config: {
@@ -86,18 +89,21 @@ export const useSystemConfigStore = create<SystemConfigState>()(
             ...newConfig,
             currency: {
               ...state.config.currency,
-              ...(newConfig.currency ?? {}),
+              ...newConfig.currency,
             },
           },
         })),
       setLoadedLogoUrl: (url) => set({ loadedLogoUrl: url }),
+      setFailedLogoUrl: (url) => set({ failedLogoUrl: url }),
       setLoading: (loading) => set({ loading }),
     }),
     {
       name: 'system-config-storage',
+      // Image readiness belongs to the current document, not persisted settings.
+      onRehydrateStorage: () => (state) =>
+        state?.setLoadedLogoUrl(DEFAULT_LOGO),
       partialize: (state) => ({
         config: state.config,
-        loadedLogoUrl: state.loadedLogoUrl,
       }),
     }
   )

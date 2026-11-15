@@ -20,6 +20,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import type { SystemStatus } from '@/features/auth/types'
 import { getStatus } from '@/lib/api'
+import { applySystemMetadataToDom } from '@/lib/dom-utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { mapStatusDataToConfig } from './use-system-config'
@@ -46,6 +47,7 @@ export function useStatus() {
         if (status) {
           const { setConfig } = useSystemConfigStore.getState()
           setConfig(mapStatusDataToConfig(status))
+          applySystemMetadataToDom(status)
         }
       } catch (err) {
         if (import.meta.env.DEV) {

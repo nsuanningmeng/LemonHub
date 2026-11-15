@@ -98,6 +98,8 @@ api.interceptors.response.use(
     return response
   },
   async (error) => {
+    if (axios.isCancel(error)) throw error
+
     const config = error?.config as ApiRequestConfig | undefined
     const skipErrorHandler = config?.skipErrorHandler
     const status = error?.response?.status

@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Theme as AstryxTheme } from '@astryxdesign/core/theme'
 import {
   createContext,
   useCallback,
@@ -30,6 +31,8 @@ import {
   THEME_STORAGE_KEYS,
   writeThemePreference,
 } from '@/lib/theme-storage'
+
+import { themes, defaultThemeSlug } from '../astryx-themes'
 
 type Theme = 'dark' | 'light' | 'system'
 type ResolvedTheme = Exclude<Theme, 'system'>
@@ -129,7 +132,9 @@ export function ThemeProvider({
 
   return (
     <ThemeContext value={contextValue} {...props}>
-      {children}
+      <AstryxTheme theme={themes[defaultThemeSlug]} mode={resolvedTheme}>
+        {children}
+      </AstryxTheme>
     </ThemeContext>
   )
 }

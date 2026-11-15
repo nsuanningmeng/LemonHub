@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
@@ -56,15 +56,28 @@ export function DataTablePagination<TData>({
   const totalPages = table.getPageCount()
   const totalRows = table.getRowCount()
   const pageNumbers = getPageNumbers(currentPage, totalPages)
+  const pageItems = pageNumbers.map((pageNumber, index) => ({
+    value: pageNumber,
+    key:
+      pageNumber === '...'
+        ? `gap-before-${pageNumbers[index + 1]}`
+        : String(pageNumber),
+  }))
 
   return (
-    <div
+    <nav
+      aria-label={t('Table pagination')}
       className={cn(
-        '@container/pagination flex min-w-0 items-center justify-end overflow-clip'
+        '@container/pagination flex min-w-0 flex-wrap items-center justify-between gap-3'
       )}
-      style={{ overflowClipMargin: 1 }}
     >
-      <div className='flex min-w-0 shrink-0 items-center gap-2 @xl/pagination:gap-3'>
+      <p className='text-muted-foreground hidden min-w-0 truncate text-xs @3xl/pagination:block'>
+        {t('Page {{page}} of {{pages}}', {
+          page: currentPage,
+          pages: Math.max(1, totalPages),
+        })}
+      </p>
+      <div className='ms-auto flex min-w-0 flex-wrap items-center justify-end gap-2 @xl/pagination:gap-3'>
         <div className='flex shrink-0 items-baseline gap-1.5 text-xs font-medium whitespace-nowrap sm:text-sm'>
           <span className='text-muted-foreground/80'>{t('Total:')}</span>
           <span className='text-foreground tabular-nums'>
@@ -83,7 +96,10 @@ export function DataTablePagination<TData>({
               table.setPageSize(Number(value))
             }}
           >
-            <SelectTrigger className='text-foreground h-8 w-[64px] font-medium tabular-nums sm:w-[70px]'>
+            <SelectTrigger
+              aria-label={t('Rows per page')}
+              className='text-foreground h-8 w-[64px] font-medium tabular-nums sm:w-[70px]'
+            >
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent side='top' alignItemWithTrigger={false}>
@@ -118,8 +134,14 @@ export function DataTablePagination<TData>({
             <ChevronLeftIcon className='h-4 w-4' />
           </Button>
 
-          {pageNumbers.map((pageNumber, index) => (
-            <div key={`${pageNumber}-${index}`} className='flex items-center'>
+          {pageItems.map(({ value: pageNumber, key }) => (
+            <div
+              key={key}
+              className={cn(
+                'flex items-center',
+                pageNumber !== currentPage && '@max-lg/pagination:hidden'
+              )}
+            >
               {pageNumber === '...' ? (
                 <span className='text-muted-foreground/60 px-0.5 text-sm @lg/pagination:px-1'>
                   ...
@@ -130,9 +152,10 @@ export function DataTablePagination<TData>({
                   className={cn(
                     'h-8 min-w-8 px-2 tabular-nums',
                     currentPage === pageNumber
-                      ? 'font-semibold'
+                      ? 'surface-brand bg-(--studio-brand) text-(--studio-on-brand) font-semibold hover:bg-(--studio-brand) hover:brightness-110'
                       : 'text-muted-foreground hover:text-foreground'
                   )}
+                  aria-current={currentPage === pageNumber ? 'page' : undefined}
                   onClick={() => table.setPageIndex((pageNumber as number) - 1)}
                 >
                   <span className='sr-only'>
@@ -164,6 +187,6 @@ export function DataTablePagination<TData>({
           </Button>
         </div>
       </div>
-    </div>
+    </nav>
   )
 }

@@ -176,7 +176,7 @@ export function UserAuthForm({
             throw new Error(t('Login flow expired. Please sign in again.'))
           }
           setPending2FAFlowToken(res.data.flow_token)
-          redirectTo2FA()
+          redirectTo2FA(redirectTo)
           return
         }
 
@@ -307,6 +307,17 @@ export function UserAuthForm({
     } finally {
       setIsPasskeyLoading(false)
     }
+  }
+
+  if (!passwordLoginEnabled && !hasAlternativeLogin) {
+    return (
+      <p
+        role='status'
+        className='surface-peach rounded-xl p-4 text-sm leading-relaxed'
+      >
+        {t('Sign-in is currently unavailable. Please contact support.')}
+      </p>
+    )
   }
 
   const alternativeLoginMethods = (

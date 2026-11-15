@@ -16,61 +16,99 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Text } from '@astryxdesign/core/Text'
+import { Command } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useTranslation } from 'react-i18next'
 
-import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from '@/components/ui/sidebar'
 import { useLayout } from '@/context/layout-provider'
+import { useSearch } from '@/context/search-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 
 import { NavGroup } from './nav-group'
 import { SidebarViewHeader } from './sidebar-view-header'
+import { SystemBrand } from './system-brand'
 
-/**
- * Application sidebar.
- *
- * Adopts the Vercel / Cloudflare "drill-in" pattern: the URL drives
- * which sidebar *view* is rendered. Clicking a top-level entry like
- * `System Settings` swaps the sidebar to a contextual workspace —
- * with a `← Back to Dashboard` affordance — instead of stacking the
- * sub-navigation inside the root tree.
- *
- * Architecture:
- *   - View resolution + filtering: {@link useSidebarView}
- *   - View registry: `layout/lib/sidebar-view-registry.ts`
- *   - Per-view header: {@link SidebarViewHeader}
- *
- * Adding a new nested view only requires registering a {@link SidebarView}
- * in the registry; this component requires no changes.
- */
 export function AppSidebar() {
-  const { collapsible, variant } = useLayout()
-  const { key, view, navGroups } = useSidebarView()
+  const { t } = useTranslation()
+  const layout = useLayout()
+  const sidebarView = useSidebarView()
+  const search = useSearch()
   const shouldReduce = useReducedMotion()
 
   return (
-    <Sidebar collapsible={collapsible} variant={variant}>
-      {view && <SidebarViewHeader view={view} />}
+    <Sidebar
+      collapsible={layout.collapsible}
+      variant={layout.variant}
+      className='border-sidebar-border top-0 h-svh py-3'
+    >
+      <SidebarHeader className='surface-blue border-tone-blue-border mx-3 mt-3 mb-5 rounded-2xl border p-1.5 group-data-[collapsible=icon]:mx-1 group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0 md:mt-0'>
+        <SystemBrand variant='sidebar' />
+      </SidebarHeader>
 
-      <SidebarContent className='py-2'>
+      {sidebarView.view && <SidebarViewHeader view={sidebarView.view} />}
+
+      <SidebarContent className='gap-5 pb-4'>
         <AnimatePresence mode='wait' initial={false}>
-          <motion.div
-            key={key}
+          <motion.nav
+            aria-label={t('Workspace navigation')}
+            key={sidebarView.key}
             initial={
               shouldReduce ? false : MOTION_VARIANTS.sidebarSlide.initial
             }
             animate={MOTION_VARIANTS.sidebarSlide.animate}
             exit={shouldReduce ? undefined : MOTION_VARIANTS.sidebarSlide.exit}
             transition={MOTION_TRANSITION.fast}
-            className='flex flex-col'
+            className='flex flex-col gap-5'
           >
-            {navGroups.map((props) => (
-              <NavGroup key={props.id || props.title} {...props} />
+            {sidebarView.navGroups.map((group) => (
+              <NavGroup key={group.id || group.title} {...group} />
             ))}
-          </motion.div>
+          </motion.nav>
         </AnimatePresence>
       </SidebarContent>
 
+      <SidebarFooter className='surface-violet border-tone-violet-border mx-3 mb-3 gap-2 rounded-xl border p-2 group-data-[collapsible=icon]:mx-1 group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:p-0 md:mb-0'>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip={t('Command palette')}
+              onClick={() => search.setOpen(true)}
+              className='hover:bg-tone-violet h-10 rounded-lg font-medium'
+            >
+              <Command aria-hidden='true' className='size-4 shrink-0' />
+              <Text
+                type='inherit'
+                color='inherit'
+                className='min-w-0 flex-1 truncate'
+              >
+                {t('Command palette')}
+              </Text>
+              <kbd className='border-tone-violet-border rounded-md border px-1.5 py-0.5 font-mono text-xs group-data-[collapsible=icon]:hidden'>
+                ⌘ K
+              </kbd>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <Text
+          type='supporting'
+          color='inherit'
+          className='px-2 pb-1 text-xs opacity-75 group-data-[collapsible=icon]:hidden'
+        >
+          {t('One connection. Endless possibilities.')}
+        </Text>
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

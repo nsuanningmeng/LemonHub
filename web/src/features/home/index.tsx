@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { HtmlContent } from '@/components/html-content'
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
@@ -41,8 +42,13 @@ export function Home() {
   if (!isLoaded) {
     return (
       <PublicLayout showMainContainer={false}>
-        <main className='flex min-h-screen items-center justify-center'>
-          <div className='text-muted-foreground'>{t('Loading...')}</div>
+        <main
+          id='main-content'
+          className='flex min-h-screen items-center justify-center'
+        >
+          <p role='status' className='text-muted-foreground'>
+            {t('Loading...')}
+          </p>
         </main>
       </PublicLayout>
     )
@@ -60,7 +66,7 @@ export function Home() {
             causing inconsistent behavior. This token only permits user-activated
             top-level navigation and does NOT grant same-origin access.
           */}
-          <main className='pt-16'>
+          <main id='main-content' className='pt-16'>
             <iframe
               ref={iframeRef}
               src={content}
@@ -76,15 +82,35 @@ export function Home() {
 
     const contentIsHtml = isLikelyHtml(content)
 
+    if (
+      contentIsHtml &&
+      /<!doctype\s+html|<html[\s>]|<head[\s>]|<body[\s>]/i.test(content)
+    ) {
+      return (
+        <PublicLayout showMainContainer={false}>
+          <main id='main-content' className='pt-16'>
+            <HtmlContent
+              variant='document'
+              content={content}
+              title={t('Custom Home Page')}
+              className='h-[calc(100svh-4rem)]'
+            />
+          </main>
+        </PublicLayout>
+      )
+    }
+
     if (contentIsHtml) {
       return (
         <PublicLayout showMainContainer={false}>
-          <RichContent
-            mode='html'
-            htmlVariant='isolated'
-            content={content}
-            className='custom-home-content'
-          />
+          <main id='main-content' className='pt-16'>
+            <RichContent
+              mode='html'
+              htmlVariant='isolated'
+              content={content}
+              className='custom-home-content'
+            />
+          </main>
         </PublicLayout>
       )
     }
@@ -104,11 +130,13 @@ export function Home() {
 
   return (
     <PublicLayout showMainContainer={false}>
-      <Hero isAuthenticated={isAuthenticated} />
-      <Stats />
-      <Features />
-      <HowItWorks />
-      <CTA isAuthenticated={isAuthenticated} />
+      <main id='main-content'>
+        <Hero isAuthenticated={isAuthenticated} />
+        <Stats />
+        <Features />
+        <HowItWorks />
+        <CTA isAuthenticated={isAuthenticated} />
+      </main>
       <Footer />
     </PublicLayout>
   )

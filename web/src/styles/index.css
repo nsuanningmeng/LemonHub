@@ -16,7 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+@layer reset, theme, base, astryx-base, astryx-theme, components, utilities;
+
 @import 'tailwindcss';
+@import '@astryxdesign/core/reset.css';
+@import '@astryxdesign/core/astryx.css';
 @import 'tw-animate-css';
 @import './shadcn.css';
 @import '@fontsource-variable/public-sans';
@@ -176,6 +180,94 @@ For commercial licensing, please contact support@quantumnous.com
 
 @utility max-w-container {
   max-width: 1280px;
+}
+
+/* Astryx text primitives own their color; inverse panels need local text
+ * tokens as well as an inherited foreground for native content. */
+@utility brand-inverse {
+  color: var(--brand-paper);
+  --color-text-primary: var(--brand-paper);
+  --color-text-secondary: color-mix(
+    in oklch,
+    var(--brand-paper) 70%,
+    transparent
+  );
+  --color-icon-primary: var(--brand-paper);
+  --color-icon-secondary: color-mix(
+    in oklch,
+    var(--brand-paper) 70%,
+    transparent
+  );
+}
+
+/* Highlight panels stay light in both modes, including nested Astryx content. */
+@utility brand-tint {
+  color: var(--brand-ink);
+  --color-text-primary: var(--brand-ink);
+  --color-text-secondary: var(--brand-muted);
+  --color-icon-primary: var(--brand-ink);
+  --color-icon-secondary: var(--brand-muted);
+}
+
+/* Surface roles include nested Astryx text, in both color modes. */
+@utility surface-base {
+  background-color: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+  --color-text-primary: var(--foreground);
+  --color-text-secondary: var(--muted-foreground);
+  --color-icon-primary: var(--foreground);
+  --color-icon-secondary: var(--muted-foreground);
+}
+
+@utility surface-blue {
+  background-color: var(--tone-blue);
+  color: var(--tone-blue-foreground);
+  border-color: var(--tone-blue-border);
+  --color-text-primary: var(--tone-blue-foreground);
+  --color-text-secondary: var(--tone-blue-foreground);
+  --color-icon-primary: var(--tone-blue-foreground);
+  --color-icon-secondary: var(--tone-blue-foreground);
+}
+
+@utility surface-teal {
+  background-color: var(--tone-teal);
+  color: var(--tone-teal-foreground);
+  border-color: var(--tone-teal-border);
+  --color-text-primary: var(--tone-teal-foreground);
+  --color-text-secondary: var(--tone-teal-foreground);
+  --color-icon-primary: var(--tone-teal-foreground);
+  --color-icon-secondary: var(--tone-teal-foreground);
+}
+
+@utility surface-violet {
+  background-color: var(--tone-violet);
+  color: var(--tone-violet-foreground);
+  border-color: var(--tone-violet-border);
+  --color-text-primary: var(--tone-violet-foreground);
+  --color-text-secondary: var(--tone-violet-foreground);
+  --color-icon-primary: var(--tone-violet-foreground);
+  --color-icon-secondary: var(--tone-violet-foreground);
+}
+
+@utility surface-peach {
+  background-color: var(--tone-peach);
+  color: var(--tone-peach-foreground);
+  border-color: var(--tone-peach-border);
+  --color-text-primary: var(--tone-peach-foreground);
+  --color-text-secondary: var(--tone-peach-foreground);
+  --color-icon-primary: var(--tone-peach-foreground);
+  --color-icon-secondary: var(--tone-peach-foreground);
+}
+
+@utility surface-brand {
+  background-color: var(--studio-brand);
+  color: var(--studio-on-brand);
+  border-color: var(--studio-brand);
+  --color-text-primary: var(--studio-on-brand);
+  --color-text-secondary: var(--studio-on-brand);
+  --color-icon-primary: var(--studio-on-brand);
+  --color-icon-secondary: var(--studio-on-brand);
 }
 
 @utility max-w-container-lg {

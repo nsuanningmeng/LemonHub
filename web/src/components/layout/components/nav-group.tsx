@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Text } from '@astryxdesign/core/Text'
 import { Link, useLocation } from '@tanstack/react-router'
 import { ChevronRight } from 'lucide-react'
 import { type ReactNode, useState, useEffect } from 'react'
@@ -65,11 +66,11 @@ export function NavGroup({ title, items }: NavGroupProps) {
   const href = useLocation({ select: (location) => location.href })
 
   return (
-    <SidebarGroup className='px-2 py-1'>
-      <SidebarGroupLabel className='text-muted-foreground/70 px-2 text-[11px] font-medium tracking-wider uppercase'>
+    <SidebarGroup className='px-3 py-0 group-data-[collapsible=icon]:px-1'>
+      <SidebarGroupLabel className='text-sidebar-foreground/65 before:bg-primary/60 mb-2 px-3 text-xs font-semibold tracking-wide before:me-2 before:h-px before:w-3'>
         {title}
       </SidebarGroupLabel>
-      <SidebarMenu>
+      <SidebarMenu className='gap-1'>
         {items.map((item) => {
           const key = `${item.title}-${item.url || item.type}`
 
@@ -127,8 +128,10 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
       <SidebarMenuButton
         isActive={checkIsActive(href, item)}
         tooltip={item.title}
+        className='text-sidebar-foreground/80 hover:bg-tone-blue data-active:bg-primary data-active:text-primary-foreground data-active:hover:bg-primary data-active:hover:text-primary-foreground h-10 rounded-xl px-3 font-medium data-active:shadow-sm'
         render={
           <Link
+            aria-current={checkIsActive(href, item) ? 'page' : undefined}
             to={item.url}
             preload={isMobile ? false : undefined}
             onClick={() => setOpenMobile(false)}
@@ -136,7 +139,13 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
         }
       >
         {item.icon && <item.icon className='shrink-0' />}
-        <span className='min-w-0 flex-1 truncate'>{item.title}</span>
+        <Text
+          type='inherit'
+          color='inherit'
+          className='min-w-0 flex-1 truncate'
+        >
+          {item.title}
+        </Text>
         {item.badge && <NavBadge>{item.badge}</NavBadge>}
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -176,10 +185,21 @@ function SidebarMenuCollapsible({
     >
       <CollapsibleTrigger
         className='group/collapsible-trigger'
-        render={<SidebarMenuButton tooltip={item.title} />}
+        render={
+          <SidebarMenuButton
+            tooltip={item.title}
+            className='text-sidebar-foreground/80 hover:bg-tone-blue h-10 rounded-xl px-3 font-medium'
+          />
+        }
       >
         {item.icon && <item.icon className='shrink-0' />}
-        <span className='min-w-0 flex-1 truncate'>{item.title}</span>
+        <Text
+          type='inherit'
+          color='inherit'
+          className='min-w-0 flex-1 truncate'
+        >
+          {item.title}
+        </Text>
         {item.badge && <NavBadge>{item.badge}</NavBadge>}
         <ChevronRight className='ms-auto size-4 shrink-0 transition-transform duration-200 group-data-[panel-open]/collapsible-trigger:rotate-90' />
       </CollapsibleTrigger>
@@ -188,9 +208,13 @@ function SidebarMenuCollapsible({
           {item.items.map((subItem) => (
             <SidebarMenuSubItem key={subItem.title}>
               <SidebarMenuSubButton
+                className='data-active:bg-primary data-active:text-primary-foreground data-active:hover:bg-primary data-active:hover:text-primary-foreground h-9 rounded-lg px-3 [&>svg]:text-inherit'
                 isActive={checkIsActive(href, subItem)}
                 render={
                   <Link
+                    aria-current={
+                      checkIsActive(href, subItem) ? 'page' : undefined
+                    }
                     to={subItem.url}
                     preload={isMobile ? false : undefined}
                     onClick={() => setOpenMobile(false)}
@@ -198,7 +222,13 @@ function SidebarMenuCollapsible({
                 }
               >
                 {subItem.icon && <subItem.icon className='shrink-0' />}
-                <span className='min-w-0 flex-1 truncate'>{subItem.title}</span>
+                <Text
+                  type='inherit'
+                  color='inherit'
+                  className='min-w-0 flex-1 truncate'
+                >
+                  {subItem.title}
+                </Text>
                 {subItem.badge && <NavBadge>{subItem.badge}</NavBadge>}
               </SidebarMenuSubButton>
             </SidebarMenuSubItem>
@@ -227,12 +257,19 @@ function SidebarMenuCollapsedDropdown({
           render={
             <SidebarMenuButton
               tooltip={item.title}
+              className='text-sidebar-foreground/80 data-active:bg-primary data-active:text-primary-foreground data-active:hover:bg-primary data-active:hover:text-primary-foreground h-10 rounded-xl'
               isActive={checkIsActive(href, item)}
             />
           }
         >
           {item.icon && <item.icon className='shrink-0' />}
-          <span className='min-w-0 flex-1 truncate'>{item.title}</span>
+          <Text
+            type='inherit'
+            color='inherit'
+            className='min-w-0 flex-1 truncate'
+          >
+            {item.title}
+          </Text>
           {item.badge && <NavBadge>{item.badge}</NavBadge>}
           <ChevronRight className='ms-auto size-4 shrink-0 transition-transform duration-200 group-data-[popup-open]/dropdown-trigger:rotate-90' />
         </DropdownMenuTrigger>
@@ -253,9 +290,21 @@ function SidebarMenuCollapsedDropdown({
                 }
               >
                 {sub.icon && <sub.icon />}
-                <span className='max-w-52 text-wrap'>{sub.title}</span>
+                <Text
+                  type='inherit'
+                  color='inherit'
+                  className='max-w-52 text-wrap'
+                >
+                  {sub.title}
+                </Text>
                 {sub.badge && (
-                  <span className='ms-auto text-xs'>{sub.badge}</span>
+                  <Text
+                    type='inherit'
+                    color='inherit'
+                    className='ms-auto text-xs'
+                  >
+                    {sub.badge}
+                  </Text>
                 )}
               </DropdownMenuItem>
             ))}

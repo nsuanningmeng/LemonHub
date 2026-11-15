@@ -123,12 +123,19 @@ test('long branding stays bounded and authentication content reserves header spa
   const home = screen.getByRole('link', { name: `Logo ${systemName}` })
   expect(branding).toHaveClass('min-w-0', 'truncate')
   expect(branding).toHaveAttribute('title', systemName)
-  expect(home).toHaveClass('right-4', 'sm:right-8', 'min-w-0')
-  expect(home.parentElement).toHaveClass('min-h-svh', 'min-w-0')
-  expect(home.parentElement).not.toHaveClass('h-svh')
+  expect(home).toHaveClass('min-w-0')
+  expect(home).not.toHaveClass('absolute')
+  expect(home.closest('section')).toHaveClass('min-h-svh', 'min-w-0')
+  expect(home.closest('section')).not.toHaveClass('h-svh')
+  expect(screen.getByRole('region', { name: 'Authentication' })).toHaveClass(
+    'min-w-0',
+    'w-full',
+    'max-w-md'
+  )
+  expect(screen.getByRole('region', { name: 'Account access' })).toBeVisible()
   expect(
-    screen.getByRole('region', { name: 'Account access' }).closest('.container')
-  ).toHaveClass('pt-16', 'sm:pt-24', 'min-w-0')
+    screen.getByRole('complementary', { name: 'Your AI workspace' })
+  ).toHaveClass('hidden', 'lg:flex', 'surface-brand')
 })
 
 test('password recovery links can wrap beneath translated password labels without overlap', async () => {
@@ -155,5 +162,19 @@ test('translated password reset actions wrap and grow instead of forcing a wider
     'min-h-8',
     'whitespace-normal',
     '[overflow-wrap:anywhere]'
+  )
+})
+
+test('brand and feature panels keep readable semantic foreground colors', async () => {
+  renderAuthLayout()
+  const heading = await screen.findByRole('heading', {
+    name: /^Your ideas\./,
+  })
+  expect(heading).toHaveClass('text-brand-paper')
+  expect(screen.getByText('One key. More possibilities.')).toHaveClass(
+    'text-tone-teal-strong'
+  )
+  expect(screen.getByText('A clearer view of every request.')).toHaveClass(
+    'text-tone-violet-strong'
   )
 })

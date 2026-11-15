@@ -91,3 +91,18 @@ test('a shortened billing order remains readable in full and copies the original
   await user.click(screen.getByRole('button', { name: 'Copy to clipboard' }))
   expect(copyToClipboard).toHaveBeenCalledWith(tradeNo)
 })
+
+test('a loading balance announces its pending state without showing a misleading zero total', () => {
+  const view = render(<WalletStatsCard user={null} loading />)
+
+  expect(
+    screen.getByRole('region', { name: 'Current Balance' })
+  ).toHaveAttribute('aria-busy', 'true')
+  expect(screen.queryByText('$0')).not.toBeInTheDocument()
+
+  view.rerender(<WalletStatsCard user={null} loading={false} />)
+  expect(
+    screen.getByRole('region', { name: 'Current Balance' })
+  ).toHaveAttribute('aria-busy', 'false')
+  expect(screen.getAllByText('$0')).toHaveLength(2)
+})

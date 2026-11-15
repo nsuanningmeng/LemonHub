@@ -80,10 +80,17 @@ describe('Claude refusal billing setting', () => {
       await user.click(screen.getByRole('button', { name: 'Save Changes' }))
 
       await waitFor(() =>
-        expect(put).toHaveBeenCalledExactlyOnceWith('/api/option/', {
-          key: 'global.claude_pre_output_refusal_free_enabled',
-          value: !enabled,
-        })
+        expect(put).toHaveBeenCalledExactlyOnceWith(
+          '/api/option/',
+          {
+            key: 'global.claude_pre_output_refusal_free_enabled',
+            value: !enabled,
+          },
+          expect.objectContaining({
+            skipBusinessError: true,
+            skipErrorHandler: true,
+          })
+        )
       )
     }
   )

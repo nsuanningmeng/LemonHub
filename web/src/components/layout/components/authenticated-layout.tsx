@@ -16,6 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { useState, type CSSProperties } from 'react'
+
 import { AnnouncementBanner } from '@/components/announcement-banner'
 import { CommandMenu } from '@/components/command-menu'
 import { AnimatedOutlet } from '@/components/page-transition'
@@ -24,8 +27,8 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
 import { RewardsNotification } from '@/features/rewards/components/rewards-notification'
+import { useStatus } from '@/hooks/use-status'
 import { getCookie } from '@/lib/cookies'
-import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { AppHeader } from './app-header'
@@ -35,30 +38,44 @@ type AuthenticatedLayoutProps = {
   children?: React.ReactNode
 }
 
+const workspaceDimensions = {
+  '--sidebar-width': 'var(--workspace-rail-width)',
+  '--sidebar-width-icon': 'var(--workspace-rail-icon-width)',
+} as CSSProperties
+
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
-  const defaultOpen = getCookie('sidebar_state') !== 'false'
+  const { status } = useStatus()
+  const [sidebarOpen, setSidebarOpen] = useState<boolean | null>(() => {
+    const saved = getCookie('sidebar_state')
+    if (saved === 'true') return true
+    if (saved === 'false') return false
+    return null
+  })
+  const open = sidebarOpen ?? status?.default_collapse_sidebar !== true
   const userId = useAuthStore((state) => state.auth.user?.id)
 
   return (
     <LayoutProvider>
       <SearchProvider>
-        <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
+        <SidebarProvider
+          open={open}
+          onOpenChange={setSidebarOpen}
+          style={workspaceDimensions}
+          className='bg-sidebar h-svh min-h-0 overflow-hidden'
+        >
           <SkipToMain />
-          <AppHeader />
-          <div className='flex min-h-0 w-full flex-1'>
+          <HStack gap={0} className='min-h-0 w-full flex-1'>
             <AppSidebar />
             <SidebarInset
-              className={cn(
-                '@container/content',
-                'h-[calc(100svh-var(--app-header-height,0px))]',
-                'min-h-0 overflow-hidden',
-                'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
-              )}
+              id='content'
+              tabIndex={-1}
+              className='md:peer-data-[variant=inset]:border-tone-blue-border @container/content h-svh min-h-0 min-w-0 overflow-hidden md:peer-data-[variant=inset]:my-3 md:peer-data-[variant=inset]:me-3 md:peer-data-[variant=inset]:h-[calc(100svh-(var(--spacing)*6))] md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:border md:peer-data-[variant=inset]:shadow-sm'
             >
+              <AppHeader />
               <AnnouncementBanner />
               {props.children ?? <AnimatedOutlet />}
             </SidebarInset>
-          </div>
+          </HStack>
         </SidebarProvider>
         <CommandMenu />
         {userId && <RewardsNotification key={userId} />}

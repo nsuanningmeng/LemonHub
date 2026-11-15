@@ -16,23 +16,27 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight, Flame, ShieldCheck, TrendingDown } from 'lucide-react'
-import { useMemo } from 'react'
+import { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StaggerContainer, StaggerItem } from '@/components/page-transition'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { getUserQuotaDates } from '@/features/dashboard/api'
 import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
+import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useStatus } from '@/hooks/use-status'
-import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
+import { getCurrencyLabel } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { StatCard } from '../ui/stat-card'
 
@@ -109,7 +113,7 @@ function getRunwayDays(
   return days
 }
 
-type HealthLevel = 'healthy' | 'caution' | 'critical'
+type HealthLevel = 'healthy' | 'caution' | 'critical' | 'unknown'
 
 function getHealthLevel(remainQuota: number, recentUsage: number): HealthLevel {
   if (remainQuota <= 0) return 'critical'
@@ -122,6 +126,10 @@ const HEALTH_CONFIG: Record<
   HealthLevel,
   { dotClass: string; labelKey: string }
 > = {
+  unknown: {
+    dotClass: 'bg-current/50',
+    labelKey: 'N/A',
+  },
   healthy: {
     dotClass: 'bg-success',
     labelKey: 'Healthy',
@@ -138,8 +146,11 @@ const HEALTH_CONFIG: Record<
 
 export function SummaryCards() {
   const { t } = useTranslation()
+  const headingId = useId()
   const user = useAuthStore((state) => state.auth.user)
-  const { status, loading } = useStatus()
+  const { loading } = useStatus()
+  const currency = useSystemConfigStore((state) => state.config.currency)
+  const showWallet = useIsSidebarModuleVisible('/wallet')
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
   const remainQuota = Number(user?.quota ?? 0)
@@ -155,30 +166,27 @@ export function SummaryCards() {
       summaryTimeRange.end_timestamp,
     ],
     queryFn: async () =>
-      getUserQuotaDates({
-        start_timestamp: summaryTimeRange.start_timestamp,
-        end_timestamp: summaryTimeRange.end_timestamp,
-        default_time: 'hour',
+      getUserQuotaDates(
+        {
+          start_timestamp: summaryTimeRange.start_timestamp,
+          end_timestamp: summaryTimeRange.end_timestamp,
+          default_time: 'hour',
+        },
+        false,
+        { skipBusinessError: true, skipErrorHandler: true }
+      ).catch((cause: unknown) => {
+        // Retain known account totals and let the usage card offer local recovery.
+        throw new Error('Failed to fetch usage', { cause })
       }),
     staleTime: 60 * 1000,
+    retry: false,
   })
 
-  const summaryValues = useMemo(() => {
-    return {
-      usedDisplay: formatQuota(usedQuota),
-      requestCountDisplay: formatNumber(requestCount),
-    }
-  }, [requestCount, usedQuota])
-
-  const currencyEnabledFromStore = isCurrencyDisplayEnabled()
-  const statusCurrencyFlag =
-    typeof status?.display_in_currency === 'boolean'
-      ? Boolean(status.display_in_currency)
-      : undefined
-  const currencyEnabled =
-    statusCurrencyFlag !== undefined
-      ? statusCurrencyFlag
-      : currencyEnabledFromStore
+  const summaryValues = {
+    usedDisplay: formatQuota(usedQuota),
+    requestCountDisplay: formatNumber(requestCount),
+  }
+  const currencyEnabled = currency.quotaDisplayType !== 'TOKENS'
   const currencyLabel = currencyEnabled ? getCurrencyLabel() : 'Tokens'
 
   const sparklineData = useMemo(
@@ -206,11 +214,22 @@ export function SummaryCards() {
     [usageTrendQuery.data?.data]
   )
 
-  const healthLevel = getHealthLevel(remainQuota, recentUsage)
+  const usageUnavailable =
+    usageTrendQuery.isError || usageTrendQuery.data?.success === false
+  const usagePending = usageTrendQuery.isPending
+  let healthLevel: HealthLevel = getHealthLevel(remainQuota, recentUsage)
+  if (remainQuota > 0 && (usageUnavailable || usagePending)) {
+    healthLevel = 'unknown'
+  }
   const healthCfg = HEALTH_CONFIG[healthLevel]
-  const runwayDays = getRunwayDays(remainQuota, recentUsage)
+  const runwayDays =
+    usageUnavailable || usagePending
+      ? null
+      : getRunwayDays(remainQuota, recentUsage)
 
-  const todayUsageDisplay = formatQuota(recentUsage)
+  let todayUsageDisplay = formatQuota(recentUsage)
+  if (usagePending) todayUsageDisplay = t('Loading')
+  if (usageUnavailable) todayUsageDisplay = t('N/A')
   let runwayDisplay: string
   if (runwayDays !== null) {
     if (runwayDays < 1) {
@@ -220,6 +239,8 @@ export function SummaryCards() {
     } else {
       runwayDisplay = `~${formatNumber(Math.floor(runwayDays))} ${t('days')}`
     }
+  } else if (usageUnavailable || usagePending) {
+    runwayDisplay = t('N/A')
   } else if (remainQuota <= 0) {
     runwayDisplay = t('Balance depleted')
   } else {
@@ -233,6 +254,7 @@ export function SummaryCards() {
     currencyLabel,
   }).map((config, index) => {
     const tones = ['accent-1', 'accent-2', 'accent-3'] as const
+    const surfaces = ['surface-teal', 'surface-violet', 'surface-blue'] as const
 
     return {
       key: config.key,
@@ -241,6 +263,7 @@ export function SummaryCards() {
       desc: config.description,
       icon: config.icon,
       tone: tones[index] ?? 'accent-3',
+      surface: surfaces[index] ?? 'surface-blue',
       sparkline:
         config.key === 'todayUsage'
           ? sparklineData.usage
@@ -250,106 +273,141 @@ export function SummaryCards() {
   })
 
   return (
-    <div className='bg-card overflow-hidden rounded-2xl border shadow-xs'>
-      <div className='grid xl:grid-cols-[minmax(0,1fr)_19rem]'>
-        <div className='@container/summary flex min-w-0 flex-col gap-2.5 p-3 sm:gap-3 sm:p-5'>
-          <div className='flex flex-wrap items-start justify-between gap-3'>
-            <div className='flex flex-col gap-1'>
-              <h3 className='text-sm font-semibold sm:text-base'>
-                {t('Usage at a glance')}
-              </h3>
-              <p className='text-muted-foreground text-xs sm:text-sm'>
-                {t('Monitor balance, usage, and request volume')}
-              </p>
-            </div>
-          </div>
-          <StaggerContainer className='grid grid-cols-1 gap-1.5 sm:gap-3 @xl/summary:grid-cols-3'>
-            {items.map((it) => (
-              <StaggerItem
-                key={it.key}
-                className='bg-background/60 min-w-0 rounded-lg border px-2 py-1.5 sm:rounded-xl sm:p-3'
-              >
-                <StatCard
-                  title={it.title}
-                  value={it.value}
-                  description={it.desc}
-                  icon={it.icon}
-                  tone={it.tone}
-                  sparkline={it.sparkline}
-                  sparklineVariant={it.sparklineVariant}
-                  loading={loading}
-                  compactMobile
-                />
-              </StaggerItem>
-            ))}
-          </StaggerContainer>
-        </div>
-
-        <div className='flex flex-col justify-between gap-3 border-t bg-[linear-gradient(135deg,color-mix(in_oklch,var(--overview-accent-2)_12%,var(--background))_0%,color-mix(in_oklch,oklch(0.82_0.04_155)_8%,var(--background))_48%,color-mix(in_oklch,var(--overview-accent-1)_7%,var(--background))_100%)] p-3 sm:gap-4 sm:p-5 xl:border-t-0 xl:border-l'>
-          <div className='flex flex-col gap-2 sm:gap-3'>
-            <div className='flex items-center justify-between'>
-              <span className='text-muted-foreground text-xs font-medium'>
-                {t('Credit remaining')}
-              </span>
-              <span className='flex items-center gap-1.5'>
-                <span
-                  className={cn('size-1.5 rounded-full', healthCfg.dotClass)}
-                  aria-hidden='true'
-                />
-                <span className='text-muted-foreground text-[11px] font-medium'>
-                  {t(healthCfg.labelKey)}
-                </span>
-              </span>
-            </div>
-
-            <div className='font-mono text-xl font-semibold tracking-tight sm:text-2xl'>
-              {formatQuota(remainQuota)}
-            </div>
-
-            <div className='grid grid-cols-2 gap-2'>
-              <div className='bg-background/60 rounded-lg px-2.5 py-2'>
-                <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
-                  <Flame className='size-3 shrink-0' aria-hidden='true' />
-                  <span className='truncate'>{t('Last 24h usage')}</span>
-                </div>
-                <div className='text-foreground mt-1.5 truncate text-xs font-semibold tabular-nums'>
-                  {formatQuota(recentUsage)}
-                </div>
-              </div>
-              <div className='bg-background/60 rounded-lg px-2.5 py-2'>
-                <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
-                  {runwayDays !== null && runwayDays < 3 ? (
-                    <TrendingDown
-                      className='size-3 shrink-0'
-                      aria-hidden='true'
-                    />
-                  ) : (
-                    <ShieldCheck
-                      className='size-3 shrink-0'
-                      aria-hidden='true'
-                    />
-                  )}
-                  <span className='truncate'>{t('Runway')}</span>
-                </div>
-                <div
-                  className={cn(
-                    'mt-1.5 truncate text-xs font-semibold tabular-nums',
-                    healthLevel === 'critical' && 'text-destructive',
-                    healthLevel === 'caution' && 'text-warning'
-                  )}
-                >
-                  {runwayDisplay}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <Button className='justify-between' render={<Link to='/wallet' />}>
-            <span>{t('Wallet')}</span>
-            <ArrowRight data-icon='inline-end' />
-          </Button>
-        </div>
-      </div>
-    </div>
+    <section aria-labelledby={headingId}>
+      <HStack
+        gap={3}
+        wrap='wrap'
+        justify='between'
+        align='center'
+        className='mb-4'
+      >
+        <VStack gap={1}>
+          <h3 id={headingId} className='text-sm font-semibold tracking-tight'>
+            {t('Account pulse')}
+          </h3>
+          <p className='text-muted-foreground text-xs'>
+            {t('Your balance and activity, in one place.')}
+          </p>
+        </VStack>
+        <p className='text-muted-foreground font-mono text-xs'>
+          {t('Last 24 hours')}
+        </p>
+      </HStack>
+      <section
+        className='grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]'
+        aria-label={t('Usage at a glance')}
+      >
+        <VStack
+          gap={6}
+          padding={6}
+          justify='between'
+          className='surface-brand min-w-0 overflow-hidden rounded-2xl'
+        >
+          <HStack
+            gap={3}
+            justify='between'
+            wrap='wrap'
+            align='center'
+            className='text-inherit'
+          >
+            <p className='text-xs font-medium tracking-wide'>
+              {t('Credit remaining')}
+            </p>
+            <HStack
+              gap={1.5}
+              align='center'
+              className='rounded-full border border-current/20 px-2 py-1 text-xs text-inherit'
+            >
+              <i
+                className={cn('size-1.5 rounded-full', healthCfg.dotClass)}
+                aria-hidden='true'
+              />
+              <p>{t(healthCfg.labelKey)}</p>
+            </HStack>
+          </HStack>
+          <p
+            className='overflow-x-auto font-mono text-3xl leading-none font-medium tracking-tight whitespace-nowrap tabular-nums sm:text-4xl'
+            title={formatQuota(remainQuota)}
+          >
+            {formatQuota(remainQuota)}
+          </p>
+          <dl className='grid grid-cols-2 gap-4 border-t border-current/20 pt-4'>
+            <VStack gap={2} className='text-inherit'>
+              <dt className='flex items-center gap-1.5 text-xs'>
+                <Flame className='size-3.5' aria-hidden='true' />
+                {t('Last 24h usage')}
+              </dt>
+              <dd className='font-mono text-sm tabular-nums'>
+                {todayUsageDisplay}
+              </dd>
+            </VStack>
+            <VStack gap={2} className='text-inherit'>
+              <dt className='flex items-center gap-1.5 text-xs'>
+                {runwayDays !== null && runwayDays < 3 ? (
+                  <TrendingDown className='size-3.5' aria-hidden='true' />
+                ) : (
+                  <ShieldCheck className='size-3.5' aria-hidden='true' />
+                )}
+                {t('Runway')}
+              </dt>
+              <dd className='font-mono text-sm tabular-nums'>
+                {runwayDisplay}
+              </dd>
+            </VStack>
+          </dl>
+          {showWallet && (
+            <Link
+              to='/wallet'
+              className={cn(
+                buttonVariants(),
+                'bg-brand-paper text-brand-ink hover:bg-brand-paper/90 w-full justify-between border-0'
+              )}
+            >
+              {t('Manage funds')}
+              <ArrowRight data-icon='inline-end' />
+            </Link>
+          )}
+        </VStack>
+        <StaggerContainer className='@container/summary grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3'>
+          {items.map((item) => (
+            <StaggerItem
+              key={item.key}
+              className={cn('min-w-0 rounded-2xl p-5 sm:p-6', item.surface)}
+            >
+              <StatCard
+                title={item.title}
+                value={item.value}
+                description={
+                  item.key === 'todayUsage' && usageUnavailable
+                    ? t('Failed to fetch usage')
+                    : item.desc
+                }
+                icon={item.icon}
+                action={
+                  item.key === 'todayUsage' && usageUnavailable ? (
+                    <Button
+                      size='sm'
+                      variant='ghost'
+                      onClick={() => void usageTrendQuery.refetch()}
+                      disabled={usageTrendQuery.isFetching}
+                    >
+                      {t('Retry')}
+                    </Button>
+                  ) : undefined
+                }
+                tone={item.tone}
+                sparkline={
+                  usageUnavailable || usagePending ? undefined : item.sparkline
+                }
+                sparklineVariant={item.sparklineVariant}
+                loading={loading || (item.key === 'todayUsage' && usagePending)}
+                error={item.key === 'todayUsage' && usageUnavailable}
+                compactMobile
+              />
+            </StaggerItem>
+          ))}
+        </StaggerContainer>
+      </section>
+    </section>
   )
 }

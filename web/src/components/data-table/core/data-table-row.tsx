@@ -65,7 +65,8 @@ function DataTableRowInner<TData>({
     <TableRow
       data-sortable-id={row.id}
       data-state={isSelected ? 'selected' : undefined}
-      className={className}
+      aria-selected={row.getCanSelect() ? isSelected : undefined}
+      className={cn('data-[state=selected]:bg-tone-blue', className)}
       {...rowProps}
     >
       {row.getVisibleCells().map((cell) => {

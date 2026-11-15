@@ -16,7 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ReactNode } from 'react'
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
+import { useId, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
@@ -32,84 +34,88 @@ interface PanelWrapperProps {
   className?: string
   contentClassName?: string
   headerActions?: ReactNode
+  headerTone?: 'blue' | 'teal' | 'violet' | 'peach'
   children?: ReactNode
 }
 
-function PanelHeader(props: {
-  title: ReactNode
-  description?: ReactNode
-  actions?: ReactNode
-}) {
-  const heading = (
-    <div className='flex flex-col gap-1'>
-      <div className='text-sm font-semibold'>{props.title}</div>
-      {props.description != null && (
-        <div className='text-muted-foreground text-xs'>{props.description}</div>
-      )}
-    </div>
-  )
-
-  return (
-    <div className='border-b px-4 py-3 sm:px-5'>
-      {props.actions != null ? (
-        <div className='flex items-start justify-between gap-2'>
-          {heading}
-          {props.actions}
-        </div>
-      ) : (
-        heading
-      )}
-    </div>
-  )
+const HEADER_SURFACES = {
+  blue: 'surface-blue border-tone-blue-border',
+  teal: 'surface-teal border-tone-teal-border',
+  violet: 'surface-violet border-tone-violet-border',
+  peach: 'surface-peach border-tone-peach-border',
 }
 
 export function PanelWrapper(props: PanelWrapperProps) {
   const { t } = useTranslation()
-  const resolvedEmptyMessage = props.emptyMessage ?? t('No data available')
+  const titleId = useId()
   const height = props.height ?? 'h-64'
-  const frameClassName = cn(
-    'overflow-hidden rounded-2xl border bg-card shadow-xs',
-    props.className
-  )
 
+  let content: ReactNode
   if (props.loading) {
-    return (
-      <div className={frameClassName}>
-        <PanelHeader title={props.title} description={props.description} />
-        <div className={cn('p-4 sm:p-5', props.contentClassName)}>
-          <Skeleton className={`w-full ${height}`} />
-        </div>
-      </div>
+    content = (
+      <section
+        className={cn('p-5', props.contentClassName)}
+        role='status'
+        aria-label={t('Loading')}
+      >
+        <Skeleton className={cn('w-full', height)} />
+      </section>
     )
-  }
-
-  if (props.empty) {
-    return (
-      <div className={frameClassName}>
-        <PanelHeader title={props.title} description={props.description} />
-        <div
-          className={cn(
-            'text-muted-foreground flex items-center justify-center px-4 text-sm',
-            height,
-            props.contentClassName
-          )}
-        >
-          {resolvedEmptyMessage}
-        </div>
-      </div>
+  } else if (props.empty) {
+    content = (
+      <VStack
+        gap={2}
+        align='center'
+        justify='center'
+        className={cn(
+          'text-muted-foreground px-5 text-center text-sm',
+          height,
+          props.contentClassName
+        )}
+        role='status'
+      >
+        <p>{props.emptyMessage ?? t('No data available')}</p>
+      </VStack>
+    )
+  } else {
+    content = (
+      <section className={cn('p-5', props.contentClassName)}>
+        {props.children}
+      </section>
     )
   }
 
   return (
-    <div className={frameClassName}>
-      <PanelHeader
-        title={props.title}
-        description={props.description}
-        actions={props.headerActions}
-      />
-      <div className={cn('p-4 sm:p-5', props.contentClassName)}>
-        {props.children}
-      </div>
-    </div>
+    <section
+      aria-labelledby={titleId}
+      aria-busy={Boolean(props.loading)}
+      className={cn(
+        'h-full overflow-hidden rounded-2xl border bg-card',
+        props.className
+      )}
+    >
+      <HStack
+        gap={3}
+        align='start'
+        justify='between'
+        className={cn(
+          'border-b px-5 py-4',
+          props.headerTone && HEADER_SURFACES[props.headerTone]
+        )}
+      >
+        <VStack gap={1} className='text-inherit'>
+          <h4 id={titleId} className='text-sm font-semibold'>
+            {props.title}
+          </h4>
+          {props.description != null && (
+            <p className='text-muted-foreground text-xs leading-relaxed'>
+              {props.description}
+            </p>
+          )}
+        </VStack>
+        {props.headerActions}
+      </HStack>
+      {content}
+    </section>
   )
 }

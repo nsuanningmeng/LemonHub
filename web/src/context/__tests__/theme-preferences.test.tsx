@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTheme as useAstryxTheme } from '@astryxdesign/core/theme'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -38,11 +39,13 @@ const savedPreferences = {
 
 function ThemeControls() {
   const theme = useTheme()
+  const astryxTheme = useAstryxTheme()
   const customization = useThemeCustomization()
 
   return (
     <>
       <output aria-label='Theme mode'>{theme.theme}</output>
+      <output aria-label='Component theme mode'>{astryxTheme.mode}</output>
       <button type='button' onClick={() => customization.setFont('sans')}>
         Sans font
       </button>
@@ -125,6 +128,9 @@ describe('theme preference persistence', () => {
 
     expect(screen.getByLabelText('Theme mode')).toHaveTextContent('system')
     expect(document.documentElement).toHaveClass('light')
+    expect(screen.getByLabelText('Component theme mode')).toHaveTextContent(
+      'light'
+    )
     expect(document.body).not.toHaveAttribute('data-theme-preset')
     expect(document.body).toHaveAttribute('data-theme-font', 'system')
     expect(document.body).not.toHaveAttribute('data-theme-radius')
@@ -142,6 +148,9 @@ describe('theme preference persistence', () => {
 
     expect(screen.getByLabelText('Theme mode')).toHaveTextContent('dark')
     expect(document.documentElement).toHaveClass('dark')
+    expect(screen.getByLabelText('Component theme mode')).toHaveTextContent(
+      'dark'
+    )
     expect(document.body).toHaveAttribute('data-theme-preset', 'rose-garden')
     expect(document.body).toHaveAttribute('data-theme-font', 'serif')
     expect(document.body).toHaveAttribute('data-theme-radius', 'lg')
@@ -171,6 +180,9 @@ describe('theme preference persistence', () => {
 
     expect(screen.getByLabelText('Theme mode')).toHaveTextContent('system')
     expect(document.documentElement).toHaveClass('light')
+    expect(screen.getByLabelText('Component theme mode')).toHaveTextContent(
+      'light'
+    )
     expect(document.body).not.toHaveAttribute('data-theme-preset')
     expect(document.body).toHaveAttribute('data-theme-font', 'system')
     expect(document.body).not.toHaveAttribute('data-theme-radius')

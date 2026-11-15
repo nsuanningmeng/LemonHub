@@ -40,3 +40,23 @@ test('long action groups wrap before squeezing the page title away', () => {
     screen.getByRole('button', { name: 'Create ticket' }).parentElement
   ).toHaveClass('max-w-full', 'min-w-0')
 })
+
+test.each([false, true])(
+  'fixedContent=%s keeps scrolling inside the content region and exposes a page heading',
+  (fixedContent) => {
+    render(
+      <SectionPageLayout fixedContent={fixedContent}>
+        <SectionPageLayout.Title>Usage analytics</SectionPageLayout.Title>
+        <SectionPageLayout.Content>
+          <article aria-label='Usage chart'>Daily usage</article>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+    )
+    expect(
+      screen.getByRole('heading', { name: 'Usage analytics', level: 1 })
+    ).toBeVisible()
+    expect(
+      screen.getByRole('article', { name: 'Usage chart' }).parentElement
+    ).toHaveClass('min-h-0', fixedContent ? 'overflow-hidden' : 'overflow-auto')
+  }
+)

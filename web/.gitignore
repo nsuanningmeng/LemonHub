@@ -25,3 +25,12 @@ dist-ssr
 *.sln
 *.sw?
 .tanstack/*
+# Local Astryx design previews (production theme artifacts live in src/themes).
+/themes/*/preview*.html
+/themes/*/sheet*.html
+/themes/*/*.png
+/themes/*/*.pictures.json
+/themes/*/*.history.json
+
+/playwright-report/
+/test-results/

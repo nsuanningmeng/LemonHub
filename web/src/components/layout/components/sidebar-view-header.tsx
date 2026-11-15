@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Text } from '@astryxdesign/core/Text'
 import { Link } from '@tanstack/react-router'
 import { ChevronLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -46,14 +47,14 @@ export function SidebarViewHeader(props: SidebarViewHeaderProps) {
   const { isMobile, setOpenMobile } = useSidebar()
 
   return (
-    <SidebarHeader className='border-sidebar-border border-b px-2 py-2'>
+    <SidebarHeader className='border-sidebar-border mx-3 mb-3 border-b px-0 pb-3 group-data-[collapsible=icon]:mx-1'>
       <SidebarMenu>
         <SidebarMenuItem>
           <SidebarMenuButton
             tooltip={t(props.view.parent.label)}
             className={cn(
-              'text-muted-foreground hover:text-foreground',
-              'gap-1.5 font-medium'
+              'surface-blue hover:bg-tone-blue',
+              'h-10 gap-2 rounded-lg px-3 font-medium'
             )}
             render={
               <Link
@@ -64,7 +65,9 @@ export function SidebarViewHeader(props: SidebarViewHeaderProps) {
             }
           >
             <ChevronLeft className='size-4 shrink-0' />
-            <span className='truncate'>{t(props.view.parent.label)}</span>
+            <Text type='inherit' color='inherit' className='truncate'>
+              {t(props.view.parent.label)}
+            </Text>
           </SidebarMenuButton>
         </SidebarMenuItem>
       </SidebarMenu>

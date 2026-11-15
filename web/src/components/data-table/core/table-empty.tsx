@@ -71,10 +71,13 @@ export function TableEmpty({
     description ?? t('No records found. Try adjusting your filters.')
   return (
     <TableRow>
-      <TableCell colSpan={colSpan} className='h-[400px] p-0'>
-        <Empty>
+      <TableCell colSpan={colSpan} className='h-80 p-0'>
+        <Empty className='py-12'>
           <EmptyHeader>
-            <EmptyMedia variant='icon'>
+            <EmptyMedia
+              variant='icon'
+              className='border-brand-line bg-brand-highlight/25 text-foreground rounded-xl border'
+            >
               {icon || <Database className='size-6' />}
             </EmptyMedia>
             <EmptyTitle>{resolvedTitle}</EmptyTitle>

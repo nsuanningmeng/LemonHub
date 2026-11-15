@@ -49,6 +49,7 @@ export function ApiInfoPanel() {
 
   return (
     <PanelWrapper
+      headerTone='teal'
       title={
         <span className='flex items-center gap-2'>
           <IconBadge tone='info' size='sm'>

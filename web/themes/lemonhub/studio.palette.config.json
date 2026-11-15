@@ -1,0 +1,25 @@
+{
+  "modeStrategy": "light-and-dark",
+  "families": [
+    {
+      "id": "blue",
+      "name": "Workspace blue",
+      "seed": "#3559E3"
+    },
+    {
+      "id": "teal",
+      "name": "Connection teal",
+      "seed": "#159889"
+    },
+    {
+      "id": "violet",
+      "name": "Model violet",
+      "seed": "#9260D7"
+    },
+    {
+      "id": "peach",
+      "name": "Account peach",
+      "seed": "#D88C71"
+    }
+  ]
+}

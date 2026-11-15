@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
 
@@ -25,15 +27,22 @@ export function Header({ className, children, ...props }: HeaderProps) {
   return (
     <header
       className={cn(
-        'sticky top-0 z-40 h-[var(--app-header-height,3rem)] w-full shrink-0 bg-transparent',
+        'sticky top-0 z-40 h-[var(--app-header-height)] w-full shrink-0 border-b border-tone-blue-border bg-background/95',
         className
       )}
       {...props}
     >
-      <div className='flex h-full items-center gap-1.5 px-2 sm:gap-2 sm:px-3'>
-        <SidebarTrigger variant='ghost' className='size-8' />
+      <HStack
+        gap={3}
+        vAlign='center'
+        className='h-full min-w-0 px-3 sm:px-5 lg:px-7'
+      >
+        <SidebarTrigger
+          variant='ghost'
+          className='surface-blue hover:bg-tone-blue border-tone-blue-border size-8 shrink-0 rounded-lg border'
+        />
         {children}
-      </div>
+      </HStack>
     </header>
   )
 }

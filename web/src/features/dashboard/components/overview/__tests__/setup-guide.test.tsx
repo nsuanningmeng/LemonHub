@@ -23,7 +23,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
@@ -162,4 +162,123 @@ test('an unfinished manually collapsed setup retains its progress and expand act
   expect(
     await screen.findByRole('button', { name: 'Hide setup guide' })
   ).toHaveAttribute('aria-expanded', 'true')
+})
+
+test('completed onboarding keeps workspace shortcuts reachable and hides administrator routes for members', async () => {
+  renderOverview()
+  const shortcuts = await screen.findByRole('region', {
+    name: 'Workspace shortcuts',
+  })
+  expect(
+    within(shortcuts).getByRole('link', { name: 'API Keys' })
+  ).toHaveAttribute('href', '/keys')
+  expect(
+    within(shortcuts).getByRole('link', { name: /Usage Logs/ })
+  ).toHaveAttribute('href', '/usage-logs')
+  expect(
+    within(shortcuts).getByRole('link', { name: /Pricing/ })
+  ).toHaveAttribute('href', '/pricing')
+  expect(
+    within(shortcuts).queryByRole('link', { name: /Channels/ })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Setup guide' })).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  )
+  expect(screen.getByRole('link', { name: 'Open playground' })).toHaveAttribute(
+    'href',
+    '/playground'
+  )
+  expect(
+    screen.getByRole('region', { name: 'Usage at a glance' })
+  ).toBeVisible()
+})
+
+test('an administrator can reach channel management from persistent workspace shortcuts', async () => {
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'admin',
+    role: 10,
+    quota: 500000,
+    request_count: 1,
+  })
+  client.setQueryData(['perf-metrics-summary', 24], { data: { models: [] } })
+  renderOverview()
+  const shortcuts = await screen.findByRole('region', {
+    name: 'Workspace shortcuts',
+  })
+  expect(
+    within(shortcuts).getByRole('link', { name: /Channels/ })
+  ).toHaveAttribute('href', '/channels')
+})
+
+test('disabled navigation modules are removed from overview links and onboarding while account data stays visible', async () => {
+  localStorage.setItem('dashboard_overview_setup_guide_expanded', 'expanded')
+  client.setQueryData(['status'], {
+    api_info_enabled: false,
+    announcements_enabled: false,
+    faq_enabled: false,
+    uptime_kuma_enabled: false,
+    SidebarModulesAdmin: JSON.stringify({
+      console: { enabled: true, token: false, log: false },
+      personal: { enabled: true, topup: false },
+      chat: { enabled: true, playground: false },
+    }),
+  })
+  renderOverview()
+  await screen.findByRole('region', { name: 'Usage at a glance' })
+  expect(
+    screen
+      .queryAllByRole('link')
+      .filter((link) =>
+        ['/keys', '/wallet', '/usage-logs', '/playground'].includes(
+          link.getAttribute('href') ?? ''
+        )
+      )
+  ).toHaveLength(0)
+  expect(
+    screen.queryByRole('button', { name: 'Setup guide' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('region', { name: 'Setup guide' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Pricing' })).toBeVisible()
+})
+
+test('status content changes replace visible dashboard panels without reloading the page', async () => {
+  renderOverview()
+  expect(
+    await screen.findByRole('region', { name: 'Announcements' })
+  ).toBeVisible()
+  await act(async () => {
+    client.setQueryData(['status'], {
+      announcements_enabled: false,
+      api_info_enabled: true,
+      api_info: [
+        {
+          route: 'Regional endpoint',
+          url: 'https://example.test/v1',
+          description: 'Tenant route',
+          color: 'blue',
+        },
+      ],
+      faq_enabled: true,
+      faq: [
+        {
+          id: 1,
+          question: 'How do I connect?',
+          answer: 'Use your regional endpoint.',
+        },
+      ],
+      uptime_kuma_enabled: false,
+    })
+  })
+  expect(
+    screen.queryByRole('region', { name: 'Announcements' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'API Info' })).toBeVisible()
+  expect(screen.getByText('Regional endpoint')).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'How do I connect?' })
+  ).toBeVisible()
 })

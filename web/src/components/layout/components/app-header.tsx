@@ -16,117 +16,105 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { Text } from '@astryxdesign/core/Text'
+import { useLocation } from '@tanstack/react-router'
+import { ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+
 import { ConfigDrawer } from '@/components/config-drawer'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { useNotifications } from '@/hooks/use-notifications'
+import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 
 import { defaultTopNavLinks } from '../config/top-nav.config'
+import { checkIsActive } from '../lib/url-utils'
 import type { TopNavLink } from '../types'
 import { Header } from './header'
 import { SystemBrand } from './system-brand'
 import { TopNav } from './top-nav'
 
-/**
- * General application Header component
- * Integrates navigation bar, search, configuration and profile functions
- *
- * @example
- * // Basic usage
- * <AppHeader />
- *
- * @example
- * // Custom navigation links
- * <AppHeader navLinks={customLinks} />
- *
- * @example
- * // Hide navigation bar and search box
- * <AppHeader showTopNav={false} showSearch={false} />
- *
- * @example
- * // Fully customize left and right content
- * <AppHeader
- *   leftContent={<CustomLeft />}
- *   rightContent={<CustomRight />}
- * />
- */
 type AppHeaderProps = {
-  /**
-   * Custom navigation links, uses default global navigation or dynamically generated from backend if not provided
-   */
   navLinks?: TopNavLink[]
-  /**
-   * Whether to show top navigation bar
-   * @default true
-   */
   showTopNav?: boolean
-  /**
-   * Left content, overrides TopNav if provided
-   */
   leftContent?: React.ReactNode
-  /**
-   * Whether to show search box
-   * @default true
-   */
   showSearch?: boolean
-  /**
-   * Custom right content, overrides default right content if provided
-   */
   rightContent?: React.ReactNode
-  /**
-   * Whether to show notification button
-   * @default true
-   */
   showNotifications?: boolean
-  /**
-   * Whether to show config drawer
-   * @default true
-   */
   showConfigDrawer?: boolean
-  /**
-   * Whether to show profile dropdown
-   * @default true
-   */
   showProfileDropdown?: boolean
 }
 
-export function AppHeader({
-  navLinks = defaultTopNavLinks,
-  showTopNav = true,
-  leftContent,
-  showSearch = true,
-  rightContent,
-  showNotifications = true,
-  showConfigDrawer = true,
-  showProfileDropdown = true,
-}: AppHeaderProps) {
-  // Prioritize dynamically generated links from backend
+export function AppHeader(props: AppHeaderProps) {
+  const { t } = useTranslation()
   const dynamicLinks = useTopNavLinks()
-  const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
-
-  // Notifications hook
+  const links =
+    dynamicLinks.length > 0
+      ? dynamicLinks
+      : (props.navLinks ?? defaultTopNavLinks)
   const notifications = useNotifications()
+  const href = useLocation({ select: (location) => location.href })
+  const sidebarView = useSidebarView()
+  const activeGroup = sidebarView.navGroups.find((group) =>
+    group.items.some((item) => checkIsActive(href, item))
+  )
+  const activeItem = activeGroup?.items.find((item) =>
+    checkIsActive(href, item)
+  )
 
   return (
     <Header>
-      <SystemBrand variant='inline' />
+      {props.leftContent != null ? (
+        <HStack gap={2} vAlign='center' className='min-w-0 flex-1'>
+          {props.leftContent}
+        </HStack>
+      ) : (
+        <>
+          <HStack gap={2} vAlign='center' className='min-w-0 flex-1 md:hidden'>
+            <SystemBrand variant='inline' />
+          </HStack>
+          <HStack
+            gap={2}
+            vAlign='center'
+            className='hidden min-w-0 flex-1 md:flex'
+          >
+            <Text
+              type='supporting'
+              color='inherit'
+              className='surface-blue max-w-32 shrink-0 truncate rounded-md px-2.5 py-1.5 text-xs font-medium'
+            >
+              {activeGroup?.title ?? t('Workspace')}
+            </Text>
+            <ChevronRight
+              aria-hidden='true'
+              className='text-muted-foreground/60 size-3 shrink-0'
+            />
+            <Text
+              type='label'
+              color='inherit'
+              className='min-w-0 truncate text-sm font-medium'
+            >
+              {activeItem?.title ?? t('Workspace')}
+            </Text>
+          </HStack>
+        </>
+      )}
 
-      {leftContent ? (
-        <div className='ms-2 flex items-center'>{leftContent}</div>
-      ) : null}
-
-      {rightContent ?? (
-        <div className='ms-auto flex shrink-0 items-center gap-1 sm:gap-2'>
-          {showTopNav && (
-            <div className='me-1 hidden lg:block'>
+      {props.rightContent ?? (
+        <HStack gap={1} vAlign='center' className='ms-auto shrink-0 sm:gap-2'>
+          {(props.showTopNav ?? true) && (
+            <HStack className='hidden lg:flex'>
               <TopNav links={links} />
-            </div>
+            </HStack>
           )}
-          {showSearch && <Search />}
-          {showNotifications && (
+          {(props.showSearch ?? true) && (
+            <Search className='surface-blue border-tone-blue-border hover:bg-tone-blue rounded-lg sm:w-32 lg:w-40 xl:w-44' />
+          )}
+          {(props.showNotifications ?? true) && (
             <NotificationPopover
               open={notifications.popoverOpen}
               onOpenChange={notifications.setPopoverOpen}
@@ -139,9 +127,9 @@ export function AppHeader({
             />
           )}
           <LanguageSwitcher />
-          {showConfigDrawer && <ConfigDrawer />}
-          {showProfileDropdown && <ProfileDropdown />}
-        </div>
+          {(props.showConfigDrawer ?? true) && <ConfigDrawer />}
+          {(props.showProfileDropdown ?? true) && <ProfileDropdown />}
+        </HStack>
       )}
     </Header>
   )

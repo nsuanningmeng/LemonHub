@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
+import { RefreshCw, Sparkles, Check } from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -26,6 +26,7 @@ import {
   dotColorMap,
   textColorMap,
 } from '@/components/status-badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -111,6 +112,8 @@ export function SubscriptionPlansCard({
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [plansError, setPlansError] = useState(false)
+  const [subscriptionError, setSubscriptionError] = useState(false)
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
@@ -126,27 +129,39 @@ export function SubscriptionPlansCard({
 
   const fetchPlans = useCallback(async () => {
     try {
-      const res = await getPublicPlans()
+      const res = await getPublicPlans({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
       if (res.success) {
         setPlans(res.data || [])
+        setPlansError(false)
+      } else {
+        setPlansError(true)
       }
     } catch {
-      setPlans([])
+      setPlansError(true)
     }
   }, [])
 
   const fetchSelfSubscription = useCallback(async () => {
     try {
-      const res = await getSelfSubscriptionFull()
+      const res = await getSelfSubscriptionFull({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
       if (res.success && res.data) {
         setBillingPreference(
           res.data.billing_preference || 'subscription_first'
         )
         setActiveSubscriptions(res.data.subscriptions || [])
         setAllSubscriptions(res.data.all_subscriptions || [])
+        setSubscriptionError(false)
+      } else {
+        setSubscriptionError(true)
       }
     } catch {
-      // ignore
+      setSubscriptionError(true)
     }
   }, [])
 
@@ -162,7 +177,7 @@ export function SubscriptionPlansCard({
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      await fetchSelfSubscription()
+      await Promise.all([fetchPlans(), fetchSelfSubscription()])
     } finally {
       setRefreshing(false)
     }
@@ -189,7 +204,8 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const isAvailable = loading || plans.length > 0 || hasAny
+  const loadError = plansError || subscriptionError
+  const isAvailable = loading || loadError || plans.length > 0 || hasAny
   const disablePref = !hasActive
   const isSubPref =
     billingPreference === 'subscription_first' ||
@@ -251,6 +267,26 @@ export function SubscriptionPlansCard({
     )
   }
 
+  if (loadError) {
+    return (
+      <TitledCard
+        title={<h3>{t('Subscription Plans')}</h3>}
+        className='border-tone-violet-border rounded-xl border shadow-none ring-0'
+        headerClassName='surface-violet px-5 py-5 sm:px-6 sm:py-6'
+        titleClassName='text-tone-violet-strong text-xl font-medium'
+        disableHoverEffect
+        contentClassName='space-y-4 p-5 sm:p-6'
+      >
+        <Alert variant='destructive'>
+          <AlertDescription>{t('Failed to load')}</AlertDescription>
+        </Alert>
+        <Button variant='outline' onClick={handleRefresh} disabled={refreshing}>
+          {refreshing ? t('Loading') : t('Retry')}
+        </Button>
+      </TitledCard>
+    )
+  }
+
   if (plans.length === 0 && !hasAny) {
     return null
   }
@@ -258,12 +294,14 @@ export function SubscriptionPlansCard({
   return (
     <>
       <TitledCard
-        title={t('Subscription Plans')}
+        title={<h3>{t('Subscription Plans')}</h3>}
         description={t('Subscribe to a plan for model access')}
-        icon={<Crown className='h-4 w-4' />}
-        iconTone='warning'
+        className='border-tone-violet-border rounded-xl border shadow-none ring-0'
+        headerClassName='surface-violet px-5 py-5 sm:px-6 sm:py-6'
+        titleClassName='text-tone-violet-strong text-xl font-medium'
+        descriptionClassName='text-tone-violet-strong'
         disableHoverEffect
-        contentClassName='space-y-4 sm:space-y-5'
+        contentClassName='space-y-6 p-5 sm:p-6'
       >
         {/* My subscriptions & billing preference */}
         <div className='rounded-xl border p-3 sm:p-4'>
@@ -333,7 +371,10 @@ export function SubscriptionPlansCard({
                 value={billingPreference}
                 onValueChange={(v) => v !== null && handlePreferenceChange(v)}
               >
-                <SelectTrigger className='h-8 flex-1 text-xs sm:w-[140px] sm:flex-none'>
+                <SelectTrigger
+                  aria-label={t('Billing preference')}
+                  className='h-8 flex-1 text-xs sm:w-[140px] sm:flex-none'
+                >
                   <SelectValue>
                     {getBillingPreferenceLabel(billingPreference, t)}
                   </SelectValue>
@@ -367,6 +408,7 @@ export function SubscriptionPlansCard({
                 variant='ghost'
                 size='icon'
                 className='h-8 w-8'
+                aria-label={t('Refresh subscriptions')}
                 onClick={handleRefresh}
                 disabled={refreshing}
               >
@@ -550,7 +592,10 @@ export function SubscriptionPlansCard({
                 <Card
                   key={plan.id}
                   data-card-hover='false'
-                  className={cn(isPopular && 'border-primary/70 shadow-sm')}
+                  className={cn(
+                    'border-tone-violet-border border shadow-none ring-0',
+                    isPopular && 'surface-violet'
+                  )}
                 >
                   <CardContent className='flex h-full flex-col p-3.5 sm:p-4'>
                     <div className='mb-2 flex items-start justify-between gap-3'>
@@ -577,7 +622,7 @@ export function SubscriptionPlansCard({
                     </div>
 
                     <div className='py-2'>
-                      <span className='text-primary text-2xl font-bold'>
+                      <span className='text-tone-violet-strong text-2xl font-bold'>
                         ${price}
                       </span>
                     </div>
@@ -588,7 +633,7 @@ export function SubscriptionPlansCard({
                           key={label}
                           className='text-muted-foreground flex items-center gap-2 text-xs'
                         >
-                          <Check className='text-primary h-3 w-3 shrink-0' />
+                          <Check className='text-tone-violet-strong h-3 w-3 shrink-0' />
                           <span>{label}</span>
                         </div>
                       ))}
@@ -610,7 +655,7 @@ export function SubscriptionPlansCard({
                     ) : (
                       <Button
                         variant='outline'
-                        className='w-full'
+                        className='surface-violet border-tone-violet-border text-tone-violet-strong w-full'
                         onClick={() => {
                           setSelectedPlan(p)
                           setPurchaseOpen(true)

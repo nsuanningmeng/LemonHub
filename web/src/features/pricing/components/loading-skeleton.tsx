@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTranslation } from 'react-i18next'
+
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { VIEW_MODES, type ViewMode } from '../constants'
@@ -25,11 +27,17 @@ export interface LoadingSkeletonProps {
 }
 
 export function LoadingSkeleton(props: LoadingSkeletonProps) {
+  const { t } = useTranslation()
   const viewMode = props.viewMode ?? VIEW_MODES.CARD
 
   return (
-    <div className='space-y-5'>
-      <div className='space-y-1.5'>
+    <section
+      role='status'
+      aria-label={t('Loading models')}
+      aria-busy='true'
+      className='space-y-5'
+    >
+      <div className='surface-violet space-y-4 rounded-3xl p-8'>
         <Skeleton className='h-8 w-40' />
         <Skeleton className='h-4 w-52' />
       </div>
@@ -40,24 +48,27 @@ export function LoadingSkeleton(props: LoadingSkeletonProps) {
       ) : (
         <CardContentSkeleton />
       )}
-    </div>
+    </section>
   )
 }
 
 function CardContentSkeleton() {
   return (
-    <div className='grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'>
-      {Array.from({ length: 9 }).map((_, i) => (
-        <div key={i} className='rounded-xl border p-5'>
+    <div className='grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3'>
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((slot) => (
+        <div
+          key={slot}
+          className='surface-violet border-tone-violet-border rounded-2xl border p-5'
+        >
           <div className='flex items-start justify-between gap-3'>
-            <div className='flex min-w-0 items-start gap-3'>
+            <div className='flex min-w-0 flex-1 items-start gap-3'>
               <Skeleton className='size-10 shrink-0 rounded-xl' />
               <div className='min-w-0 flex-1 space-y-2'>
-                <Skeleton className='h-5 w-36' />
-                <Skeleton className='h-3.5 w-48' />
+                <Skeleton className='h-5 w-full max-w-36' />
+                <Skeleton className='h-3.5 w-full max-w-48' />
               </div>
             </div>
-            <Skeleton className='h-8 w-16 rounded-md' />
+            <Skeleton className='h-8 w-16 shrink-0 rounded-md' />
           </div>
           <div className='mt-4 space-y-2'>
             <Skeleton className='h-3.5 w-full' />
@@ -81,17 +92,13 @@ function CardContentSkeleton() {
 function FilterBarSkeleton() {
   return (
     <div className='space-y-3'>
-      <div className='flex items-center gap-3'>
-        <div className='flex flex-1 flex-wrap items-center gap-2'>
-          {[80, 90, 75, 85, 70].map((width, i) => (
-            <Skeleton
-              key={i}
-              className='h-8 rounded-lg'
-              style={{ width: `${width}px` }}
-            />
+      <div className='flex flex-wrap items-center gap-3'>
+        <div className='flex min-w-0 flex-1 basis-full flex-wrap items-center gap-2 sm:basis-auto'>
+          {['w-20', 'w-24', 'w-16', 'w-28', 'w-14'].map((width) => (
+            <Skeleton key={width} className={`h-8 rounded-lg ${width}`} />
           ))}
         </div>
-        <div className='flex items-center gap-2'>
+        <div className='flex min-w-0 flex-wrap items-center gap-2'>
           <Skeleton className='h-8 w-24 rounded-lg' />
           <Skeleton className='h-8 w-20 rounded-lg' />
           <Skeleton className='h-8 w-24' />
@@ -105,12 +112,12 @@ function FilterBarSkeleton() {
 
 function TableContentSkeleton() {
   const columns = [
-    { width: 200 },
-    { width: 100 },
-    { width: 100 },
-    { width: 100 },
-    { width: 80 },
-    { width: 100 },
+    { id: 'model', width: 'w-48' },
+    { id: 'input', width: 'w-24' },
+    { id: 'output', width: 'w-24' },
+    { id: 'cached', width: 'w-24' },
+    { id: 'group', width: 'w-20' },
+    { id: 'actions', width: 'w-24' },
   ]
 
   return (
@@ -118,35 +125,27 @@ function TableContentSkeleton() {
       <div className='overflow-hidden rounded-lg border'>
         <div className='bg-muted/30 border-b px-4 py-3'>
           <div className='flex items-center gap-4'>
-            {columns.map((col, i) => (
-              <Skeleton
-                key={i}
-                className='h-4'
-                style={{ width: `${col.width}px` }}
-              />
+            {columns.map((col) => (
+              <Skeleton key={col.id} className={`h-4 ${col.width}`} />
             ))}
           </div>
         </div>
-        {Array.from({ length: 10 }).map((_, i) => (
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((slot) => (
           <div
-            key={i}
+            key={slot}
             className='flex items-center gap-4 border-b px-4 py-3 last:border-b-0'
           >
-            {columns.map((col, j) => (
-              <Skeleton
-                key={j}
-                className='h-5'
-                style={{ width: `${col.width}px` }}
-              />
+            {columns.map((col) => (
+              <Skeleton key={col.id} className={`h-5 ${col.width}`} />
             ))}
           </div>
         ))}
       </div>
       <div className='flex items-center justify-between'>
         <Skeleton className='h-5 w-32' />
-        <div className='flex items-center gap-2'>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className='size-8' />
+        <div className='flex min-w-0 flex-wrap items-center gap-2'>
+          {[1, 2, 3, 4].map((page) => (
+            <Skeleton key={page} className='size-8' />
           ))}
         </div>
       </div>

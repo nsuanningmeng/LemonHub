@@ -57,6 +57,7 @@ interface MobileCardListProps<TData> {
   isLoading?: boolean
   emptyTitle?: string
   emptyDescription?: string
+  emptyAction?: React.ReactNode
   getRowKey?: (row: Row<TData>) => string | number
   getRowClassName?: (row: Row<TData>) => string | undefined
 }
@@ -151,6 +152,7 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
             <EmptyTitle>{resolvedEmptyTitle}</EmptyTitle>
             <EmptyDescription>{resolvedEmptyDescription}</EmptyDescription>
           </EmptyHeader>
+          {props.emptyAction}
         </Empty>
       </div>
     )

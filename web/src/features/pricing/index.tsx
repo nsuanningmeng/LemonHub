@@ -16,11 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
+import { BookOpen, Network } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
+import { Button } from '@/components/ui/button'
 
 import {
   LoadingSkeleton,
@@ -32,6 +36,7 @@ import {
   ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
+import { CatalogBillingFilter } from './components/catalog-billing-filter'
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
@@ -50,6 +55,8 @@ export function Pricing() {
     endpointMap,
     autoGroups,
     isLoading,
+    error,
+    refetch,
     priceRate,
     usdExchangeRate,
   } = usePricingData()
@@ -151,58 +158,113 @@ export function Pricing() {
   if (isLoading) {
     return (
       <PublicLayout showMainContainer={false}>
-        <div className='mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
+        <main
+          id='main-content'
+          className='mx-auto w-full max-w-screen-2xl px-5 pt-24 pb-12 sm:px-8 lg:px-12'
+        >
           <LoadingSkeleton viewMode={viewMode} />
-        </div>
+        </main>
+      </PublicLayout>
+    )
+  }
+
+  if (error && models.length === 0) {
+    return (
+      <PublicLayout>
+        <VStack
+          role='alert'
+          gap={4}
+          hAlign='center'
+          className='surface-peach rounded-3xl p-8 text-center'
+        >
+          <h1 className='text-tone-peach-strong text-2xl font-semibold'>
+            {t('Unable to load the model catalog.')}
+          </h1>
+          <p className='text-tone-peach-strong text-sm'>
+            {t('Please try again later.')}
+          </p>
+          <Button
+            onClick={() => {
+              void refetch()
+            }}
+          >
+            {t('Retry')}
+          </Button>
+        </VStack>
       </PublicLayout>
     )
   }
 
   return (
     <PublicLayout showMainContainer={false}>
-      <div className='relative'>
-        <div
-          aria-hidden
-          className='pointer-events-none absolute inset-x-0 top-0 h-[600px] opacity-20 dark:opacity-[0.10]'
-          style={{
-            background: [
-              'radial-gradient(ellipse 60% 50% at 20% 20%, oklch(0.72 0.18 250 / 80%) 0%, transparent 70%)',
-              'radial-gradient(ellipse 50% 40% at 80% 15%, oklch(0.65 0.15 200 / 60%) 0%, transparent 70%)',
-              'radial-gradient(ellipse 40% 35% at 50% 70%, oklch(0.70 0.12 280 / 40%) 0%, transparent 70%)',
-            ].join(', '),
-            maskImage:
-              'linear-gradient(to bottom, black 40%, transparent 100%)',
-            WebkitMaskImage:
-              'linear-gradient(to bottom, black 40%, transparent 100%)',
-          }}
-        />
-        <PageTransition className='relative mx-auto w-full max-w-[1800px] px-3 pt-16 pb-8 sm:px-6 sm:pt-20 sm:pb-10 xl:px-8'>
-          <header className='mx-auto mb-5 max-w-3xl pt-5 text-center sm:mb-10 sm:pt-10'>
-            <h1 className='text-[clamp(2rem,5.5vw,3.5rem)] leading-[1.15] font-bold tracking-tight'>
-              {t('Model Square')}
-            </h1>
-            <p className='text-muted-foreground/80 mt-3 text-sm sm:mt-4 sm:text-base'>
-              {t('This site currently has {{count}} models enabled', {
-                count: models?.length || 0,
-              })}
-            </p>
-            <p className='text-muted-foreground/60 mx-auto mt-2 max-w-2xl text-xs leading-relaxed sm:text-sm'>
-              {t(
-                'Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.'
-              )}
-            </p>
-            <SearchBar
-              value={searchInput}
-              onChange={setSearchInput}
-              onClear={clearSearch}
-              placeholder={t(
-                'Search model name, provider, endpoint, or tag...'
-              )}
-              className='mx-auto mt-4 max-w-2xl sm:mt-6'
-            />
+      <main id='main-content' className='bg-background'>
+        <PageTransition className='mx-auto w-full max-w-screen-2xl px-5 pt-24 pb-12 sm:px-8 lg:px-12'>
+          <header className='surface-violet border-tone-violet-border mb-6 grid gap-8 rounded-3xl border p-6 sm:p-8 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,24rem)] lg:items-end lg:p-10'>
+            <VStack gap={4}>
+              <p className='text-tone-violet-strong flex items-center gap-3 font-mono text-xs tracking-widest uppercase'>
+                <BookOpen className='size-5' aria-hidden />
+                {t('The model library')}
+              </p>
+              <h1 className='text-tone-violet-strong max-w-3xl text-4xl leading-tight font-medium tracking-tight sm:text-5xl lg:text-6xl'>
+                {t('Different strengths.')}
+                <br />
+                <em className='text-tone-blue-strong not-italic'>
+                  {t('One API.')}
+                </em>
+              </h1>
+              <p className='text-tone-violet-strong max-w-xl text-sm leading-relaxed sm:text-base'>
+                {t(
+                  'Compare capabilities, understand the cost, and find the right model for your next idea.'
+                )}
+              </p>
+            </VStack>
+            <VStack gap={6}>
+              <HStack as='dl' gap={3}>
+                <VStack
+                  gap={3}
+                  className='surface-blue min-w-0 flex-1 rounded-2xl p-4'
+                >
+                  <dt className='text-tone-blue-strong flex items-center gap-2 text-xs'>
+                    <BookOpen className='size-4' aria-hidden />
+                    {t('Available models')}
+                  </dt>
+                  <dd className='text-tone-blue-strong text-3xl font-semibold tracking-tight tabular-nums'>
+                    {(models?.length || 0).toLocaleString()}
+                  </dd>
+                </VStack>
+                <VStack
+                  gap={3}
+                  className='surface-teal min-w-0 flex-1 rounded-2xl p-4'
+                >
+                  <dt className='text-tone-teal-strong flex items-center gap-2 text-xs'>
+                    <Network className='size-4' aria-hidden />
+                    {t('Providers')}
+                  </dt>
+                  <dd className='text-tone-teal-strong text-3xl font-semibold tracking-tight tabular-nums'>
+                    {(vendors?.length || 0).toLocaleString()}
+                  </dd>
+                </VStack>
+              </HStack>
+              <SearchBar
+                value={searchInput}
+                onChange={setSearchInput}
+                onClear={clearSearch}
+                placeholder={t(
+                  'Search model name, provider, endpoint, or tag...'
+                )}
+              />
+            </VStack>
           </header>
 
-          <div className='grid gap-4 xl:grid-cols-[330px_minmax(0,1fr)]'>
+          <section aria-label={t('Browse models')} className='mb-8'>
+            <CatalogBillingFilter
+              models={models || []}
+              value={quotaTypeFilter}
+              onChange={setQuotaTypeFilter}
+            />
+          </section>
+
+          <div className='grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8'>
             <PricingSidebar
               quotaTypeFilter={quotaTypeFilter}
               endpointTypeFilter={endpointTypeFilter}
@@ -221,10 +283,13 @@ export function Pricing() {
               models={models || []}
               hasActiveFilters={hasActiveFilters}
               onClearFilters={clearFilters}
-              className='hover-scrollbar sticky top-4 hidden max-h-[calc(100dvh-2rem)] self-start overflow-y-auto xl:block'
+              className='hover-scrollbar sticky top-24 hidden max-h-[calc(100dvh-7rem)] self-start overflow-y-auto xl:block'
             />
 
-            <main className='min-w-0 space-y-4'>
+            <section
+              aria-label={t('Model catalog')}
+              className='min-w-0 space-y-6'
+            >
               <PricingToolbar
                 filteredCount={filteredModels.length}
                 totalCount={models?.length}
@@ -257,7 +322,7 @@ export function Pricing() {
               />
 
               {renderPricingContent()}
-            </main>
+            </section>
           </div>
 
           {selectedModel && (
@@ -283,7 +348,7 @@ export function Pricing() {
             />
           )}
         </PageTransition>
-      </div>
+      </main>
     </PublicLayout>
   )
 }

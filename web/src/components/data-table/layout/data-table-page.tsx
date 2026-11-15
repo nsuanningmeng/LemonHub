@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { VStack } from '@astryxdesign/core/VStack'
 import type {
   ColumnDef,
   Row,
@@ -91,6 +92,12 @@ export type DataTablePageProps<TData> = {
    * Refetch / background loading — dims the table without removing rows.
    */
   isFetching?: boolean
+
+  /**
+   * Failed-request content, usually ErrorState with a Retry action. Keeps
+   * filters available while hiding rows, counts and bulk actions until recovery.
+   */
+  error?: React.ReactNode
 
   /**
    * Empty-state title (used for both desktop {@link TableEmpty} and mobile fallback).
@@ -266,8 +273,8 @@ export type DataTablePageProps<TData> = {
   viewModeStorageKey?: string
 
   /**
-   * Initial (uncontrolled) view mode. When unset, defaults to `'card'` if
-   * `enableCardView` is `true`, otherwise `'table'`. A persisted selection
+   * Initial (uncontrolled) view mode. Defaults to desktop rows and mobile
+   * cards for a scannable record workspace. A persisted selection
    * (via `viewModeStorageKey`) always takes precedence over this default.
    */
   defaultViewMode?: DataTableViewMode
@@ -313,12 +320,10 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
 
   const [internalViewMode, setInternalViewMode] = useDataTableViewMode({
     storageKey: props.viewModeStorageKey,
-    // When card view is enabled, prefer it as the default unless the consumer
-    // explicitly opts into a different initial mode. A persisted choice (via
-    // `viewModeStorageKey`) still takes precedence over this default.
+    // Dense record pages start with rows; a saved or explicit preference wins.
     defaultMode:
       props.defaultViewMode ??
-      (props.enableCardView ? DATA_TABLE_VIEW_MODES.CARD : undefined),
+      (showMobile ? DATA_TABLE_VIEW_MODES.CARD : DATA_TABLE_VIEW_MODES.TABLE),
   })
   const viewMode = props.viewMode ?? internalViewMode
   const setViewMode = props.onViewModeChange ?? setInternalViewMode
@@ -329,29 +334,51 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
   ) : undefined
 
   const toolbarNode = renderToolbar(props, viewToggle)
-  const mobileNode = renderMobile(props, showMobile, cardViewActive, viewMode)
-  const desktopNode = renderDesktop(props, showMobile, cardViewActive, viewMode)
-  const paginationNode = renderPagination(props)
+  const hasError = Boolean(props.error)
+  const mobileNode = hasError
+    ? null
+    : renderMobile(props, showMobile, cardViewActive, viewMode)
+  const desktopNode = hasError
+    ? null
+    : renderDesktop(props, showMobile, cardViewActive, viewMode)
+  const paginationNode = hasError ? null : renderPagination(props)
 
   return (
     <>
-      <div
+      <VStack
+        gap={0}
         className={cn(
-          props.fixedHeight !== false
-            ? 'flex h-full min-h-0 flex-col gap-2.5 sm:gap-3'
-            : 'space-y-2.5 sm:space-y-3',
+          'isolate min-w-0 overflow-hidden rounded-xl border bg-card has-[tr[data-state=selected]]:border-tone-blue-border',
+          props.fixedHeight !== false && 'h-full min-h-0',
           props.className
         )}
       >
-        {toolbarNode}
+        {toolbarNode != null && (
+          <header className='surface-blue border-tone-blue-border shrink-0 border-b px-4 py-3'>
+            {toolbarNode}
+          </header>
+        )}
+        {hasError && (
+          <section
+            role='alert'
+            aria-busy={props.isFetching}
+            className='min-h-0 flex-1 overflow-auto p-4'
+          >
+            {props.error}
+          </section>
+        )}
         {mobileNode}
         {desktopNode}
-        {props.afterTable}
-      </div>
+        {!hasError && props.afterTable != null && (
+          <footer className='shrink-0 border-t px-4 py-3'>
+            {props.afterTable}
+          </footer>
+        )}
+      </VStack>
 
       {/* Bulk actions are typically a fixed-position toolbar; let the consumer
           handle its own visibility, we just gate it to non-mobile. */}
-      {!showMobile && props.bulkActions}
+      {!hasError && !showMobile && props.bulkActions}
 
       {paginationNode}
     </>
@@ -436,7 +463,7 @@ function renderMobile<TData>(
           getColumnClassName={props.getColumnClassName}
           pinnedColumns={props.pinnedColumns}
           containerClassName={cn(
-            'transition-opacity duration-150',
+            'rounded-none border-0 transition-opacity duration-150',
             isFetchingOnly && 'pointer-events-none opacity-60',
             props.tableClassName
           )}
@@ -453,6 +480,7 @@ function renderMobile<TData>(
           emptyTitle={props.emptyTitle}
           emptyDescription={props.emptyDescription}
           emptyIcon={props.emptyIcon}
+          emptyAction={props.emptyAction}
           renderCard={props.renderCard}
           gridClassName={props.cardGridClassName ?? 'grid grid-cols-1 gap-3'}
           skeletonKeyPrefix={props.skeletonKeyPrefix}
@@ -467,6 +495,7 @@ function renderMobile<TData>(
           isLoading={props.isLoading}
           emptyTitle={props.emptyTitle}
           emptyDescription={props.emptyDescription}
+          emptyAction={props.emptyAction}
           getRowKey={props.mobileProps?.getRowKey}
           getRowClassName={mobileGetRowClassName}
         />
@@ -474,7 +503,14 @@ function renderMobile<TData>(
     }
   }
 
-  return <div className='min-h-0 flex-1 overflow-y-auto'>{mobileContent}</div>
+  return (
+    <div
+      className='min-h-0 flex-1 overflow-y-auto p-3'
+      aria-busy={props.isLoading || props.isFetching}
+    >
+      {mobileContent}
+    </div>
+  )
 }
 
 function renderDesktop<TData>(
@@ -495,7 +531,7 @@ function renderDesktop<TData>(
       <div
         className={cn(
           fixedHeight && 'min-h-0 flex-1 overflow-y-auto',
-          'transition-opacity duration-150',
+          'p-4 transition-opacity duration-150',
           isFetchingOnly && 'pointer-events-none opacity-60'
         )}
       >
@@ -505,6 +541,7 @@ function renderDesktop<TData>(
           emptyTitle={props.emptyTitle}
           emptyDescription={props.emptyDescription}
           emptyIcon={props.emptyIcon}
+          emptyAction={props.emptyAction}
           renderCard={props.renderCard}
           gridClassName={props.cardGridClassName}
           skeletonKeyPrefix={props.skeletonKeyPrefix}
@@ -535,9 +572,10 @@ function renderDesktop<TData>(
       )}
       getColumnClassName={props.getColumnClassName}
       pinnedColumns={props.pinnedColumns}
+      containerProps={{ 'aria-busy': props.isLoading || props.isFetching }}
       containerClassName={cn(
         fixedHeight && 'min-h-0 flex-1',
-        'transition-opacity duration-150',
+        'rounded-none border-0 transition-opacity duration-150',
         isFetchingOnly && 'pointer-events-none opacity-60',
         props.tableClassName
       )}

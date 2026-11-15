@@ -16,10 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
+import { Activity, ArrowUpRight, BarChart3, WalletCards } from 'lucide-react'
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
 
@@ -28,85 +31,130 @@ import type { UserWalletData } from '../types'
 interface WalletStatsCardProps {
   user: UserWalletData | null
   loading?: boolean
+  error?: boolean
+  onRetry?: () => void
+  onAddFunds?: () => void
 }
 
 export function WalletStatsCard(props: WalletStatsCardProps) {
   const { t } = useTranslation()
-  if (props.loading) {
-    return (
-      <div className='@container/wallet-stats rounded-lg border'>
-        <div className='grid grid-cols-1 divide-y @min-[48rem]/wallet-stats:grid-cols-3 @min-[48rem]/wallet-stats:divide-x @min-[48rem]/wallet-stats:divide-y-0'>
-          {['balance', 'usage', 'requests'].map((key) => (
-            <div key={key} className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'>
-              <Skeleton className='h-3.5 w-full' />
-              <Skeleton className='mt-2 h-6 w-full sm:h-7' />
-              <Skeleton className='mt-1.5 hidden h-3.5 w-24 md:block' />
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  const stats: {
-    label: string
-    value: string
-    description: string
-    icon: typeof WalletCards
-    tone: IconBadgeTone
-  }[] = [
-    {
-      label: t('Current Balance'),
-      value: formatQuota(props.user?.quota ?? 0),
-      description: t('Remaining quota'),
-      icon: WalletCards,
-      tone: 'success',
-    },
+  const titleId = useId()
+  const unavailable = props.error && !props.user
+  const balance = unavailable ? t('N/A') : formatQuota(props.user?.quota ?? 0)
+  const stats = [
     {
       label: t('Total Usage'),
-      value: formatQuota(props.user?.used_quota ?? 0),
+      value: unavailable ? t('N/A') : formatQuota(props.user?.used_quota ?? 0),
       description: t('Total consumed quota'),
       icon: BarChart3,
-      tone: 'info',
     },
     {
       label: t('API Requests'),
-      value: (props.user?.request_count ?? 0).toLocaleString(),
+      value: unavailable
+        ? t('N/A')
+        : (props.user?.request_count ?? 0).toLocaleString(),
       description: t('Total requests made'),
       icon: Activity,
-      tone: 'chart-4',
     },
   ]
 
   return (
-    <div className='@container/wallet-stats rounded-lg border'>
-      <div className='grid grid-cols-1 divide-y @min-[48rem]/wallet-stats:grid-cols-3 @min-[48rem]/wallet-stats:divide-x @min-[48rem]/wallet-stats:divide-y-0'>
-        {stats.map((item) => (
-          <div
-            key={item.label}
-            className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'
+    <VStack
+      as='section'
+      gap={0}
+      aria-labelledby={titleId}
+      aria-busy={Boolean(props.loading)}
+      className='border-brand-line bg-card min-w-0 overflow-hidden rounded-xl border'
+    >
+      <VStack gap={6} padding={6} className='surface-brand'>
+        <HStack
+          gap={3}
+          justify='between'
+          align='center'
+          className='text-inherit'
+        >
+          <h3
+            id={titleId}
+            className='text-xs font-semibold tracking-widest uppercase'
           >
-            <div className='flex items-center gap-1.5 sm:gap-2.5'>
-              <IconBadge tone={item.tone} size='stat'>
-                <item.icon />
-              </IconBadge>
-              <div className='text-muted-foreground text-[11px] font-medium tracking-wider uppercase sm:text-xs'>
-                {item.label}
-              </div>
-            </div>
-
-            <div
-              className='text-foreground mt-1.5 overflow-x-auto font-mono text-sm font-bold tracking-tight whitespace-nowrap tabular-nums sm:mt-2.5 sm:text-2xl'
-              title={item.value}
+            {t('Current Balance')}
+          </h3>
+          <WalletCards className='size-5' aria-hidden='true' />
+        </HStack>
+        <VStack gap={2} className='text-inherit'>
+          {props.loading ? (
+            <Skeleton className='h-12 w-full max-w-60' />
+          ) : (
+            <p
+              className='overflow-x-auto font-mono text-3xl font-medium tracking-tight whitespace-nowrap tabular-nums sm:text-4xl'
+              title={balance}
             >
-              {item.value}
-            </div>
-            <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
-              {item.description}
-            </div>
-          </div>
+              {balance}
+            </p>
+          )}
+          {props.error ? (
+            <VStack gap={2} className='text-inherit' role='alert'>
+              <p className='text-sm'>{t('Failed to load')}</p>
+              {props.onRetry && (
+                <Button
+                  variant='outline'
+                  onClick={props.onRetry}
+                  className='bg-brand-paper text-brand-ink hover:bg-brand-paper/90 w-fit border-transparent'
+                >
+                  {t('Retry')}
+                </Button>
+              )}
+            </VStack>
+          ) : (
+            <p className='text-sm'>{t('Ready for your next request.')}</p>
+          )}
+        </VStack>
+        {props.onAddFunds && (
+          <Button
+            onClick={props.onAddFunds}
+            className='bg-brand-paper text-brand-ink hover:bg-brand-paper/90 w-full justify-between border border-transparent'
+          >
+            {t('Add Funds')}
+            <ArrowUpRight className='size-4' aria-hidden='true' />
+          </Button>
+        )}
+      </VStack>
+
+      <dl className='surface-teal divide-tone-teal-border divide-y px-6'>
+        {stats.map((item) => (
+          <VStack
+            key={item.label}
+            gap={2}
+            paddingBlock={5}
+            className='text-inherit'
+          >
+            <HStack
+              as='dt'
+              gap={2}
+              align='center'
+              className='text-tone-teal-strong text-xs'
+            >
+              <item.icon className='size-3.5' aria-hidden='true' />
+              {item.label}
+            </HStack>
+            <dd>
+              {props.loading ? (
+                <Skeleton className='h-7 w-28' />
+              ) : (
+                <p
+                  className='text-tone-teal-strong overflow-x-auto font-mono text-xl font-medium tracking-tight whitespace-nowrap tabular-nums'
+                  title={item.value}
+                >
+                  {item.value}
+                </p>
+              )}
+              <p className='text-muted-foreground mt-1 text-xs'>
+                {item.description}
+              </p>
+            </dd>
+          </VStack>
         ))}
-      </div>
-    </div>
+      </dl>
+    </VStack>
   )
 }

@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/sidebar'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { resolveSystemName } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
 type SystemBrandProps = {
@@ -51,9 +52,7 @@ export function SystemBrand(props: SystemBrandProps) {
   const { logo } = useSystemConfig()
 
   const variant = props.variant ?? 'sidebar'
-  const name = status?.system_name || props.defaultName || 'New API'
-  const version =
-    status?.version || props.defaultVersion || t('Unknown version')
+  const name = resolveSystemName(status?.system_name || props.defaultName)
 
   if (variant === 'inline') {
     return (
@@ -61,11 +60,11 @@ export function SystemBrand(props: SystemBrandProps) {
         to='/'
         aria-label={t('Go to home')}
         className={cn(
-          'text-foreground inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-sm font-medium transition-colors outline-none select-none',
+          'text-foreground inline-flex h-10 min-w-0 items-center gap-2.5 rounded-md text-base font-semibold tracking-tight transition-colors outline-none select-none',
           'hover:bg-accent focus-visible:ring-ring/40 focus-visible:ring-2'
         )}
       >
-        <div className='flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-md'>
+        <div className='flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg'>
           <img
             src={logo}
             alt={t('Logo')}
@@ -84,19 +83,23 @@ export function SystemBrand(props: SystemBrandProps) {
       <SidebarMenuItem>
         <SidebarMenuButton
           size='lg'
-          className='hover:text-sidebar-foreground active:text-sidebar-foreground cursor-default hover:bg-transparent active:bg-transparent'
-          render={<div />}
+          className='hover:text-sidebar-foreground active:text-sidebar-foreground hover:bg-sidebar-accent/50 active:bg-sidebar-accent/50 h-14'
+          render={<Link to='/' aria-label={t('Go to home')} />}
         >
-          <div className='flex aspect-square size-8 items-center justify-center overflow-hidden rounded-lg'>
+          <div className='flex aspect-square size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg'>
             <img
               src={logo}
               alt={t('Logo')}
               className='size-full rounded-lg object-cover'
             />
           </div>
-          <div className='grid flex-1 text-start text-sm leading-tight group-data-[collapsible=icon]:hidden'>
-            <span className='truncate font-semibold'>{name}</span>
-            <span className='truncate text-xs'>{version}</span>
+          <div className='grid min-w-0 flex-1 gap-1 text-start leading-tight group-data-[collapsible=icon]:hidden'>
+            <span className='truncate text-base font-semibold tracking-tight'>
+              {name}
+            </span>
+            <span className='text-sidebar-foreground/60 truncate text-xs'>
+              {t('AI workspace')}
+            </span>
           </div>
         </SidebarMenuButton>
       </SidebarMenuItem>

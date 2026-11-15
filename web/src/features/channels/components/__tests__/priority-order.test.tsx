@@ -194,7 +194,7 @@ async function mount(view: 'table' | 'card' = 'card', enabled = true) {
     validateSearch: (search) => ({ page: 1, pageSize: 10, ...search }),
     component: () => (
       <ChannelsProvider>
-        <header>
+        <header aria-label='Channel actions'>
           <ChannelsPrimaryButtons />
         </header>
         <ChannelsTable />
@@ -664,9 +664,12 @@ test('the page header provides the single sorting control without an ID switch',
     screen.getAllByRole('combobox', { name: 'Sort channels by' })
   ).toHaveLength(1)
   expect(
-    within(screen.getByRole('banner')).getByRole('combobox', {
-      name: 'Sort channels by',
-    })
+    within(screen.getByRole('banner', { name: 'Channel actions' })).getByRole(
+      'combobox',
+      {
+        name: 'Sort channels by',
+      }
+    )
   ).toBeEnabled()
   expect(
     within(screen.getByRole('region', { name: 'Channels' })).queryByRole(
@@ -679,7 +682,7 @@ test('the page header provides the single sorting control without an ID switch',
 test('the header places reorder before batch mode while shared display controls stay in the table toolbar', async () => {
   await mount('card', false)
   const user = userEvent.setup()
-  const header = within(screen.getByRole('banner'))
+  const header = within(screen.getByRole('banner', { name: 'Channel actions' }))
   const toolbar = within(screen.getByRole('region', { name: 'Channels' }))
   const reorder = header.getByRole('button', { name: 'Drag mode' })
   reorder.focus()
@@ -697,7 +700,7 @@ test('the header places reorder before batch mode while shared display controls 
 test('the header honors the saved ID preference and changes the shared sort direction', async () => {
   localStorage.setItem('channels-id-sort', 'true')
   await mount('card', false)
-  const header = within(screen.getByRole('banner'))
+  const header = within(screen.getByRole('banner', { name: 'Channel actions' }))
   expect(
     header.getByRole('combobox', { name: 'Sort channels by' })
   ).toHaveTextContent('ID')
@@ -720,7 +723,9 @@ test('the header honors the saved ID preference and changes the shared sort dire
 test('the compact more-actions button opens by keyboard and restores focus on Escape', async () => {
   await mount('card', false)
   const user = userEvent.setup()
-  const more = within(screen.getByRole('banner')).getByRole('button', {
+  const more = within(
+    screen.getByRole('banner', { name: 'Channel actions' })
+  ).getByRole('button', {
     name: 'More actions',
   })
   more.focus()
@@ -743,7 +748,7 @@ test('sorting a table column updates the header selection and remains active in 
     })
   )
   await user.click(await screen.findByRole('menuitem', { name: 'Asc' }))
-  const header = within(screen.getByRole('banner'))
+  const header = within(screen.getByRole('banner', { name: 'Channel actions' }))
   expect(
     header.getByRole('combobox', { name: 'Sort channels by' })
   ).toHaveTextContent('Name')

@@ -96,19 +96,19 @@ export function PerformanceHealthPanel() {
   const hasData = models.length > 0
 
   return (
-    <section className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>
-      <div className='flex items-center gap-2 border-b px-4 py-3 sm:px-5'>
+    <section className='bg-card h-full overflow-hidden rounded-2xl border'>
+      <div className='surface-teal flex flex-wrap items-center gap-3 border-b px-5 py-4'>
         <IconBadge tone='success' size='sm'>
           <HeartPulse />
         </IconBadge>
-        <h3 className='text-sm font-semibold'>{t('Performance health')}</h3>
+        <h4 className='text-sm font-semibold'>{t('Performance health')}</h4>
         <span className='text-muted-foreground ml-auto text-xs'>
           {t('Performance metrics for the last 24 hours')}
         </span>
       </div>
 
-      <div className='space-y-3 p-4 sm:p-5'>
-        <div className='grid grid-cols-3 gap-2'>
+      <div className='space-y-5 p-5'>
+        <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
           <MetricCell
             icon={HeartPulse}
             label={t('Success rate')}
@@ -116,6 +116,7 @@ export function PerformanceHealthPanel() {
             loading={loading}
             valueClassName={successRateTextClass(summary.successRate, srConfig)}
             tone='success'
+            surface='surface-teal'
           />
           <MetricCell
             icon={Timer}
@@ -123,6 +124,7 @@ export function PerformanceHealthPanel() {
             value={formatLatency(summary.avgLatencyMs)}
             loading={loading}
             tone='warning'
+            surface='surface-peach'
           />
           <MetricCell
             icon={Gauge}
@@ -130,6 +132,7 @@ export function PerformanceHealthPanel() {
             value={formatThroughput(summary.avgTps)}
             loading={loading}
             tone='info'
+            surface='surface-blue'
           />
         </div>
 
@@ -189,10 +192,11 @@ function MetricCell(props: {
   loading: boolean
   valueClassName?: string
   tone: IconBadgeTone
+  surface: string
 }) {
   const Icon = props.icon
   return (
-    <div className='bg-muted/40 rounded-xl px-3 py-2.5'>
+    <div className={cn('min-w-0 rounded-xl p-4', props.surface)}>
       <div className='text-muted-foreground flex items-center gap-1.5 text-[11px] font-medium'>
         <IconBadge tone={props.tone} size='xs'>
           <Icon />
@@ -204,7 +208,7 @@ function MetricCell(props: {
       ) : (
         <div
           className={cn(
-            'mt-1.5 font-mono text-sm font-semibold tabular-nums',
+            'mt-3 overflow-x-auto font-mono text-xl font-medium tracking-tight whitespace-nowrap tabular-nums',
             props.valueClassName
           )}
         >

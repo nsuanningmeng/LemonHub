@@ -202,7 +202,7 @@ function MobileTokensField({ log }: { log: UsageLog }) {
     !hasAnyCacheTokens(other)
   ) {
     return (
-      <div className='bg-muted/20 min-w-0 rounded-md px-2 py-1.5'>
+      <div className='bg-muted/20 col-span-2 min-w-0 rounded-md px-2 py-1.5'>
         <span className='text-muted-foreground text-xs'>-</span>
       </div>
     )
@@ -218,7 +218,7 @@ function MobileTokensField({ log }: { log: UsageLog }) {
   const showCache = cacheReadTokens > 0 || cacheWriteTokens > 0
 
   return (
-    <div className='bg-muted/20 min-w-0 rounded-md px-2 py-1.5'>
+    <div className='bg-muted/20 col-span-2 min-w-0 rounded-md px-2 py-1.5'>
       <div className='flex flex-col gap-0.5'>
         <span className='font-mono text-xs font-medium tabular-nums'>
           {promptTokens.toLocaleString()} / {completionTokens.toLocaleString()}
@@ -281,8 +281,9 @@ function MobileUserField({ log }: { log: UsageLog }) {
   )
 }
 
-/** Merge stream badge + TPS with first-token / duration on one row. */
+/** Keep timing readable across the full mobile card, wrapping stream details. */
 function MobileStreamTimingField({ log }: { log: UsageLog }) {
+  const { t } = useTranslation()
   if (!isTimingLogType(log.type)) return null
 
   const other = parseLogOther(log.other)
@@ -293,14 +294,18 @@ function MobileStreamTimingField({ log }: { log: UsageLog }) {
       : null
 
   return (
-    <div className='bg-muted/20 flex min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5'>
+    <section
+      role='group'
+      aria-label={t('Timing')}
+      className='bg-muted/20 col-span-2 flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-md px-2 py-1.5'
+    >
       <TimingMetricsCell
         useTimeSec={useTime}
         completionTokens={log.completion_tokens}
         frtMs={other?.frt}
         isStream={log.is_stream}
         indicator='dot'
-        className='min-w-0 flex-1'
+        className='min-w-0'
       />
       <StreamTpsCell
         isStream={log.is_stream}
@@ -308,7 +313,7 @@ function MobileStreamTimingField({ log }: { log: UsageLog }) {
         streamStatus={other?.stream_status}
         className='shrink-0'
       />
-    </div>
+    </section>
   )
 }
 

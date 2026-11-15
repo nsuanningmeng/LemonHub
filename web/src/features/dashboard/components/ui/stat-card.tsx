@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { HStack } from '@astryxdesign/core/HStack'
+import { VStack } from '@astryxdesign/core/VStack'
 import type { LucideIcon } from 'lucide-react'
 import { useId, type ReactNode } from 'react'
 
-import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
+import type { IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
@@ -64,15 +66,9 @@ const TONE_CLASSES: Record<StatCardTone, string> = {
 }
 
 const LINE_TONE_CLASSES: Record<StatCardTone, string> = {
-  'accent-1': 'text-overview-accent-1',
-  'accent-2': 'text-overview-accent-2',
-  'accent-3': 'text-overview-accent-3',
-}
-
-const ICON_TONE_BY_STAT_TONE: Record<StatCardTone, IconBadgeTone> = {
-  'accent-1': 'chart-1',
-  'accent-2': 'chart-2',
-  'accent-3': 'chart-3',
+  'accent-1': 'text-tone-teal-strong',
+  'accent-2': 'text-tone-violet-strong',
+  'accent-3': 'text-tone-blue-strong',
 }
 
 const DETAIL_TONE_CLASSES: Record<StatCardDetailTone, string> = {
@@ -234,7 +230,6 @@ function StatCardDetails(props: { details: StatCardDetail[] }) {
 export function StatCard(props: StatCardProps) {
   const Icon = props.icon
   const tone = props.tone ?? 'accent-3'
-  const iconTone = props.iconTone ?? ICON_TONE_BY_STAT_TONE[tone]
   const sparklineVariant = props.sparklineVariant ?? 'bars'
   let valueContent: ReactNode
   if (props.loading) {
@@ -260,12 +255,7 @@ export function StatCard(props: StatCardProps) {
         <div className='text-muted-foreground mt-0.5 font-mono text-base font-bold tracking-tight break-all tabular-nums sm:text-2xl'>
           --
         </div>
-        <p
-          className={cn(
-            'text-muted-foreground/60 line-clamp-1 text-[11px] sm:text-xs',
-            props.compactMobile && 'hidden sm:block'
-          )}
-        >
+        <p className='text-muted-foreground text-xs leading-relaxed'>
           {props.description}
         </p>
       </div>
@@ -274,17 +264,12 @@ export function StatCard(props: StatCardProps) {
     valueContent = (
       <div className='flex min-w-0 flex-col gap-1'>
         <div
-          className='text-foreground overflow-x-auto font-mono text-base font-semibold tracking-tight whitespace-nowrap tabular-nums @3xl/summary:text-2xl'
+          className='text-foreground overflow-x-auto font-mono text-2xl leading-tight font-medium tracking-tight whitespace-nowrap tabular-nums xl:text-3xl'
           title={String(props.value)}
         >
           {props.value}
         </div>
-        <p
-          className={cn(
-            'text-muted-foreground/60 line-clamp-1 text-[11px] leading-relaxed sm:text-xs',
-            props.compactMobile && 'hidden sm:block'
-          )}
-        >
+        <p className={cn('text-muted-foreground text-xs leading-relaxed')}>
           {props.description}
         </p>
       </div>
@@ -301,34 +286,30 @@ export function StatCard(props: StatCardProps) {
   }
 
   return (
-    <div
-      className={cn(
-        'group flex min-w-0 flex-col justify-between @xl/summary:min-h-32 @xl/summary:gap-3',
-        props.compactMobile ? 'gap-1' : 'gap-1.5'
-      )}
+    <VStack
+      as='article'
+      gap={props.compactMobile ? 4 : 6}
+      justify='between'
+      className='group h-full min-w-0 text-inherit'
+      aria-label={props.title}
+      aria-busy={Boolean(props.loading)}
     >
-      <div className='flex items-start justify-between gap-1'>
-        <div className='text-muted-foreground flex items-center gap-1 text-[11px] font-medium sm:gap-2 sm:text-xs'>
-          <IconBadge
-            tone={iconTone}
-            size='stat'
-            className={cn(
-              props.compactMobile &&
-                'size-4 rounded-sm [&>svg]:size-2.5 sm:size-7 sm:rounded-md sm:[&>svg]:size-3.5'
-            )}
-          >
-            <Icon />
-          </IconBadge>
-          <span className='line-clamp-1 leading-snug sm:line-clamp-2'>
-            {props.title}
-          </span>
-        </div>
-        {props.action && <div className='shrink-0'>{props.action}</div>}
-      </div>
-
+      <HStack gap={2} align='start' justify='between' className='text-inherit'>
+        <VStack gap={4} className='text-inherit'>
+          <Icon
+            className={cn('size-6', LINE_TONE_CLASSES[tone])}
+            aria-hidden='true'
+          />
+          <h4 className='text-xs leading-snug font-medium'>{props.title}</h4>
+        </VStack>
+        {props.action}
+      </HStack>
       {valueContent}
-
-      <div className='hidden @xl/summary:block'>{visualization}</div>
-    </div>
+      {!props.error && !props.loading && (
+        <section className='hidden sm:block' aria-hidden='true'>
+          {visualization}
+        </section>
+      )}
+    </VStack>
   )
 }

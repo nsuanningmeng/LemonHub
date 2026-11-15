@@ -32,7 +32,7 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { afterEach, assert, beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
@@ -140,21 +140,28 @@ async function renderChannelsPage() {
   await screen.findByText('selected-one')
   return { user: userEvent.setup(), post }
 }
+async function findChannelRow(label: string) {
+  // A channel label identifies its row without computing the accessible name
+  // of every interactive cell in every row.
+  const row = (await screen.findByText(label, { exact: true })).closest('tr')
+  assert(row !== null, `${label} must belong to a table row`)
+  return row
+}
+
 async function selectGroupedChildren(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('switch', { name: 'Batch Operations' }))
   await user.click(screen.getByRole('switch', { name: 'Tag Mode' }))
-  const group = await screen.findByRole('row', { name: /Tag：production/ })
+  const group = await findChannelRow('Tag：production')
   expect(within(group).queryByRole('checkbox')).not.toBeInTheDocument()
   await user.click(within(group).getAllByRole('button')[0])
   for (const name of ['selected-one', 'selected-three']) {
-    const row = await screen.findByRole('row', { name: new RegExp(name) })
+    const row = await findChannelRow(name)
     await user.click(within(row).getByRole('checkbox', { name: 'Select row' }))
   }
   expect(
-    within(screen.getByRole('row', { name: /unselected-two/ })).getByRole(
-      'checkbox',
-      { name: 'Select row' }
-    )
+    within(await findChannelRow('unselected-two')).getByRole('checkbox', {
+      name: 'Select row',
+    })
   ).not.toBeChecked()
   await screen.findByRole('toolbar', {
     name: 'Bulk actions for 2 selected channels',
