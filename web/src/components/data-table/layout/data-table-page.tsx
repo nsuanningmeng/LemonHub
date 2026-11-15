@@ -505,10 +505,7 @@ function renderMobile<TData>(
   }
 
   return (
-    <div
-      className='min-w-0'
-      aria-busy={props.isLoading || props.isFetching}
-    >
+    <div className='min-w-0' aria-busy={props.isLoading || props.isFetching}>
       {mobileContent}
     </div>
   )
