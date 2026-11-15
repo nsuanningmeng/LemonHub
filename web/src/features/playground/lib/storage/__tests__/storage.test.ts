@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -215,4 +215,52 @@ test('recovering an interrupted response retains its original persisted record',
     reasoning: { content: 'unfinished reasoning' },
   })
   expect(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)).toBe(saved)
+})
+
+test('a rejected storage write reports failure and preserves the last saved conversation', () => {
+  expect(saveMessages(messages, 1)).toBe(true)
+  const saved = localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new DOMException('Storage is full', 'QuotaExceededError')
+  })
+
+  expect(
+    saveMessages(
+      [
+        ...messages,
+        {
+          key: 'new',
+          from: 'user',
+          versions: [{ id: 'new-v', content: 'Unsaved instruction' }],
+        },
+      ],
+      1
+    )
+  ).toBe(false)
+  expect(localStorage.getItem(`${STORAGE_KEYS.MESSAGES}:1`)).toBe(saved)
+})
+
+test('recovering an interrupted response and saving another turn retains all earlier versions', () => {
+  const interrupted: Message[] = [
+    {
+      key: 'interrupted-versions',
+      from: 'assistant',
+      status: 'streaming',
+      versions: [
+        { id: 'current', content: '<think>reasoning</think>partial reply' },
+        { id: 'earlier', content: 'Earlier reply' },
+      ],
+    },
+  ]
+  saveMessages(interrupted, 1)
+
+  const recovered = loadMessages(1)
+  expect(recovered?.[0].versions).toEqual([
+    { id: 'current', content: 'partial reply' },
+    { id: 'earlier', content: 'Earlier reply' },
+  ])
+  saveMessages([...(recovered ?? []), ...messages], 1)
+
+  expect(loadMessages(1)?.[0].versions).toEqual(recovered?.[0].versions)
 })

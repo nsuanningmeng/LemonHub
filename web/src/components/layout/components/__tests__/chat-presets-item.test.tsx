@@ -71,6 +71,7 @@ it('fetches the enabled key before opening a selected Chatbox preset', async () 
       success: true,
       data: {
         items: [
+          { id: 9, status: 1, effective_status: 3 },
           { id: 3, status: 2 },
           { id: 8, status: 1 },
         ],
@@ -94,7 +95,7 @@ it('fetches the enabled key before opening a selected Chatbox preset', async () 
   await user.click(await screen.findByText('Chatbox'))
 
   await waitFor(() => expect(post).toHaveBeenCalledWith('/api/token/8/key'))
-  expect(get).toHaveBeenCalledWith('/api/token/?p=1&size=50')
+  expect(get).toHaveBeenCalledWith('/api/token/?p=1&size=50&status=1')
   expect(open).toHaveBeenCalledTimes(1)
   const url = new URL(String(open.mock.calls[0]?.[0]))
   expect(JSON.parse(atob(url.searchParams.get('config') ?? ''))).toMatchObject({

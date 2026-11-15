@@ -60,12 +60,36 @@ export function usePlaygroundState() {
 
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoadingMessages, setIsLoadingMessages] = useState(true)
+  const [hasMessageSaveError, setHasMessageSaveError] = useState(false)
+  const hasMessageSaveErrorRef = useRef(false)
   const messagesSaveTimerRef = useRef<number | null>(null)
   const latestMessagesRef = useRef<Message[]>(messages)
   const hasLoadedMessagesRef = useRef(false)
 
   const [models, setModels] = useState<ModelOption[]>([])
   const [groups, setGroups] = useState<GroupOption[]>([])
+
+  const retryMessageSave = useCallback(() => {
+    if (!hasLoadedMessagesRef.current) return true
+    if (messagesSaveTimerRef.current !== null) {
+      window.clearTimeout(messagesSaveTimerRef.current)
+      messagesSaveTimerRef.current = null
+    }
+    const saved = saveMessages(latestMessagesRef.current, ownerId)
+    hasMessageSaveErrorRef.current = !saved
+    setHasMessageSaveError(!saved)
+    return saved
+  }, [ownerId])
+
+  const flushMessageSave = useCallback(() => {
+    if (
+      messagesSaveTimerRef.current === null &&
+      !hasMessageSaveErrorRef.current
+    ) {
+      return true
+    }
+    return retryMessageSave()
+  }, [retryMessageSave])
 
   const persistMessages = useCallback(
     (messagesToSave: Message[]) => {
@@ -81,10 +105,10 @@ export function usePlaygroundState() {
 
       messagesSaveTimerRef.current = window.setTimeout(() => {
         messagesSaveTimerRef.current = null
-        saveMessages(latestMessagesRef.current, ownerId)
+        retryMessageSave()
       }, MESSAGE_SAVE_DEBOUNCE_MS)
     },
-    [ownerId]
+    [retryMessageSave]
   )
 
   useEffect(() => {
@@ -116,6 +140,17 @@ export function usePlaygroundState() {
     },
     [ownerId]
   )
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!flushMessageSave()) {
+        event.preventDefault()
+        event.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [flushMessageSave])
 
   // Update config with automatic save
   const updateConfig = useCallback(
@@ -172,6 +207,7 @@ export function usePlaygroundState() {
     parameterEnabled,
     messages,
     isLoadingMessages,
+    hasMessageSaveError,
     models,
     groups,
 
@@ -185,5 +221,7 @@ export function usePlaygroundState() {
     updateMessages,
     clearMessages,
     resetConfig,
+    retryMessageSave,
+    flushMessageSave,
   }
 }

@@ -82,15 +82,16 @@ function writeStoredValue<T>(
   baseKey: string,
   data: T,
   ownerId?: number | null
-): void {
+): boolean {
   const key = getUserStorageKey(baseKey, ownerId)
-  if (!key) return
+  if (!key) return false
   const payload: StoredEnvelope<T> = {
     version: STORAGE_VERSION,
     data,
   }
 
   localStorage.setItem(key, JSON.stringify(payload))
+  return true
 }
 
 function normalizeStoredMessageForLoad(message: Message): Message {
@@ -214,13 +215,14 @@ export function loadMessages(ownerId?: number | null): Message[] | null {
 export function saveMessages(
   messages: Message[],
   ownerId?: number | null
-): void {
+): boolean {
   try {
     const parsed = messagesSchema.parse(messages) as Message[]
-    writeStoredValue(STORAGE_KEYS.MESSAGES, parsed, ownerId)
+    return writeStoredValue(STORAGE_KEYS.MESSAGES, parsed, ownerId)
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save messages:', error)
+    return false
   }
 }
 

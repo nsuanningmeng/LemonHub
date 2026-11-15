@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -156,13 +156,26 @@ export function UsersMutateDrawer({
     defaultValues: USER_FORM_DEFAULT_VALUES,
   })
 
+  // A reopened editor owns a new cycle, even when its user ID is unchanged.
+  const editorCycle = useMemo(
+    () => ({ open, userId: currentRow?.id, active: false }),
+    [open, currentRow?.id]
+  )
+  useLayoutEffect(() => {
+    editorCycle.active = editorCycle.open
+    return () => {
+      editorCycle.active = false
+    }
+  }, [editorCycle])
+
   // Load existing data when updating
   useEffect(() => {
-    if (open && isUpdate && currentRow) {
-      // For update, fetch fresh data
-      getUser(currentRow.id)
+    let active = true
+    if (editorCycle.open && editorCycle.userId !== undefined) {
+      // Do not reuse a pending read owned by an earlier opening of this user.
+      getUser(editorCycle.userId, { disableDuplicate: true })
         .then((result) => {
-          if (result.success && result.data) {
+          if (active && editorCycle.active && result.success && result.data) {
             form.reset(transformUserToFormDefaults(result.data))
             setRecordRequestBody(parseRecordRequestBody(result.data.setting))
           }
@@ -170,12 +183,15 @@ export function UsersMutateDrawer({
         .catch(() => {
           // Request errors are reported by the shared API interceptor.
         })
-    } else if (open && !isUpdate) {
+    } else if (editorCycle.open) {
       // For create, reset to defaults
       form.reset(USER_FORM_DEFAULT_VALUES)
       setRecordRequestBody(false)
     }
-  }, [open, isUpdate, currentRow, form])
+    return () => {
+      active = false
+    }
+  }, [editorCycle, form])
 
   const handleRecordRequestBodyChange = async (next: boolean) => {
     if (!currentRow) return
@@ -258,12 +274,18 @@ export function UsersMutateDrawer({
   }
 
   const refreshUserData = async () => {
-    if (!currentRow) return
-    const result = await getUser(currentRow.id)
-    if (result.success && result.data) {
-      form.reset(transformUserToFormDefaults(result.data))
-    }
     triggerRefresh()
+    if (!editorCycle.active || editorCycle.userId === undefined) return
+    try {
+      const result = await getUser(editorCycle.userId, {
+        disableDuplicate: true,
+      })
+      if (editorCycle.active && result.success && result.data) {
+        form.reset(transformUserToFormDefaults(result.data))
+      }
+    } catch {
+      // Request errors are reported by the shared API interceptor.
+    }
   }
 
   return (

@@ -85,8 +85,11 @@ export async function searchUsers(
 /**
  * Get single user by ID
  */
-export async function getUser(id: number): Promise<ApiResponse<User>> {
-  const res = await api.get(`/api/user/${id}`)
+export async function getUser(
+  id: number,
+  config?: ApiRequestConfig
+): Promise<ApiResponse<User>> {
+  const res = await api.get(`/api/user/${id}`, config)
   return res.data
 }
 

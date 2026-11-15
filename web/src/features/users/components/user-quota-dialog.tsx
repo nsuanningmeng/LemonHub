@@ -55,7 +55,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const currencyLabel = getCurrencyLabel()
   const tokensOnly = currencyMeta.kind === 'tokens'
 
-  const amountValue = Number.parseFloat(amount) || 0
+  const amountValue = Number(amount)
   const quotaValue = parseQuotaFromDollars(Math.abs(amountValue))
 
   const getPreviewText = () => {
@@ -77,14 +77,21 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
 
   const handleConfirm = async () => {
     if (submittingRef.current) return
-    if (!amount && mode !== 'override') return
+    const value =
+      mode === 'override' ? parseQuotaFromDollars(amountValue) : quotaValue
+    if (
+      !amount.trim() ||
+      !Number.isFinite(amountValue) ||
+      !Number.isSafeInteger(value)
+    ) {
+      toast.error(t('Please enter a valid number'))
+      return
+    }
     if (quotaValue <= 0 && mode !== 'override') return
 
     submittingRef.current = true
     setLoading(true)
     try {
-      const value =
-        mode === 'override' ? parseQuotaFromDollars(amountValue) : quotaValue
       const result = await adjustUserQuota({
         id: props.userId,
         action: 'add_quota',

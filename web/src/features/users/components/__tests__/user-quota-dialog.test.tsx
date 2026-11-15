@@ -143,3 +143,62 @@ it('retains the amount and mode after failure and allows a successful retry', as
     value: 1500000,
   })
 })
+
+it.each(['', '1e308', '2e10'])(
+  'rejects an override amount %j that is empty or cannot produce safe wallet quota',
+  async (amount) => {
+    const post = vi
+      .spyOn(api, 'post')
+      .mockResolvedValue({ data: { success: true } })
+    const user = userEvent.setup()
+    render(
+      <UserQuotaDialog
+        open
+        userId={7}
+        currentQuota={5000000}
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Override' }))
+    fireEvent.change(screen.getByRole('spinbutton'), {
+      target: { value: amount },
+    })
+    await user.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(post).not.toHaveBeenCalled()
+    expect(screen.getByRole('spinbutton')).toBeEnabled()
+  }
+)
+
+it.each([
+  [0, 0],
+  [-1, -500000],
+])(
+  'allows the explicit override amount %s with quota %s',
+  async (amount, quota) => {
+    const post = vi
+      .spyOn(api, 'post')
+      .mockResolvedValue({ data: { success: true } })
+    const user = userEvent.setup()
+    render(
+      <UserQuotaDialog
+        open
+        userId={7}
+        currentQuota={5000000}
+        onOpenChange={vi.fn()}
+        onSuccess={vi.fn()}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'Override' }))
+    fireEvent.change(screen.getByRole('spinbutton'), {
+      target: { value: String(amount) },
+    })
+    await user.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(post).toHaveBeenCalledWith('/api/user/manage', {
+      id: 7,
+      action: 'add_quota',
+      mode: 'override',
+      value: quota,
+    })
+  }
+)
