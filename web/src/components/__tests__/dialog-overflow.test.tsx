@@ -33,8 +33,11 @@ test('keeps ordinary dialog bodies scrollable within the popup by default', () =
     .getByRole('button', { name: 'Save settings' })
     .closest<HTMLElement>('.overflow-y-auto')
 
-  expect(popup).toHaveClass('overflow-hidden')
+  expect(popup).toHaveClass('overflow-hidden', 'max-h-[calc(100dvh-2rem)]')
   expect(scrollContainer).not.toBeNull()
   expect(popup).toContainElement(scrollContainer)
-  expect(scrollContainer).toHaveClass('overflow-x-hidden')
+  expect(scrollContainer).toHaveClass(
+    'overflow-x-hidden',
+    'max-h-[calc(100dvh-14rem)]'
+  )
 })

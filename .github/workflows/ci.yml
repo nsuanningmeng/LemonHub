@@ -101,6 +101,15 @@ jobs:
       - name: Test
         run: bun run test --maxWorkers=2 --testTimeout=30000
 
+      - name: Install browser for responsive layout regressions
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build production frontend
+        run: bun run build
+
+      - name: Test appearance and mobile layouts in a real browser
+        run: bun run test:appearance
+
       - name: Audit dependencies
         run: bun audit
 

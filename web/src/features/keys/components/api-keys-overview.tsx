@@ -47,7 +47,7 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
       aria-busy={props.isLoading}
       className='min-w-0 shrink-0'
     >
-      <Text color='secondary' className='max-w-3xl text-sm'>
+      <Text color='secondary' className='hidden max-w-3xl text-sm sm:block'>
         {t(
           'Create separate keys for your apps. Keep model access and spending limits under your control.'
         )}

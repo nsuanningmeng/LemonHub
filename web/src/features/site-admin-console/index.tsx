@@ -41,7 +41,7 @@ export function SiteAdminConsole() {
           onValueChange={(value) => setTab(String(value))}
           className='gap-4'
         >
-          <TabsList>
+          <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
             <TabsTrigger value='overview'>{t('Overview & Wallet')}</TabsTrigger>
             <TabsTrigger value='redemption'>
               {t('Redemption Codes')}

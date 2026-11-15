@@ -175,7 +175,7 @@ export function WaffoSettingsSection({
           />
         </div>
 
-        <div className='grid grid-cols-2 gap-4'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
           <div className='grid gap-1.5'>
             <Label>{t('API Key (Production)')}</Label>
             <Input
@@ -208,7 +208,7 @@ export function WaffoSettingsSection({
           />
         </div>
 
-        <div className='grid grid-cols-2 gap-4'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
           <div className='grid gap-1.5'>
             <Label>{t('RSA Private Key (Production)')}</Label>
             <Textarea
@@ -233,7 +233,7 @@ export function WaffoSettingsSection({
           </div>
         </div>
 
-        <div className='grid grid-cols-2 gap-4'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
           <div className='grid gap-1.5'>
             <Label>{t('Waffo Public Key (Production)')}</Label>
             <Textarea
@@ -258,7 +258,7 @@ export function WaffoSettingsSection({
           </div>
         </div>
 
-        <div className='grid grid-cols-3 gap-4'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-3'>
           <div className='grid gap-1.5'>
             <Label>{t('Currency')}</Label>
             <Input value={values.WaffoCurrency} disabled />
@@ -294,7 +294,7 @@ export function WaffoSettingsSection({
           </div>
         </div>
 
-        <div className='grid grid-cols-2 gap-4'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
           <div className='grid gap-1.5'>
             <Label>{t('Callback notification URL')}</Label>
             <Input
@@ -319,7 +319,7 @@ export function WaffoSettingsSection({
 
         <Separator />
 
-        <div className='flex items-center justify-between'>
+        <div className='flex flex-wrap items-center justify-between gap-2'>
           <h4 className='font-medium'>{t('Payment Methods')}</h4>
           <Button type='button' variant='outline' size='sm' onClick={openAdd}>
             <Plus className='mr-1 h-3 w-3' />

@@ -72,9 +72,11 @@ export function CreemConfirmDialog({
       }
     >
       <div className='space-y-3 py-3 sm:space-y-4 sm:py-4'>
-        <div className='flex items-center justify-between'>
+        <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:justify-between sm:gap-3'>
           <span className='text-muted-foreground'>{t('Product')}</span>
-          <span className='font-medium'>{product.name}</span>
+          <span className='min-w-0 font-medium wrap-anywhere sm:text-right'>
+            {product.name}
+          </span>
         </div>
         <div className='flex items-center justify-between'>
           <span className='text-muted-foreground'>{t('Price')}</span>

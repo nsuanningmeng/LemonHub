@@ -17,11 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
+import { PageFooterPortal } from '../page-footer'
 import { SectionPageLayout } from '../section-page-layout'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
 
 test('long action groups wrap before squeezing the page title away', () => {
   render(
@@ -42,8 +46,13 @@ test('long action groups wrap before squeezing the page title away', () => {
 })
 
 test.each([false, true])(
-  'fixedContent=%s keeps scrolling inside the content region and exposes a page heading',
+  'fixedContent=%s keeps desktop scrolling inside the content region and exposes a page heading',
   (fixedContent) => {
+    const matchMedia = window.matchMedia
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      ...matchMedia(query),
+      matches: query === '(min-width: 768px) and (min-height: 640px)',
+    }))
     render(
       <SectionPageLayout fixedContent={fixedContent}>
         <SectionPageLayout.Title>Usage analytics</SectionPageLayout.Title>
@@ -58,5 +67,32 @@ test.each([false, true])(
     expect(
       screen.getByRole('article', { name: 'Usage chart' }).parentElement
     ).toHaveClass('min-h-0', fixedContent ? 'overflow-hidden' : 'overflow-auto')
+  }
+)
+
+test.each([false, true])(
+  'fixedContent=%s lets the title, content and pagination scroll together in a compact viewport',
+  (fixedContent) => {
+    render(
+      <SectionPageLayout fixedContent={fixedContent}>
+        <SectionPageLayout.Title>API access</SectionPageLayout.Title>
+        <SectionPageLayout.Content>
+          <article aria-label='API keys'>Production key</article>
+          <PageFooterPortal>
+            <nav aria-label='Table pagination'>Next page</nav>
+          </PageFooterPortal>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
+    )
+    const main = screen.getByRole('main')
+    expect(main).toHaveClass('overflow-y-auto')
+    expect(screen.getByRole('article').parentElement).toHaveClass('shrink-0')
+    expect(screen.getByRole('article').parentElement).not.toHaveClass(
+      'overflow-hidden',
+      'flex-1'
+    )
+    expect(main).toContainElement(
+      screen.getByRole('navigation', { name: 'Table pagination' })
+    )
   }
 )

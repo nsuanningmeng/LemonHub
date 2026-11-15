@@ -408,3 +408,28 @@ describe('OAuth settings saves', () => {
     )
   })
 })
+
+it('keeps OAuth provider tabs in readable rows on phones and keyboard navigation reaches the last provider', async () => {
+  const user = userEvent.setup()
+  await renderSettings()
+
+  expect(screen.getByRole('tablist')).toHaveClass(
+    'h-auto!',
+    'grid-cols-2',
+    'sm:grid-cols-3',
+    'lg:grid-cols-6'
+  )
+  const firstTab = screen.getByRole('tab', { name: 'GitHub' })
+  firstTab.focus()
+  await user.keyboard('{End}')
+
+  expect(screen.getByRole('tab', { name: 'WeChat' })).toHaveFocus()
+  await user.keyboard('{Enter}')
+  expect(screen.getByRole('tab', { name: 'WeChat' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  expect(
+    screen.getByRole('switch', { name: 'Enable WeChat Auth' })
+  ).toBeVisible()
+})
