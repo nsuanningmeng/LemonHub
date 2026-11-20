@@ -22,26 +22,9 @@ import type {
   Row,
   Table as TanstackTable,
 } from '@tanstack/react-table'
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import * as React from 'react'
 
+import { ErrorState } from '@/components/error-state'
 import { PageFooterPortal } from '@/components/layout/components/page-footer'
 import { useMediaQuery } from '@/hooks'
 import { useFixedContentLayout } from '@/hooks/use-fixed-content-layout'
@@ -338,6 +321,9 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
 
   const toolbarNode = renderToolbar(props, viewToggle)
   const hasError = Boolean(props.error)
+  const hasOwnAlert =
+    React.isValidElement<{ role?: string }>(props.error) &&
+    (props.error.type === ErrorState || props.error.props.role === 'alert')
   const mobileNode = hasError
     ? null
     : renderMobile(props, showMobile, cardViewActive, viewMode)
@@ -361,7 +347,7 @@ export function DataTablePage<TData>(props: DataTablePageProps<TData>) {
         )}
         {hasError && (
           <section
-            role='alert'
+            role={hasOwnAlert ? undefined : 'alert'}
             aria-busy={props.isFetching}
             className={cn('p-4', fixedHeight && 'min-h-0 flex-1 overflow-auto')}
           >

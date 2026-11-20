@@ -25,7 +25,7 @@ import {
 } from '@tanstack/react-table'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { afterEach, expect, it, vi } from 'vitest'
 
 import { Checkbox } from '@/components/ui/checkbox'
@@ -56,6 +56,7 @@ function Workspace(props: {
   paginated?: boolean
   total?: number
   failed?: boolean
+  error?: ReactNode
 }) {
   const [environment, setEnvironment] = useState('')
   const table = useReactTable({
@@ -78,7 +79,10 @@ function Workspace(props: {
       viewModeStorageKey='test-workspace-view'
       paginationInFooter={false}
       isLoading={props.loading}
-      error={props.failed ? 'Records could not be loaded' : undefined}
+      error={
+        props.error ??
+        (props.failed ? 'Records could not be loaded' : undefined)
+      }
       emptyTitle='No connections'
       emptyAction={<button type='button'>Create connection</button>}
       bulkActions={
@@ -319,4 +323,20 @@ it('keeps filters and view preferences through a failed request while hiding sta
     'aria-pressed',
     'true'
   )
+})
+
+it('announces custom error content once, including a fragment or an explicit alert', () => {
+  const result = render(
+    <Workspace
+      error={
+        <>
+          <p>Records unavailable</p>
+          <p>Try again later</p>
+        </>
+      }
+    />
+  )
+  expect(screen.getByRole('alert')).toHaveTextContent('Records unavailable')
+  result.rerender(<Workspace error={<p role='alert'>Service unavailable</p>} />)
+  expect(screen.getByRole('alert')).toHaveTextContent('Service unavailable')
 })

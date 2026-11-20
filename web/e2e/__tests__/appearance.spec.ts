@@ -221,15 +221,29 @@ test('centered content keeps the workspace toolbar full width on large screens',
     'data-theme-content-layout',
     'centered'
   )
-  const inset = page.locator('[data-slot="sidebar-inset"]')
-  const widths = await inset.evaluate((el) => ({
-    available: el.clientWidth,
-    header: el.querySelector('header')?.getBoundingClientRect().width ?? 0,
-    content: el.lastElementChild?.getBoundingClientRect().width ?? Infinity,
-  }))
-  expect(widths.available).toBeGreaterThan(1280)
-  expect(widths.header).toBeCloseTo(widths.available, 0)
-  expect(widths.content).toBeLessThanOrEqual(1280)
+  const header = page.getByRole('banner')
+  const main = page.getByRole('main')
+  const content = main.locator('[data-slot="workspace-page"]')
+  const [headerRect, mainRect, contentRect] = await Promise.all(
+    [header, main, content].map((element) =>
+      element.evaluate((el) => {
+        const { left, right, width } = el.getBoundingClientRect()
+        return { left, right, width }
+      })
+    )
+  )
+  const viewportWidth = await page.evaluate(
+    () => document.documentElement.clientWidth
+  )
+  expect(headerRect.left).toBeCloseTo(0, 0)
+  expect(headerRect.width).toBeCloseTo(viewportWidth, 0)
+  expect(mainRect.width).toBeGreaterThan(1280)
+  expect(contentRect.width).toBeGreaterThan(0)
+  expect(contentRect.width).toBeLessThanOrEqual(1280)
+  expect(contentRect.left - mainRect.left).toBeCloseTo(
+    mainRect.right - contentRect.right,
+    0
+  )
 })
 
 test('status text colors remain readable on light and dark cards', async ({
