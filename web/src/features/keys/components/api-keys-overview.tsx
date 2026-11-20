@@ -57,7 +57,7 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
           <dt className='text-muted-foreground text-xs leading-relaxed'>
             {props.filtered ? t('Matching keys') : t('Total keys')}
           </dt>
-          <dd className='text-foreground text-sm font-semibold tracking-tight wrap-anywhere tabular-nums'>
+          <dd className='text-tone-violet-strong text-sm font-semibold tracking-tight wrap-anywhere tabular-nums'>
             {props.isLoading ? (
               <Skeleton className='h-7 w-10' />
             ) : (
@@ -69,7 +69,7 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
           <dt className='text-muted-foreground text-xs leading-relaxed'>
             {t('Active on this page')}
           </dt>
-          <dd className='text-foreground text-sm font-semibold tracking-tight wrap-anywhere tabular-nums'>
+          <dd className='text-tone-teal-strong text-sm font-semibold tracking-tight wrap-anywhere tabular-nums'>
             {props.isLoading ? (
               <Skeleton className='h-7 w-10' />
             ) : (
@@ -81,7 +81,7 @@ export function ApiKeysOverview(props: ApiKeysOverviewProps) {
           <dt className='text-muted-foreground text-xs leading-relaxed'>
             {t('Inactive on this page')}
           </dt>
-          <dd className='text-foreground text-sm font-semibold tracking-tight wrap-anywhere tabular-nums'>
+          <dd className='text-tone-peach-strong text-sm font-semibold tracking-tight wrap-anywhere tabular-nums'>
             {props.isLoading ? (
               <Skeleton className='h-7 w-10' />
             ) : (

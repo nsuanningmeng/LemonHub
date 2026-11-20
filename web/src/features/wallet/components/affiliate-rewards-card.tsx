@@ -16,13 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { VStack } from '@astryxdesign/core/VStack'
 import { Link } from '@tanstack/react-router'
 import { Share2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { IconBadge } from '@/components/ui/icon-badge'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatQuota } from '@/lib/format'
@@ -47,21 +49,21 @@ export function AffiliateRewardsCard({
   const { t } = useTranslation()
   if (loading) {
     return (
-      <VStack
-        as='section'
-        gap={0}
+      <Card
+        role='region'
         aria-label={t('Referral Program')}
-        className='border-brand-line border-t pt-6'
+        data-card-hover='false'
+        className='bg-muted/20 py-0'
       >
-        <section className='grid gap-4 p-3 sm:p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,0.72fr)_minmax(320px,1.15fr)] lg:items-center'>
+        <CardContent className='grid gap-4 p-3 sm:p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,0.72fr)_minmax(320px,1.15fr)] lg:items-center'>
           <div>
             <Skeleton className='h-5 w-32' />
             <Skeleton className='mt-2 h-4 w-48' />
           </div>
           <Skeleton className='h-14 rounded-lg' />
           <Skeleton className='h-10 rounded-lg' />
-        </section>
-      </VStack>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -69,27 +71,29 @@ export function AffiliateRewardsCard({
   const isCashSettled = user?.aff_cash_settled ?? false
 
   return (
-    <VStack
-      as='section'
-      gap={0}
+    <Card
+      role='region'
       aria-label={t('Referral Program')}
-      className='border-brand-line border-t pt-6'
+      data-card-hover='false'
+      className='bg-muted/20 py-0'
     >
-      <section className='grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center'>
-        <div className='flex min-w-0 items-start gap-3'>
-          <Share2
-            className='text-tone-violet-strong mt-1 size-4 shrink-0'
-            aria-hidden='true'
-          />
+      <CardContent className='grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(200px,1fr)_minmax(180px,0.65fr)_minmax(280px,1fr)] lg:items-center'>
+        <div className='flex min-w-0 items-center gap-2.5'>
+          <IconBadge tone='chart-3'>
+            <Share2 />
+          </IconBadge>
           <div className='min-w-0'>
             <div className='flex flex-wrap items-center gap-2'>
-              <h3 className='truncate text-sm font-semibold'>
+              <h3 className='text-sm font-semibold wrap-anywhere'>
                 {t('Referral Program')}
               </h3>
               {isCashSettled && (
-                <small className='text-warning shrink-0 text-xs'>
+                <Badge
+                  variant='secondary'
+                  className='shrink-0 bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                >
                   {t('Cash settled')}
-                </small>
+                </Badge>
               )}
               <Button
                 variant='link'
@@ -127,23 +131,26 @@ export function AffiliateRewardsCard({
                 [t('Invites'), String(user?.aff_count ?? 0)],
               ]
           ).map(([label, value]) => (
-            <div key={label}>
-              <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>
+            <div key={label} className='min-w-0'>
+              <div className='text-muted-foreground text-[10px] font-medium tracking-wider wrap-anywhere uppercase'>
                 {label}
               </div>
-              <div className='mt-0.5 truncate text-sm font-semibold tabular-nums'>
+              <div
+                title={value}
+                className='mt-0.5 text-sm font-semibold wrap-anywhere tabular-nums'
+              >
                 {value}
               </div>
             </div>
           ))}
         </div>
 
-        <div className='flex flex-wrap items-center gap-2 lg:col-span-2'>
+        <div className='flex flex-wrap items-center gap-2'>
           <Input
             value={affiliateLink}
-            readOnly
             aria-label={t('Referral link')}
-            className='border-border bg-card h-9 min-w-0 flex-1 font-mono text-xs'
+            readOnly
+            className='border-muted bg-background/70 h-9 min-w-0 flex-1 font-mono text-xs'
           />
           <CopyButton
             value={affiliateLink}
@@ -165,13 +172,13 @@ export function AffiliateRewardsCard({
           )}
         </div>
         {!complianceConfirmed ? (
-          <p className='text-muted-foreground text-xs lg:col-span-2'>
+          <p className='text-muted-foreground text-xs lg:col-span-3'>
             {t(
               'Referral reward transfer is disabled until the administrator confirms compliance terms.'
             )}
           </p>
         ) : null}
-      </section>
-    </VStack>
+      </CardContent>
+    </Card>
   )
 }

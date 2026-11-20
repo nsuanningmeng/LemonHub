@@ -199,6 +199,7 @@ function ChatRouteComponent() {
   // administrator's web chat presets. These clients may use their own origin
   // for login popups and storage, and request camera or microphone access.
   return (
+    // oxlint-disable-next-line react/iframe-missing-sandbox -- trusted admin-configured clients require their own origin and browser capabilities
     <iframe
       src={iframeSrc}
       key={iframeSrc}

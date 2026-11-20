@@ -256,7 +256,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   const canCollapse =
     narrow && Boolean(props.additionalSearch) && filters.length > 1
   const searchInput = (
-    <div className='relative w-full min-w-0 sm:w-48 lg:w-56'>
+    <label className='relative w-full min-w-0 basis-full sm:w-48 sm:basis-auto lg:w-56'>
       <Search
         aria-hidden='true'
         className='text-muted-foreground pointer-events-none absolute start-3 top-1/2 z-1 size-4 -translate-y-1/2'
@@ -270,7 +270,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
         onCompositionEnd={handleSearchCompositionEnd}
         className='w-full ps-9'
       />
-    </div>
+    </label>
   )
 
   const filterChips = React.useMemo(
@@ -402,10 +402,13 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
           </div>
         </div>
 
-        {expanded && hasExpandable && (
+        {hasExpandable && (
           <div
             id={expandedFiltersId}
-            className='flex flex-wrap items-center gap-2'
+            hidden={!expanded}
+            className={
+              expanded ? 'flex flex-wrap items-center gap-2' : 'hidden'
+            }
           >
             {props.expandable}
           </div>
@@ -434,8 +437,12 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     >
       {props.customSearch !== undefined ? props.customSearch : searchInput}
       {filterFields}
-      {expanded && hasExpandable && (
-        <div id={expandedFiltersId} className='contents'>
+      {hasExpandable && (
+        <div
+          id={expandedFiltersId}
+          hidden={!expanded}
+          className={expanded ? 'contents' : 'hidden'}
+        >
           {props.expandable}
         </div>
       )}

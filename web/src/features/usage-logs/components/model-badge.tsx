@@ -151,12 +151,12 @@ function ModelBadgeContent(props: ModelBadgeProps) {
       showDot={!provider}
       autoColor={provider ? undefined : props.modelName}
       className={cn(
-        'border-border/60 bg-muted/30 h-6 max-w-none gap-1.5 rounded-md border px-2 [font-family:var(--font-body)]',
+        'border-border/60 bg-muted/30 h-auto min-h-6 max-w-full gap-1.5 py-0.5 sm:h-6 sm:max-w-none sm:py-0 rounded-md border px-2 [font-family:var(--font-body)]',
         provider && 'text-foreground',
         props.className
       )}
     >
-      <span className='flex max-w-none items-center gap-1.5'>
+      <span className='flex min-w-0 items-center gap-1.5'>
         {provider && (
           <span
             className='flex h-[18px] w-[18px] shrink-0 items-center justify-center'
@@ -166,7 +166,9 @@ function ModelBadgeContent(props: ModelBadgeProps) {
             {getLobeIcon(provider.icon, 18)}
           </span>
         )}
-        <span className='whitespace-nowrap'>{props.modelName}</span>
+        <span className='min-w-0 text-start wrap-anywhere whitespace-normal sm:whitespace-nowrap'>
+          {props.modelName}
+        </span>
       </span>
     </StatusBadge>
   )
@@ -183,7 +185,10 @@ export function ModelBadge(props: ModelBadgeProps) {
     <Popover>
       <PopoverTrigger
         render={
-          <button type='button' className='inline-flex items-center gap-1' />
+          <button
+            type='button'
+            className='inline-flex max-w-full min-w-0 items-center gap-1'
+          />
         }
       >
         <ModelBadgeContent {...props} />
@@ -195,7 +200,7 @@ export function ModelBadge(props: ModelBadgeProps) {
             <span className='text-muted-foreground text-xs'>
               {t('Request Model:')}
             </span>
-            <span className='truncate font-mono text-xs font-medium'>
+            <span className='min-w-0 text-end font-mono text-xs font-medium wrap-anywhere'>
               {props.modelName}
             </span>
           </div>
@@ -203,7 +208,7 @@ export function ModelBadge(props: ModelBadgeProps) {
             <span className='text-muted-foreground text-xs'>
               {t('Actual Model:')}
             </span>
-            <span className='truncate font-mono text-xs font-medium'>
+            <span className='min-w-0 text-end font-mono text-xs font-medium wrap-anywhere'>
               {props.actualModel}
             </span>
           </div>

@@ -82,6 +82,25 @@ function FilterChip(props: {
   )
 }
 
+export function FilterOptions(props: FilterSectionProps) {
+  return (
+    <div
+      role='group'
+      aria-label={props.title}
+      className='flex flex-wrap gap-1.5'
+    >
+      {props.options.map((option) => (
+        <FilterChip
+          key={option.value}
+          option={option}
+          active={props.value === option.value}
+          onClick={() => props.onChange(option.value)}
+        />
+      ))}
+    </div>
+  )
+}
+
 export function FilterSection(props: FilterSectionProps) {
   const selectedOption =
     props.value !== FILTER_ALL &&
@@ -106,20 +125,7 @@ export function FilterSection(props: FilterSectionProps) {
         <ChevronDown className='text-muted-foreground size-4 transition-transform group-data-[panel-open]:rotate-180' />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div
-          role='group'
-          aria-label={props.title}
-          className='flex flex-wrap gap-1.5'
-        >
-          {props.options.map((option) => (
-            <FilterChip
-              key={option.value}
-              option={option}
-              active={props.value === option.value}
-              onClick={() => props.onChange(option.value)}
-            />
-          ))}
-        </div>
+        <FilterOptions {...props} />
       </CollapsibleContent>
     </Collapsible>
   )

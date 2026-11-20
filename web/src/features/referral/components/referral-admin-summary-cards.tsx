@@ -119,11 +119,14 @@ export function ReferralAdminSummaryCards() {
                   className='size-3.5 shrink-0 opacity-70'
                   aria-hidden='true'
                 />
-                <span className='truncate text-[10px] font-medium tracking-wider uppercase'>
+                <span className='min-w-0 text-[10px] font-medium tracking-wider wrap-anywhere uppercase'>
                   {tile.label}
                 </span>
               </div>
-              <div className='text-foreground mt-1 truncate text-lg font-semibold tabular-nums'>
+              <div
+                title={tile.value}
+                className='text-foreground mt-1 text-lg font-semibold wrap-anywhere tabular-nums'
+              >
                 {tile.value}
               </div>
             </div>

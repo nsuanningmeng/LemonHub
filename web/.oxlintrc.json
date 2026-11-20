@@ -191,6 +191,15 @@
   },
   "overrides": [
     {
+      "files": [
+        "src/themes/lemonhub/lemonhub.d.ts",
+        "themes/lemonhub/lemonhub.d.ts"
+      ],
+      "rules": {
+        "typescript/triple-slash-reference": "off"
+      }
+    },
+    {
       "files": ["src/routes/**/*.{ts,tsx}"],
       "rules": {
         "react/only-export-components": "off"

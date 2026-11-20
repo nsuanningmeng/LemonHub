@@ -44,6 +44,9 @@ test('a loading panel labels its busy region and keeps the refresh control opera
   expect(
     screen.getByRole('region', { name: 'Service health' })
   ).toHaveAttribute('aria-busy', 'true')
+  expect(screen.getByRole('heading', { name: 'Service health' })).toHaveClass(
+    'text-tone-teal-strong'
+  )
   expect(screen.getByRole('status', { name: 'Loading' })).toBeVisible()
   expect(screen.queryByText('Stale result')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Refresh' }))

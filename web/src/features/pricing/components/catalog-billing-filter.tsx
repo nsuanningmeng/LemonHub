@@ -21,9 +21,10 @@ import { useTranslation } from 'react-i18next'
 import { getQuotaTypeLabels, QUOTA_TYPES } from '../constants'
 import { getModelQuotaType } from '../lib/filters'
 import type { PricingModel } from '../types'
-import { FilterSection } from './catalog-filter-section'
+import { FilterSection, FilterOptions } from './catalog-filter-section'
 
 type CatalogBillingFilterProps = {
+  collapsible?: boolean
   models: PricingModel[]
   value: string
   onChange: (value: string) => void
@@ -48,9 +49,11 @@ export function CatalogBillingFilter(props: CatalogBillingFilterProps) {
     },
   ]
 
+  const Options = props.collapsible ? FilterSection : FilterOptions
+
   return (
-    <FilterSection
-      defaultOpen
+    <Options
+      defaultOpen={false}
       title={t('Pricing Type')}
       value={props.value}
       options={options.map((option) => ({

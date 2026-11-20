@@ -26,6 +26,7 @@ import {
   dotColorMap,
   textColorMap,
 } from '@/components/status-badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -111,6 +112,8 @@ export function SubscriptionPlansCard({
     useState('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [plansError, setPlansError] = useState(false)
+  const [subscriptionError, setSubscriptionError] = useState(false)
 
   const [purchaseOpen, setPurchaseOpen] = useState(false)
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
@@ -126,27 +129,39 @@ export function SubscriptionPlansCard({
 
   const fetchPlans = useCallback(async () => {
     try {
-      const res = await getPublicPlans()
+      const res = await getPublicPlans({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
       if (res.success) {
         setPlans(res.data || [])
+        setPlansError(false)
+      } else {
+        setPlansError(true)
       }
     } catch {
-      setPlans([])
+      setPlansError(true)
     }
   }, [])
 
   const fetchSelfSubscription = useCallback(async () => {
     try {
-      const res = await getSelfSubscriptionFull()
+      const res = await getSelfSubscriptionFull({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
       if (res.success && res.data) {
         setBillingPreference(
           res.data.billing_preference || 'subscription_first'
         )
         setActiveSubscriptions(res.data.subscriptions || [])
         setAllSubscriptions(res.data.all_subscriptions || [])
+        setSubscriptionError(false)
+      } else {
+        setSubscriptionError(true)
       }
     } catch {
-      // ignore
+      setSubscriptionError(true)
     }
   }, [])
 
@@ -162,7 +177,7 @@ export function SubscriptionPlansCard({
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      await fetchSelfSubscription()
+      await Promise.all([fetchPlans(), fetchSelfSubscription()])
     } finally {
       setRefreshing(false)
     }
@@ -189,7 +204,8 @@ export function SubscriptionPlansCard({
 
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
-  const isAvailable = loading || plans.length > 0 || hasAny
+  const loadError = plansError || subscriptionError
+  const isAvailable = loading || loadError || plans.length > 0 || hasAny
   const disablePref = !hasActive
   const isSubPref =
     billingPreference === 'subscription_first' ||
@@ -248,6 +264,25 @@ export function SubscriptionPlansCard({
           </div>
         </CardContent>
       </Card>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <TitledCard
+        title={t('Subscription Plans')}
+        icon={<Crown className='h-4 w-4' />}
+        iconTone='warning'
+        disableHoverEffect
+        contentClassName='space-y-3'
+      >
+        <Alert variant='destructive'>
+          <AlertDescription>{t('Failed to load')}</AlertDescription>
+        </Alert>
+        <Button variant='outline' onClick={handleRefresh} disabled={refreshing}>
+          {refreshing ? t('Loading') : t('Retry')}
+        </Button>
+      </TitledCard>
     )
   }
 

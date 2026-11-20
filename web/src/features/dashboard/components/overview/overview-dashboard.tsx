@@ -43,7 +43,7 @@ import {
   CardStaggerContainer,
   CardStaggerItem,
 } from '@/components/page-transition'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
@@ -322,10 +322,14 @@ function QuickActionItem(props: { action: QuickAction }) {
   const Icon = props.action.icon
 
   return (
-    <Button
-      variant='ghost'
-      className='h-auto min-w-0 items-start justify-start gap-2.5 px-2 py-2.5 text-left whitespace-normal'
-      render={<Link to={props.action.to} />}
+    <Link
+      aria-label={props.action.title}
+      to={props.action.to}
+      className={buttonVariants({
+        variant: 'ghost',
+        className:
+          'h-auto min-w-0 items-start justify-start gap-2.5 px-2 py-2.5 text-left whitespace-normal',
+      })}
     >
       <span className='text-muted-foreground mt-0.5 shrink-0'>
         <Icon className='size-4' aria-hidden='true' />
@@ -338,7 +342,7 @@ function QuickActionItem(props: { action: QuickAction }) {
           {props.action.description}
         </span>
       </span>
-    </Button>
+    </Link>
   )
 }
 
@@ -346,15 +350,17 @@ function CompactQuickAction(props: { action: QuickAction }) {
   const Icon = props.action.icon
 
   return (
-    <Button
-      variant='outline'
-      size='sm'
-      className='h-8 min-w-24 gap-1.5 px-2.5'
-      render={<Link to={props.action.to} />}
+    <Link
+      to={props.action.to}
+      className={buttonVariants({
+        variant: 'outline',
+        size: 'sm',
+        className: 'h-8 min-w-24 gap-1.5 px-2.5',
+      })}
     >
       <Icon data-icon='inline-start' />
       <span>{props.action.title}</span>
-    </Button>
+    </Link>
   )
 }
 
@@ -573,13 +579,12 @@ export function OverviewDashboard() {
           </Button>
         )}
         {showPlayground && (
-          <Button
-            size='sm'
-            variant='outline'
-            render={<Link to='/playground' />}
+          <Link
+            to='/playground'
+            className={buttonVariants({ size: 'sm', variant: 'outline' })}
           >
             {t('Open playground')}
-          </Button>
+          </Link>
         )}
       </SectionPageLayout.Actions>
       <SectionPageLayout.Content>

@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 
 import { filterByQuotaType } from '../../lib/filters'
 import type { PricingModel } from '../../types'
+import { CatalogBillingFilter } from '../catalog-billing-filter'
 import { PricingSidebar } from '../pricing-sidebar'
 
 test.each<{
@@ -121,8 +123,9 @@ test.each<{
     category: 'token',
   },
 ])(
-  '$name has matching results and catalog filter counts',
-  ({ pricing, category }) => {
+  '$name has matching results, catalog category counts and sidebar counts',
+  async ({ pricing, category }) => {
+    const user = userEvent.setup()
     const model: PricingModel = {
       id: 1,
       model_name: 'test-model',
@@ -133,38 +136,40 @@ test.each<{
       ...pricing,
     }
     render(
-      <PricingSidebar
-        quotaTypeFilter='all'
-        endpointTypeFilter='all'
-        vendorFilter='all'
-        groupFilter='all'
-        tagFilter='all'
-        onQuotaTypeChange={vi.fn()}
-        onEndpointTypeChange={vi.fn()}
-        onVendorChange={vi.fn()}
-        onGroupChange={vi.fn()}
-        onTagChange={vi.fn()}
-        vendors={[]}
-        groups={[]}
-        tags={[]}
-        models={[model]}
-        hasActiveFilters={false}
-        onClearFilters={vi.fn()}
-      />
+      <>
+        <CatalogBillingFilter models={[model]} value='all' onChange={vi.fn()} />
+        <PricingSidebar
+          quotaTypeFilter='all'
+          endpointTypeFilter='all'
+          vendorFilter='all'
+          groupFilter='all'
+          tagFilter='all'
+          onQuotaTypeChange={vi.fn()}
+          onEndpointTypeChange={vi.fn()}
+          onVendorChange={vi.fn()}
+          onGroupChange={vi.fn()}
+          onTagChange={vi.fn()}
+          vendors={[]}
+          groups={[]}
+          tags={[]}
+          models={[model]}
+          hasActiveFilters={false}
+          onClearFilters={vi.fn()}
+        />
+      </>
     )
-    expect(
-      screen.getByRole('button', { name: 'Pricing Type' })
-    ).toHaveAttribute('aria-expanded', 'true')
+    await user.click(screen.getByRole('button', { name: 'Pricing Type' }))
     for (const [value, label] of [
       ['token', 'Token-based'],
       ['request', 'Per Request'],
     ]) {
       const matches = value === category
       expect(filterByQuotaType([model], value)).toEqual(matches ? [model] : [])
-      const categoryButton = screen.getByRole('button', {
+      const categoryButtons = screen.getAllByRole('button', {
         name: new RegExp(`^${label}\\s*${matches ? 1 : 0}$`),
       })
-      expect(categoryButton).toBeVisible()
+      expect(categoryButtons).toHaveLength(2)
+      categoryButtons.forEach((button) => expect(button).toBeVisible())
     }
     expect(filterByQuotaType([model], 'all')).toEqual([model])
     expect(filterByQuotaType([model], 'unknown')).toEqual([])

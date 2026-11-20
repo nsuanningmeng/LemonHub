@@ -102,7 +102,22 @@ test('a loading balance announces its pending state without showing a misleading
   ).toHaveAttribute('aria-busy', 'true')
   expect(screen.queryByText('$0')).not.toBeInTheDocument()
 
-  view.rerender(<WalletStatsCard user={null} loading={false} />)
+  view.rerender(
+    <WalletStatsCard
+      user={{
+        id: 1,
+        username: 'new-account',
+        group: 'default',
+        quota: 0,
+        used_quota: 0,
+        request_count: 0,
+        aff_quota: 0,
+        aff_history_quota: 0,
+        aff_count: 0,
+      }}
+      loading={false}
+    />
+  )
   expect(
     screen.getByRole('region', { name: 'Current Balance' })
   ).toHaveAttribute('aria-busy', 'false')

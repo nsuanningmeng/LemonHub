@@ -33,6 +33,7 @@ import {
   ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
+import { CatalogBillingFilter } from './components/catalog-billing-filter'
 import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
@@ -124,7 +125,8 @@ export function Pricing() {
     if (error && !models.length) {
       return (
         <ErrorState
-          title={t('Failed to fetch models')}
+          title={t('Unable to load the model catalog.')}
+          description={t('Please try again later.')}
           onRetry={() => void refetch()}
         />
       )
@@ -184,14 +186,24 @@ export function Pricing() {
                 )}
               </p>
             </div>
-            <SearchBar
-              value={searchInput}
-              onChange={setSearchInput}
-              onClear={clearSearch}
-              placeholder={t(
-                'Search model name, provider, endpoint, or tag...'
-              )}
-            />
+            <section
+              aria-label={t('Browse models')}
+              className='min-w-0 space-y-2'
+            >
+              <SearchBar
+                value={searchInput}
+                onChange={setSearchInput}
+                onClear={clearSearch}
+                placeholder={t(
+                  'Search model name, provider, endpoint, or tag...'
+                )}
+              />
+              <CatalogBillingFilter
+                models={models}
+                value={quotaTypeFilter}
+                onChange={setQuotaTypeFilter}
+              />
+            </section>
           </header>
 
           <div className='grid items-start gap-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8'>
@@ -216,7 +228,10 @@ export function Pricing() {
               className='hover-scrollbar sticky top-20 hidden max-h-[calc(100dvh-6rem)] overflow-y-auto border-e pe-5 xl:block'
             />
 
-            <div className='min-w-0 space-y-4'>
+            <section
+              aria-label={t('Model catalog')}
+              className='min-w-0 space-y-4'
+            >
               <PricingToolbar
                 filteredCount={filteredModels.length}
                 totalCount={models?.length}
@@ -249,7 +264,7 @@ export function Pricing() {
               />
 
               {renderPricingContent()}
-            </div>
+            </section>
           </div>
 
           {selectedModel && (

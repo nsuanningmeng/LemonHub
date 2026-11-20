@@ -23,6 +23,13 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
+const headerTones = {
+  blue: 'text-tone-blue-strong',
+  teal: 'text-tone-teal-strong',
+  violet: 'text-tone-violet-strong',
+  peach: 'text-tone-peach-strong',
+}
+
 interface PanelWrapperProps {
   title: ReactNode
   description?: ReactNode
@@ -30,6 +37,7 @@ interface PanelWrapperProps {
   empty?: boolean
   emptyMessage?: string
   className?: string
+  headerTone?: keyof typeof headerTones
   headerActions?: ReactNode
   children?: ReactNode
 }
@@ -38,13 +46,17 @@ function PanelHeader(props: {
   id: string
   title: ReactNode
   description?: ReactNode
+  headerTone?: keyof typeof headerTones
   actions?: ReactNode
 }) {
   const heading = (
     <div className='flex min-w-0 flex-col gap-1'>
       <h3
         id={props.id}
-        className='text-base font-semibold tracking-tight break-words'
+        className={cn(
+          'text-base font-semibold tracking-tight break-words',
+          props.headerTone && headerTones[props.headerTone]
+        )}
       >
         {props.title}
       </h3>
@@ -57,7 +69,7 @@ function PanelHeader(props: {
   return (
     <div className='border-b px-4 py-3 sm:px-5'>
       {props.actions != null ? (
-        <div className='flex items-start justify-between gap-2'>
+        <div className='flex flex-wrap items-start justify-between gap-2'>
           {heading}
           {props.actions}
         </div>
@@ -116,6 +128,7 @@ export function PanelWrapper(props: PanelWrapperProps) {
         id={titleId}
         title={props.title}
         description={props.description}
+        headerTone={props.headerTone}
         actions={props.headerActions}
       />
       {content}

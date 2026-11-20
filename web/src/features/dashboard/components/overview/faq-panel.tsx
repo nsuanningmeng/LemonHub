@@ -38,6 +38,7 @@ export function FAQPanel() {
 
   return (
     <PanelWrapper
+      headerTone='violet'
       title={
         <span className='flex items-center gap-2'>
           <IconBadge tone='chart-4' size='sm'>

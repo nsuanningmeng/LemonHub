@@ -58,6 +58,7 @@ export function AnnouncementsPanel() {
 
   return (
     <PanelWrapper
+      headerTone='blue'
       title={
         <span className='flex items-center gap-2'>
           <IconBadge tone='warning' size='sm'>

@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTranslation } from 'react-i18next'
+
 import { Skeleton } from '@/components/ui/skeleton'
 
 import { VIEW_MODES, type ViewMode } from '../constants'
@@ -25,10 +27,11 @@ export interface LoadingSkeletonProps {
 }
 
 export function LoadingSkeleton(props: LoadingSkeletonProps) {
+  const { t } = useTranslation()
   const viewMode = props.viewMode ?? VIEW_MODES.CARD
 
   return (
-    <div aria-busy='true'>
+    <div role='status' aria-label={t('Loading models')} aria-busy='true'>
       {viewMode === VIEW_MODES.TABLE ? (
         <TableContentSkeleton />
       ) : (

@@ -186,6 +186,7 @@ export function PricingSidebar(props: PricingSidebarProps) {
           onChange={props.onTagChange}
         />
         <CatalogBillingFilter
+          collapsible
           models={props.models}
           value={props.quotaTypeFilter}
           onChange={props.onQuotaTypeChange}

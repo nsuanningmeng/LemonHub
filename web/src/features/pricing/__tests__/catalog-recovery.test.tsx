@@ -124,7 +124,7 @@ test.each(['http', 'response'])(
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Unable to load the model catalog.')
     expect(screen.queryByText('No models found')).not.toBeInTheDocument()
-    await user.click(within(alert).getByRole('button', { name: 'Retry' }))
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
     expect(
       await screen.findByRole('article', { name: 'chat-model' })
     ).toBeVisible()

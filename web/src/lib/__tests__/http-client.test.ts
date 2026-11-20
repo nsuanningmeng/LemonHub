@@ -472,6 +472,8 @@ test('canceling one subscriber keeps an independently signaled GET alive', async
   release.resolve()
 
   await rejected
-  await expect(replacement).resolves.toMatchObject({ data: { value: 'second' } })
+  await expect(replacement).resolves.toMatchObject({
+    data: { value: 'second' },
+  })
   expect(network).toHaveBeenCalledTimes(2)
 })

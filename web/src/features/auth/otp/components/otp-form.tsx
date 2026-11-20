@@ -176,7 +176,7 @@ export function OtpForm({ className, redirectTo, ...props }: OtpFormProps) {
                   <InputOTP
                     maxLength={OTP_LENGTH}
                     {...field}
-                    containerClassName='justify-between sm:[&>[data-slot="input-otp-group"]>div]:w-12'
+                    containerClassName='justify-between overflow-x-clip [overflow-clip-margin:4px] sm:[&>[data-slot="input-otp-group"]>div]:w-12'
                   >
                     <InputOTPGroup>
                       <InputOTPSlot index={0} />

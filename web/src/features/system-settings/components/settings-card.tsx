@@ -16,12 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Heading } from '@astryxdesign/core/Heading'
-import { Text } from '@astryxdesign/core/Text'
-import { VStack } from '@astryxdesign/core/VStack'
 import { memo, useId } from 'react'
 
-import { cn } from '@/lib/utils'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from '@/components/ui/card'
 
 type SettingsCardProps = {
   title: string
@@ -38,24 +41,16 @@ export const SettingsCard = memo(function SettingsCard({
 }: SettingsCardProps) {
   const headingId = useId()
   return (
-    <VStack
-      as='section'
-      aria-labelledby={headingId}
-      gap={4}
-      className={cn('min-w-0 py-4', className)}
-    >
-      <VStack gap={1}>
-        <Heading
-          id={headingId}
-          level={2}
-          weight='semibold'
-          className='text-base'
-        >
-          {title}
-        </Heading>
-        {description && <Text color='secondary'>{description}</Text>}
-      </VStack>
-      {children}
-    </VStack>
+    <Card role='region' aria-labelledby={headingId} className={className}>
+      <CardHeader>
+        <CardTitle>
+          <h2 id={headingId} className='wrap-anywhere'>
+            {title}
+          </h2>
+        </CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
   )
 })

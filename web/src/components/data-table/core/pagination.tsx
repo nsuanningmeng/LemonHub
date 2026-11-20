@@ -65,9 +65,9 @@ export function DataTablePagination<TData>({
   return (
     <nav
       aria-label={t('Table pagination')}
-      className='@container/pagination w-full min-w-0'
+      className='@container/pagination flex w-full min-w-0 flex-wrap'
     >
-      <div className='flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2'>
+      <div className='flex w-full min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2'>
         <div className='flex items-center gap-2 @lg/pagination:gap-4'>
           <p className='text-muted-foreground text-xs whitespace-nowrap tabular-nums'>
             {totalRows === 0 ? (
@@ -82,7 +82,7 @@ export function DataTablePagination<TData>({
                   })}
                 </span>
                 <span aria-hidden='true' className='@lg/pagination:hidden'>
-                  {t('Total')} {totalRows.toLocaleString(locale)}
+                  {t('Total')} <span>{totalRows.toLocaleString(locale)}</span>
                 </span>
               </>
             )}
@@ -137,6 +137,13 @@ export function DataTablePagination<TData>({
             <ChevronLeftIcon className='h-4 w-4' />
           </Button>
 
+          <span className='min-w-0 text-center text-xs tabular-nums @lg/pagination:hidden'>
+            {t('Page {{current}} of {{total}}', {
+              current: Math.min(currentPage, totalPages),
+              total: totalPages,
+            })}
+          </span>
+
           {pageNumbers.map((pageNumber, index) => (
             <div
               key={
@@ -144,7 +151,7 @@ export function DataTablePagination<TData>({
                   ? `before-${pageNumbers[index + 1]}`
                   : pageNumber
               }
-              className='flex items-center'
+              className='flex items-center @max-lg/pagination:hidden'
             >
               {pageNumber === '...' ? (
                 <span className='text-muted-foreground/60 px-0.5 text-sm @lg/pagination:px-1'>
@@ -153,6 +160,7 @@ export function DataTablePagination<TData>({
               ) : (
                 <Button
                   aria-current={currentPage === pageNumber ? 'page' : undefined}
+                  aria-label={t('Go to page {{page}}', { page: pageNumber })}
                   variant={currentPage === pageNumber ? 'default' : 'ghost'}
                   className={cn(
                     'h-8 min-w-8 px-2 tabular-nums',
@@ -162,9 +170,6 @@ export function DataTablePagination<TData>({
                   )}
                   onClick={() => table.setPageIndex((pageNumber as number) - 1)}
                 >
-                  <span className='sr-only'>
-                    {t('Go to page {{page}}', { page: pageNumber })}
-                  </span>
                   {pageNumber}
                 </Button>
               )}
