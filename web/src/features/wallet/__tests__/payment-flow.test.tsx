@@ -227,3 +227,20 @@ test('changing the amount after a rejected quote restores confirmation and submi
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   )
 })
+
+test('keyboard preset selection and custom entry expose the active amount', async () => {
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { message: 'success', data: '100' },
+  })
+  const user = userEvent.setup()
+  await renderWallet()
+  const preset = screen.getByRole('button', { name: /^100 Pay 100$/ })
+  expect(preset).toHaveAttribute('aria-pressed', 'false')
+  preset.focus()
+  await user.keyboard('{Enter}')
+  expect(preset).toHaveAttribute('aria-pressed', 'true')
+  const amount = screen.getByRole('spinbutton', { name: 'Custom Amount' })
+  await user.clear(amount)
+  await user.type(amount, '20')
+  expect(preset).toHaveAttribute('aria-pressed', 'false')
+})

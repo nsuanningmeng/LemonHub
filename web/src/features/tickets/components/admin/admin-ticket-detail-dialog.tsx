@@ -63,6 +63,14 @@ export function AdminTicketDetailDialog({
   onOpenChange,
 }: AdminTicketDetailDialogProps) {
   const { t } = useTranslation()
+  const priorityItems = TICKET_PRIORITY_OPTIONS.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+  }))
+  const statusItems = TICKET_STATUS_OPTIONS.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+  }))
   const queryClient = useQueryClient()
   const [reply, setReply] = useState('')
   const [attachments, setAttachments] = useState<UploadedAttachment[]>([])
@@ -198,16 +206,21 @@ export function AdminTicketDetailDialog({
                 <Label className='shrink-0'>{t('Status')}</Label>
                 <Select
                   value={ticket?.status ?? ''}
+                  items={statusItems}
                   onValueChange={handleStatusChange}
                   disabled={!ticket || statusUpdating}
                 >
-                  <SelectTrigger size='sm' className='w-[180px]'>
+                  <SelectTrigger
+                    aria-label={t('Status')}
+                    size='sm'
+                    className='w-[180px]'
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
-                    {TICKET_STATUS_OPTIONS.map((option) => (
+                    {statusItems.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {t(option.labelKey)}
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -219,16 +232,21 @@ export function AdminTicketDetailDialog({
                 <Label className='shrink-0'>{t('Priority')}</Label>
                 <Select
                   value={ticket?.priority ?? ''}
+                  items={priorityItems}
                   onValueChange={handlePriorityChange}
                   disabled={!ticket || priorityUpdating}
                 >
-                  <SelectTrigger size='sm' className='w-[150px]'>
+                  <SelectTrigger
+                    aria-label={t('Priority')}
+                    size='sm'
+                    className='w-[150px]'
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent alignItemWithTrigger={false}>
-                    {TICKET_PRIORITY_OPTIONS.map((option) => (
+                    {priorityItems.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {t(option.labelKey)}
+                        {option.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

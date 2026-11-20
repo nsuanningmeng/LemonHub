@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
+import type { MouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
 
@@ -25,13 +27,19 @@ import type { TopNavLink } from '../types'
 interface NavLinkItemProps {
   link: TopNavLink
   className?: string
+  onNavigate?: (event: MouseEvent<HTMLAnchorElement>, link: TopNavLink) => void
 }
 
 /**
  * Renders a single navigation link (internal or external)
  * Handles routing and proper link attributes
  */
-export function NavLinkItem({ link, className }: NavLinkItemProps) {
+export function NavLinkItem({ link, className, onNavigate }: NavLinkItemProps) {
+  const { t } = useTranslation()
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (link.disabled) event.preventDefault()
+    else onNavigate?.(event, link)
+  }
   const linkClassName = cn(
     'text-muted-foreground hover:text-foreground transition-colors',
     link.disabled && 'pointer-events-none opacity-50',
@@ -41,20 +49,27 @@ export function NavLinkItem({ link, className }: NavLinkItemProps) {
   if (link.external) {
     return (
       <a
-        href={link.href}
+        href={link.disabled ? undefined : link.href}
+        onClick={handleClick}
         target='_blank'
         rel='noopener noreferrer'
         className={linkClassName}
         aria-disabled={link.disabled}
       >
-        {link.title}
+        {t(link.title)}
       </a>
     )
   }
 
   return (
-    <Link to={link.href} className={linkClassName} disabled={link.disabled}>
-      {link.title}
+    <Link
+      to={link.href}
+      className={linkClassName}
+      activeOptions={{ exact: true }}
+      disabled={link.disabled}
+      onClick={handleClick}
+    >
+      {t(link.title)}
     </Link>
   )
 }
@@ -63,6 +78,7 @@ interface NavLinkListProps {
   links: TopNavLink[]
   className?: string
   itemClassName?: string
+  onNavigate?: NavLinkItemProps['onNavigate']
 }
 
 /**
@@ -73,12 +89,14 @@ export function NavLinkList({
   links,
   className,
   itemClassName,
+  onNavigate,
 }: NavLinkListProps) {
   return (
     <>
-      {links.map((link, index) => (
+      {links.map((link) => (
         <NavLinkItem
-          key={index}
+          key={link.href + link.title}
+          onNavigate={onNavigate}
           link={link}
           className={cn(className, itemClassName)}
         />

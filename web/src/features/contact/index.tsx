@@ -20,13 +20,16 @@ import { useQuery } from '@tanstack/react-query'
 import { MailQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { AnimateInView } from '@/components/animate-in-view'
 import { HtmlContent } from '@/components/html-content'
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
 import { Markdown } from '@/components/ui/markdown'
-import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DocumentLayout,
+  DocumentLoading,
+  DocumentTitle,
+} from '@/features/public-documents/document-layout'
 
 import { getContactContent } from './api'
 
@@ -57,52 +60,29 @@ function isHtmlDocument(value: string): boolean {
 function DefaultContactPage() {
   const { t } = useTranslation()
   return (
-    <main className='overflow-x-hidden'>
-      <section className='relative z-10 overflow-hidden px-6 pt-24 pb-24 md:pt-32 md:pb-32'>
-        <div
-          aria-hidden
-          className='pointer-events-none absolute inset-0 -z-10 opacity-25 dark:opacity-[0.12]'
-          style={{
-            background:
-              'radial-gradient(ellipse 60% 50% at 50% 0%, oklch(0.72 0.18 250 / 70%) 0%, transparent 70%)',
-          }}
-        />
-        <div
-          aria-hidden
-          className='absolute inset-0 -z-10 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px),linear-gradient(to_bottom,var(--border)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_20%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.08]'
-        />
-
-        <div className='mx-auto max-w-2xl'>
-          <AnimateInView className='text-center'>
-            <p className='text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase'>
-              {t('Get in Touch')}
-            </p>
-            <h1 className='text-[clamp(2rem,4vw,2.75rem)] leading-[1.15] font-bold tracking-tight'>
-              {t('Contact Us')}
-            </h1>
-          </AnimateInView>
-
-          <AnimateInView
-            delay={120}
-            animation='fade-up'
-            className='border-border/50 bg-card mx-auto mt-12 flex max-w-lg flex-col items-center rounded-2xl border p-10 text-center'
-          >
-            <span className='border-border/50 bg-muted/30 text-muted-foreground mb-5 flex size-14 items-center justify-center rounded-2xl border'>
-              <MailQuestion className='size-6' strokeWidth={1.5} />
-            </span>
-            <h2 className='mb-2 text-lg font-semibold'>
+    <div className='flex min-h-svh flex-col'>
+      <main className='mx-auto w-full max-w-[76rem] flex-1 px-5 pt-28 pb-16 sm:px-8 sm:pt-36'>
+        <DocumentTitle>{t('Contact Us')}</DocumentTitle>
+        <div className='flex max-w-2xl items-start gap-4'>
+          <MailQuestion
+            aria-hidden='true'
+            className='text-primary mt-0.5 size-6 shrink-0'
+            strokeWidth={1.65}
+          />
+          <div>
+            <h2 className='text-xl font-semibold tracking-tight'>
               {t("Contact details haven't been set up yet.")}
             </h2>
-            <p className='text-muted-foreground text-sm leading-relaxed'>
+            <p className='text-muted-foreground mt-2 text-base leading-relaxed'>
               {t(
                 'The administrator can configure the contact content in System Settings → Site Information → Contact.'
               )}
             </p>
-          </AnimateInView>
+          </div>
         </div>
-      </section>
+      </main>
       <Footer />
-    </main>
+    </div>
   )
 }
 
@@ -119,16 +99,7 @@ export function Contact() {
   const isHtml = hasContent && !isUrl && isLikelyHtml(rawContent)
 
   if (isLoading) {
-    return (
-      <PublicLayout>
-        <div className='mx-auto flex max-w-4xl flex-col gap-4 py-12'>
-          <Skeleton className='h-8 w-[45%]' />
-          <Skeleton className='h-4 w-full' />
-          <Skeleton className='h-4 w-[90%]' />
-          <Skeleton className='h-4 w-[80%]' />
-        </div>
-      </PublicLayout>
-    )
+    return <DocumentLoading />
   }
 
   // Admin-configured content (set in System Settings → Site → Contact).
@@ -164,21 +135,19 @@ export function Contact() {
       )
     }
     return (
-      <PublicLayout>
-        <div className='mx-auto max-w-6xl px-4 py-8'>
-          {isHtml ? (
-            <RichContent
-              mode='html'
-              content={rawContent}
-              className='prose prose-neutral dark:prose-invert max-w-none'
-            />
-          ) : (
-            <Markdown className='prose-neutral dark:prose-invert max-w-none'>
-              {rawContent}
-            </Markdown>
-          )}
-        </div>
-      </PublicLayout>
+      <DocumentLayout>
+        {isHtml ? (
+          <RichContent
+            mode='html'
+            content={rawContent}
+            className='prose prose-neutral dark:prose-invert max-w-none'
+          />
+        ) : (
+          <Markdown className='prose-neutral dark:prose-invert max-w-none'>
+            {rawContent}
+          </Markdown>
+        )}
+      </DocumentLayout>
     )
   }
 

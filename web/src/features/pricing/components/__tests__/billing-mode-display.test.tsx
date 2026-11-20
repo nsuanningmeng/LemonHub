@@ -121,7 +121,7 @@ describe('compact model pricing', () => {
       expect(screen.getByText('Dynamic Pricing')).toBeInTheDocument()
       expect(screen.queryByText(condition)).not.toBeInTheDocument()
 
-      await user.click(screen.getByRole('button', { name: 'Details' }))
+      await user.click(screen.getByRole('button', { name: 'test-model' }))
       expect(onDetails).toHaveBeenCalledOnce()
     }
   )

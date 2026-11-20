@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon,
@@ -58,47 +58,46 @@ export function DataTablePagination<TData>({
   const pageNumbers = getPageNumbers(currentPage, totalPages)
 
   return (
-    <div
-      className={cn(
-        '@container/pagination flex min-w-0 items-center justify-end overflow-clip'
-      )}
-      style={{ overflowClipMargin: 1 }}
-    >
-      <div className='flex min-w-0 shrink-0 items-center gap-2 @xl/pagination:gap-3'>
-        <div className='flex shrink-0 items-baseline gap-1.5 text-xs font-medium whitespace-nowrap sm:text-sm'>
-          <span className='text-muted-foreground/80'>{t('Total:')}</span>
-          <span className='text-foreground tabular-nums'>
-            {totalRows.toLocaleString()}
-          </span>
-        </div>
+    <div className='@container/pagination w-full min-w-0'>
+      <div className='flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2'>
+        <div className='flex items-center gap-2 @lg/pagination:gap-4'>
+          <div className='flex items-baseline gap-1.5 text-xs whitespace-nowrap'>
+            <span className='text-muted-foreground'>{t('Total:')}</span>
+            <span className='text-foreground tabular-nums'>
+              {totalRows.toLocaleString()}
+            </span>
+          </div>
 
-        <div className='flex shrink-0 items-center gap-1.5 @lg/pagination:gap-2'>
-          <p className='text-muted-foreground/80 hidden text-sm font-medium whitespace-nowrap @2xl/pagination:block'>
-            {t('Rows per page')}
-          </p>
-          <Select
-            items={PAGE_SIZE_SELECT_ITEMS}
-            value={`${pageSize}`}
-            onValueChange={(value) => {
-              table.setPageSize(Number(value))
-            }}
-          >
-            <SelectTrigger className='text-foreground h-8 w-[64px] font-medium tabular-nums sm:w-[70px]'>
-              <SelectValue placeholder={pageSize} />
-            </SelectTrigger>
-            <SelectContent side='top' alignItemWithTrigger={false}>
-              <SelectGroup>
-                {PAGE_SIZE_OPTIONS.map((pageSize) => (
-                  <SelectItem key={pageSize} value={`${pageSize}`}>
-                    {pageSize}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <div className='flex shrink-0 items-center gap-1.5 @lg/pagination:gap-2'>
+            <p className='text-muted-foreground hidden text-sm font-medium whitespace-nowrap @2xl/pagination:block'>
+              {t('Rows per page')}
+            </p>
+            <Select
+              items={PAGE_SIZE_SELECT_ITEMS}
+              value={`${pageSize}`}
+              onValueChange={(value) => {
+                table.setPageSize(Number(value))
+              }}
+            >
+              <SelectTrigger
+                aria-label={t('Rows per page')}
+                className='text-foreground h-8 min-w-16 font-medium tabular-nums'
+              >
+                <SelectValue placeholder={pageSize} />
+              </SelectTrigger>
+              <SelectContent side='top' alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {PAGE_SIZE_OPTIONS.map((pageSize) => (
+                    <SelectItem key={pageSize} value={`${pageSize}`}>
+                      {pageSize}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-
-        <div className='flex min-w-0 shrink-0 items-center gap-1 @lg/pagination:gap-1.5 @xl/pagination:gap-2'>
+        <div className='ms-auto flex max-w-full flex-wrap items-center justify-end gap-1 @lg/pagination:gap-1.5'>
           <Button
             variant='outline'
             className='text-muted-foreground hover:text-foreground disabled:text-muted-foreground/50 size-8 p-0 @max-lg/pagination:hidden'
@@ -119,14 +118,22 @@ export function DataTablePagination<TData>({
           </Button>
 
           {pageNumbers.map((pageNumber, index) => (
-            <div key={`${pageNumber}-${index}`} className='flex items-center'>
+            <div
+              key={
+                pageNumber === '...'
+                  ? `before-${pageNumbers[index + 1]}`
+                  : pageNumber
+              }
+              className='flex items-center'
+            >
               {pageNumber === '...' ? (
                 <span className='text-muted-foreground/60 px-0.5 text-sm @lg/pagination:px-1'>
                   ...
                 </span>
               ) : (
                 <Button
-                  variant={currentPage === pageNumber ? 'default' : 'outline'}
+                  aria-current={currentPage === pageNumber ? 'page' : undefined}
+                  variant={currentPage === pageNumber ? 'default' : 'ghost'}
                   className={cn(
                     'h-8 min-w-8 px-2 tabular-nums',
                     currentPage === pageNumber

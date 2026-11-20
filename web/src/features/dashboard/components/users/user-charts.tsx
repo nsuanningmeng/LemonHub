@@ -31,6 +31,7 @@ import {
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
 } from '@/features/dashboard/constants'
+import { useDashboardChartPalette } from '@/features/dashboard/hooks/use-dashboard-chart-palette'
 import {
   getDefaultDays,
   saveGranularity,
@@ -73,6 +74,7 @@ interface UserChartsProps {
 
 export function UserCharts(props: UserChartsProps) {
   const { t } = useTranslation()
+  const palette = useDashboardChartPalette()
   const { resolvedTheme } = useTheme()
   const [themeReady, setThemeReady] = useState(false)
   const themeManagerRef = useRef<
@@ -149,9 +151,10 @@ export function UserCharts(props: UserChartsProps) {
         isLoading ? [] : (userData ?? []),
         timeGranularity,
         t,
-        topUserLimit
+        topUserLimit,
+        palette
       ),
-    [userData, isLoading, timeGranularity, t, topUserLimit]
+    [userData, isLoading, timeGranularity, t, topUserLimit, palette]
   )
 
   return (

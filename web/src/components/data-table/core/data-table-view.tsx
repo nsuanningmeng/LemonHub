@@ -19,7 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import type { Row, Table as TanstackTable } from '@tanstack/react-table'
 import * as React from 'react'
 
-import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableRow,
+  tableTypography,
+} from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 import {
@@ -62,9 +68,10 @@ export function DataTableView<TData>(props: DataTableViewProps<TData>) {
   return (
     <div
       className={cn(
-        'overflow-hidden rounded-lg border',
+        'bg-card min-w-0 overflow-hidden rounded-lg border',
         props.containerClassName
       )}
+      aria-busy={props.isLoading || undefined}
       {...props.containerProps}
     >
       {props.splitHeader ? (
@@ -147,10 +154,7 @@ function SplitHeaderTableView<TData>({
       >
         <table
           data-slot='table'
-          className={cn(
-            'w-full caption-bottom text-sm tabular-nums [&_td]:text-sm [&_td_*]:text-sm [&_th]:text-sm [&_th_*]:text-sm',
-            props.tableClassName
-          )}
+          className={cn(tableTypography, props.tableClassName)}
           style={tableSizing.style}
         >
           {tableSizing.colgroup}

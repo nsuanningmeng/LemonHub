@@ -93,6 +93,12 @@ export function ThemeProvider({
       const nextResolvedTheme = theme === 'system' ? getSystemTheme() : theme
       root.classList.remove('light', 'dark')
       root.classList.add(nextResolvedTheme)
+      document
+        .querySelector('meta[name="theme-color"]')
+        ?.setAttribute(
+          'content',
+          nextResolvedTheme === 'dark' ? '#181d19' : '#f8f9f6'
+        )
       setResolvedTheme(nextResolvedTheme)
     }
 

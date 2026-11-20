@@ -46,18 +46,18 @@ type SettingsSwitchFieldProps = SettingsSwitchRowProps & {
 }
 
 const settingsSwitchRowClassName =
-  'flex min-w-0 flex-row items-center justify-between gap-4 py-2.5'
+  'flex min-w-0 flex-row items-center justify-between gap-4 border-b py-3 last:border-b-0'
 
 export function SettingsFormGrid(props: SettingsFormGridProps) {
   return (
     <div
       data-settings-form-span='full'
       className={cn(
-        'grid min-w-0 gap-x-5 gap-y-6 lg:grid-cols-2',
-        'lg:[&>[data-settings-form-span=full]]:col-span-2',
+        'grid min-w-0 gap-x-6 gap-y-5 @3xl/settings:grid-cols-2',
+        '@3xl/settings:[&>[data-settings-form-span=full]]:col-span-2',
         '[&>[data-slot=form-item]]:min-w-0',
-        'lg:[&>[data-slot=form-item]:has(textarea)]:col-span-2',
-        'lg:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2',
+        '@3xl/settings:[&>[data-slot=form-item]:has(textarea)]:col-span-2',
+        '@3xl/settings:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2',
         props.className
       )}
     >
@@ -72,7 +72,7 @@ export function SettingsFormGridItem(props: SettingsFormGridItemProps) {
       data-settings-form-span={props.span === 'full' ? 'full' : undefined}
       className={cn(
         'min-w-0',
-        props.span === 'full' && 'lg:col-span-2',
+        props.span === 'full' && '@3xl/settings:col-span-2',
         props.className
       )}
     >
@@ -153,7 +153,7 @@ export function SettingsControlGroup({
     <div
       data-settings-form-span='full'
       className={cn(
-        'bg-muted/20 min-w-0 space-y-3 rounded-xl border px-3 py-2.5',
+        'bg-muted/40 min-w-0 space-y-3 rounded-md px-4 py-3',
         className
       )}
       {...props}
@@ -177,13 +177,13 @@ export function SettingsForm({ className, ...props }: ComponentProps<'form'>) {
   return (
     <form
       className={cn(
-        'grid min-w-0 gap-x-5 gap-y-6 lg:grid-cols-2',
-        'lg:[&>*:not([data-slot=form-item])]:col-span-2',
-        'lg:[&>[data-settings-form-span=full]]:col-span-2',
-        'lg:[&>[data-slot=alert]]:col-span-2',
+        'bg-card grid min-w-0 gap-x-6 gap-y-5 rounded-lg border p-4 sm:p-6 @3xl/settings:grid-cols-2',
+        '@3xl/settings:[&>*:not([data-slot=form-item])]:col-span-2',
+        '@3xl/settings:[&>[data-settings-form-span=full]]:col-span-2',
+        '@3xl/settings:[&>[data-slot=alert]]:col-span-2',
         '[&>[data-slot=form-item]]:min-w-0',
-        'lg:[&>[data-slot=form-item]:has(textarea)]:col-span-2',
-        'lg:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2',
+        '@3xl/settings:[&>[data-slot=form-item]:has(textarea)]:col-span-2',
+        '@3xl/settings:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2',
         className
       )}
       {...props}

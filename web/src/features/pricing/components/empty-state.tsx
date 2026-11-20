@@ -31,27 +31,31 @@ export function EmptyState(props: EmptyStateProps) {
   const { t } = useTranslation()
   const hasSearch = Boolean(props.searchQuery?.trim())
 
+  const filtered = props.hasActiveFilters || hasSearch
+
   return (
-    <div className='flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed px-6 py-12 text-center'>
-      <Search className='text-muted-foreground/40 mb-3 size-10' />
-
-      <h3 className='text-foreground mb-1 text-base font-semibold'>
-        {t('No models found')}
-      </h3>
-
-      <p className='text-muted-foreground mb-5 max-w-xs text-sm'>
-        {hasSearch
-          ? t(
-              'No results for "{{query}}". Try adjusting your search or filters.',
-              { query: props.searchQuery }
-            )
-          : t('No models match your current filters.')}
-      </p>
-
-      {(props.hasActiveFilters || hasSearch) && (
-        <Button variant='outline' size='sm' onClick={props.onClearFilters}>
-          {t('Clear all filters')}
-        </Button>
+    <div className='bg-card flex min-h-56 flex-col items-center justify-center rounded-lg border px-6 py-10 text-center'>
+      <Search
+        aria-hidden='true'
+        className='text-muted-foreground mb-3 size-6'
+      />
+      <h2 className='text-foreground text-base font-semibold'>
+        {filtered ? t('No models found') : t('No models available')}
+      </h2>
+      {filtered && (
+        <>
+          <p className='text-muted-foreground mt-2 mb-4 max-w-sm text-sm wrap-anywhere'>
+            {hasSearch
+              ? t(
+                  'No results for "{{query}}". Try adjusting your search or filters.',
+                  { query: props.searchQuery }
+                )
+              : t('No models match your current filters.')}
+          </p>
+          <Button variant='outline' size='sm' onClick={props.onClearFilters}>
+            {t('Clear all filters')}
+          </Button>
+        </>
       )}
     </div>
   )

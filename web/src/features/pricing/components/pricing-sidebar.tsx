@@ -100,11 +100,12 @@ function FilterChip(props: {
     <button
       type='button'
       onClick={props.onClick}
+      aria-pressed={props.active}
       className={cn(
-        'group inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-all',
+        'group inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors',
         props.active
-          ? 'border-foreground/30 bg-foreground/5 text-foreground shadow-sm'
-          : 'border-border/70 bg-background text-muted-foreground hover:border-border hover:bg-muted/50 hover:text-foreground'
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
       )}
       title={props.option.label}
     >
@@ -115,9 +116,9 @@ function FilterChip(props: {
       {(props.option.suffix || props.option.count != null) && (
         <span
           className={cn(
-            'rounded-md px-1.5 py-0.5 text-[12px]',
+            'rounded-sm px-1 font-mono tabular-nums',
             props.active
-              ? 'bg-background text-foreground'
+              ? 'bg-primary-foreground/15 text-primary-foreground'
               : 'bg-muted text-muted-foreground'
           )}
         >
@@ -246,14 +247,11 @@ export function PricingSidebar(props: PricingSidebarProps) {
   ]
 
   return (
-    <aside className={cn('rounded-xl border p-3', props.className)}>
-      <div className='mb-2.5 flex items-center justify-between gap-2'>
-        <div>
-          <h2 className='text-foreground text-sm font-bold'>{t('Filter')}</h2>
-          <p className='text-muted-foreground mt-1 text-xs'>
-            {t('Refine models by provider, group, type, and tags.')}
-          </p>
-        </div>
+    <aside className={cn('min-w-0', props.className)}>
+      <div className='mb-2 flex min-h-9 items-center justify-between gap-2'>
+        <h2 className='text-foreground text-base font-semibold'>
+          {t('Filter')}
+        </h2>
         <Button
           type='button'
           variant='ghost'

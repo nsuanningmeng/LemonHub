@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
@@ -28,9 +29,7 @@ interface PanelWrapperProps {
   loading?: boolean
   empty?: boolean
   emptyMessage?: string
-  height?: string
   className?: string
-  contentClassName?: string
   headerActions?: ReactNode
   children?: ReactNode
 }
@@ -41,8 +40,8 @@ function PanelHeader(props: {
   actions?: ReactNode
 }) {
   const heading = (
-    <div className='flex flex-col gap-1'>
-      <div className='text-sm font-semibold'>{props.title}</div>
+    <div className='flex min-w-0 flex-col gap-1'>
+      <h3 className='text-base font-semibold tracking-tight'>{props.title}</h3>
       {props.description != null && (
         <div className='text-muted-foreground text-xs'>{props.description}</div>
       )}
@@ -66,50 +65,45 @@ function PanelHeader(props: {
 export function PanelWrapper(props: PanelWrapperProps) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = props.emptyMessage ?? t('No data available')
-  const height = props.height ?? 'h-64'
   const frameClassName = cn(
-    'overflow-hidden rounded-2xl border bg-card shadow-xs',
+    'min-w-0 overflow-hidden rounded-lg border bg-card',
     props.className
   )
 
+  let content: ReactNode
   if (props.loading) {
-    return (
-      <div className={frameClassName}>
-        <PanelHeader title={props.title} description={props.description} />
-        <div className={cn('p-4 sm:p-5', props.contentClassName)}>
-          <Skeleton className={`w-full ${height}`} />
-        </div>
+    content = (
+      <div
+        aria-busy='true'
+        aria-label={t('Loading')}
+        className='space-y-2 px-4 py-5 sm:px-5'
+      >
+        <Skeleton className='h-3 w-3/5' />
+        <Skeleton className='h-3 w-2/5' />
       </div>
     )
-  }
-
-  if (props.empty) {
-    return (
-      <div className={frameClassName}>
-        <PanelHeader title={props.title} description={props.description} />
-        <div
-          className={cn(
-            'text-muted-foreground flex items-center justify-center px-4 text-sm',
-            height,
-            props.contentClassName
-          )}
-        >
-          {resolvedEmptyMessage}
-        </div>
-      </div>
+  } else if (props.empty) {
+    content = (
+      <p className='text-muted-foreground px-4 py-5 text-sm sm:px-5'>
+        {resolvedEmptyMessage}
+      </p>
+    )
+  } else {
+    content = (
+      <ScrollArea className='[&>[data-slot=scroll-area-viewport]]:h-auto [&>[data-slot=scroll-area-viewport]]:max-h-80'>
+        {props.children}
+      </ScrollArea>
     )
   }
 
   return (
-    <div className={frameClassName}>
+    <section className={frameClassName}>
       <PanelHeader
         title={props.title}
         description={props.description}
-        actions={props.headerActions}
+        actions={props.loading ? undefined : props.headerActions}
       />
-      <div className={cn('p-4 sm:p-5', props.contentClassName)}>
-        {props.children}
-      </div>
-    </div>
+      {content}
+    </section>
   )
 }

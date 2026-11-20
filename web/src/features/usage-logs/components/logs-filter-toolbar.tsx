@@ -139,7 +139,7 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
     return (
       <Drawer open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
         <div
-          className={cn('bg-card/50 rounded-lg border p-2.5', props.className)}
+          className={cn('bg-muted/30 rounded-lg border p-3', props.className)}
         >
           {!mobilePanelCollapsed && (
             <div className='grid gap-2'>{props.mobilePinnedFilters}</div>
@@ -152,7 +152,7 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
             )}
           >
             {!mobilePanelCollapsed && props.stats}
-            <div className='flex items-center justify-end gap-1.5'>
+            <div className='flex flex-wrap items-center justify-end gap-1.5'>
               <Button
                 type='button'
                 variant='ghost'
@@ -246,7 +246,7 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
   return (
     <div
       className={cn(
-        'bg-card/50 rounded-lg border p-2.5 sm:p-3',
+        'bg-muted/30 rounded-lg border p-3 sm:p-3',
         props.className
       )}
     >
@@ -267,7 +267,7 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
         </div>
       )}
 
-      <div className='mt-2 flex flex-wrap items-center gap-2'>
+      <div className='mt-3 flex flex-wrap items-center gap-2 border-t pt-3'>
         {props.stats}
         <div className='ms-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-2'>
           {props.actionStart}

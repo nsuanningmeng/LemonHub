@@ -35,13 +35,13 @@ export function Rewards() {
           <RewardSummaryCards />
           <Tabs defaultValue='fixed' className='gap-6'>
             <TabsList
-              className='h-11 rounded-2xl p-1'
+              className='h-10 max-w-full p-1'
               aria-label={t('Reward types')}
             >
-              <TabsTrigger value='fixed' className='rounded-xl px-6'>
+              <TabsTrigger value='fixed' className='px-4'>
                 {t('Reward credits')}
               </TabsTrigger>
-              <TabsTrigger value='random' className='rounded-xl px-6'>
+              <TabsTrigger value='random' className='px-4'>
                 {t('Red packets')}
               </TabsTrigger>
             </TabsList>

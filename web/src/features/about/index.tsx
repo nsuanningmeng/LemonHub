@@ -17,12 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { Construction } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
 import { RichContent } from '@/components/rich-content'
-import { Skeleton } from '@/components/ui/skeleton'
+import {
+  DocumentLayout,
+  DocumentLoading,
+  DocumentTitle,
+} from '@/features/public-documents/document-layout'
 import { useIframePreferences } from '@/hooks/use-iframe-preferences'
 import { isHttpUrl, isLikelyHtml } from '@/lib/content-format'
 
@@ -33,83 +36,79 @@ function EmptyAboutState() {
   const currentYear = new Date().getFullYear()
 
   return (
-    <div className='flex min-h-[60vh] items-center justify-center p-8'>
-      <div className='max-w-2xl space-y-6 text-center'>
-        <div className='flex justify-center'>
-          <Construction className='text-muted-foreground h-24 w-24' />
-        </div>
-        <div className='space-y-2'>
-          <h2 className='text-2xl font-bold'>{t('No About Content Set')}</h2>
-          <p className='text-muted-foreground'>
-            {t(
-              'The administrator has not configured any about content yet. You can set it in the settings page, supporting HTML or URL.'
-            )}
-          </p>
-        </div>
-        <div className='space-y-4 text-sm'>
-          <p>
-            {t('New API Project Repository:')}{' '}
-            <a
-              href='https://github.com/QuantumNous/new-api'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('https://github.com/QuantumNous/new-api')}
-            </a>
-          </p>
-          <p className='text-muted-foreground'>
-            <a
-              href='https://github.com/QuantumNous/new-api'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('NewAPI')}
-            </a>{' '}
-            © {currentYear}{' '}
-            <a
-              href='https://github.com/QuantumNous'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('QuantumNous')}
-            </a>{' '}
-            {t('| Based on')}{' '}
-            <a
-              href='https://github.com/songquanpeng/one-api'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('One API')}
-            </a>{' '}
-            © 2023{' '}
-            <a
-              href='https://github.com/songquanpeng'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('JustSong')}
-            </a>
-          </p>
-          <p className='text-muted-foreground'>
-            {t('This project must be used in compliance with the')}{' '}
-            <a
-              href='https://github.com/QuantumNous/new-api/blob/main/LICENSE'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-primary hover:underline'
-            >
-              {t('AGPL v3.0 License')}
-            </a>
-            .
-          </p>
-        </div>
+    <DocumentLayout>
+      <DocumentTitle>{t('About')}</DocumentTitle>
+      <div className='space-y-3'>
+        <h2 className='text-xl font-semibold'>{t('No About Content Set')}</h2>
+        <p className='text-muted-foreground max-w-prose leading-relaxed'>
+          {t(
+            'The administrator has not configured any about content yet. You can set it in the settings page, supporting HTML or URL.'
+          )}
+        </p>
       </div>
-    </div>
+      <div className='text-muted-foreground [&_a]:decoration-border mt-10 space-y-3 border-t pt-6 text-sm leading-relaxed [overflow-wrap:anywhere] [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:decoration-current'>
+        <p>
+          {t('New API Project Repository:')}{' '}
+          <a
+            href='https://github.com/QuantumNous/new-api'
+            target='_blank'
+            rel='noopener noreferrer'
+            className='text-primary hover:underline'
+          >
+            {t('https://github.com/QuantumNous/new-api')}
+          </a>
+        </p>
+        <p className='text-muted-foreground'>
+          <a
+            href='https://github.com/QuantumNous/new-api'
+            target='_blank'
+            rel='noopener noreferrer'
+            className='text-primary hover:underline'
+          >
+            {t('NewAPI')}
+          </a>{' '}
+          © {currentYear}{' '}
+          <a
+            href='https://github.com/QuantumNous'
+            target='_blank'
+            rel='noopener noreferrer'
+            className='text-primary hover:underline'
+          >
+            {t('QuantumNous')}
+          </a>{' '}
+          {t('| Based on')}{' '}
+          <a
+            href='https://github.com/songquanpeng/one-api'
+            target='_blank'
+            rel='noopener noreferrer'
+            className='text-primary hover:underline'
+          >
+            {t('One API')}
+          </a>{' '}
+          © 2023{' '}
+          <a
+            href='https://github.com/songquanpeng'
+            target='_blank'
+            rel='noopener noreferrer'
+            className='text-primary hover:underline'
+          >
+            {t('JustSong')}
+          </a>
+        </p>
+        <p className='text-muted-foreground'>
+          {t('This project must be used in compliance with the')}{' '}
+          <a
+            href='https://github.com/QuantumNous/new-api/blob/main/LICENSE'
+            target='_blank'
+            rel='noopener noreferrer'
+            className='text-primary hover:underline'
+          >
+            {t('AGPL v3.0 License')}
+          </a>
+          .
+        </p>
+      </div>
+    </DocumentLayout>
   )
 }
 
@@ -129,24 +128,11 @@ export function About() {
   )
 
   if (isLoading) {
-    return (
-      <PublicLayout>
-        <div className='mx-auto flex max-w-4xl flex-col gap-4 py-12'>
-          <Skeleton className='h-8 w-[45%]' />
-          <Skeleton className='h-4 w-full' />
-          <Skeleton className='h-4 w-[90%]' />
-          <Skeleton className='h-4 w-[80%]' />
-        </div>
-      </PublicLayout>
-    )
+    return <DocumentLoading />
   }
 
   if (!hasContent) {
-    return (
-      <PublicLayout>
-        <EmptyAboutState />
-      </PublicLayout>
-    )
+    return <EmptyAboutState />
   }
 
   if (isUrl) {
@@ -180,14 +166,12 @@ export function About() {
   }
 
   return (
-    <PublicLayout>
-      <div className='mx-auto max-w-6xl px-4 py-8'>
-        <RichContent
-          mode='markdown'
-          content={rawContent}
-          className='prose-neutral dark:prose-invert max-w-none'
-        />
-      </div>
-    </PublicLayout>
+    <DocumentLayout>
+      <RichContent
+        mode='markdown'
+        content={rawContent}
+        className='prose-neutral dark:prose-invert max-w-none'
+      />
+    </DocumentLayout>
   )
 }

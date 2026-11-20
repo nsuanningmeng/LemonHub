@@ -149,6 +149,9 @@ it('requests server status on page one and refreshes after disabling a derived e
     expect(screen.queryByText('expired-server-row')).not.toBeInTheDocument()
   )
   expect(
+    await screen.findByText('No records found. Try adjusting your filters.')
+  ).toBeVisible()
+  expect(
     get.mock.calls.filter(([url]) => url === '/api/token/?p=1&size=20&status=3')
       .length
   ).toBeGreaterThanOrEqual(2)

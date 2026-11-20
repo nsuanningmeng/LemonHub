@@ -26,6 +26,7 @@ import { ModelCharts } from '../model-charts'
 
 interface RenderedChartSpec {
   type: string
+  color?: { range?: string[] }
   xField: string
   data: {
     values: {
@@ -95,7 +96,13 @@ test('consumption chart switching preserves two equal labels as distinct ordered
   const axis = bar?.axes?.find((axis) => axis.orient === 'bottom')
   expect(axis?.label?.formatMethod(1735689600)).toBe('01-01')
   expect(axis?.label?.formatMethod(1767225600)).toBe('01-01')
-  await user.click(screen.getByRole('button', { name: 'Area Chart' }))
+  const areaButton = screen.getByRole('button', {
+    name: 'Area Chart',
+    pressed: false,
+  })
+  areaButton.focus()
+  await user.keyboard('{Enter}')
+  expect(areaButton).toHaveAttribute('aria-pressed', 'true')
   await waitFor(() => {
     expect(screen.getByLabelText('Chart rendered')).toHaveTextContent('area')
   })
@@ -133,4 +140,37 @@ test('model chart switching keeps real trend buckets and matching distribution t
   expect(
     rendered.specs.at(-1)?.data[0].values.map((row) => row.Timestamp)
   ).toEqual([1735689600, 1767225600])
+})
+
+test('switching the active preset updates chart series colors while keeping the selected chart', async () => {
+  const colors = ['#346532', '#369098', '#b99446', '#7d589b', '#ba6356']
+  const oldPreset = document.body.getAttribute('data-theme-preset')
+  const previous = colors.map((_, index) =>
+    document.body.style.getPropertyValue(`--chart-${index + 1}`)
+  )
+  try {
+    colors.forEach((color, index) =>
+      document.body.style.setProperty(`--chart-${index + 1}`, color)
+    )
+    render(<ConsumptionDistributionChart data={rows} />)
+    await waitFor(() =>
+      expect(rendered.specs.at(-1)?.color?.range?.slice(0, 5)).toEqual(colors)
+    )
+    document.body.style.setProperty('--chart-1', '#b3db9a')
+    document.body.setAttribute('data-theme-preset', 'chart-test')
+    await waitFor(() =>
+      expect(rendered.specs.at(-1)?.color?.range?.[0]).toBe('#b3db9a')
+    )
+    expect(
+      screen.getByRole('button', { name: 'Bar Chart', pressed: true })
+    ).toBeVisible()
+  } finally {
+    previous.forEach((value, index) => {
+      const token = `--chart-${index + 1}`
+      if (value) document.body.style.setProperty(token, value)
+      else document.body.style.removeProperty(token)
+    })
+    if (oldPreset === null) document.body.removeAttribute('data-theme-preset')
+    else document.body.setAttribute('data-theme-preset', oldPreset)
+  }
 })

@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Many models.": "多种模型，",
+    "One gateway.": "一个网关。",
+    "Connect your apps to AI models through a single API. Manage keys, route requests and track spending in one console.": "通过统一的 API 为应用接入 AI 模型，在一个控制台中管理密钥、分发请求并追踪费用。",
+    "Pause animation": "暂停动画",
+    "Play animation": "播放动画",
+    "Model integrations": "模型接入",
+    "API examples": "API 示例",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

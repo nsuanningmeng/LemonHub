@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
+import { ArrowUpRight, Menu, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -26,6 +27,13 @@ import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -36,6 +44,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { defaultTopNavLinks } from '../config/top-nav.config'
 import type { TopNavLink } from '../types'
 import { HeaderLogo } from './header-logo'
+import { NavLinkList } from './nav-link-item'
 
 const AUTH_PROMPT_SECONDS = 5
 
@@ -75,13 +84,12 @@ export function PublicHeader(props: PublicHeaderProps) {
 
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [authPromptTarget, setAuthPromptTarget] =
     useState<AuthPromptTarget | null>(null)
   const [authPromptSecondsLeft, setAuthPromptSecondsLeft] =
     useState(AUTH_PROMPT_SECONDS)
-  const { auth } = useAuthStore()
+  const user = useAuthStore((state) => state.auth.user)
   const {
     systemName,
     logo: systemLogo,
@@ -90,27 +98,9 @@ export function PublicHeader(props: PublicHeaderProps) {
   } = useSystemConfig()
   const dynamicLinks = useTopNavLinks()
   const notifications = useNotifications()
-  const routerState = useRouterState()
-  const pathname = routerState.location.pathname
-
-  const user = auth.user
   const isAuthenticated = !!user
   const displaySiteName = customSiteName || systemName
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
-  useEffect(() => {
-    document.body.style.overflow = mobileOpen ? 'hidden' : ''
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [mobileOpen])
 
   useEffect(() => {
     if (!authPromptTarget) return
@@ -175,245 +165,153 @@ export function PublicHeader(props: PublicHeaderProps) {
 
   return (
     <>
-      <header className='pointer-events-none fixed inset-x-0 top-0 z-50'>
-        <div
-          className={cn(
-            'pointer-events-auto mx-auto transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            scrolled ? 'max-w-[52rem] px-3 pt-3' : 'max-w-7xl px-4 pt-0 md:px-6'
-          )}
-        >
-          <nav
-            className={cn(
-              'flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-              scrolled
-                ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
-                : 'h-16 px-2'
-            )}
-          >
-            {/* Logo */}
-            <Link
-              to={homeUrl}
-              className='group flex shrink-0 items-center gap-2.5'
-            >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
-                {loading ? (
-                  <Skeleton className='size-full rounded-lg' />
-                ) : customLogo ? (
-                  customLogo
-                ) : (
-                  <HeaderLogo
-                    src={systemLogo}
-                    loading={loading}
-                    logoLoaded={logoLoaded}
-                    className='size-full rounded-lg object-contain'
-                  />
-                )}
-              </div>
-              <span className='text-sm font-semibold tracking-tight'>
-                {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
-              </span>
-            </Link>
-
-            {/* Desktop nav */}
-            <div className='hidden items-center gap-0.5 sm:flex'>
-              {links.map((link, i) => {
-                const isActive = pathname === link.href
-                if (link.external) {
-                  return (
-                    <a
-                      key={i}
-                      href={link.href}
-                      target='_blank'
-                      rel='noopener noreferrer'
-                      aria-disabled={link.disabled}
-                      tabIndex={link.disabled ? -1 : undefined}
-                      onClick={(event) => handleNavLinkClick(event, link)}
-                      className={cn(
-                        'text-muted-foreground hover:text-foreground rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
-                        link.disabled && 'pointer-events-none opacity-50'
-                      )}
-                    >
-                      {t(link.title)}
-                    </a>
-                  )
-                }
-                return (
-                  <Link
-                    key={i}
-                    to={link.href}
-                    disabled={link.disabled}
-                    onClick={(event) => handleNavLinkClick(event, link)}
-                    className={cn(
-                      'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors duration-200',
-                      isActive
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
-                      link.disabled && 'pointer-events-none opacity-50'
-                    )}
-                  >
-                    {t(link.title)}
-                  </Link>
-                )
-              })}
-
-              {(showLanguageSwitcher ||
-                showThemeSwitch ||
-                showNotifications) && (
-                <div className='bg-border/40 mx-2 h-4 w-px' />
-              )}
-
-              {showLanguageSwitcher && <LanguageSwitcher />}
-              {showThemeSwitch && <ThemeSwitch />}
-              {showNotifications && (
-                <NotificationPopover
-                  open={notifications.popoverOpen}
-                  onOpenChange={notifications.setPopoverOpen}
-                  unreadCount={notifications.unreadCount}
-                  activeTab={notifications.activeTab}
-                  onTabChange={notifications.setActiveTab}
-                  notice={notifications.notice}
-                  announcements={notifications.announcements}
-                  loading={notifications.loading}
-                />
-              )}
-
-              {showAuthButtons && (
-                <>
-                  <div className='bg-border/40 mx-1 h-4 w-px' />
-                  {loading ? (
-                    <Skeleton className='h-8 w-20 rounded-lg' />
-                  ) : isAuthenticated ? (
-                    <ProfileDropdown />
-                  ) : (
-                    <Button
-                      size='sm'
-                      className='h-8 rounded-lg px-3.5 text-xs font-medium'
-                      render={<Link to='/sign-in' />}
-                    >
-                      {t('Sign in')}
-                    </Button>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Mobile: compact actions + hamburger */}
-            <div className='flex items-center gap-2 sm:hidden'>
-              {showThemeSwitch && <ThemeSwitch />}
-              {showAuthButtons && !loading && isAuthenticated && (
-                <ProfileDropdown />
-              )}
-              <Button
-                type='button'
-                variant='ghost'
-                size='icon'
-                className='size-9'
-                onClick={() => setMobileOpen((v) => !v)}
-                aria-label={t('Toggle navigation menu')}
-              >
-                <div className='relative size-4'>
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 block h-[1.5px] origin-center rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'top-[7px] rotate-45' : 'top-[3px]'
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 top-[7px] block h-[1.5px] rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'scale-x-0 opacity-0' : 'opacity-100'
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      'absolute inset-x-0 block h-[1.5px] origin-center rounded-full bg-current transition-all duration-300',
-                      mobileOpen ? 'top-[7px] -rotate-45' : 'top-[11px]'
-                    )}
-                  />
-                </div>
-              </Button>
-            </div>
-          </nav>
-        </div>
-      </header>
-
-      {/* Mobile full-screen overlay */}
-      <div
+      <header
         className={cn(
-          'bg-background/98 fixed inset-0 z-40 backdrop-blur-2xl transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] sm:pointer-events-none sm:hidden',
-          mobileOpen
-            ? 'pointer-events-auto opacity-100'
-            : 'pointer-events-none opacity-0'
+          'bg-background fixed inset-x-0 top-0 z-40 border-b',
+          props.className
         )}
       >
-        <div className='flex h-full flex-col justify-between px-8 pt-20 pb-10'>
-          <nav className='flex flex-col gap-1'>
-            {links.map((link, i) => {
-              const isActive = pathname === link.href
-              const linkClassName = cn(
-                'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
-                mobileOpen
-                  ? 'translate-y-0 opacity-100'
-                  : 'translate-y-4 opacity-0',
-                isActive ? 'text-foreground' : 'text-muted-foreground',
-                link.disabled && 'pointer-events-none opacity-50'
-              )
-              const transitionStyle = {
-                transitionDelay: mobileOpen ? `${100 + i * 50}ms` : '0ms',
-              }
-              if (link.external) {
-                return (
-                  <a
-                    key={i}
-                    href={link.href}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    aria-disabled={link.disabled}
-                    tabIndex={link.disabled ? -1 : undefined}
-                    onClick={(event) => handleNavLinkClick(event, link, true)}
-                    className={linkClassName}
-                    style={transitionStyle}
-                  >
-                    {t(link.title)}
-                  </a>
-                )
-              }
-              return (
-                <Link
-                  key={i}
-                  to={link.href}
-                  disabled={link.disabled}
-                  onClick={(event) => handleNavLinkClick(event, link, true)}
-                  className={linkClassName}
-                  style={transitionStyle}
-                >
-                  {t(link.title)}
-                </Link>
-              )
-            })}
-          </nav>
-
-          <div
-            className={cn(
-              'flex flex-col gap-3 transition-all duration-500',
-              mobileOpen
-                ? 'translate-y-0 opacity-100'
-                : 'translate-y-4 opacity-0'
-            )}
-            style={{ transitionDelay: mobileOpen ? '250ms' : '0ms' }}
+        <div className='mx-auto flex h-16 max-w-[76rem] items-center gap-3 px-5 md:px-8'>
+          <Link
+            to={homeUrl}
+            className='text-foreground focus-visible:ring-ring inline-flex max-w-56 min-w-0 items-center gap-2.5 rounded-sm focus-visible:ring-2'
           >
-            {showAuthButtons && (
-              <Link
-                to={isAuthenticated ? '/dashboard' : '/sign-in'}
-                onClick={() => setMobileOpen(false)}
-                className='bg-foreground text-background inline-flex h-10 items-center justify-center rounded-lg text-sm font-medium transition-opacity hover:opacity-90 active:opacity-80'
-              >
-                {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
-              </Link>
+            <span className='flex size-7 shrink-0 items-center justify-center'>
+              {loading && <Skeleton className='size-full rounded-md' />}
+              {!loading &&
+                (customLogo ?? (
+                  <HeaderLogo
+                    src={systemLogo}
+                    alt=''
+                    loading={loading}
+                    logoLoaded={logoLoaded}
+                    className='size-full rounded-none object-contain'
+                  />
+                ))}
+            </span>
+            <span
+              className='truncate text-lg font-semibold tracking-tight'
+              title={displaySiteName}
+            >
+              {loading ? <Skeleton className='h-5 w-20' /> : displaySiteName}
+            </span>
+          </Link>
+          {props.leftContent}
+
+          {props.showNavigation !== false && (
+            <nav className='ms-2 hidden min-w-0 flex-1 items-center gap-0.5 overflow-x-auto xl:flex'>
+              {props.navContent ?? (
+                <NavLinkList
+                  links={links}
+                  onNavigate={handleNavLinkClick}
+                  className='hover:bg-muted aria-[current=page]:text-foreground aria-[current=page]:decoration-primary shrink-0 rounded-sm px-2 py-2 text-sm font-medium whitespace-nowrap underline-offset-[5px] aria-[current=page]:underline'
+                />
+              )}
+            </nav>
+          )}
+
+          <div className='ms-auto flex shrink-0 items-center gap-0.5 sm:gap-1'>
+            {showLanguageSwitcher && <LanguageSwitcher />}
+            {showThemeSwitch && <ThemeSwitch />}
+            {showNotifications && (
+              <NotificationPopover
+                open={notifications.popoverOpen}
+                onOpenChange={notifications.setPopoverOpen}
+                unreadCount={notifications.unreadCount}
+                activeTab={notifications.activeTab}
+                onTabChange={notifications.setActiveTab}
+                notice={notifications.notice}
+                announcements={notifications.announcements}
+                loading={notifications.loading}
+              />
             )}
+            {showAuthButtons && (
+              <div
+                className={cn(
+                  'ms-1 border-s ps-2',
+                  !isAuthenticated && 'hidden sm:block'
+                )}
+              >
+                {loading && <Skeleton className='h-8 w-18 rounded-md' />}
+                {!loading &&
+                  (isAuthenticated ? (
+                    <ProfileDropdown />
+                  ) : (
+                    <Button size='sm' render={<Link to='/sign-in' />}>
+                      {t('Sign in')}
+                      <ArrowUpRight aria-hidden='true' />
+                    </Button>
+                  ))}
+              </div>
+            )}
+            {props.rightContent}
+
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger
+                render={
+                  <Button
+                    variant='ghost'
+                    size='icon'
+                    className='size-10 xl:hidden'
+                  />
+                }
+                aria-label={t('Toggle navigation menu')}
+              >
+                <Menu aria-hidden='true' />
+              </SheetTrigger>
+              <SheetContent
+                side='right'
+                showCloseButton={false}
+                className='w-[min(85vw,21rem)] gap-0 overflow-y-auto'
+              >
+                <div className='flex min-h-16 items-center justify-between gap-4 border-b px-5'>
+                  <SheetTitle className='min-w-0 truncate'>
+                    {displaySiteName}
+                  </SheetTitle>
+                  <SheetClose
+                    render={
+                      <Button
+                        variant='ghost'
+                        size='icon'
+                        aria-label={t('Close menu')}
+                      />
+                    }
+                  >
+                    <X aria-hidden='true' />
+                  </SheetClose>
+                </div>
+                {props.showNavigation !== false && (
+                  <nav className='flex flex-col px-4 py-3'>
+                    <NavLinkList
+                      links={props.mobileLinks ?? links}
+                      onNavigate={(event, link) =>
+                        handleNavLinkClick(event, link, true)
+                      }
+                      className='hover:bg-muted aria-[current=page]:bg-accent aria-[current=page]:text-accent-foreground flex min-h-11 items-center rounded-md px-3 py-2 text-base font-medium'
+                    />
+                  </nav>
+                )}
+                {showAuthButtons && (
+                  <div className='mt-auto border-t p-5'>
+                    <Button
+                      className='h-11 w-full'
+                      render={
+                        <Link
+                          to={isAuthenticated ? '/dashboard' : '/sign-in'}
+                          onClick={() => setMobileOpen(false)}
+                        />
+                      }
+                    >
+                      {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
+                      <ArrowUpRight aria-hidden='true' />
+                    </Button>
+                  </div>
+                )}
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
-      </div>
+      </header>
 
       <Dialog
         open={!!authPromptTarget}

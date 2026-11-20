@@ -76,6 +76,19 @@ describe('index.html theme boot script', () => {
     expect(document.documentElement).not.toHaveClass('dark')
   })
 
+  it('sets the browser chrome color when a theme-color meta tag is present', () => {
+    const meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    document.head.append(meta)
+    try {
+      localStorage.setItem(THEME_STORAGE_KEYS.mode, 'dark')
+      runBootScript()
+      expect(meta.content).toBe('#181d19')
+    } finally {
+      meta.remove()
+    }
+  })
+
   it('follows the system dark mode when no preference is saved', () => {
     mockSystemDarkMode(true)
 

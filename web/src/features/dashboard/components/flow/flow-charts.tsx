@@ -61,6 +61,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { getFlowQuotaDates } from '@/features/dashboard/api'
+import { useDashboardChartPalette } from '@/features/dashboard/hooks/use-dashboard-chart-palette'
 import {
   buildDashboardFlowData,
   buildFlowSankeySpec,
@@ -256,6 +257,7 @@ function formatFlowMetricNumber(value: number): string {
 export function FlowCharts(props: FlowChartsProps) {
   const { t } = useTranslation()
   const { resolvedTheme, themeReady } = useChartTheme()
+  const palette = useDashboardChartPalette()
   const textColor = useThemeColor('--foreground')
   const chartInstanceRef = useRef<IVChart | null>(null)
   const user = useAuthStore((state) => state.auth.user)
@@ -349,6 +351,7 @@ export function FlowCharts(props: FlowChartsProps) {
     () =>
       buildDashboardFlowData(isLoading ? [] : (flowRows ?? []), metric, {
         role: flowRole,
+        colorPalette: palette,
         selectedUsers,
         selectedNodes,
         activeNode: activeFlowNode,
@@ -363,6 +366,7 @@ export function FlowCharts(props: FlowChartsProps) {
       }),
     [
       flowRole,
+      palette,
       flowRows,
       isLoading,
       metric,

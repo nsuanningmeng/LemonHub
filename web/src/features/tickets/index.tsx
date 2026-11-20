@@ -21,7 +21,10 @@ import { ChevronRight, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { EmptyState } from '@/components/empty-state'
+import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
+import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -30,7 +33,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Spinner } from '@/components/ui/spinner'
 import { formatTimestamp } from '@/lib/format'
 
 import { getTicketConfig, getTickets } from './api'
@@ -49,6 +51,13 @@ export function Tickets() {
   const [detailId, setDetailId] = useState<number | null>(null)
   const [status, setStatus] = useState(ALL_STATUS)
   const [page, setPage] = useState(1)
+  const statusItems = [
+    { value: ALL_STATUS, label: t('All statuses') },
+    ...TICKET_STATUS_OPTIONS.map((option) => ({
+      value: option.value,
+      label: t(option.labelKey),
+    })),
+  ]
 
   const configQuery = useQuery({
     queryKey: ['ticket', 'config'],
@@ -69,7 +78,7 @@ export function Tickets() {
         status: status === ALL_STATUS ? '' : status,
       })
       if (!res.success || !res.data) {
-        return { items: [], total: 0, page, page_size: PAGE_SIZE }
+        throw new Error(res.message || 'Unable to load tickets')
       }
       return res.data
     },
@@ -94,20 +103,24 @@ export function Tickets() {
         <SectionPageLayout.Actions>
           <Select
             value={status}
+            items={statusItems}
             onValueChange={(value) => {
               if (value == null) return
               setStatus(value)
               setPage(1)
             }}
           >
-            <SelectTrigger size='sm' className='w-[150px]'>
+            <SelectTrigger
+              size='sm'
+              aria-label={t('Status')}
+              className='max-w-full sm:w-36'
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
-              <SelectItem value={ALL_STATUS}>{t('All statuses')}</SelectItem>
-              {TICKET_STATUS_OPTIONS.map((option) => (
+              {statusItems.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
-                  {t(option.labelKey)}
+                  {option.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -118,23 +131,18 @@ export function Tickets() {
           </Button>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='mx-auto flex w-full max-w-3xl flex-col gap-3'>
+          <div className='bg-card mx-auto flex w-full max-w-5xl flex-col divide-y overflow-hidden rounded-xl border'>
             {!enabled && (
-              <div className='text-muted-foreground rounded-lg border border-dashed py-10 text-center text-sm'>
-                {t('Support tickets are currently disabled.')}
-              </div>
+              <EmptyState
+                title={t('Support tickets are currently disabled.')}
+              />
             )}
-
-            {enabled && listQuery.isLoading && (
-              <div className='flex justify-center py-10'>
-                <Spinner />
-              </div>
+            {enabled && listQuery.isLoading && <LoadingState />}
+            {enabled && listQuery.isError && (
+              <ErrorState onRetry={() => void listQuery.refetch()} />
             )}
-
-            {enabled && !listQuery.isLoading && tickets.length === 0 && (
-              <div className='text-muted-foreground rounded-lg border border-dashed py-10 text-center text-sm'>
-                {t('You have no tickets yet.')}
-              </div>
+            {enabled && listQuery.isSuccess && tickets.length === 0 && (
+              <EmptyState title={t('You have no tickets yet.')} />
             )}
 
             {enabled &&
@@ -143,11 +151,11 @@ export function Tickets() {
                   key={ticket.id}
                   type='button'
                   onClick={() => setDetailId(ticket.id)}
-                  className='hover:bg-muted/40 flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors'
+                  className='hover:bg-muted/60 focus-visible:ring-ring flex w-full items-center gap-3 px-4 py-3 text-start transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset'
                 >
                   <div className='min-w-0 flex-1'>
-                    <div className='flex min-w-0 items-center gap-2'>
-                      <span className='min-w-0 truncate font-medium'>
+                    <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3'>
+                      <span className='max-w-full truncate font-medium'>
                         {ticket.title}
                       </span>
                       <div className='flex shrink-0 items-center gap-2'>
@@ -173,7 +181,7 @@ export function Tickets() {
               ))}
 
             {enabled && totalPages > 1 && (
-              <div className='flex items-center justify-between pt-1'>
+              <div className='flex flex-wrap items-center justify-between gap-2 px-4 py-2'>
                 <span className='text-muted-foreground text-xs'>
                   {t('Page')} {page} / {totalPages}
                 </span>

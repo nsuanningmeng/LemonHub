@@ -28,6 +28,7 @@ import {
   CONSUMPTION_DISTRIBUTION_CHART_OPTIONS,
   DEFAULT_TIME_GRANULARITY,
 } from '@/features/dashboard/constants'
+import { useDashboardChartPalette } from '@/features/dashboard/hooks/use-dashboard-chart-palette'
 import { processChartData } from '@/features/dashboard/lib'
 import type {
   ConsumptionDistributionChartType,
@@ -60,6 +61,7 @@ export function ConsumptionDistributionChart(
   props: ConsumptionDistributionChartProps
 ) {
   const { t } = useTranslation()
+  const palette = useDashboardChartPalette()
   const { resolvedTheme } = useTheme()
   const { customization } = useThemeCustomization()
   const chartRadius = useThemeRadiusPx(
@@ -104,9 +106,10 @@ export function ConsumptionDistributionChart(
         props.loading ? [] : props.data,
         timeGranularity,
         t,
-        chartRadius
+        chartRadius,
+        palette
       ),
-    [props.data, props.loading, timeGranularity, t, chartRadius]
+    [props.data, props.loading, timeGranularity, t, chartRadius, palette]
   )
   const spec = chartType === 'bar' ? chartData.spec_line : chartData.spec_area
   const specType = typeof spec?.type === 'string' ? spec.type : chartType
@@ -139,6 +142,7 @@ export function ConsumptionDistributionChart(
               <button
                 key={item.value}
                 type='button'
+                aria-pressed={chartType === item.value}
                 onClick={() => setChartType(item.value)}
                 className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
                   chartType === item.value

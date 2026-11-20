@@ -28,6 +28,7 @@ import {
   DEFAULT_TIME_GRANULARITY,
   MODEL_ANALYTICS_CHART_OPTIONS,
 } from '@/features/dashboard/constants'
+import { useDashboardChartPalette } from '@/features/dashboard/hooks/use-dashboard-chart-palette'
 import { processChartData } from '@/features/dashboard/lib'
 import type {
   ModelAnalyticsChartTab,
@@ -58,6 +59,7 @@ interface ModelChartsProps {
 
 export function ModelCharts(props: ModelChartsProps) {
   const { t } = useTranslation()
+  const palette = useDashboardChartPalette()
   const { resolvedTheme } = useTheme()
   const { customization } = useThemeCustomization()
   const chartRadius = useThemeRadiusPx(
@@ -102,9 +104,10 @@ export function ModelCharts(props: ModelChartsProps) {
         props.loading ? [] : props.data,
         timeGranularity,
         t,
-        chartRadius
+        chartRadius,
+        palette
       ),
-    [props.data, props.loading, timeGranularity, t, chartRadius]
+    [props.data, props.loading, timeGranularity, t, chartRadius, palette]
   )
 
   const spec = chartData[CHART_SPEC_KEYS[activeTab]]
@@ -138,6 +141,7 @@ export function ModelCharts(props: ModelChartsProps) {
             <button
               key={tab.value}
               type='button'
+              aria-pressed={activeTab === tab.value}
               onClick={() => setActiveTab(tab.value)}
               className={`shrink-0 rounded-md px-3 text-xs font-medium transition-colors ${
                 activeTab === tab.value

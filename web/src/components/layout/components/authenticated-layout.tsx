@@ -48,10 +48,12 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
           <div className='flex min-h-0 w-full flex-1'>
             <AppSidebar />
             <SidebarInset
+              id='content'
+              tabIndex={-1}
               className={cn(
                 '@container/content',
                 'h-[calc(100svh-var(--app-header-height,0px))]',
-                'min-h-0 overflow-hidden',
+                'min-h-0 min-w-0 overflow-hidden focus:outline-none',
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >

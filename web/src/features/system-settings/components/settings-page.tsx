@@ -21,6 +21,8 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
 import { useSystemOptions, getOptionValue } from '../hooks/use-system-options'
 import type { SystemOption } from '../types'
@@ -83,7 +85,7 @@ function SettingsPageFrame(props: SettingsPageFrameProps) {
           />
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='flex h-full min-h-0 w-full flex-col gap-4'>
+          <div className='@container/settings flex h-full min-h-0 w-full min-w-0 flex-col gap-4'>
             {props.children}
           </div>
         </SectionPageLayout.Content>
@@ -111,7 +113,7 @@ export function SettingsPage<
   resolveSettings,
 }: SettingsPageProps<TSettings, TSectionId, TExtraArgs>) {
   const { t } = useTranslation()
-  const { data, isLoading } = useSystemOptions()
+  const { data, isLoading, isError, isFetching, refetch } = useSystemOptions()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const params = useParams({ from: routePath as any })
   const activeSection = (params?.section ?? defaultSection) as TSectionId
@@ -130,8 +132,36 @@ export function SettingsPage<
   if (isLoading) {
     return (
       <SettingsPageFrame title={t(sectionMeta.titleKey)}>
-        <div className='text-muted-foreground flex min-h-40 items-center justify-center text-sm'>
-          {t(loadingMessage)}
+        <div
+          role='status'
+          aria-busy='true'
+          className='bg-card grid min-w-0 gap-5 rounded-lg border p-4 sm:p-6'
+        >
+          <span className='text-muted-foreground text-sm'>
+            {t(loadingMessage)}
+          </span>
+          <Skeleton className='h-9 w-full max-w-lg' />
+          <Skeleton className='h-9 w-full max-w-lg' />
+        </div>
+      </SettingsPageFrame>
+    )
+  }
+
+  if ((isError && !data) || data?.success === false) {
+    return (
+      <SettingsPageFrame title={t(sectionMeta.titleKey)}>
+        <div className='bg-card flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4 sm:p-6'>
+          <p role='alert' className='text-sm font-medium'>
+            {data?.message || t('Failed to load')}
+          </p>
+          <Button
+            variant='outline'
+            size='sm'
+            disabled={isFetching}
+            onClick={() => void refetch()}
+          >
+            {t('Retry')}
+          </Button>
         </div>
       </SettingsPageFrame>
     )

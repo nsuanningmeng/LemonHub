@@ -38,30 +38,42 @@ export function LoadingState(props: LoadingStateProps) {
   const { t } = useTranslation()
   const iconSize = sizeMap[props.size ?? 'md']
 
+  const message = props.message ?? t('Loading...')
+
   if (props.inline) {
     return (
-      <span className={cn('inline-flex items-center gap-2', props.className)}>
-        <Loader2 className={cn(iconSize, 'animate-spin')} />
-        {props.message != null && (
-          <span className='text-muted-foreground text-sm'>{props.message}</span>
-        )}
+      <span
+        role='status'
+        className={cn('inline-flex items-center gap-2', props.className)}
+      >
+        <Loader2
+          aria-hidden='true'
+          className={cn(iconSize, 'motion-safe:animate-spin')}
+        />
+        <span
+          className={
+            props.message == null ? 'sr-only' : 'text-muted-foreground text-sm'
+          }
+        >
+          {message}
+        </span>
       </span>
     )
   }
 
   return (
     <div
+      role='status'
       className={cn(
-        'flex min-h-[200px] flex-col items-center justify-center gap-3',
+        'text-muted-foreground flex min-h-40 flex-col items-center justify-center gap-3',
         props.className
       )}
     >
-      <div className='animate-spin'>
-        <Loader2 className={iconSize} />
-      </div>
-      <p className='text-muted-foreground text-sm'>
-        {props.message ?? t('Loading...')}
-      </p>
+      <Loader2
+        aria-hidden='true'
+        className={cn(iconSize, 'motion-safe:animate-spin')}
+      />
+      <p className='text-sm'>{message}</p>
     </div>
   )
 }

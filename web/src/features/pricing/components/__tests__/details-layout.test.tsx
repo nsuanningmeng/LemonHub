@@ -17,10 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { useRef, useState } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 
-import { ModelDetailsContent } from '../model-details'
+import { ModelDetailsContent, ModelDetailsDrawer } from '../model-details'
 
 // Canvas charts are outside jsdom; this regression exercises the real detail layout.
 vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
@@ -64,5 +66,60 @@ test('an unbroken model identifier wraps while its copy action remains reachable
   expect(screen.getByRole('button', { name: 'Copy model name' })).toHaveClass(
     'shrink-0'
   )
+  client.clear()
+})
+
+function ModelDetailsPicker() {
+  const trigger = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button type='button' ref={trigger} onClick={() => setOpen(true)}>
+        model-a
+      </button>
+      {open && (
+        <ModelDetailsDrawer
+          open
+          onOpenChange={setOpen}
+          triggerRef={trigger}
+          model={{
+            id: 1,
+            model_name: 'model-a',
+            quota_type: 0,
+            model_ratio: 1,
+            completion_ratio: 1,
+            enable_groups: [],
+          }}
+          groupRatio={{}}
+          usableGroup={{}}
+          endpointMap={{}}
+          autoGroups={[]}
+          priceRate={1}
+          usdExchangeRate={1}
+          tokenUnit='M'
+        />
+      )}
+    </>
+  )
+}
+
+test('opening model details with Enter focuses the sheet and Escape returns to the model button', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { enabled: false, retry: false } },
+  })
+  const user = userEvent.setup()
+  render(
+    <QueryClientProvider client={client}>
+      <ModelDetailsPicker />
+    </QueryClientProvider>
+  )
+  const model = screen.getByRole('button', { name: 'model-a' })
+  model.focus()
+  await user.keyboard('{Enter}')
+  const sheet = await screen.findByRole('dialog', { name: 'model-a' })
+  await waitFor(() => expect(sheet).toHaveFocus())
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(model).toHaveFocus())
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   client.clear()
 })

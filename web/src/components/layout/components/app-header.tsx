@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTranslation } from 'react-i18next'
+
 import { ConfigDrawer } from '@/components/config-drawer'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
@@ -103,6 +105,7 @@ export function AppHeader({
   showConfigDrawer = true,
   showProfileDropdown = true,
 }: AppHeaderProps) {
+  const { t } = useTranslation()
   // Prioritize dynamically generated links from backend
   const dynamicLinks = useTopNavLinks()
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
@@ -113,18 +116,20 @@ export function AppHeader({
   return (
     <Header>
       <SystemBrand variant='inline' />
+      <span className='text-muted-foreground hidden min-w-0 items-center gap-3 text-sm md:flex'>
+        <span aria-hidden='true' className='text-border text-xl font-light'>
+          /
+        </span>
+        {t('Console')}
+      </span>
 
       {leftContent ? (
         <div className='ms-2 flex items-center'>{leftContent}</div>
       ) : null}
 
       {rightContent ?? (
-        <div className='ms-auto flex shrink-0 items-center gap-1 sm:gap-2'>
-          {showTopNav && (
-            <div className='me-1 hidden lg:block'>
-              <TopNav links={links} />
-            </div>
-          )}
+        <div className='ms-auto flex min-w-min flex-1 items-center justify-end gap-0.5 sm:gap-1'>
+          {showTopNav && links.length > 0 && <TopNav links={links} />}
           {showSearch && <Search />}
           {showNotifications && (
             <NotificationPopover

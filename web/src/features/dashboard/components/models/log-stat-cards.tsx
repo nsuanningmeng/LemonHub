@@ -144,8 +144,8 @@ export function LogStatCards(props: LogStatCardsProps) {
   })
 
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='divide-border/60 grid min-w-0 grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-7'>
+    <div className='bg-card @container/model-stats min-w-0 overflow-hidden rounded-lg border'>
+      <div className='bg-border grid min-w-0 grid-cols-2 gap-px @lg/model-stats:grid-cols-4 @5xl/model-stats:grid-cols-7'>
         {items.map((it, idx) => {
           const Icon = it.icon
           let valueContent
@@ -159,10 +159,10 @@ export function LogStatCards(props: LogStatCardsProps) {
           } else if (error) {
             valueContent = (
               <>
-                <div className='text-muted-foreground mt-1 font-mono text-base leading-tight font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl sm:leading-normal'>
+                <div className='text-muted-foreground mt-1 text-xl leading-tight font-semibold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
                   --
                 </div>
-                <div className='text-muted-foreground/40 mt-1 hidden text-xs md:block'>
+                <div className='text-muted-foreground mt-1 hidden text-xs @lg/model-stats:block'>
                   {it.desc}
                 </div>
               </>
@@ -171,12 +171,12 @@ export function LogStatCards(props: LogStatCardsProps) {
             valueContent = (
               <>
                 <div
-                  className='text-foreground mt-1 max-w-full truncate font-mono text-base leading-tight font-bold tracking-tight tabular-nums sm:mt-2 sm:text-2xl sm:leading-normal'
+                  className='text-foreground mt-1 max-w-full truncate text-xl leading-tight font-semibold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'
                   title={it.fullValue}
                 >
                   {it.value}
                 </div>
-                <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
+                <div className='text-muted-foreground mt-1 hidden text-xs @lg/model-stats:block'>
                   {it.desc}
                 </div>
               </>
@@ -190,22 +190,22 @@ export function LogStatCards(props: LogStatCardsProps) {
               aria-label={it.title}
               aria-busy={loading}
               className={cn(
-                'min-w-0 px-2.5 py-1.5 sm:px-3 sm:py-4 xl:px-4',
+                'bg-card min-w-0 px-3 py-3 sm:px-4 sm:py-4',
                 idx === items.length - 1 &&
                   items.length % 2 !== 0 &&
-                  'col-span-2 sm:col-span-1'
+                  'col-span-2 @5xl/model-stats:col-span-1'
               )}
             >
               <div className='flex min-w-0 items-center gap-1.5 sm:gap-2'>
                 <IconBadge
                   tone={it.iconTone}
                   size='stat'
-                  className='size-4 rounded-sm sm:size-7 sm:rounded-md [&>svg]:size-2.5 sm:[&>svg]:size-3.5'
+                  className='size-4 bg-transparent text-current [&>svg]:size-3.5'
                 >
                   <Icon />
                 </IconBadge>
                 <div
-                  className='text-muted-foreground truncate text-[11px] leading-4 font-medium tracking-wide uppercase sm:text-xs sm:tracking-wider'
+                  className='text-muted-foreground truncate text-xs leading-4 font-medium'
                   title={it.title}
                 >
                   {it.title}

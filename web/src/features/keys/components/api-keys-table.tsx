@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import type { Table as TanstackTable } from '@tanstack/react-table'
-import { Database } from 'lucide-react'
+import { KeyRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -100,9 +100,11 @@ function ApiKeysMobileSkeleton() {
 function ApiKeysMobileList({
   table,
   isLoading,
+  emptyDescription,
 }: {
   table: TanstackTable<ApiKey>
   isLoading: boolean
+  emptyDescription: string
 }) {
   const { t } = useTranslation()
   const rows = table.getRowModel().rows
@@ -115,14 +117,10 @@ function ApiKeysMobileList({
         <Empty className='border-none p-0'>
           <EmptyHeader>
             <EmptyMedia variant='icon'>
-              <Database className='size-6' />
+              <KeyRound aria-hidden='true' className='size-5' />
             </EmptyMedia>
             <EmptyTitle>{t('No API Keys Found')}</EmptyTitle>
-            <EmptyDescription>
-              {t(
-                'No API keys available. Create your first API key to get started.'
-              )}
-            </EmptyDescription>
+            <EmptyDescription>{emptyDescription}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -140,7 +138,7 @@ function ApiKeysMobileList({
           <div
             key={row.id}
             className={cn(
-              'bg-card space-y-2.5 border-b px-3 py-2.5 last:border-b-0',
+              'bg-card space-y-2.5 border-b p-4 last:border-b-0',
               isDisabledApiKeyRow(apiKey) && DISABLED_ROW_MOBILE
             )}
           >
@@ -148,9 +146,6 @@ function ApiKeysMobileList({
               <div className='min-w-0'>
                 <div className='truncate text-sm font-semibold'>
                   {apiKey.name}
-                </div>
-                <div className='text-muted-foreground text-[11px]'>
-                  {t('API Key')}
                 </div>
               </div>
               {statusConfig && (
@@ -169,7 +164,7 @@ function ApiKeysMobileList({
               <DataTableRowActions row={row} />
             </div>
 
-            <div className='flex items-center justify-between gap-2 text-xs'>
+            <div className='flex items-center justify-between gap-2 border-t pt-2 text-xs'>
               <span className='text-muted-foreground'>{t('Quota')}</span>
               {apiKey.unlimited_quota ? (
                 <UnlimitedQuotaBadge used={apiKey.used_quota} />
@@ -314,6 +309,11 @@ export function ApiKeysTable() {
     ensurePageInRange,
   })
 
+  const emptyDescription =
+    shouldSearch || status
+      ? t('No records found. Try adjusting your filters.')
+      : t('No API keys available. Create your first API key to get started.')
+
   return (
     <DataTablePage
       table={table}
@@ -321,9 +321,8 @@ export function ApiKeysTable() {
       isLoading={isLoading}
       isFetching={isFetching}
       emptyTitle={t('No API Keys Found')}
-      emptyDescription={t(
-        'No API keys available. Create your first API key to get started.'
-      )}
+      emptyDescription={emptyDescription}
+      emptyIcon={<KeyRound aria-hidden='true' className='size-5' />}
       skeletonKeyPrefix='api-keys-skeleton'
       applyHeaderSize
       toolbarProps={{
@@ -347,7 +346,13 @@ export function ApiKeysTable() {
           },
         ],
       }}
-      mobile={<ApiKeysMobileList table={table} isLoading={isLoading} />}
+      mobile={
+        <ApiKeysMobileList
+          table={table}
+          isLoading={isLoading}
+          emptyDescription={emptyDescription}
+        />
+      }
       getRowClassName={(row) =>
         isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
       }

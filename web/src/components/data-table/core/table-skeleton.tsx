@@ -45,7 +45,7 @@ interface TableSkeletonProps<TData> {
 export function TableSkeleton<TData>({
   table,
   rowCount,
-  rowHeight = 'h-[52px]',
+  rowHeight = 'h-12',
   keyPrefix = 'skeleton',
 }: TableSkeletonProps<TData>) {
   const visibleColumns = table.getVisibleLeafColumns()

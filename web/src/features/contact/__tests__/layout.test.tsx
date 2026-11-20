@@ -159,3 +159,16 @@ test('a configured URL keeps contact content below navigation and within the rem
   expect(frame.closest('main')).toHaveClass('pt-16')
   expect(frame).toHaveClass('w-full', 'h-[calc(100svh-4rem)]')
 })
+
+test('the default contact page identifies the page and explains missing contact details', async () => {
+  await renderContact('')
+  expect(
+    screen.getByRole('heading', { level: 1, name: 'Contact Us' })
+  ).toBeVisible()
+  expect(
+    screen.getByRole('heading', {
+      level: 2,
+      name: "Contact details haven't been set up yet.",
+    })
+  ).toBeVisible()
+})

@@ -43,8 +43,8 @@ export function StepNavigation({
   const isLastStep = currentStep === totalSteps - 1
 
   return (
-    <div className='flex w-full flex-col gap-3 sm:flex-row sm:items-center'>
-      <div className='flex justify-end gap-2 sm:justify-start'>
+    <div className='flex w-full items-center justify-between gap-3'>
+      <div className='flex gap-2'>
         {!isFirstStep && (
           <Button type='button' variant='outline' onClick={onBack}>
             {t('Back')}

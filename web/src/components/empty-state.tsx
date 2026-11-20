@@ -20,7 +20,6 @@ import { Database, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { FadeIn } from '@/components/page-transition'
 import {
   Empty,
   EmptyContent,
@@ -45,25 +44,23 @@ export function EmptyState(props: EmptyStateProps) {
   const Icon = props.icon ?? Database
 
   return (
-    <FadeIn>
-      <Empty
-        className={cn(
-          'min-h-[300px]',
-          props.bordered && 'border',
-          props.className
+    <Empty
+      className={cn(
+        'min-h-44 sm:min-h-52',
+        props.bordered && 'border',
+        props.className
+      )}
+    >
+      <EmptyHeader>
+        <EmptyMedia variant='icon'>
+          <Icon aria-hidden='true' className='size-5' />
+        </EmptyMedia>
+        <EmptyTitle>{props.title ?? t('No Data')}</EmptyTitle>
+        {props.description != null && (
+          <EmptyDescription>{props.description}</EmptyDescription>
         )}
-      >
-        <EmptyHeader>
-          <EmptyMedia variant='icon'>
-            <Icon className='size-6' />
-          </EmptyMedia>
-          <EmptyTitle>{props.title ?? t('No Data')}</EmptyTitle>
-          {props.description != null && (
-            <EmptyDescription>{props.description}</EmptyDescription>
-          )}
-        </EmptyHeader>
-        {props.action != null && <EmptyContent>{props.action}</EmptyContent>}
-      </Empty>
-    </FadeIn>
+      </EmptyHeader>
+      {props.action != null && <EmptyContent>{props.action}</EmptyContent>}
+    </Empty>
   )
 }

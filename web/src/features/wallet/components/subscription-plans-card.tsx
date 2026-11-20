@@ -266,7 +266,7 @@ export function SubscriptionPlansCard({
         contentClassName='space-y-4 sm:space-y-5'
       >
         {/* My subscriptions & billing preference */}
-        <div className='rounded-xl border p-3 sm:p-4'>
+        <div className='bg-muted/35 rounded-md p-3 sm:p-4'>
           <div className='flex flex-wrap items-center justify-between gap-2.5 sm:gap-3'>
             <div className='flex min-w-0 flex-wrap items-center gap-2'>
               <span className='text-sm font-medium'>
@@ -521,7 +521,7 @@ export function SubscriptionPlansCard({
 
         {/* Available plans grid */}
         {plans.length > 0 ? (
-          <div className='grid grid-cols-1 gap-3 2xl:grid-cols-2 2xl:gap-4'>
+          <div className='grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3'>
             {plans.map((p, index) => {
               const plan = p?.plan
               if (!plan) return null
@@ -550,7 +550,10 @@ export function SubscriptionPlansCard({
                 <Card
                   key={plan.id}
                   data-card-hover='false'
-                  className={cn(isPopular && 'border-primary/70 shadow-sm')}
+                  className={cn(
+                    'gap-0 rounded-md py-0',
+                    isPopular && 'border-primary/70'
+                  )}
                 >
                   <CardContent className='flex h-full flex-col p-3.5 sm:p-4'>
                     <div className='mb-2 flex items-start justify-between gap-3'>
@@ -577,7 +580,7 @@ export function SubscriptionPlansCard({
                     </div>
 
                     <div className='py-2'>
-                      <span className='text-primary text-2xl font-bold'>
+                      <span className='text-foreground text-2xl font-semibold tracking-tight tabular-nums'>
                         ${price}
                       </span>
                     </div>

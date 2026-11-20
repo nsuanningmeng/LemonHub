@@ -58,18 +58,12 @@ function getPinnedColumnClassName(
   pinnedColumn: DataTablePinnedColumn,
   kind: 'header' | 'cell'
 ) {
-  const edgeClassName =
-    pinnedColumn.side === 'left'
-      ? 'shadow-[8px_0_10px_-10px_hsl(var(--foreground))]'
-      : 'shadow-[-8px_0_10px_-10px_hsl(var(--foreground))]'
-
   return cn(
     'sticky whitespace-nowrap',
-    pinnedColumn.side === 'left' ? 'left-0' : 'right-0',
-    edgeClassName,
+    pinnedColumn.side === 'left' ? 'left-0 border-r' : 'right-0 border-l',
     kind === 'header'
       ? '[background-color:var(--table-header-bg,var(--table-header))] group-hover:[background-color:var(--table-header-hover)] z-30'
-      : 'bg-background z-10 group-hover:[background-color:color-mix(in_oklch,var(--muted)_50%,var(--background))] group-data-[state=selected]:bg-muted',
+      : 'z-10 [background-color:var(--data-table-card-bg,var(--table-row))] group-hover:[background-color:var(--data-table-card-bg,color-mix(in_oklch,var(--muted)_50%,var(--background)))] group-data-[state=selected]:[background-color:var(--data-table-card-bg,var(--muted))]',
     pinnedColumn.className,
     kind === 'header'
       ? pinnedColumn.headerClassName

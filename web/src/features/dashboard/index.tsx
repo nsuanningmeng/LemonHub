@@ -117,15 +117,15 @@ const LazyFlowCharts = lazy(() =>
 
 function LogStatCardsFallback() {
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='divide-border/60 grid min-w-0 grid-cols-2 divide-x sm:grid-cols-3 lg:grid-cols-7'>
+    <div className='bg-card @container/model-stats min-w-0 overflow-hidden rounded-lg border'>
+      <div className='bg-border grid min-w-0 grid-cols-2 gap-px @lg/model-stats:grid-cols-4 @5xl/model-stats:grid-cols-7'>
         {LOG_STAT_CARD_FALLBACK_KEYS.map((key, index) => (
           <div
             key={key}
             className={cn(
-              'min-w-0 px-2.5 py-1.5 sm:px-3 sm:py-4 xl:px-4',
+              'bg-card min-w-0 px-3 py-3 sm:px-4 sm:py-4',
               index === LOG_STAT_CARD_FALLBACK_KEYS.length - 1 &&
-                'col-span-2 sm:col-span-1'
+                'col-span-2 @5xl/model-stats:col-span-1'
             )}
           >
             <div className='flex items-center gap-1.5 sm:gap-2'>

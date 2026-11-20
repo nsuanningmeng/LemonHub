@@ -91,3 +91,17 @@ test('a shortened billing order remains readable in full and copies the original
   await user.click(screen.getByRole('button', { name: 'Copy to clipboard' }))
   expect(copyToClipboard).toHaveBeenCalledWith(tradeNo)
 })
+
+test('missing account data keeps wallet totals unavailable until data arrives', () => {
+  const { rerender } = render(<WalletStatsCard user={null} loading />)
+  expect(screen.getByText('Current Balance').closest('dl')).toHaveAttribute(
+    'aria-busy',
+    'true'
+  )
+  rerender(<WalletStatsCard user={null} />)
+  expect(screen.getAllByText('—')).toHaveLength(3)
+  expect(screen.getByText('Current Balance').closest('dl')).toHaveAttribute(
+    'aria-busy',
+    'false'
+  )
+})

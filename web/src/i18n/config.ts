@@ -16,34 +16,48 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import i18n from 'i18next'
+import i18n, { type BackendModule } from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
-import { convertDetectedLanguage } from './languages'
+import { convertDetectedLanguage, toIntlLocale } from './languages'
 import en from './locales/en.json'
-import fr from './locales/fr.json'
-import ja from './locales/ja.json'
-import ru from './locales/ru.json'
-import vi from './locales/vi.json'
-import zhTW from './locales/zh-TW.json'
-import zhCN from './locales/zh.json'
 
-export const resources = {
-  en,
-  zhCN,
-  fr,
-  ru,
-  ja,
-  vi,
-  zhTW,
-} as const
+type LocaleModule = { default: { translation: Record<string, string> } }
 
-i18n
+const loadLocale: Partial<Record<string, () => Promise<LocaleModule>>> = {
+  fr: () => import('./locales/fr.json'),
+  ja: () => import('./locales/ja.json'),
+  ru: () => import('./locales/ru.json'),
+  vi: () => import('./locales/vi.json'),
+  zhCN: () => import('./locales/zh.json'),
+  zhTW: () => import('./locales/zh-TW.json'),
+}
+
+const bundledLocales: BackendModule = {
+  type: 'backend',
+  init() {},
+  async read(language, namespace) {
+    const load = loadLocale[language]
+    if (!load || namespace !== 'translation') return {}
+    const locale = await load()
+    return locale.default.translation
+  },
+}
+
+// Keep assistive technology and browser typography aligned with the displayed language.
+i18n.on('languageChanged', (language) => {
+  document.documentElement.lang = toIntlLocale(language) ?? 'en'
+})
+
+export const i18nReady = i18n
+  .use(bundledLocales)
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources,
+    resources: { en },
+    partialBundledLanguages: true,
+    initAsync: false,
     fallbackLng: 'en',
     supportedLngs: ['en', 'zhCN', 'fr', 'ru', 'ja', 'vi', 'zhTW'],
     load: 'currentOnly',

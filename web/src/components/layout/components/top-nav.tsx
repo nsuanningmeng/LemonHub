@@ -55,12 +55,12 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
   )
 
   return (
-    <>
-      {/* 移动端下拉菜单 */}
-      <div className='2xl:hidden'>
+    <div className='@container/topnav flex min-w-8 flex-1 justify-end sm:me-1'>
+      {/* Compact menu when the toolbar leaves too little room for links. */}
+      <div className='@min-[47rem]/topnav:hidden'>
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger
-            render={<Button size='icon' variant='outline' className='size-7' />}
+            render={<Button size='icon' variant='ghost' className='size-8' />}
             aria-label={t('Open menu')}
           >
             <Menu />
@@ -69,6 +69,7 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
             {normalizedLinks.map(
               ({ title, href, isActive, disabled, external }) => (
                 <DropdownMenuItem
+                  disabled={disabled}
                   key={`${title}-${href}`}
                   render={
                     external ? (
@@ -100,7 +101,7 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
       {/* 桌面端水平导航 */}
       <nav
         className={cn(
-          'hidden items-center space-x-4 whitespace-nowrap 2xl:flex',
+          'hidden min-w-0 items-center gap-3 overflow-x-auto whitespace-nowrap @min-[47rem]/topnav:flex',
           className
         )}
         {...props}
@@ -109,7 +110,8 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
           external ? (
             <a
               key={`${title}-${href}`}
-              href={href}
+              href={disabled ? undefined : href}
+              aria-disabled={disabled || undefined}
               target='_blank'
               rel='noopener noreferrer'
               className={`hover:text-primary text-sm font-medium transition-colors ${isActive ? '' : 'text-muted-foreground'}`}
@@ -128,6 +130,6 @@ export function TopNav({ className, links, ...props }: TopNavProps) {
           )
         )}
       </nav>
-    </>
+    </div>
   )
 }

@@ -104,7 +104,7 @@ function SegmentedControl(props: {
     <div
       role='group'
       aria-label={props.ariaLabel}
-      className='bg-muted/60 inline-flex h-8 items-center rounded-lg border p-0.5'
+      className='bg-muted inline-flex h-9 items-center rounded-md p-0.5 sm:h-8'
     >
       {props.options.map((option) => {
         const Icon = option.icon
@@ -115,11 +115,12 @@ function SegmentedControl(props: {
             type='button'
             onClick={() => props.onChange(option.value)}
             aria-pressed={isActive}
+            aria-label={option.label ?? option.tooltip}
             className={cn(
-              'inline-flex h-full items-center justify-center rounded-md text-xs font-medium transition-all',
-              Icon && !option.label ? 'w-7' : 'gap-1.5 px-3',
+              'inline-flex h-full items-center justify-center rounded-sm text-xs font-medium transition-colors',
+              Icon && !option.label ? 'w-8' : 'gap-1.5 px-3',
               isActive
-                ? 'bg-primary text-primary-foreground shadow-sm'
+                ? 'bg-background text-foreground shadow-xs'
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
@@ -134,7 +135,7 @@ function SegmentedControl(props: {
 
         return (
           <Tooltip key={option.value}>
-            <TooltipTrigger render={button}></TooltipTrigger>
+            <TooltipTrigger render={button} />
             <TooltipContent side='bottom' className='text-xs'>
               {option.tooltip}
             </TooltipContent>
@@ -166,8 +167,8 @@ export function PricingToolbar(props: PricingToolbarProps) {
   )
 
   return (
-    <div className='rounded-xl border p-3'>
-      <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+    <div className='border-b pb-3'>
+      <div className='flex flex-wrap items-center justify-between gap-2.5'>
         <div className='flex items-center gap-2'>
           <Button
             type='button'
@@ -191,34 +192,32 @@ export function PricingToolbar(props: PricingToolbarProps) {
             </span>
             <span>{props.filteredCount === 1 ? t('model') : t('models')}</span>
             {props.hasActiveFilters && props.totalCount && (
-              <span className='text-muted-foreground/60 text-xs'>
+              <span className='text-muted-foreground text-xs'>
                 / {props.totalCount.toLocaleString()}
               </span>
             )}
           </div>
         </div>
 
-        <div className='flex flex-wrap items-center gap-2'>
-          <div className='hidden items-center gap-2 sm:flex'>
-            <SegmentedControl
-              options={[
-                { value: 'standard', label: t('Standard') },
-                { value: 'recharge', label: t('Recharge') },
-              ]}
-              value={props.showRechargePrice ? 'recharge' : 'standard'}
-              onChange={handleRechargePriceChange}
-              ariaLabel={t('Price display mode')}
-            />
-            <SegmentedControl
-              options={[
-                { value: 'M', label: '/1M' },
-                { value: 'K', label: '/1K' },
-              ]}
-              value={props.tokenUnit}
-              onChange={handleTokenUnitChange}
-              ariaLabel={t('Token unit')}
-            />
-          </div>
+        <div className='order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:ms-auto sm:w-auto'>
+          <SegmentedControl
+            options={[
+              { value: 'standard', label: t('Standard') },
+              { value: 'recharge', label: t('Recharge') },
+            ]}
+            value={props.showRechargePrice ? 'recharge' : 'standard'}
+            onChange={handleRechargePriceChange}
+            ariaLabel={t('Price display mode')}
+          />
+          <SegmentedControl
+            options={[
+              { value: 'M', label: '/1M' },
+              { value: 'K', label: '/1K' },
+            ]}
+            value={props.tokenUnit}
+            onChange={handleTokenUnitChange}
+            ariaLabel={t('Token unit')}
+          />
 
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger
@@ -252,25 +251,25 @@ export function PricingToolbar(props: PricingToolbarProps) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-
-          <SegmentedControl
-            options={[
-              {
-                value: VIEW_MODES.CARD,
-                icon: Grid2X2,
-                tooltip: t('Card view'),
-              },
-              {
-                value: VIEW_MODES.TABLE,
-                icon: Table2,
-                tooltip: t('Table view'),
-              },
-            ]}
-            value={props.viewMode}
-            onChange={handleViewModeChange}
-            ariaLabel={t('View mode')}
-          />
         </div>
+
+        <SegmentedControl
+          options={[
+            {
+              value: VIEW_MODES.CARD,
+              icon: Grid2X2,
+              tooltip: t('Card view'),
+            },
+            {
+              value: VIEW_MODES.TABLE,
+              icon: Table2,
+              tooltip: t('Table view'),
+            },
+          ]}
+          value={props.viewMode}
+          onChange={handleViewModeChange}
+          ariaLabel={t('View mode')}
+        />
       </div>
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>

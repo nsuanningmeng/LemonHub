@@ -16,97 +16,92 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatQuota } from '@/lib/format'
+import { formatCompactNumber, formatQuota } from '@/lib/format'
+import { cn } from '@/lib/utils'
 
 import type { UserWalletData } from '../types'
 
 interface WalletStatsCardProps {
   user: UserWalletData | null
   loading?: boolean
+  compactRequests?: boolean
+  className?: string
 }
 
 export function WalletStatsCard(props: WalletStatsCardProps) {
   const { t } = useTranslation()
-  if (props.loading) {
-    return (
-      <div className='@container/wallet-stats rounded-lg border'>
-        <div className='grid grid-cols-1 divide-y @min-[48rem]/wallet-stats:grid-cols-3 @min-[48rem]/wallet-stats:divide-x @min-[48rem]/wallet-stats:divide-y-0'>
-          {['balance', 'usage', 'requests'].map((key) => (
-            <div key={key} className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'>
-              <Skeleton className='h-3.5 w-full' />
-              <Skeleton className='mt-2 h-6 w-full sm:h-7' />
-              <Skeleton className='mt-1.5 hidden h-3.5 w-24 md:block' />
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  const stats: {
-    label: string
-    value: string
-    description: string
-    icon: typeof WalletCards
-    tone: IconBadgeTone
-  }[] = [
+  const user = props.user
+  const requestCount = user?.request_count ?? 0
+  const stats = [
     {
       label: t('Current Balance'),
-      value: formatQuota(props.user?.quota ?? 0),
+      value: user && formatQuota(user.quota),
       description: t('Remaining quota'),
-      icon: WalletCards,
-      tone: 'success',
     },
     {
       label: t('Total Usage'),
-      value: formatQuota(props.user?.used_quota ?? 0),
+      value: user && formatQuota(user.used_quota),
       description: t('Total consumed quota'),
-      icon: BarChart3,
-      tone: 'info',
     },
     {
       label: t('API Requests'),
-      value: (props.user?.request_count ?? 0).toLocaleString(),
+      value:
+        user &&
+        (props.compactRequests
+          ? formatCompactNumber(requestCount)
+          : requestCount.toLocaleString()),
       description: t('Total requests made'),
-      icon: Activity,
-      tone: 'chart-4',
     },
   ]
 
   return (
-    <div className='@container/wallet-stats rounded-lg border'>
-      <div className='grid grid-cols-1 divide-y @min-[48rem]/wallet-stats:grid-cols-3 @min-[48rem]/wallet-stats:divide-x @min-[48rem]/wallet-stats:divide-y-0'>
-        {stats.map((item) => (
+    <div
+      className={cn(
+        'bg-card @container/account min-w-0 overflow-hidden rounded-lg border',
+        props.className
+      )}
+    >
+      <dl
+        aria-busy={Boolean(props.loading)}
+        className='grid grid-cols-2 @xl/account:grid-cols-[1.15fr_1fr_1fr]'
+      >
+        {stats.map((item, index) => (
           <div
             key={item.label}
-            className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'
+            className={cn(
+              'min-w-0 px-4 py-3 sm:px-5 sm:py-4',
+              index === 0 &&
+                'bg-muted/50 col-span-2 border-b @xl/account:col-span-1 @xl/account:border-r @xl/account:border-b-0',
+              index === 2 && 'border-l'
+            )}
           >
-            <div className='flex items-center gap-1.5 sm:gap-2.5'>
-              <IconBadge tone={item.tone} size='stat'>
-                <item.icon />
-              </IconBadge>
-              <div className='text-muted-foreground text-[11px] font-medium tracking-wider uppercase sm:text-xs'>
-                {item.label}
-              </div>
-            </div>
-
-            <div
-              className='text-foreground mt-1.5 overflow-x-auto font-mono text-sm font-bold tracking-tight whitespace-nowrap tabular-nums sm:mt-2.5 sm:text-2xl'
-              title={item.value}
-            >
-              {item.value}
-            </div>
-            <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
-              {item.description}
-            </div>
+            <dt className='text-muted-foreground text-xs leading-4 font-medium sm:truncate'>
+              {item.label}
+            </dt>
+            <dd className='mt-2'>
+              {props.loading ? (
+                <Skeleton className='h-8 w-24 max-w-full' />
+              ) : (
+                <span
+                  className={cn(
+                    'block max-w-full overflow-x-auto font-semibold tracking-tight whitespace-nowrap tabular-nums',
+                    index === 0 ? 'text-3xl leading-9' : 'text-2xl leading-9'
+                  )}
+                  title={item.value ?? undefined}
+                >
+                  {item.value ?? '—'}
+                </span>
+              )}
+              <span className='text-muted-foreground mt-1 hidden text-xs @xl/account:block'>
+                {item.description}
+              </span>
+            </dd>
           </div>
         ))}
-      </div>
+      </dl>
     </div>
   )
 }

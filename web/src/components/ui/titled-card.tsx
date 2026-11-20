@@ -66,7 +66,10 @@ export function TitledCard({
       className={cn('gap-0 overflow-hidden py-0', className)}
     >
       <CardHeader
-        className={cn('border-b p-3 !pb-3 sm:p-5 sm:!pb-5', headerClassName)}
+        className={cn(
+          'border-b px-4 py-3 !pb-3 sm:px-5 sm:py-4 sm:!pb-4',
+          headerClassName
+        )}
       >
         <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
           <div className='flex min-w-0 items-center gap-3'>
@@ -78,7 +81,7 @@ export function TitledCard({
             <div className='min-w-0'>
               <CardTitle
                 className={cn(
-                  'text-lg tracking-tight sm:text-xl',
+                  'text-base tracking-tight sm:text-lg',
                   titleClassName
                 )}
               >

@@ -76,3 +76,19 @@ test('opening model sort keeps the page interactive and choosing a price order u
   )
   expect(onSortChange).toHaveBeenCalledWith('input-price-low')
 })
+
+test('both view controls announce their state and keyboard activation selects table view', async () => {
+  const onViewModeChange = vi.fn()
+  const user = userEvent.setup()
+  render(<PricingToolbar {...props} onViewModeChange={onViewModeChange} />)
+  expect(
+    screen.getByRole('button', { name: 'Card view', pressed: true })
+  ).toBeVisible()
+  const table = screen.getByRole('button', {
+    name: 'Table view',
+    pressed: false,
+  })
+  table.focus()
+  await user.keyboard('{Enter}')
+  expect(onViewModeChange).toHaveBeenCalledWith('table')
+})

@@ -1,5 +1,12 @@
 {
   "translation": {
+    "Many models.": "Many models.",
+    "One gateway.": "One gateway.",
+    "Connect your apps to AI models through a single API. Manage keys, route requests and track spending in one console.": "Connect your apps to AI models through a single API. Manage keys, route requests and track spending in one console.",
+    "Pause animation": "Pause animation",
+    "Play animation": "Play animation",
+    "Model integrations": "Model integrations",
+    "API examples": "API examples",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

@@ -23,17 +23,28 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, expect, test } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { CommandMenu } from '@/components/command-menu'
 import { Search } from '@/components/search'
-import { SidebarProvider } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarProvider,
+  SidebarTrigger,
+} from '@/components/ui/sidebar'
 import { SearchProvider } from '@/context/search-provider'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { Header } from '../header'
+import { PublicHeader } from '../public-header'
 import { SystemBrand } from '../system-brand'
 import { TopNav } from '../top-nav'
 
@@ -109,6 +120,79 @@ async function renderHeader() {
   await screen.findByRole('banner')
 }
 
+test('a phone displays a dismissible navigation sheet when the desktop sidebar is set to always open', async () => {
+  vi.stubGlobal('innerWidth', 390)
+  try {
+    const user = userEvent.setup()
+    render(
+      <SidebarProvider>
+        <SidebarTrigger />
+        <Sidebar collapsible='none'>
+          <a href='/keys'>API Keys</a>
+        </Sidebar>
+      </SidebarProvider>
+    )
+    expect(screen.queryByRole('link', { name: 'API Keys' })).toBeNull()
+    const trigger = screen.getByRole('button', {
+      name: 'Toggle navigation menu',
+    })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await user.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    const menu = await screen.findByRole('dialog', { name: 'Console' })
+    expect(
+      within(menu).getByRole('link', { name: 'API Keys' })
+    ).toHaveAttribute('href', '/keys')
+    await user.click(within(menu).getByRole('button', { name: 'Close menu' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  } finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+test('the compact public menu exposes configured links on demand and returns keyboard focus after Escape', async () => {
+  const user = userEvent.setup()
+  client.setQueryData(['notice'], { success: true, data: '' })
+  const router = createRouter({
+    routeTree: createRootRoute({
+      component: () => (
+        <PublicHeader
+          mobileLinks={[
+            {
+              title: 'Model guide',
+              href: 'https://example.com/guide',
+              external: true,
+            },
+          ]}
+          showNotifications={false}
+          showThemeSwitch={false}
+          showAuthButtons={false}
+          showLanguageSwitcher={false}
+        />
+      ),
+    }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
+  const trigger = await screen.findByRole('button', {
+    name: 'Toggle navigation menu',
+  })
+  expect(screen.queryByRole('link', { name: 'Model guide' })).toBeNull()
+  await user.click(trigger)
+  const menu = await screen.findByRole('dialog')
+  expect(
+    within(menu).getByRole('link', { name: 'Model guide' })
+  ).toHaveAttribute('href', 'https://example.com/guide')
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  await user.keyboard('{Escape}')
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  expect(trigger).toHaveFocus()
+})
+
 test('a long inline site name can shrink while the logo keeps its size', async () => {
   await renderHeader()
   const brand = screen.getByRole('link', { name: 'Go to home' })
@@ -130,13 +214,13 @@ test('mobile search keeps an accessible name while the text and keyboard hint wa
   ).toBeVisible()
 })
 
-test('compact navigation exposes all links and desktop link titles stay on one line', async () => {
+test('navigation uses the space available in the toolbar and keeps every link accessible in its compact menu', async () => {
   await renderHeader()
   const menu = screen.getByRole('button', { name: 'Open menu' })
-  expect(menu.parentElement).toHaveClass('2xl:hidden')
+  expect(menu.parentElement).toHaveClass('@min-[47rem]/topnav:hidden')
   expect(screen.getByRole('navigation')).toHaveClass(
     'whitespace-nowrap',
-    '2xl:flex'
+    '@min-[47rem]/topnav:flex'
   )
   await userEvent.setup().click(menu)
   const items = await screen.findByRole('menu')

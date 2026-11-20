@@ -76,11 +76,18 @@ export function ProfileSettingsCard({
       iconTone='info'
       disableHoverEffect
     >
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className='grid w-full grid-cols-2 items-stretch gap-1 rounded-xl p-1 group-data-horizontal/tabs:h-10'>
+      <Tabs
+        className='@container/settings'
+        value={activeTab}
+        onValueChange={setActiveTab}
+      >
+        <TabsList
+          variant='line'
+          className='w-full justify-start gap-x-3 rounded-none border-b'
+        >
           <TabsTrigger
             value='bindings'
-            className='h-full gap-2 rounded-lg px-3 py-0 leading-none'
+            className='flex-none gap-2 px-1 text-sm'
           >
             <Link2 className='h-4 w-4' />
             <span className='hidden sm:inline'>{t('Account Bindings')}</span>
@@ -88,7 +95,7 @@ export function ProfileSettingsCard({
           </TabsTrigger>
           <TabsTrigger
             value='settings'
-            className='h-full gap-2 rounded-lg px-3 py-0 leading-none'
+            className='flex-none gap-2 px-1 text-sm'
           >
             <Settings className='h-4 w-4' />
             <span className='hidden sm:inline'>

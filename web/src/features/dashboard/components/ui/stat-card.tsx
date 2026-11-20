@@ -249,7 +249,7 @@ export function StatCard(props: StatCardProps) {
         <Skeleton
           className={cn(
             'h-3 w-24 sm:h-3.5 sm:w-32',
-            props.compactMobile && 'hidden sm:block'
+            props.compactMobile && 'sr-only @md/summary:not-sr-only'
           )}
         />
       </div>
@@ -262,8 +262,8 @@ export function StatCard(props: StatCardProps) {
         </div>
         <p
           className={cn(
-            'text-muted-foreground/60 line-clamp-1 text-[11px] sm:text-xs',
-            props.compactMobile && 'hidden sm:block'
+            'text-muted-foreground line-clamp-1 text-[11px] sm:text-xs',
+            props.compactMobile && 'sr-only @md/summary:not-sr-only'
           )}
         >
           {props.description}
@@ -274,15 +274,15 @@ export function StatCard(props: StatCardProps) {
     valueContent = (
       <div className='flex min-w-0 flex-col gap-1'>
         <div
-          className='text-foreground overflow-x-auto font-mono text-base font-semibold tracking-tight whitespace-nowrap tabular-nums @3xl/summary:text-2xl'
+          className='text-foreground overflow-x-auto font-mono text-2xl leading-tight font-semibold tracking-tight whitespace-nowrap tabular-nums @3xl/summary:text-3xl'
           title={String(props.value)}
         >
           {props.value}
         </div>
         <p
           className={cn(
-            'text-muted-foreground/60 line-clamp-1 text-[11px] leading-relaxed sm:text-xs',
-            props.compactMobile && 'hidden sm:block'
+            'text-muted-foreground line-clamp-1 text-[11px] leading-relaxed sm:text-xs',
+            props.compactMobile && 'sr-only @md/summary:not-sr-only'
           )}
         >
           {props.description}
@@ -303,18 +303,19 @@ export function StatCard(props: StatCardProps) {
   return (
     <div
       className={cn(
-        'group flex min-w-0 flex-col justify-between @xl/summary:min-h-32 @xl/summary:gap-3',
-        props.compactMobile ? 'gap-1' : 'gap-1.5'
+        'flex min-w-0 flex-col gap-2 @md/summary:h-full @md/summary:justify-between @md/summary:gap-4',
+        props.compactMobile &&
+          'flex-row items-center justify-between @md/summary:flex-col @md/summary:items-stretch'
       )}
     >
       <div className='flex items-start justify-between gap-1'>
-        <div className='text-muted-foreground flex items-center gap-1 text-[11px] font-medium sm:gap-2 sm:text-xs'>
+        <div className='text-muted-foreground flex items-center gap-2 text-xs font-medium'>
           <IconBadge
             tone={iconTone}
             size='stat'
             className={cn(
               props.compactMobile &&
-                'size-4 rounded-sm [&>svg]:size-2.5 sm:size-7 sm:rounded-md sm:[&>svg]:size-3.5'
+                'size-4 rounded-none bg-transparent text-current [&>svg]:size-4'
             )}
           >
             <Icon />
@@ -328,7 +329,7 @@ export function StatCard(props: StatCardProps) {
 
       {valueContent}
 
-      <div className='hidden @xl/summary:block'>{visualization}</div>
+      <div className='hidden @md/summary:block'>{visualization}</div>
     </div>
   )
 }

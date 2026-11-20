@@ -30,7 +30,7 @@ import {
   Sparkles,
   Timer,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
@@ -1223,16 +1223,21 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
 
 export interface ModelDetailsDrawerProps extends ModelDetailsContentProps {
   open: boolean
+  triggerRef?: React.RefObject<HTMLElement | null>
   onOpenChange: (open: boolean) => void
 }
 
 export function ModelDetailsDrawer(props: ModelDetailsDrawerProps) {
   const { t } = useTranslation()
-  const { open, onOpenChange, ...contentProps } = props
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const { open, onOpenChange, triggerRef, ...contentProps } = props
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
+        ref={dialogRef}
+        initialFocus={dialogRef}
+        finalFocus={triggerRef}
         side='right'
         className={sideDrawerContentClassName(
           'sm:max-w-2xl lg:max-w-3xl xl:max-w-4xl 2xl:max-w-5xl'

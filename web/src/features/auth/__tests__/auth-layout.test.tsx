@@ -116,19 +116,19 @@ test('long provider names wrap inside an expanding button without widening the a
   expect(label).toHaveClass('min-w-0', '[overflow-wrap:anywhere]')
 })
 
-test('long branding stays bounded and authentication content reserves header space on short screens', async () => {
+test('long branding fits the compact header and the account form occupies the main landmark', async () => {
   renderAuthLayout()
 
-  const branding = await screen.findByRole('heading', { name: systemName })
-  const home = screen.getByRole('link', { name: `Logo ${systemName}` })
-  expect(branding).toHaveClass('min-w-0', 'truncate')
-  expect(branding).toHaveAttribute('title', systemName)
-  expect(home).toHaveClass('right-4', 'sm:right-8', 'min-w-0')
-  expect(home.parentElement).toHaveClass('min-h-svh', 'min-w-0')
-  expect(home.parentElement).not.toHaveClass('h-svh')
-  expect(
-    screen.getByRole('region', { name: 'Account access' }).closest('.container')
-  ).toHaveClass('pt-16', 'sm:pt-24', 'min-w-0')
+  const home = await screen.findByRole('link', { name: 'Go to home' })
+  expect(home).toHaveAttribute('title', systemName)
+  expect(home).toHaveClass('min-w-0', 'max-w-full')
+  expect(screen.getByText(systemName)).toHaveClass(
+    'truncate',
+    'md:[overflow-wrap:anywhere]'
+  )
+  expect(screen.getByRole('main')).toContainElement(
+    screen.getByRole('region', { name: 'Account access' })
+  )
 })
 
 test('password recovery links can wrap beneath translated password labels without overlap', async () => {

@@ -73,7 +73,7 @@ export function Dialog({
       {trigger ? <DialogTrigger render={trigger} /> : null}
       <DialogContent
         className={cn(
-          'flex max-h-[calc(100vh-2rem)] w-full flex-col gap-4 p-4 sm:max-w-2xl sm:p-6',
+          'flex max-h-[calc(100dvh-2rem)] w-full flex-col gap-4 p-4 sm:max-w-2xl sm:p-6',
           bodyOverflow === 'visible' ? 'overflow-visible' : 'overflow-hidden',
           contentClassName,
           dialogContentMotionClassName
@@ -87,7 +87,7 @@ export function Dialog({
         }
       >
         <DialogHeader
-          className={cn('flex-shrink-0 text-start', headerClassName)}
+          className={cn('flex-shrink-0 pe-6 text-start', headerClassName)}
         >
           <DialogTitle className={titleClassName}>{title}</DialogTitle>
           {description ? (
@@ -102,7 +102,7 @@ export function Dialog({
             '-mx-1 min-h-0 h-[var(--dialog-content-height)]',
             bodyOverflow === 'visible'
               ? 'overflow-visible'
-              : 'max-h-[calc(100vh-14rem)] overflow-x-hidden overflow-y-auto overscroll-contain'
+              : 'max-h-[calc(100dvh-14rem)] overflow-x-hidden overflow-y-auto overscroll-contain'
           )}
         >
           <div

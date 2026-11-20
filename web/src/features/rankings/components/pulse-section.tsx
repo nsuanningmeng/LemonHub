@@ -42,11 +42,11 @@ export function PulseSection(props: PulseSectionProps) {
   const { t } = useTranslation()
 
   return (
-    <section className='grid grid-cols-1 gap-4 lg:grid-cols-2'>
+    <section className='grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-1'>
       <PulseCard
         title={t('Trending up')}
         description={t('Models climbing the leaderboard')}
-        icon={<TrendingUp className='size-4 text-emerald-500' />}
+        icon={<TrendingUp className='text-success size-4' />}
       >
         {props.movers.length === 0 ? (
           <PulseEmpty label={t('No notable climbers right now')} />
@@ -62,7 +62,7 @@ export function PulseSection(props: PulseSectionProps) {
       <PulseCard
         title={t('Trending down')}
         description={t('Models losing positions')}
-        icon={<TrendingDown className='size-4 text-rose-500' />}
+        icon={<TrendingDown className='text-destructive size-4' />}
       >
         {props.droppers.length === 0 ? (
           <PulseEmpty label={t('No notable drops right now')} />
@@ -91,7 +91,7 @@ function PulseCard(props: {
           {props.icon}
           {props.title}
         </h3>
-        <p className='text-muted-foreground/80 mt-0.5 text-xs'>
+        <p className='text-muted-foreground mt-0.5 text-xs'>
           {props.description}
         </p>
       </header>
@@ -102,9 +102,7 @@ function PulseCard(props: {
 
 function PulseEmpty(props: { label: string }) {
   return (
-    <div className='text-muted-foreground/80 px-4 py-6 text-center text-xs'>
-      {props.label}
-    </div>
+    <div className='text-muted-foreground px-4 py-5 text-sm'>{props.label}</div>
   )
 }
 
@@ -119,7 +117,7 @@ function MoverRow(props: { row: RankingMover; intent: 'up' | 'down' }) {
         >
           {props.row.model_name}
         </ModelLink>
-        <p className='text-muted-foreground/80 truncate text-[11px]'>
+        <p className='text-muted-foreground truncate text-xs'>
           #{props.row.current_rank} ·{' '}
           <VendorLink vendor={props.row.vendor}>
             {props.row.vendor.toLowerCase()}
@@ -129,9 +127,7 @@ function MoverRow(props: { row: RankingMover; intent: 'up' | 'down' }) {
       <span
         className={cn(
           'inline-flex shrink-0 items-center gap-0.5 font-mono text-xs font-semibold tabular-nums',
-          props.intent === 'up'
-            ? 'text-emerald-600 dark:text-emerald-400'
-            : 'text-rose-600 dark:text-rose-400'
+          props.intent === 'up' ? 'text-success' : 'text-destructive'
         )}
       >
         {props.intent === 'up' ? (

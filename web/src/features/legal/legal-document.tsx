@@ -17,14 +17,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { FileWarning } from 'lucide-react'
+import { ArrowUpRight, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
 import { RichContent } from '@/components/rich-content'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { buttonVariants } from '@/components/ui/button'
+import {
+  DocumentLayout,
+  DocumentLoading,
+  DocumentTitle,
+} from '@/features/public-documents/document-layout'
 import { isHttpUrl, isLikelyHtml } from '@/lib/content-format'
 
 import type { LegalDocumentResponse } from './types'
@@ -56,89 +59,59 @@ export function LegalDocument({
   const success = data?.success ?? false
 
   if (isLoading) {
-    return (
-      <PublicLayout>
-        <div className='mx-auto flex max-w-4xl flex-col gap-4 py-12'>
-          <Skeleton className='h-8 w-[45%]' />
-          <Skeleton className='h-4 w-full' />
-          <Skeleton className='h-4 w-[90%]' />
-          <Skeleton className='h-4 w-[80%]' />
-        </div>
-      </PublicLayout>
-    )
+    return <DocumentLoading />
   }
 
-  if (!success || !hasContent) {
+  if (!success || !hasContent || isUrl) {
     return (
-      <PublicLayout>
-        <div className='mx-auto max-w-2xl py-12'>
-          <Card className='border-dashed'>
-            <CardHeader className='flex flex-row items-center gap-4'>
-              <div className='bg-muted rounded-lg p-2'>
-                <FileWarning className='text-muted-foreground h-5 w-5' />
-              </div>
-              <div className='space-y-1'>
-                <CardTitle className='text-lg font-semibold'>{title}</CardTitle>
-                <p className='text-muted-foreground text-sm'>
-                  {data?.message || emptyMessage}
-                </p>
-              </div>
-            </CardHeader>
-          </Card>
-        </div>
-      </PublicLayout>
-    )
-  }
-
-  if (isUrl) {
-    return (
-      <PublicLayout>
-        <div className='mx-auto max-w-2xl py-12'>
-          <Card>
-            <CardHeader>
-              <CardTitle>{title}</CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-4'>
-              <p className='text-muted-foreground text-sm'>
-                {t(
-                  'The administrator configured an external link for this document.'
-                )}
-              </p>
-              <Button
-                render={
-                  <a
-                    href={rawContent}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                  />
-                }
+      <DocumentLayout>
+        <DocumentTitle>{title}</DocumentTitle>
+        <div className='flex items-start gap-4'>
+          <FileText
+            aria-hidden='true'
+            className='text-muted-foreground mt-1 size-6 shrink-0'
+          />
+          <div>
+            <p className='text-muted-foreground leading-relaxed'>
+              {success && isUrl
+                ? t(
+                    'The administrator configured an external link for this document.'
+                  )
+                : data?.message || emptyMessage}
+            </p>
+            {success && isUrl && (
+              <a
+                href={rawContent}
+                target='_blank'
+                rel='noopener noreferrer'
+                className={buttonVariants({ className: 'mt-5' })}
               >
                 {t('View document')}
-              </Button>
-            </CardContent>
-          </Card>
+                <ArrowUpRight aria-hidden='true' />
+              </a>
+            )}
+          </div>
         </div>
+      </DocumentLayout>
+    )
+  }
+
+  if (contentIsHtml) {
+    return (
+      <PublicLayout showMainContainer={false}>
+        <RichContent mode='html' htmlVariant='isolated' content={rawContent} />
       </PublicLayout>
     )
   }
 
   return (
-    <PublicLayout showMainContainer={!contentIsHtml}>
-      {contentIsHtml ? (
-        <RichContent mode='html' htmlVariant='isolated' content={rawContent} />
-      ) : (
-        <div className='mx-auto max-w-4xl space-y-6 py-12'>
-          <div className='space-y-2'>
-            <h1 className='text-3xl font-semibold tracking-tight'>{title}</h1>
-          </div>
-
-          <RichContent
-            mode='markdown'
-            content={rawContent}
-            className='prose-neutral dark:prose-invert max-w-none'
-          />
-        </div>
-      )}
-    </PublicLayout>
+    <DocumentLayout>
+      <DocumentTitle>{title}</DocumentTitle>
+      <RichContent
+        mode='markdown'
+        content={rawContent}
+        className='prose-neutral dark:prose-invert max-w-none'
+      />
+    </DocumentLayout>
   )
 }

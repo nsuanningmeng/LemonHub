@@ -7,15 +7,15 @@
     <meta name="google" content="notranslate" />
 
     <!-- Primary Meta Tags -->
-    <title>New API</title>
-    <meta name="title" content="New API" />
+    <title>LemonHub</title>
+    <meta name="title" content="LemonHub" />
     <meta
       name="description"
       content="Unified AI API gateway and admin dashboard."
     />
     <meta name="keywords" content="AI API, API gateway, LLM proxy" />
 
-    <meta name="theme-color" content="#fff" />
+    <meta name="theme-color" content="#f8f9f6" />
     <!-- Resolve the theme before first paint so the page never flashes light
          and one-shot detectors (e.g. Dark Reader) see the real theme.
          Keep in sync with ThemeProvider and THEME_STORAGE_KEYS.mode. -->
@@ -31,6 +31,9 @@
             : 'light'
         }
         document.documentElement.classList.add(theme)
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute('content', theme === 'dark' ? '#181d19' : '#f8f9f6')
       })()
     </script>
     <!--umami-->

@@ -54,6 +54,7 @@ export interface PricingColumnsOptions {
   usdExchangeRate?: number
   showRechargePrice?: boolean
   selectedGroup?: string
+  onModelClick?: (name: string) => void
 }
 
 export function usePricingColumns(
@@ -86,9 +87,22 @@ export function usePricingColumns(
         return (
           <div className='flex max-w-full min-w-0 items-center gap-2'>
             {modelIcon}
-            <span className='truncate font-mono text-sm font-medium'>
-              {model.model_name}
-            </span>
+            {options.onModelClick ? (
+              <button
+                type='button'
+                className='truncate text-start font-mono text-sm font-medium hover:underline'
+                onClick={(event) => {
+                  event.stopPropagation()
+                  options.onModelClick?.(model.model_name)
+                }}
+              >
+                {model.model_name}
+              </button>
+            ) : (
+              <span className='truncate font-mono text-sm font-medium'>
+                {model.model_name}
+              </span>
+            )}
           </div>
         )
       },

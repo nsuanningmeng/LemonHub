@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { VChart } from '@visactor/react-vchart'
-import { BarChart3, Trophy } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -159,7 +158,7 @@ export function ModelsSection(props: ModelsSectionProps) {
           },
         },
       },
-      animationAppear: { duration: 500 },
+      animation: false,
     }
   }, [chartGridColor, chartTextColor, orderedPoints, t])
 
@@ -168,8 +167,7 @@ export function ModelsSection(props: ModelsSectionProps) {
       {/* Chart block ----------------------------------------------------- */}
       <header className='flex items-start justify-between gap-4 px-5 py-4'>
         <div className='min-w-0 flex-1'>
-          <h2 className='text-foreground inline-flex items-center gap-2 text-base font-semibold'>
-            <BarChart3 className='text-primary size-4' />
+          <h2 className='text-foreground inline-flex items-center gap-2 text-xl font-semibold tracking-tight'>
             {t('Top Models')}
           </h2>
           <p className='text-muted-foreground mt-1 text-sm'>
@@ -180,14 +178,12 @@ export function ModelsSection(props: ModelsSectionProps) {
           <div className='text-foreground font-mono text-2xl font-semibold tabular-nums'>
             {formatTokens(totalTokens)}
           </div>
-          <div className='text-muted-foreground/80 text-[10px] font-medium tracking-widest uppercase'>
-            {t('tokens')}
-          </div>
+          <div className='text-muted-foreground text-xs'>{t('tokens')}</div>
         </div>
       </header>
 
       <div className='px-5 pb-5'>
-        <div className='h-60 sm:h-72'>
+        <div className={spec ? 'h-60 sm:h-72' : 'min-h-20'}>
           {themeReady && spec ? (
             <VChart
               key={`models-history-${resolvedTheme}-${props.period}`}
@@ -199,7 +195,7 @@ export function ModelsSection(props: ModelsSectionProps) {
               option={VCHART_OPTION}
             />
           ) : (
-            <div className='text-muted-foreground/80 flex h-full items-center justify-center text-xs'>
+            <div className='text-muted-foreground bg-muted/50 flex min-h-20 items-center justify-center rounded-md text-sm'>
               {t('No history data available')}
             </div>
           )}
@@ -210,15 +206,14 @@ export function ModelsSection(props: ModelsSectionProps) {
       <div className='border-t'>
         <header className='px-5 pt-4 pb-2'>
           <h3 className='text-foreground inline-flex items-center gap-2 text-sm font-semibold'>
-            <Trophy className='size-3.5 text-amber-500' />
             {t('LLM Leaderboard')}
           </h3>
-          <p className='text-muted-foreground/80 mt-0.5 text-xs'>
+          <p className='text-muted-foreground mt-0.5 text-xs'>
             {t('Compare the most popular models on the platform')}
           </p>
         </header>
         {props.rows.length === 0 ? (
-          <div className='text-muted-foreground/80 px-5 py-8 text-center text-sm'>
+          <div className='text-muted-foreground px-5 py-8 text-center text-sm'>
             {t('No models match the selected filters')}
           </div>
         ) : (

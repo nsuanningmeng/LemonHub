@@ -63,6 +63,11 @@ export function NewTicketDialog({
   onCreated,
 }: NewTicketDialogProps) {
   const { t } = useTranslation()
+  const priorityItems = TICKET_PRIORITY_OPTIONS.map((option) => ({
+    value: option.value,
+    label: t(option.labelKey),
+  }))
+  const typeItems = types.map((type) => ({ value: type.key, label: type.name }))
   const [typeKey, setTypeKey] = useState('')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
@@ -144,15 +149,15 @@ export function NewTicketDialog({
               <Select
                 value={typeKey}
                 onValueChange={handleTypeChange}
-                items={types.map((ty) => ({ value: ty.key, label: ty.name }))}
+                items={typeItems}
               >
-                <SelectTrigger className='w-full'>
+                <SelectTrigger aria-label={t('Type')} className='w-full'>
                   <SelectValue placeholder={t('Select a type')} />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  {types.map((ty) => (
-                    <SelectItem key={ty.key} value={ty.key}>
-                      {ty.name}
+                  {typeItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -163,18 +168,19 @@ export function NewTicketDialog({
               <Label>{t('Priority')}</Label>
               <Select
                 value={priority}
+                items={priorityItems}
                 onValueChange={(value) => {
                   if (value == null) return
                   setPriority(value as TicketPriority)
                 }}
               >
-                <SelectTrigger className='w-full'>
+                <SelectTrigger aria-label={t('Priority')} className='w-full'>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  {TICKET_PRIORITY_OPTIONS.map((option) => (
+                  {priorityItems.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
-                      {t(option.labelKey)}
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
