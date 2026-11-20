@@ -64,6 +64,7 @@ For commercial licensing, please contact support@quantumnous.com
 }
 .gateway-hero h1 {
   margin: 0;
+  color: var(--sky-text);
   font-size: clamp(3rem, 6vw, 6rem);
   line-height: 1.03;
   letter-spacing: -0.066em;

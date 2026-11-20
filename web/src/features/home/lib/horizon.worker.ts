@@ -41,40 +41,61 @@ const width = meta.cols * cell
 const height = meta.rows * cell
 const surface = new OffscreenCanvas(width, height)
 const context = surface.getContext('2d')
+const ink = new OffscreenCanvas(cell, cell).getContext('2d', {
+  willReadFrequently: true,
+})
+const image = new ImageData(width, height)
+const pixels = new Uint32Array(image.data.buffer)
+const background = new Uint32Array(new Uint8Array([16, 26, 48, 255]).buffer)[0]
 const colors = new Uint8Array(meta.cols * meta.rows)
 const makeFrame = earthrise()
-const glyphs = new Map<string, OffscreenCanvas>()
+const glyphs = new Map<string, Uint32Array[]>()
 let running = false
 let seconds = 0
 let timer: ReturnType<typeof setTimeout> | undefined
 const rate = 5
 
+// Paint each distinct glyph once. Copying its rows in memory lets the worker
+// submit the whole frame to the canvas in one operation.
+function glyphRows(mark: string, shade: number) {
+  const key = mark + shade
+  const cached = glyphs.get(key)
+  if (cached) return cached
+  if (!ink) throw new Error('2D canvas is unavailable')
+  ink.fillStyle = paper
+  ink.fillRect(0, 0, cell, cell)
+  ink.font = `${cell * 1.55}px monospace`
+  ink.textAlign = 'center'
+  ink.textBaseline = 'middle'
+  ink.fillStyle = palette[shade]
+  ink.fillText(mark, cell / 2, cell / 2)
+  const tile = new Uint32Array(ink.getImageData(0, 0, cell, cell).data.buffer)
+  const rows = Array.from({ length: cell }, (_, y) =>
+    tile.subarray(y * cell, (y + 1) * cell)
+  )
+  glyphs.set(key, rows)
+  return rows
+}
+
 function drawFrame() {
-  if (!running || !context) return
+  if (!running) return
+  if (!context) throw new Error('2D canvas is unavailable')
   const frame = makeFrame(seconds, { color: colors })
-  context.fillStyle = paper
-  context.fillRect(0, 0, width, height)
+  pixels.fill(background)
   for (let row = 0; row < meta.rows; row++) {
     for (let col = 0; col < meta.cols; col++) {
       const mark = frame[row * (meta.cols + 1) + col]
       if (mark === ' ') continue
       const shade = colors[row * meta.cols + col]
-      const key = mark + shade
-      let tile = glyphs.get(key)
-      if (!tile) {
-        tile = new OffscreenCanvas(cell, cell)
-        const ink = tile.getContext('2d')
-        if (!ink) continue
-        ink.font = `${cell * 1.55}px monospace`
-        ink.textAlign = 'center'
-        ink.textBaseline = 'middle'
-        ink.fillStyle = palette[shade]
-        ink.fillText(mark, cell / 2, cell / 2)
-        glyphs.set(key, tile)
+      const rows = glyphRows(mark, shade)
+      let offset = row * cell * width + col * cell
+      for (const glyphRow of rows) {
+        pixels.set(glyphRow, offset)
+        offset += width
       }
-      context.drawImage(tile, col * cell, row * cell)
     }
   }
+  context.putImageData(image, 0, 0)
   const bitmap = surface.transferToImageBitmap()
   self.postMessage({ bitmap, seconds }, { transfer: [bitmap] })
   seconds += 1 / rate

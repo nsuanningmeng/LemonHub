@@ -90,7 +90,8 @@ export function GatewayAtlas() {
               setReady(true)
             }
           )
-          worker.addEventListener('error', () => {
+          worker.addEventListener('error', (event) => {
+            event.preventDefault()
             if (live) setAvailable(false)
           })
           worker.postMessage({ play, seconds: lastTime.current })
@@ -132,7 +133,7 @@ export function GatewayAtlas() {
           data-ready={(ready && available) || undefined}
         />
       </div>
-      {available && !reduced && (
+      {ready && available && !reduced && (
         <button
           className='gateway-motion'
           type='button'

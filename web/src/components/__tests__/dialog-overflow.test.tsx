@@ -17,9 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
+import { I18nextProvider } from 'react-i18next'
 import { expect, test } from 'vitest'
 
+import { createLocaleI18n } from '@/i18n/__tests__/helpers'
+
 import { Dialog } from '../dialog'
+import { Sheet, SheetContent, SheetTitle } from '../ui/sheet'
 
 test('keeps ordinary dialog bodies scrollable within the popup by default', () => {
   render(
@@ -40,4 +44,18 @@ test('keeps ordinary dialog bodies scrollable within the popup by default', () =
     'overflow-x-hidden',
     'max-h-[calc(100dvh-14rem)]'
   )
+})
+
+test('the shared sheet close icon has a localized accessible name', async () => {
+  const i18n = await createLocaleI18n('zhCN')
+  render(
+    <I18nextProvider i18n={i18n}>
+      <Sheet open>
+        <SheetContent>
+          <SheetTitle>设置</SheetTitle>
+        </SheetContent>
+      </Sheet>
+    </I18nextProvider>
+  )
+  expect(screen.getByRole('button', { name: '关闭' })).toBeVisible()
 })

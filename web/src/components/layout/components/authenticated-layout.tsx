@@ -73,7 +73,7 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
                 'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
               )}
             >
-              <MainRegionContext.Provider value={true}>
+              <MainRegionContext.Provider value>
                 <AnnouncementBanner />
                 {props.children ?? <AnimatedOutlet />}
               </MainRegionContext.Provider>

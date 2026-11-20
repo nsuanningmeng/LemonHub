@@ -150,7 +150,7 @@ test('subscription comparisons keep long plan names readable and retain purchase
   const plan = {
     id: 3,
     title,
-    price_amount: 10,
+    price_amount: 8_798_765_432_123_456,
     duration_unit: 'month',
     duration_value: 1,
     quota_reset_period: 'monthly',
@@ -186,6 +186,9 @@ test('subscription comparisons keep long plan names readable and retain purchase
 
   const limited = await screen.findByRole('article', { name: title })
   expect(within(limited).getByRole('heading', { name: title })).toHaveClass(
+    'wrap-anywhere'
+  )
+  expect(within(limited).getByText('$8798765432123456.00')).toHaveClass(
     'wrap-anywhere'
   )
   const benefits = within(limited).getByRole('list')

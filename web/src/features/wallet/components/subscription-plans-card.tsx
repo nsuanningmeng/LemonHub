@@ -619,7 +619,7 @@ export function SubscriptionPlansCard({
                     </div>
 
                     <div className='py-2'>
-                      <span className='text-foreground text-2xl font-semibold tracking-tight tabular-nums'>
+                      <span className='text-foreground block text-2xl font-semibold tracking-tight wrap-anywhere tabular-nums'>
                         ${price}
                       </span>
                     </div>

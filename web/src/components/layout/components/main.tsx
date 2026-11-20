@@ -30,7 +30,7 @@ export function Main({ className, fluid = true, ...props }: MainProps) {
   const withinMain = useContext(MainRegionContext)
   const Container = withinMain ? 'div' : 'main'
   return (
-    <MainRegionContext.Provider value={true}>
+    <MainRegionContext.Provider value>
       <Container
         className={cn(
           'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',

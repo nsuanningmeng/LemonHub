@@ -22,6 +22,7 @@ import { Dialog as SheetPrimitive } from '@base-ui/react/dialog'
 import { Cancel01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -70,6 +71,7 @@ function SheetContent({
   // `sm:max-w-2xl` can be correctly merged by `tailwind-merge` and the CSS
   // cascade — the data-attribute variants would otherwise win on specificity
   // and trap the panel at the default `sm:max-w-sm` width.
+  const { t } = useTranslation()
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -103,7 +105,7 @@ function SheetContent({
             }
           >
             <HugeiconsIcon icon={Cancel01Icon} strokeWidth={2} />
-            <span className='sr-only'>Close</span>
+            <span className='sr-only'>{t('Close')}</span>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Popup>

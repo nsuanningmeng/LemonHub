@@ -30,6 +30,26 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals())
 
+test('playback controls stay hidden until the worker has presented a frame', () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    canvas: document.createElement('canvas'),
+    transferFromImageBitmap: vi.fn(),
+  })
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    }
+  )
+
+  const { container } = render(<GatewayAtlas />)
+  expect(container.querySelector('img')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Pause animation' })
+  ).not.toBeInTheDocument()
+})
+
 test('a reader requesting reduced motion sees the static panorama without the playback control', () => {
   vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
     matches: query.includes('prefers-reduced-motion'),
