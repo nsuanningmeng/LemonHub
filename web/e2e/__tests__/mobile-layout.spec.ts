@@ -444,7 +444,8 @@ test('a failed keys request on a phone shows a reachable retry that restores the
     .filter({ hasText: 'Failed to load API keys' })
   // Production queries retry before exposing the recoverable error state.
   await expect(error).toBeVisible({ timeout: 30_000 })
-  const retry = error.getByRole('button', { name: 'Retry', exact: true })
+  const errorPanel = page.locator('[data-slot="empty"]').filter({ has: error })
+  const retry = errorPanel.getByRole('button', { name: 'Retry', exact: true })
   await retry.scrollIntoViewIfNeeded()
   await expect(retry).toBeInViewport()
   failing = false
