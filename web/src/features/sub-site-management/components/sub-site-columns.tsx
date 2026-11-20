@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -24,7 +24,7 @@ import { TableId } from '@/components/table-id'
 import { formatTimestampToDate } from '@/lib/format'
 
 import { SITE_STATUSES } from '../constants'
-import { type Site } from '../types'
+import type { Site } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 
 export function useSubSiteColumns(): ColumnDef<Site>[] {

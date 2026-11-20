@@ -23,6 +23,7 @@ import {
 } from '@tanstack/react-table'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import i18next from 'i18next'
 import { expect, test } from 'vitest'
 
 import { DataTablePagination } from '../pagination'
@@ -30,9 +31,9 @@ import { DataTablePagination } from '../pagination'
 const records = Array.from({ length: 51 }, (_, id) => ({ id }))
 const columns = [{ accessorKey: 'id' }]
 
-function PaginatedRecords() {
+function PaginatedRecords({ data = records }: { data?: typeof records }) {
   const table = useReactTable({
-    data: records,
+    data,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -58,4 +59,26 @@ test('page size is identifiable independently of the visible option', () => {
   expect(
     screen.getByRole('combobox', { name: 'Rows per page' })
   ).toHaveTextContent('10')
+})
+
+test.each(['zhCN', 'zhTW'])(
+  'formats the final row range using the %s interface locale',
+  async (language) => {
+    const original = i18next.language
+    try {
+      await i18next.changeLanguage(language)
+      const user = userEvent.setup()
+      render(<PaginatedRecords />)
+      expect(screen.getByText('1–10 of 51')).toBeVisible()
+      await user.click(screen.getByRole('button', { name: 'Go to last page' }))
+      expect(screen.getByText('51–51 of 51')).toBeVisible()
+    } finally {
+      await i18next.changeLanguage(original)
+    }
+  }
+)
+
+test('shows an empty result count without inventing a first row', () => {
+  render(<PaginatedRecords data={[]} />)
+  expect(screen.getByText('No records')).toBeVisible()
 })

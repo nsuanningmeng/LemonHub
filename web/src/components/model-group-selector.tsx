@@ -82,6 +82,22 @@ interface GroupOption {
   description?: string
 }
 
+function GroupDetails({ group }: { group: GroupOption }) {
+  const { t } = useTranslation()
+  const description = group.desc || group.description
+  if (!description && group.ratio == null) return null
+  return (
+    <span className='text-muted-foreground mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs leading-snug'>
+      {description && <span className='wrap-anywhere'>{description}</span>}
+      {group.ratio != null && (
+        <span className='tabular-nums'>
+          {t('Ratio: {{value}}', { value: group.ratio })}
+        </span>
+      )}
+    </span>
+  )
+}
+
 interface ModelSelectorProps {
   selectedModel: string
   models: ModelOption[]
@@ -110,6 +126,7 @@ const ModelTriggerButton = React.forwardRef<
     ref={ref}
     variant='outline'
     role='combobox'
+    aria-label={currentLabel}
     size='sm'
     disabled={isDisabled}
     className={cn(
@@ -118,7 +135,6 @@ const ModelTriggerButton = React.forwardRef<
       'w-8',
       'bg-background text-foreground',
       'hover:bg-accent transition-colors',
-      'focus:!ring-0 focus:!outline-none',
       'shadow-none',
       triggerClassName
     )}
@@ -146,6 +162,7 @@ const GroupTriggerButton = React.forwardRef<
     ref={ref}
     variant='outline'
     role='combobox'
+    aria-label={currentLabel}
     size='sm'
     disabled={isDisabled}
     className={cn(
@@ -154,7 +171,6 @@ const GroupTriggerButton = React.forwardRef<
       'w-8',
       'bg-background text-foreground',
       'hover:bg-accent transition-colors',
-      'focus:!ring-0 focus:!outline-none',
       'shadow-none',
       triggerClassName
     )}
@@ -438,17 +454,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
                     <span className='text-foreground truncate text-[11px] font-medium'>
                       {group.label}
                     </span>
-                    {(group.desc || group.description) && (
-                      <div className='text-muted-foreground truncate text-[9px] leading-tight'>
-                        {group.desc || group.description}
-                        {group.ratio && (
-                          <>
-                            {' · '}
-                            {t('Ratio: {{value}}', { value: group.ratio })}
-                          </>
-                        )}
-                      </div>
-                    )}
+                    <GroupDetails group={group} />
                   </div>
                 </div>
                 <Check
@@ -498,19 +504,7 @@ export const GroupSelector: React.FC<GroupSelectorProps> = React.memo(
                       <span className='text-foreground text-sm font-medium'>
                         {group.label}
                       </span>
-                      {(group.desc || group.description) && (
-                        <div className='text-muted-foreground mt-0.5 text-xs'>
-                          {group.desc || group.description}
-                          {group.ratio && (
-                            <>
-                              {' · '}
-                              {t('Ratio: {{value}}', {
-                                value: group.ratio,
-                              })}
-                            </>
-                          )}
-                        </div>
-                      )}
+                      <GroupDetails group={group} />
                     </div>
                   </div>
                   <Check
@@ -664,7 +658,6 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
       className={cn(
         'h-8 max-w-[15rem] justify-start gap-2 border px-2.5 font-medium shadow-none',
         'bg-background/80 hover:bg-accent/70 text-foreground',
-        'focus:!ring-0 focus:!outline-none',
         className
       )}
       disabled={disabled}

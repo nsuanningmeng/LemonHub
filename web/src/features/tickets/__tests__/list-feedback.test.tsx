@@ -54,11 +54,11 @@ test('lets a user retry a failed ticket query before showing an empty inbox', as
     )
     expect(await screen.findByRole('alert')).toBeVisible()
     expect(
-      screen.queryByText('You have no tickets yet.')
+      screen.queryByText('No support requests yet')
     ).not.toBeInTheDocument()
     unavailable = false
     await user.click(screen.getByRole('button', { name: 'Retry' }))
-    expect(await screen.findByText('You have no tickets yet.')).toBeVisible()
+    expect(await screen.findByText('No support requests yet')).toBeVisible()
   } finally {
     cleanup()
     client.clear()
@@ -80,6 +80,36 @@ test('the status filter shows its translated label before the options are opened
     expect(
       await screen.findByRole('combobox', { name: 'Status' })
     ).toHaveTextContent('All statuses')
+  } finally {
+    cleanup()
+    client.clear()
+  }
+})
+
+test('a status with no matches offers a way back to all support requests', async () => {
+  const user = userEvent.setup()
+  const client = new QueryClient({
+    defaultOptions: { queries: { staleTime: Infinity } },
+  })
+  client.setQueryData(['ticket', 'config'], { enabled: true, types: [] })
+  for (const status of ['all', 'closed']) {
+    client.setQueryData(['tickets', 1, status], { items: [], total: 0 })
+  }
+  try {
+    render(
+      <QueryClientProvider client={client}>
+        <Tickets />
+      </QueryClientProvider>
+    )
+    await user.click(screen.getByRole('combobox', { name: 'Status' }))
+    await user.click(await screen.findByRole('option', { name: 'Closed' }))
+    expect(
+      await screen.findByText('No tickets match the current filters.')
+    ).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.getByRole('combobox', { name: 'Status' })).toHaveTextContent(
+      'All statuses'
+    )
   } finally {
     cleanup()
     client.clear()

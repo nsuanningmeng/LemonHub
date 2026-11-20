@@ -16,32 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  Globe,
-  Wallet,
-  Palette,
-  Code2,
-  Megaphone,
-  Users2,
-  Store,
-  Gift,
-  Banknote,
-} from 'lucide-react'
-
-export const HERO_SELLING_POINTS = [
-  {
-    icon: Globe,
-    text: 'Just provide a domain and go live by following the guide',
-  },
-  {
-    icon: Palette,
-    text: 'Freely customize pricing, homepage, notices and guides',
-  },
-  {
-    icon: Wallet,
-    text: 'User payments land directly in your own account — set your own retail price, the margin is yours',
-  },
-]
+import { Code2, Megaphone, Users2, Store, Gift, Banknote } from 'lucide-react'
 
 export const AUDIENCES = [
   {
@@ -158,18 +133,6 @@ export const REFERRAL_TIERS = [
       'Transparent ledger — cash owed and cash paid visible in real time',
       'By application — contact us to upgrade to Professional Promoter',
     ],
-  },
-]
-
-// 区别说明：明确把「邀请返佣」和「品牌代理」划开，避免访客混淆两种模式。
-export const REFERRAL_VS_AGENT = [
-  {
-    label: 'Brand Agent',
-    desc: 'open an independent AI site on your own domain, stock at a wholesale discount and set your own retail price for the margin — payments land in your own account.',
-  },
-  {
-    label: 'Referral Rewards',
-    desc: 'no site to build — you simply bring users to this platform and earn commission on their top-ups.',
   },
 ]
 

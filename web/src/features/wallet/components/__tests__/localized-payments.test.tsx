@@ -110,7 +110,7 @@ test('recharge language changes preserve preset amounts, savings and selection c
     </I18nextProvider>
   )
   expect(
-    screen.getByRole('button', { name: '730 20% OFF Pay 584 • Save 146' })
+    screen.getByRole('button', { name: '730 20% OFF Pay 584 Save 146' })
   ).toBeInTheDocument()
   expect(
     screen.getByRole('button', { name: '100 Pay 100' })
@@ -120,10 +120,10 @@ test('recharge language changes preserve preset amounts, savings and selection c
     await i18n.changeLanguage('zhCN')
   })
   const discounted = screen.getByRole('button', {
-    name: '730 优惠 20% 支付 584 • 节省 146',
+    name: '730 优惠 20% 支付 584 节省 146',
   })
   expect(
-    within(discounted).getByText('• 节省 146', { selector: 'span' })
+    within(discounted).getByText('节省 146', { selector: 'span' })
   ).toBeInTheDocument()
   expect(
     screen.getByRole('button', { name: '100 支付 100' })

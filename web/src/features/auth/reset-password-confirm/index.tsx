@@ -112,92 +112,87 @@ export function ResetPasswordConfirm({
   }
 
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
+    <AuthLayout
+      title={t('Reset password')}
+      description={
+        newPassword
+          ? t('auth.resetPasswordConfirm.success')
+          : t('auth.resetPasswordConfirm.description')
+      }
+    >
+      <div className='space-y-4'>
+        {!isValidResetLink && (
+          <Alert variant='destructive'>
+            <AlertDescription>
+              {t('Invalid reset link, please request a new password reset.')}
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className='space-y-2'>
-          <h1 className='text-3xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]'>
-            {t('Reset password')}
-          </h1>
-          <p className='text-muted-foreground text-start text-sm leading-relaxed'>
-            {newPassword
-              ? t('auth.resetPasswordConfirm.success')
-              : t('auth.resetPasswordConfirm.description')}
-          </p>
+          <Label htmlFor='email'>{t('Email')}</Label>
+          <Input
+            id='email'
+            type='email'
+            value={email || ''}
+            disabled
+            placeholder={t('Waiting for email...')}
+          />
         </div>
 
-        <div className='space-y-4'>
-          {!isValidResetLink && (
-            <Alert variant='destructive'>
-              <AlertDescription>
-                {t('Invalid reset link, please request a new password reset.')}
-              </AlertDescription>
-            </Alert>
-          )}
-
+        {newPassword && (
           <div className='space-y-2'>
-            <Label htmlFor='email'>{t('Email')}</Label>
-            <Input
-              id='email'
-              type='email'
-              value={email || ''}
-              disabled
-              placeholder={t('Waiting for email...')}
-            />
-          </div>
-
-          {newPassword && (
-            <div className='space-y-2'>
-              <Label htmlFor='password'>{t('New password')}</Label>
-              <div className='flex gap-2'>
-                <Input
-                  id='password'
-                  value={newPassword}
-                  disabled
-                  className='font-mono'
-                />
-                <Button
-                  type='button'
-                  size='icon'
-                  variant='outline'
-                  onClick={handleCopy}
-                >
-                  {copied ? (
-                    <CheckIcon className='h-4 w-4' />
-                  ) : (
-                    <CopyIcon className='h-4 w-4' />
-                  )}
-                </Button>
-              </div>
-              <p className='text-muted-foreground text-xs'>
-                {t('Password has been copied to clipboard')}
-              </p>
+            <Label htmlFor='password'>{t('New password')}</Label>
+            <div className='flex gap-2'>
+              <Input
+                id='password'
+                value={newPassword}
+                disabled
+                className='font-mono'
+              />
+              <Button
+                type='button'
+                size='icon'
+                variant='outline'
+                aria-label={t('Copy password')}
+                onClick={handleCopy}
+              >
+                {copied ? (
+                  <CheckIcon className='h-4 w-4' />
+                ) : (
+                  <CopyIcon className='h-4 w-4' />
+                )}
+              </Button>
             </div>
-          )}
+            <p className='text-muted-foreground text-xs'>
+              {t('Password has been copied to clipboard')}
+            </p>
+          </div>
+        )}
 
+        <Button
+          className='w-full'
+          onClick={
+            newPassword
+              ? () => navigate({ to: '/sign-in', replace: true })
+              : handleSubmit
+          }
+          disabled={
+            newPassword ? false : loading || isActive || !isValidResetLink
+          }
+        >
+          {actionLabel}
+        </Button>
+
+        {!newPassword && (
           <Button
+            variant='link'
             className='w-full'
-            onClick={
-              newPassword
-                ? () => navigate({ to: '/sign-in', replace: true })
-                : handleSubmit
-            }
-            disabled={
-              newPassword ? false : loading || isActive || !isValidResetLink
-            }
+            onClick={() => navigate({ to: '/sign-in', replace: true })}
           >
-            {actionLabel}
+            {t('Back to login')}
           </Button>
-
-          {!newPassword && (
-            <Button
-              variant='link'
-              className='w-full'
-              onClick={() => navigate({ to: '/sign-in', replace: true })}
-            >
-              {t('Back to login')}
-            </Button>
-          )}
-        </div>
+        )}
       </div>
     </AuthLayout>
   )

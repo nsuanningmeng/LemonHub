@@ -175,12 +175,17 @@ export function usePricingColumns(
                   </span>
                 ))}
               </span>
-              <div className='text-muted-foreground/50 text-[10px]'>
-                / {tokenUnitLabel} tokens
-                {dynamicSummary.tierCount > 1 &&
-                  ` · ${t('{{count}} tiers', {
-                    count: dynamicSummary.tierCount,
-                  })}`}
+              <div className='text-muted-foreground flex flex-wrap gap-x-2 text-xs'>
+                <span>
+                  {t('Prices shown per {{unit}} tokens', {
+                    unit: tokenUnitLabel,
+                  })}
+                </span>
+                {dynamicSummary.tierCount > 1 && (
+                  <span>
+                    {t('{{count}} tiers', { count: dynamicSummary.tierCount })}
+                  </span>
+                )}
               </div>
             </div>
           )

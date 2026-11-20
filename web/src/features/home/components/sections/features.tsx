@@ -16,13 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  ArrowUpRight,
-  Gauge,
-  Network,
-  ReceiptText,
-  ShieldCheck,
-} from 'lucide-react'
+import { Gauge, Network, ReceiptText, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 export function Features() {
@@ -65,23 +59,6 @@ export function Features() {
           <h2 id='capabilities-title' className='gateway-section-title'>
             {t('Capabilities')}
           </h2>
-          <div className='gateway-apps'>
-            <h3>{t('Supported Applications')}</h3>
-            <a
-              href='https://cherry-ai.com'
-              target='_blank'
-              rel='noopener noreferrer'
-            >
-              Cherry Studio <ArrowUpRight aria-hidden='true' size={14} />
-            </a>
-            <a
-              href='https://ccswitch.io'
-              target='_blank'
-              rel='noopener noreferrer'
-            >
-              CC Switch <ArrowUpRight aria-hidden='true' size={14} />
-            </a>
-          </div>
         </div>
         <ul>
           {capabilities.map(({ icon: Icon, title, description }) => (

@@ -25,31 +25,24 @@ import { ForgotPasswordForm } from './components/forgot-password-form'
 export function ForgotPassword() {
   const { t } = useTranslation()
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-3'>
-          <h1 className='text-3xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]'>
-            {t('Forgot password')}
-          </h1>
-          <p className='text-muted-foreground text-start text-sm leading-relaxed'>
-            {t(
-              'Enter your registered email and we will send you a link to reset your password.'
-            )}
-          </p>
-          <p className='text-muted-foreground text-start text-sm leading-relaxed'>
-            {t("Don't have an account?")}{' '}
-            <Link
-              to='/sign-up'
-              className='hover:text-primary font-medium underline underline-offset-4'
-            >
-              {t('Sign up')}
-            </Link>
-            .
-          </p>
+    <AuthLayout
+      title={t('Reset password')}
+      description={t('We will send a reset link to your registered email.')}
+      secondaryAction={
+        <div className='flex flex-wrap items-center gap-4'>
+          <Link
+            to='/sign-in'
+            className='text-foreground font-medium underline underline-offset-4'
+          >
+            {t('Back to sign in')}
+          </Link>
+          <Link to='/sign-up' className='underline underline-offset-4'>
+            {t('Create an account')}
+          </Link>
         </div>
-
-        <ForgotPasswordForm className='space-y-0' />
-      </div>
+      }
+    >
+      <ForgotPasswordForm />
     </AuthLayout>
   )
 }

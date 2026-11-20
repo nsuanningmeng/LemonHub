@@ -92,7 +92,7 @@ import {
   transformFormDataToPayload,
   transformUserToFormDefaults,
 } from '../lib'
-import { type User } from '../types'
+import type { User } from '../types'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -118,7 +118,7 @@ export function UsersMutateDrawer({
   onOpenChange,
   currentRow,
 }: UsersMutateDrawerProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const isUpdate = !!currentRow
   // Per-user money policy (referral commission rate + cash-settled flag) is root-only; the
   // backend rejects non-root admins, so hide these controls for them (existing values are
@@ -158,20 +158,37 @@ export function UsersMutateDrawer({
 
   // Load existing data when updating
   useEffect(() => {
-    if (open && isUpdate && currentRow) {
-      // For update, fetch fresh data
-      getUser(currentRow.id).then((result) => {
-        if (result.success && result.data) {
-          form.reset(transformUserToFormDefaults(result.data))
-          setRecordRequestBody(parseRecordRequestBody(result.data.setting))
-        }
-      })
-    } else if (open && !isUpdate) {
-      // For create, reset to defaults
+    if (!open) return
+    if (!currentRow) {
       form.reset(USER_FORM_DEFAULT_VALUES)
       setRecordRequestBody(false)
+      return
     }
-  }, [open, isUpdate, currentRow, form])
+
+    let active = true
+    form.reset(transformUserToFormDefaults(currentRow))
+    setRecordRequestBody(parseRecordRequestBody(currentRow.setting))
+    const load = async () => {
+      try {
+        const result = await getUser(currentRow.id)
+        if (!active) return
+        if (result.success && result.data) {
+          form.reset(transformUserToFormDefaults(result.data), {
+            keepDirtyValues: true,
+          })
+          setRecordRequestBody(parseRecordRequestBody(result.data.setting))
+        } else {
+          toast.error(result.message || i18n.t(ERROR_MESSAGES.UNEXPECTED))
+        }
+      } catch {
+        if (active) toast.error(i18n.t(ERROR_MESSAGES.UNEXPECTED))
+      }
+    }
+    void load()
+    return () => {
+      active = false
+    }
+  }, [open, currentRow, form, i18n])
 
   const handleRecordRequestBodyChange = async (next: boolean) => {
     if (!currentRow) return
@@ -190,7 +207,7 @@ export function UsersMutateDrawer({
         setRecordRequestBody(!next)
         toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
       }
-    } catch (_error) {
+    } catch {
       setRecordRequestBody(!next)
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
@@ -246,7 +263,7 @@ export function UsersMutateDrawer({
               : t(ERROR_MESSAGES.CREATE_FAILED))
         )
       }
-    } catch (_error) {
+    } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
     } finally {
       setIsSubmitting(false)
@@ -329,7 +346,8 @@ export function UsersMutateDrawer({
                             { value: '10', label: t('Admin') },
                           ]}
                           onValueChange={(value) =>
-                            value !== null && field.onChange(parseInt(value))
+                            value !== null &&
+                            field.onChange(Number.parseInt(value))
                           }
                           value={String(field.value)}
                         >
@@ -411,12 +429,10 @@ export function UsersMutateDrawer({
                       <FormItem>
                         <FormLabel>{t('Group')}</FormLabel>
                         <Select
-                          items={[
-                            ...groups.map((group) => ({
-                              value: group,
-                              label: group,
-                            })),
-                          ]}
+                          items={groups.map((group) => ({
+                            value: group,
+                            label: group,
+                          }))}
                           onValueChange={field.onChange}
                           value={field.value}
                         >

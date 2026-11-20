@@ -22,11 +22,9 @@ export function normalizeDeploymentStatus(status: unknown) {
 
 export function formatRemainingMinutes(mins: unknown) {
   const n =
-    typeof mins === 'string'
+    typeof mins === 'string' || typeof mins === 'number'
       ? Number(mins)
-      : typeof mins === 'number'
-        ? mins
-        : NaN
+      : Number.NaN
   if (!Number.isFinite(n)) return null
 
   const total = Math.max(0, Math.round(n))
@@ -39,4 +37,23 @@ export function formatRemainingMinutes(mins: unknown) {
   if (hours > 0) parts.push(`${hours}h`)
   if (parts.length === 0 || minutes > 0) parts.push(`${minutes}m`)
   return parts.join(' ')
+}
+
+export function formatDeploymentEstimate(
+  data: unknown,
+  defaultCurrency = 'USDC'
+) {
+  if (!data || typeof data !== 'object') return ''
+  const record = data as Record<string, unknown>
+  const breakdown = record.price_breakdown
+  let total: unknown = record.total_cost ?? record.total
+  if (breakdown && typeof breakdown === 'object' && !Array.isArray(breakdown)) {
+    const prices = breakdown as Record<string, unknown>
+    total = prices.total_cost ?? prices.totalCost ?? prices.TotalCost ?? total
+  }
+  if (typeof total !== 'number' && typeof total !== 'string') return ''
+  if (String(total).trim() === '') return ''
+  const currency =
+    typeof record.currency === 'string' ? record.currency : defaultCurrency
+  return `${total} ${currency.toUpperCase()}`.trim()
 }

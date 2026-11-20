@@ -43,7 +43,10 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
 
   if (loading) {
     return (
-      <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
+      <Card
+        data-card-hover='false'
+        className='gap-0 overflow-hidden py-0 shadow-none'
+      >
         <CardContent className='p-4 sm:p-5'>
           <div className='flex min-w-0 items-center gap-4'>
             <Skeleton className='size-12 shrink-0 rounded-md sm:size-14' />
@@ -77,10 +80,13 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
   const avatarFallbackStyle = getUserAvatarStyle(avatarName)
   const roleLabel = getRoleLabel(profile.role)
   return (
-    <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>
-      <CardContent className='p-3 sm:p-5'>
-        <div className='flex items-start gap-3 text-left sm:items-center sm:gap-4'>
-          <Avatar className='size-12 rounded-md text-sm sm:size-14 sm:text-lg'>
+    <Card
+      data-card-hover='false'
+      className='gap-0 overflow-hidden py-0 shadow-none'
+    >
+      <CardContent className='p-4 sm:p-5'>
+        <div className='flex flex-wrap items-start gap-3 text-left lg:flex-col lg:gap-4'>
+          <Avatar className='size-12 rounded-md text-sm lg:size-16 lg:text-lg'>
             <AvatarFallback
               className='rounded-md font-semibold text-white'
               style={avatarFallbackStyle}
@@ -115,7 +121,6 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
               <span className='truncate'>@{profile.username}</span>
               {profile.email && (
                 <span className='inline-flex max-w-full min-w-0 items-center gap-x-2 sm:gap-x-4'>
-                  <span aria-hidden='true'>•</span>
                   <span className='truncate' title={profile.email}>
                     {profile.email}
                   </span>
@@ -123,7 +128,6 @@ export function ProfileHeader({ profile, loading }: ProfileHeaderProps) {
               )}
               {profile.group && (
                 <span className='inline-flex max-w-full min-w-0 items-center gap-x-2 sm:gap-x-4'>
-                  <span aria-hidden='true'>•</span>
                   <span className='truncate' title={profile.group}>
                     {profile.group}
                   </span>

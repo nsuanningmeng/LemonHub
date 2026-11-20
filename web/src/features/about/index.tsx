@@ -24,7 +24,6 @@ import { RichContent } from '@/components/rich-content'
 import {
   DocumentLayout,
   DocumentLoading,
-  DocumentTitle,
 } from '@/features/public-documents/document-layout'
 import { useIframePreferences } from '@/hooks/use-iframe-preferences'
 import { isHttpUrl, isLikelyHtml } from '@/lib/content-format'
@@ -36,26 +35,22 @@ function EmptyAboutState() {
   const currentYear = new Date().getFullYear()
 
   return (
-    <DocumentLayout>
-      <DocumentTitle>{t('About')}</DocumentTitle>
-      <div className='space-y-3'>
-        <h2 className='text-xl font-semibold'>{t('No About Content Set')}</h2>
-        <p className='text-muted-foreground max-w-prose leading-relaxed'>
-          {t(
-            'The administrator has not configured any about content yet. You can set it in the settings page, supporting HTML or URL.'
-          )}
-        </p>
-      </div>
+    <DocumentLayout title={t('About')}>
+      <h2 className='text-xl font-semibold tracking-tight'>
+        {t('Project information')}
+      </h2>
+      <p className='text-muted-foreground mt-2 max-w-prose leading-relaxed'>
+        {t('This site runs on New API, an open-source API gateway.')}
+      </p>
       <div className='text-muted-foreground [&_a]:decoration-border mt-10 space-y-3 border-t pt-6 text-sm leading-relaxed [overflow-wrap:anywhere] [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:decoration-current'>
         <p>
-          {t('New API Project Repository:')}{' '}
           <a
             href='https://github.com/QuantumNous/new-api'
             target='_blank'
             rel='noopener noreferrer'
             className='text-primary hover:underline'
           >
-            {t('https://github.com/QuantumNous/new-api')}
+            {t('Project repository')}
           </a>
         </p>
         <p className='text-muted-foreground'>
@@ -76,7 +71,7 @@ function EmptyAboutState() {
           >
             {t('QuantumNous')}
           </a>{' '}
-          {t('| Based on')}{' '}
+          {t('Based on')}{' '}
           <a
             href='https://github.com/songquanpeng/one-api'
             target='_blank'
@@ -105,7 +100,6 @@ function EmptyAboutState() {
           >
             {t('AGPL v3.0 License')}
           </a>
-          .
         </p>
       </div>
     </DocumentLayout>

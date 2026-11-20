@@ -34,7 +34,7 @@ export function SubscriptionsPrimaryButtons() {
         disabled={!complianceConfirmed}
       >
         <Plus className='h-4 w-4' />
-        {t('Create Plan')}
+        {t('Add subscription plan')}
       </Button>
     </div>
   )

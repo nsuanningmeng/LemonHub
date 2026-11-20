@@ -85,9 +85,9 @@ export function ReferralLeaderboardTable(props: ReferralLeaderboardTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {props.loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
+            {props.loading &&
+              [1, 2, 3, 4, 5].map((rank) => (
+                <TableRow key={rank}>
                   <TableCell>
                     <Skeleton className='h-5 w-6' />
                   </TableCell>
@@ -104,8 +104,8 @@ export function ReferralLeaderboardTable(props: ReferralLeaderboardTableProps) {
                     <Skeleton className='ml-auto h-4 w-24' />
                   </TableCell>
                 </TableRow>
-              ))
-            ) : items.length === 0 ? (
+              ))}
+            {!props.loading && items.length === 0 && (
               <TableRow>
                 <TableCell
                   colSpan={5}
@@ -114,7 +114,8 @@ export function ReferralLeaderboardTable(props: ReferralLeaderboardTableProps) {
                   {t('No referral data yet')}
                 </TableCell>
               </TableRow>
-            ) : (
+            )}
+            {!props.loading &&
               items.map((item, index) => {
                 const rank = index + 1
                 return (
@@ -141,8 +142,7 @@ export function ReferralLeaderboardTable(props: ReferralLeaderboardTableProps) {
                     </TableCell>
                   </TableRow>
                 )
-              })
-            )}
+              })}
           </TableBody>
         </Table>
       </CardContent>

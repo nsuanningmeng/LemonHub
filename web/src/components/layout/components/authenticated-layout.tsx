@@ -25,7 +25,8 @@ import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
 import { RewardsNotification } from '@/features/rewards/components/rewards-notification'
 import { getCookie } from '@/lib/cookies'
-import { cn } from '@/lib/utils'
+
+import '@/styles/navigation.css'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { AppHeader } from './app-header'
@@ -42,20 +43,18 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   return (
     <LayoutProvider>
       <SearchProvider>
-        <SidebarProvider defaultOpen={defaultOpen} className='flex-col'>
+        <SidebarProvider
+          defaultOpen={defaultOpen}
+          className='console-shell h-svh min-h-0 overflow-hidden'
+        >
           <SkipToMain />
-          <AppHeader />
-          <div className='flex min-h-0 w-full flex-1'>
-            <AppSidebar />
+          <AppSidebar />
+          <div className='console-workspace bg-background flex min-w-0 flex-1 flex-col'>
+            <AppHeader />
             <SidebarInset
               id='content'
               tabIndex={-1}
-              className={cn(
-                '@container/content',
-                'h-[calc(100svh-var(--app-header-height,0px))]',
-                'min-h-0 min-w-0 overflow-hidden focus:outline-none',
-                'peer-data-[variant=inset]:h-[calc(100svh-var(--app-header-height,0px)-(var(--spacing)*4))]'
-              )}
+              className='@container/content min-h-0 min-w-0 overflow-hidden focus:outline-none'
             >
               <AnnouncementBanner />
               {props.children ?? <AnimatedOutlet />}

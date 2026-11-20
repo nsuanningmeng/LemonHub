@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getUserQuotaDates } from '@/features/dashboard/api'
 import { useModelStatCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
@@ -35,7 +34,6 @@ import type {
 import { toIntlLocale } from '@/i18n/languages'
 import { formatCompactNumber, formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
-import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 interface LogStatCardsProps {
@@ -138,90 +136,44 @@ export function LogStatCards(props: LogStatCardsProps) {
       value: formatted.displayValue,
       fullValue: formatted.fullValue,
       desc: config.description,
-      icon: config.icon,
-      iconTone: config.iconTone,
     }
   })
 
   return (
-    <div className='bg-card @container/model-stats min-w-0 overflow-hidden rounded-lg border'>
-      <div className='bg-border grid min-w-0 grid-cols-2 gap-px @lg/model-stats:grid-cols-4 @5xl/model-stats:grid-cols-7'>
-        {items.map((it, idx) => {
-          const Icon = it.icon
-          let valueContent
-          if (loading) {
-            valueContent = (
-              <div className='mt-1 flex flex-col gap-1 sm:mt-2 sm:gap-1.5'>
-                <Skeleton className='h-5 w-16 sm:h-7 sm:w-20' />
-                <Skeleton className='hidden h-3.5 w-28 md:block' />
-              </div>
-            )
-          } else if (error) {
-            valueContent = (
-              <>
-                <div className='text-muted-foreground mt-1 text-xl leading-tight font-semibold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'>
-                  --
-                </div>
-                <div className='text-muted-foreground mt-1 hidden text-xs @lg/model-stats:block'>
-                  {it.desc}
-                </div>
-              </>
-            )
-          } else {
-            valueContent = (
-              <>
-                <div
-                  className='text-foreground mt-1 max-w-full truncate text-xl leading-tight font-semibold tracking-tight tabular-nums sm:mt-2 sm:text-2xl'
-                  title={it.fullValue}
-                >
-                  {it.value}
-                </div>
-                <div className='text-muted-foreground mt-1 hidden text-xs @lg/model-stats:block'>
-                  {it.desc}
-                </div>
-              </>
-            )
-          }
-
-          return (
-            <div
-              key={it.key}
-              role='group'
-              aria-label={it.title}
-              aria-busy={loading}
-              className={cn(
-                'bg-card min-w-0 px-3 py-3 sm:px-4 sm:py-4',
-                idx === items.length - 1 &&
-                  items.length % 2 !== 0 &&
-                  'col-span-2 @5xl/model-stats:col-span-1'
-              )}
-            >
-              <div className='flex min-w-0 items-center gap-1.5 sm:gap-2'>
-                <IconBadge
-                  tone={it.iconTone}
-                  size='stat'
-                  className='size-4 bg-transparent text-current [&>svg]:size-3.5'
-                >
-                  <Icon />
-                </IconBadge>
-                <div
-                  className='text-muted-foreground truncate text-xs leading-4 font-medium'
-                  title={it.title}
-                >
-                  {it.title}
-                </div>
-              </div>
-
-              {valueContent}
-            </div>
-          )
-        })}
+    <section className='bg-card min-w-0 rounded-lg border'>
+      <h2 className='px-5 py-3 text-base font-semibold'>
+        {t('Period totals')}
+      </h2>
+      <div className='divide-y border-y px-5'>
+        {items.map((item) => (
+          <div
+            key={item.key}
+            role='group'
+            aria-label={item.title}
+            aria-busy={loading}
+            className='flex min-h-11 items-center justify-between gap-4 py-2'
+          >
+            <span className='text-muted-foreground text-sm' title={item.desc}>
+              {item.title}
+            </span>
+            {loading ? (
+              <Skeleton className='h-5 w-16' />
+            ) : (
+              <span
+                className='text-end text-base font-semibold tabular-nums'
+                title={error ? undefined : item.fullValue}
+              >
+                {error ? '--' : item.value}
+              </span>
+            )}
+          </div>
+        ))}
       </div>
-      <p className='text-muted-foreground border-t px-3 py-2 text-xs'>
+      <p className='text-muted-foreground px-5 py-3 text-xs leading-relaxed'>
         {t(
           'Cache usage is recorded only after the upgrade; historical data is not backfilled.'
         )}
       </p>
-    </div>
+    </section>
   )
 }

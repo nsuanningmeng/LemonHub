@@ -135,10 +135,12 @@ export function CommonLogsFilterBar<TData>(
       type: searchParams.type,
     }
     const filters: CommonLogFilters = {
-      startTime: searchParams.startTime
-        ? new Date(searchParams.startTime)
-        : start,
-      endTime: searchParams.endTime ? new Date(searchParams.endTime) : end,
+      startTime:
+        searchParams.startTime != null
+          ? new Date(searchParams.startTime)
+          : start,
+      endTime:
+        searchParams.endTime != null ? new Date(searchParams.endTime) : end,
       channel: searchParams.channel || undefined,
       model: searchParams.model || undefined,
       token: searchParams.token || undefined,

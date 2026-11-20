@@ -20,7 +20,7 @@ import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
 import { SITE_VALIDATION } from '../constants'
-import { type Site, type SiteCreatePayload } from '../types'
+import type { Site, SiteCreatePayload } from '../types'
 
 // ============================================================================
 // Form Schema

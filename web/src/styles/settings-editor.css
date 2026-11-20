@@ -1,0 +1,76 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+.settings-editor,
+.settings-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-editor {
+  border-top: 1px solid var(--border);
+}
+
+.settings-editor > :not(.settings-fields):not(:empty),
+.settings-fields > :not(:empty) {
+  min-width: 0;
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-editor [data-slot='form-description'] {
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+
+@container settings (min-width: 42rem) {
+  :is(.settings-editor, .settings-fields)
+    > [data-slot='form-item']:has(> [data-slot='form-label']):has(
+      > :is(input, textarea, button, [data-slot='form-control'])
+    ) {
+    display: grid;
+    grid-template-columns: minmax(12rem, 0.65fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 0.3rem 2rem;
+  }
+
+  :is(.settings-editor, .settings-fields)
+    > [data-slot='form-item']
+    > [data-slot='form-description'] {
+    grid-column: 1;
+  }
+
+  :is(.settings-editor, .settings-fields)
+    > [data-slot='form-item']:has(> [data-slot='form-label'])
+    > :is(input, textarea, button, [data-slot='form-control']) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  :is(.settings-editor, .settings-fields)
+    > [data-slot='form-item']:has(> [data-slot='form-label'])
+    > [data-slot='form-message'] {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 40rem) {
+  :has(> h1 > .settings-page-title) {
+    flex-basis: 100%;
+  }
+}

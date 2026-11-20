@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Eye, Loader2, Pencil, RefreshCw, Send } from 'lucide-react'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -583,7 +583,7 @@ export function EmailPromotionSection({
                   const badge = STATUS_BADGE[campaign.status]
                   const completedWithFailures =
                     campaign.status === 'completed' && campaign.fail_count > 0
-                  let progress = t('Processing finished')
+                  let progress: ReactNode = t('Processing finished')
                   if (campaign.skip_count != null) {
                     progress = t('Processed: {{processed}}/{{total}}', {
                       processed:
@@ -593,12 +593,20 @@ export function EmailPromotionSection({
                       total: campaign.total_count,
                     })
                   } else if (campaign.status !== 'completed') {
-                    progress = t(
-                      'Attempted: {{attempted}} · Candidates: {{total}}',
-                      {
-                        attempted: campaign.sent_count + campaign.fail_count,
-                        total: campaign.total_count,
-                      }
+                    progress = (
+                      <div className='flex flex-wrap gap-x-3 gap-y-1'>
+                        <span>
+                          {t('Attempted: {{attempted}}', {
+                            attempted:
+                              campaign.sent_count + campaign.fail_count,
+                          })}
+                        </span>
+                        <span>
+                          {t('Candidates: {{total}}', {
+                            total: campaign.total_count,
+                          })}
+                        </span>
+                      </div>
                     )
                   }
 
@@ -678,15 +686,18 @@ export function EmailPromotionSection({
             </DialogDescription>
           </DialogHeader>
           {pendingPayload && (
-            <div className='text-muted-foreground text-sm'>
-              <span className='text-foreground font-medium'>
-                {t('Audience')}:
-              </span>{' '}
-              {pendingPayload.target_group || t('All groups')}
-              {' · '}
-              {pendingPayload.target_status === 1
-                ? t('Enabled users only')
-                : t('All users')}
+            <div className='text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-sm'>
+              <span>
+                <span className='text-foreground font-medium'>
+                  {t('Audience')}:{' '}
+                </span>
+                {pendingPayload.target_group || t('All groups')}
+              </span>
+              <span>
+                {pendingPayload.target_status === 1
+                  ? t('Enabled users only')
+                  : t('All users')}
+              </span>
             </div>
           )}
           <DialogFooter>

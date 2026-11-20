@@ -55,6 +55,11 @@ test('custom footer strips executable HTML while preserving text and safe links'
   )
 
   const footer = screen.getByRole('contentinfo')
+  expect(
+    within(footer).getByRole('link', {
+      name: 'Frontend design and development by New API contributors.',
+    })
+  ).toHaveAttribute('href', 'https://github.com/QuantumNous/new-api')
   expect(footer).toHaveTextContent('Site support')
   expect(within(footer).getByRole('link', { name: 'Help' })).toHaveAttribute(
     'href',

@@ -229,7 +229,8 @@ export function DeploymentsTable() {
         skeletonKeyPrefix='deployment-skeleton'
         applyHeaderSize
         toolbarProps={{
-          searchPlaceholder: t('Search deployments...'),
+          primaryFilter: 'status',
+          searchPlaceholder: t('Search deployments'),
           searchDebounceMs: 500,
           filters: [
             {

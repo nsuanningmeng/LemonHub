@@ -32,7 +32,7 @@ import { createSectionRegistry } from '../utils/section-registry'
 const SITE_SECTIONS = [
   {
     id: 'system-info',
-    titleKey: 'System Information',
+    titleKey: 'Site identity and content',
     build: (settings: SiteSettings) => (
       <SystemInfoSection
         defaultValues={{

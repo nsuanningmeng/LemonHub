@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Gift, ExternalLink, Loader2, WalletCards } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { Trans, useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -196,8 +196,8 @@ export function RechargeFormCard({
 
   return (
     <TitledCard
-      title={t('Add Funds')}
-      description={t('Choose an amount and payment method')}
+      title={t('Fund your account')}
+      description={t('Choose a credit amount, then select a payment method.')}
       icon={<WalletCards className='h-4 w-4' />}
       iconTone='success'
       disableHoverEffect
@@ -254,23 +254,18 @@ export function RechargeFormCard({
                                 </div>
                               )}
                             </div>
-                            <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
-                              {hasDiscount && savedAmount > 0 ? (
-                                <Trans
-                                  t={t}
-                                  i18nKey='Pay {{amount}} <saving>• Save {{saved}}</saving>'
-                                  values={{
-                                    amount: formatCurrency(actualPrice),
-                                    saved: formatCurrency(savedAmount),
-                                  }}
-                                  components={{
-                                    saving: <span className='text-success' />,
-                                  }}
-                                />
-                              ) : (
-                                t('Pay {{amount}}', {
+                            <div className='text-muted-foreground mt-1.5 flex w-full flex-wrap gap-x-2 gap-y-1 text-xs sm:mt-2'>
+                              <span>
+                                {t('Pay {{amount}}', {
                                   amount: formatCurrency(actualPrice),
-                                })
+                                })}
+                              </span>{' '}
+                              {hasDiscount && savedAmount > 0 && (
+                                <span className='text-success'>
+                                  {t('Save {{saved}}', {
+                                    saved: formatCurrency(savedAmount),
+                                  })}
+                                </span>
                               )}
                             </div>
                           </Button>
@@ -305,7 +300,7 @@ export function RechargeFormCard({
                       className='bg-muted/60 flex min-h-10 min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5 rounded-md px-3 lg:min-w-44'
                     >
                       <span className='text-muted-foreground text-xs'>
-                        {t('Amount to pay:')}
+                        {t('Amount due')}
                       </span>
                       {calculating ? (
                         <Skeleton className='h-5 w-16' />
@@ -532,7 +527,7 @@ export function RechargeFormCard({
               htmlFor='redemption-code'
               className='text-muted-foreground text-sm font-medium'
             >
-              {t('Have a Code?')}
+              {t('Redeem a code')}
             </Label>
           </div>
           <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>

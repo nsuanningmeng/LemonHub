@@ -67,7 +67,7 @@ interface UsageLogsMobileListProps<TData> {
 
 function UsageLogsMobileSkeleton() {
   return (
-    <div className='border-border/50 bg-card overflow-hidden rounded-lg border'>
+    <div className='bg-card overflow-hidden border-y'>
       {[1, 2, 3].map((i) => (
         <div
           key={i}
@@ -136,9 +136,7 @@ function SummaryField<TData>({
   if (!cell) return null
 
   return (
-    <div
-      className={cn('bg-muted/20 min-w-0 rounded-md px-2 py-1.5', className)}
-    >
+    <div className={cn('min-w-0 py-1', className)}>
       {label != null && label !== '' && (
         <div className='text-muted-foreground mb-1 text-[11px] leading-none font-medium select-none'>
           {label}
@@ -202,7 +200,7 @@ function MobileTokensField({ log }: { log: UsageLog }) {
     !hasAnyCacheTokens(other)
   ) {
     return (
-      <div className='bg-muted/20 min-w-0 rounded-md px-2 py-1.5'>
+      <div className='min-w-0 py-1'>
         <span className='text-muted-foreground text-xs'>-</span>
       </div>
     )
@@ -218,7 +216,7 @@ function MobileTokensField({ log }: { log: UsageLog }) {
   const showCache = cacheReadTokens > 0 || cacheWriteTokens > 0
 
   return (
-    <div className='bg-muted/20 min-w-0 rounded-md px-2 py-1.5'>
+    <div className='min-w-0 py-1'>
       <div className='flex flex-col gap-0.5'>
         <span className='font-mono text-xs font-medium tabular-nums'>
           {promptTokens.toLocaleString()} / {completionTokens.toLocaleString()}
@@ -254,7 +252,7 @@ function MobileUserField({ log }: { log: UsageLog }) {
   return (
     <button
       type='button'
-      className='bg-muted/20 flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-left'
+      className='flex min-w-0 items-center gap-1.5 py-1 text-left'
       onClick={(e) => {
         e.stopPropagation()
         setSelectedUserId(log.user_id)
@@ -293,7 +291,7 @@ function MobileStreamTimingField({ log }: { log: UsageLog }) {
       : null
 
   return (
-    <div className='bg-muted/20 flex min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5'>
+    <div className='flex min-w-0 items-center gap-2.5 py-1'>
       <TimingMetricsCell
         useTimeSec={useTime}
         completionTokens={log.completion_tokens}
@@ -333,8 +331,8 @@ function CommonLogsCard<TData>({
         />
       </div>
 
-      <div className='grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] gap-1.5'>
-        <div className='bg-muted/20 min-w-0 rounded-md px-2 py-1.5'>
+      <div className='grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] gap-x-3 gap-y-1 border-t pt-1.5'>
+        <div className='min-w-0 py-1'>
           <MobileLogTimeStatus
             createdAt={rowData?.created_at}
             type={rowData?.type}
@@ -488,7 +486,7 @@ export function UsageLogsMobileList<TData>({
   }
 
   return (
-    <div className='border-border/50 bg-card overflow-hidden rounded-lg border'>
+    <div className='bg-card overflow-hidden border-y'>
       {rows.map((row) => {
         const cells = new Map(
           row.getVisibleCells().map((cell) => [cell.column.id, cell])

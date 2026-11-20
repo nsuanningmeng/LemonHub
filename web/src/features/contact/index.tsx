@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { MailQuestion } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { HtmlContent } from '@/components/html-content'
@@ -28,7 +27,6 @@ import { Markdown } from '@/components/ui/markdown'
 import {
   DocumentLayout,
   DocumentLoading,
-  DocumentTitle,
 } from '@/features/public-documents/document-layout'
 
 import { getContactContent } from './api'
@@ -60,29 +58,14 @@ function isHtmlDocument(value: string): boolean {
 function DefaultContactPage() {
   const { t } = useTranslation()
   return (
-    <div className='flex min-h-svh flex-col'>
-      <main className='mx-auto w-full max-w-[76rem] flex-1 px-5 pt-28 pb-16 sm:px-8 sm:pt-36'>
-        <DocumentTitle>{t('Contact Us')}</DocumentTitle>
-        <div className='flex max-w-2xl items-start gap-4'>
-          <MailQuestion
-            aria-hidden='true'
-            className='text-primary mt-0.5 size-6 shrink-0'
-            strokeWidth={1.65}
-          />
-          <div>
-            <h2 className='text-xl font-semibold tracking-tight'>
-              {t("Contact details haven't been set up yet.")}
-            </h2>
-            <p className='text-muted-foreground mt-2 text-base leading-relaxed'>
-              {t(
-                'The administrator can configure the contact content in System Settings → Site Information → Contact.'
-              )}
-            </p>
-          </div>
-        </div>
-      </main>
-      <Footer />
-    </div>
+    <DocumentLayout title={t('Contact Us')} footer={<Footer />}>
+      <h2 className='text-xl font-semibold tracking-tight'>
+        {t('Support contacts')}
+      </h2>
+      <p className='text-muted-foreground mt-2 max-w-prose leading-relaxed'>
+        {t('This site has not published contact details.')}
+      </p>
+    </DocumentLayout>
   )
 }
 
@@ -152,11 +135,7 @@ export function Contact() {
   }
 
   // Default state — no fake contact data published.
-  return (
-    <PublicLayout showMainContainer={false}>
-      <DefaultContactPage />
-    </PublicLayout>
-  )
+  return <DefaultContactPage />
 }
 
 export default Contact

@@ -16,52 +16,58 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
+import { ArrowUpRight, BookOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { useStatus } from '@/hooks/use-status'
+
 import { HeroTerminalDemo } from '../hero-terminal-demo'
+import { ModelIntegrations } from './model-integrations'
 
 export function HowItWorks() {
   const { t } = useTranslation()
-  const steps = [
-    [
-      t('Configure'),
-      t('Add your API keys, set up channels and configure access permissions'),
-    ],
-    [
-      t('Connect'),
-      t(
-        'Connect through OpenAI, Claude, Gemini, and other compatible API routes'
-      ),
-    ],
-    [
-      t('Monitor'),
-      t('Track usage, costs and performance with real-time analytics'),
-    ],
-  ]
+  const { status } = useStatus()
+  const docsUrl =
+    (typeof status?.docs_link === 'string' && status.docs_link.trim()) ||
+    'https://docs.newapi.pro'
+  const serverUrl =
+    (typeof status?.server_address === 'string' &&
+      status.server_address.trim()) ||
+    window.location.origin
+  const docsLabel = (
+    <>
+      <BookOpen size={16} aria-hidden='true' />
+      {t('Docs')}
+      <ArrowUpRight size={14} aria-hidden='true' />
+    </>
+  )
   return (
     <section
-      className='gateway-container gateway-workflow'
+      className='gateway-workbench gateway-container'
       aria-labelledby='workflow-title'
     >
-      <div>
-        <h2 id='workflow-title' className='gateway-section-title'>
-          {t('Three steps to get started')}
-        </h2>
-        <ol className='gateway-steps'>
-          {steps.map(([title, description], index) => (
-            <li key={title}>
-              <span aria-hidden='true'>
-                {String(index + 1).padStart(2, '0')}
-              </span>
-              <div>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
+      <div className='gateway-lab'>
+        <header className='gateway-lab-heading'>
+          <h2 id='workflow-title'>{t('Developer quickstart')}</h2>
+          {docsUrl.startsWith('http') ? (
+            <a
+              className='gateway-docs-link'
+              href={docsUrl}
+              target='_blank'
+              rel='noopener noreferrer'
+            >
+              {docsLabel}
+            </a>
+          ) : (
+            <Link className='gateway-docs-link' to={docsUrl}>
+              {docsLabel}
+            </Link>
+          )}
+        </header>
+        <HeroTerminalDemo serverUrl={serverUrl.replace(/\/+$/, '')} />
       </div>
-      <HeroTerminalDemo />
+      <ModelIntegrations />
     </section>
   )
 }

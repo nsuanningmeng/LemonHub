@@ -212,22 +212,21 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
           {t('Verify and Sign In')}
         </Button>
 
-        <div className='flex items-center justify-center gap-2 text-sm'>
+        <div className='flex flex-wrap items-center justify-between gap-x-5 gap-y-1 border-t pt-3 text-sm'>
           <Button
             type='button'
             variant='link'
             size='sm'
-            className='text-primary h-auto p-0'
+            className='text-primary min-h-10 p-0'
             onClick={handleToggleMode}
           >
             {useBackupCode ? t('Use authenticator code') : t('Use backup code')}
           </Button>
-          <span className='text-muted-foreground'>·</span>
           <Button
             type='button'
             variant='link'
             size='sm'
-            className='text-primary h-auto p-0'
+            className='text-primary min-h-10 p-0'
             onClick={handleBackToLogin}
           >
             {t('Back to login')}

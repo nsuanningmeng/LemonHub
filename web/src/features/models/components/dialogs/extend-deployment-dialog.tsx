@@ -29,6 +29,7 @@ import { Separator } from '@/components/ui/separator'
 
 import { estimatePrice, extendDeployment, getDeployment } from '../../api'
 import { deploymentsQueryKeys } from '../../lib'
+import { formatDeploymentEstimate } from '../../lib/deployments-utils'
 
 function toInt(value: unknown, fallback: number) {
   const n = typeof value === 'number' ? value : Number(value)
@@ -111,24 +112,7 @@ export function ExtendDeploymentDialog({
     enabled: open && Boolean(priceParams) && hours > 0,
   })
 
-  const priceSummary = useMemo(() => {
-    const data = priceRes?.data
-    if (!data || typeof data !== 'object') return ''
-    const record = data as Record<string, unknown>
-    const breakdown = record.price_breakdown
-    let total: unknown = record.total_cost
-    if (
-      breakdown &&
-      typeof breakdown === 'object' &&
-      !Array.isArray(breakdown)
-    ) {
-      const b = breakdown as Record<string, unknown>
-      total = b.total_cost ?? b.totalCost ?? b.TotalCost ?? total
-    }
-    const currency = record.currency ?? 'USDC'
-    if (total === undefined || total === null) return ''
-    return `${String(total)} ${String(currency).toUpperCase()}`.trim()
-  }, [priceRes])
+  const priceSummary = formatDeploymentEstimate(priceRes?.data)
 
   const canSubmit = Boolean(deploymentId) && hours > 0 && !isSubmitting
 
@@ -216,10 +200,8 @@ export function ExtendDeploymentDialog({
                   <Loader2 className='h-4 w-4 animate-spin' />
                   {t('Calculating...')}
                 </span>
-              ) : priceParams ? (
-                priceSummary || t('Not available')
               ) : (
-                t('Not available')
+                (priceParams && priceSummary) || t('Not available')
               )}
             </div>
             {!priceParams ? (

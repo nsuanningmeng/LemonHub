@@ -17,12 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link2, Settings } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TitledCard } from '@/components/ui/titled-card'
 
 import type { UserProfile } from '../types'
@@ -34,6 +32,7 @@ import { NotificationTab } from './tabs/notification-tab'
 // ============================================================================
 
 interface ProfileSettingsCardProps {
+  section: 'bindings' | 'notifications'
   profile: UserProfile | null
   loading: boolean
   onProfileUpdate: () => void
@@ -42,6 +41,7 @@ interface ProfileSettingsCardProps {
 }
 
 export function ProfileSettingsCard({
+  section,
   profile,
   loading,
   onProfileUpdate,
@@ -49,7 +49,6 @@ export function ProfileSettingsCard({
   quotaRemindThreshold,
 }: ProfileSettingsCardProps) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState('bindings')
 
   if (loading) {
     return (
@@ -68,56 +67,28 @@ export function ProfileSettingsCard({
     )
   }
 
+  const bindings = section === 'bindings'
   return (
     <TitledCard
-      title={t('Settings')}
-      description={t('Configure your account preferences and integrations')}
-      icon={<Settings className='h-4 w-4' />}
-      iconTone='info'
+      title={bindings ? t('Connected accounts') : t('Notification preferences')}
+      description={
+        bindings
+          ? t('Manage the services you use to sign in.')
+          : t('Choose where account and usage alerts are delivered.')
+      }
+      icon={bindings ? <Link2 /> : <Settings />}
       disableHoverEffect
     >
-      <Tabs
-        className='@container/settings'
-        value={activeTab}
-        onValueChange={setActiveTab}
-      >
-        <TabsList
-          variant='line'
-          className='w-full justify-start gap-x-3 rounded-none border-b'
-        >
-          <TabsTrigger
-            value='bindings'
-            className='flex-none gap-2 px-1 text-sm'
-          >
-            <Link2 className='h-4 w-4' />
-            <span className='hidden sm:inline'>{t('Account Bindings')}</span>
-            <span className='sm:hidden'>{t('Bindings')}</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value='settings'
-            className='flex-none gap-2 px-1 text-sm'
-          >
-            <Settings className='h-4 w-4' />
-            <span className='hidden sm:inline'>
-              {t('Settings & Preferences')}
-            </span>
-            <span className='sm:hidden'>{t('Settings')}</span>
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value='bindings' className='mt-4 sm:mt-6'>
-          <AccountBindingsTab profile={profile} onUpdate={onProfileUpdate} />
-        </TabsContent>
-
-        <TabsContent value='settings' className='mt-4 sm:mt-6'>
-          <NotificationTab
-            profile={profile}
-            onUpdate={onProfileUpdate}
-            quotaRemindEnabled={quotaRemindEnabled}
-            quotaRemindThreshold={quotaRemindThreshold}
-          />
-        </TabsContent>
-      </Tabs>
+      {bindings ? (
+        <AccountBindingsTab profile={profile} onUpdate={onProfileUpdate} />
+      ) : (
+        <NotificationTab
+          profile={profile}
+          onUpdate={onProfileUpdate}
+          quotaRemindEnabled={quotaRemindEnabled}
+          quotaRemindThreshold={quotaRemindThreshold}
+        />
+      )}
     </TitledCard>
   )
 }

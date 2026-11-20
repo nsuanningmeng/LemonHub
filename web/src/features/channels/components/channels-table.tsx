@@ -545,14 +545,16 @@ export function ChannelsTable() {
           applyHeaderSize
           afterTable={<ChannelPriorityStatus order={priorityOrder} />}
           toolbarProps={{
-            searchPlaceholder: t('Filter by name, ID, or key...'),
+            primaryFilter: 'status',
+            searchPlaceholder: t('Name, ID or key'),
             searchDebounceMs: 500,
             onReset: () => {
               resetModelFilterInput()
             },
             additionalSearch: (
               <Input
-                placeholder={t('Filter by model...')}
+                aria-label={t('Model name')}
+                placeholder={t('Model name')}
                 value={modelFilterInput}
                 onChange={onModelFilterInputChange}
                 onCompositionStart={onModelFilterCompositionStart}

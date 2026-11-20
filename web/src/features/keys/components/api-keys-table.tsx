@@ -76,7 +76,7 @@ function isDisabledApiKeyRow(apiKey: ApiKey) {
 
 function ApiKeysMobileSkeleton() {
   return (
-    <div className='divide-border overflow-hidden rounded-lg border'>
+    <div className='divide-border overflow-hidden border-y'>
       {API_KEYS_MOBILE_SKELETON_IDS.map((id) => (
         <div
           key={id}
@@ -128,7 +128,7 @@ function ApiKeysMobileList({
   }
 
   return (
-    <div className='divide-border overflow-hidden rounded-lg border'>
+    <div className='divide-border overflow-hidden border-y'>
       {rows.map((row) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[getApiKeyEffectiveStatus(apiKey)]
@@ -138,7 +138,7 @@ function ApiKeysMobileList({
           <div
             key={row.id}
             className={cn(
-              'bg-card space-y-2.5 border-b p-4 last:border-b-0',
+              'bg-card space-y-2 border-b px-3 py-3 last:border-b-0',
               isDisabledApiKeyRow(apiKey) && DISABLED_ROW_MOBILE
             )}
           >
@@ -157,26 +157,25 @@ function ApiKeysMobileList({
               )}
             </div>
 
-            <div className='flex min-w-0 items-center justify-between gap-2'>
-              <div className='min-w-0 flex-1 [&_button:first-child]:max-w-full [&_button:first-child]:truncate [&_button:first-child]:px-0'>
-                <ApiKeyCell apiKey={apiKey} />
+            <div className='min-w-0 font-mono [&_button:first-child]:max-w-full [&_button:first-child]:truncate [&_button:first-child]:px-0'>
+              <ApiKeyCell apiKey={apiKey} />
+            </div>
+            <div className='flex flex-wrap items-center justify-between gap-2 border-t pt-1.5'>
+              <div className='flex items-baseline gap-2 text-xs'>
+                <span className='text-muted-foreground'>{t('Quota')}</span>
+                {apiKey.unlimited_quota ? (
+                  <UnlimitedQuotaBadge used={apiKey.used_quota} />
+                ) : (
+                  <span className='font-medium tabular-nums'>
+                    {formatQuota(apiKey.remain_quota)}
+                    <span className='text-muted-foreground font-normal'>
+                      {' / '}
+                      {formatQuota(total)}
+                    </span>
+                  </span>
+                )}
               </div>
               <DataTableRowActions row={row} />
-            </div>
-
-            <div className='flex items-center justify-between gap-2 border-t pt-2 text-xs'>
-              <span className='text-muted-foreground'>{t('Quota')}</span>
-              {apiKey.unlimited_quota ? (
-                <UnlimitedQuotaBadge used={apiKey.used_quota} />
-              ) : (
-                <span className='font-medium tabular-nums'>
-                  {formatQuota(apiKey.remain_quota)}
-                  <span className='text-muted-foreground font-normal'>
-                    {' / '}
-                    {formatQuota(total)}
-                  </span>
-                </span>
-              )}
             </div>
           </div>
         )
@@ -326,12 +325,13 @@ export function ApiKeysTable() {
       skeletonKeyPrefix='api-keys-skeleton'
       applyHeaderSize
       toolbarProps={{
-        searchPlaceholder: t('Filter by name...'),
+        primaryFilter: 'status',
+        searchPlaceholder: t('Key name'),
         searchDebounceMs: 500,
         additionalSearch: (
           <Input
-            placeholder={t('Filter by API key...')}
-            aria-label={t('Filter by API key...')}
+            placeholder={t('API key')}
+            aria-label={t('API key')}
             value={tokenFilterInput}
             onChange={(e) => setTokenFilterInput(e.target.value)}
             className='w-full sm:w-50 lg:w-60'

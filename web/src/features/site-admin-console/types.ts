@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
-import { type WalletLog } from '@/components/wallet-logs-table'
+import type { WalletLog } from '@/lib/wallet-log'
 
 export { type WalletLog }
 

@@ -83,7 +83,7 @@ describe('index.html theme boot script', () => {
     try {
       localStorage.setItem(THEME_STORAGE_KEYS.mode, 'dark')
       runBootScript()
-      expect(meta.content).toBe('#181d19')
+      expect(meta.content).toBe('#151e2d')
     } finally {
       meta.remove()
     }

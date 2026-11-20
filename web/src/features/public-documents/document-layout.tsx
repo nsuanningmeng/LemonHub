@@ -21,11 +21,31 @@ import type { ReactNode } from 'react'
 import { PublicLayout } from '@/components/layout'
 import { Skeleton } from '@/components/ui/skeleton'
 
-export function DocumentLayout(props: { children: ReactNode }) {
+export function DocumentLayout(props: {
+  children: ReactNode
+  title?: string
+  footer?: ReactNode
+}) {
   return (
-    <PublicLayout>
-      <div className='mx-auto w-full max-w-3xl py-8 md:py-16'>
-        {props.children}
+    <PublicLayout showMainContainer={false}>
+      <div className='flex min-h-svh flex-col'>
+        <main className='mx-auto w-full max-w-[76rem] flex-1 px-5 pt-20 sm:px-8'>
+          {props.title ? (
+            <article className='mx-auto grid max-w-[72rem] gap-6 py-7 sm:gap-8 sm:py-14 md:grid-cols-[minmax(12rem,0.85fr)_minmax(0,1.6fr)] md:gap-14 md:py-20'>
+              <h1 className='text-4xl leading-tight font-semibold tracking-tight text-balance [overflow-wrap:anywhere] md:text-5xl'>
+                {props.title}
+              </h1>
+              <div className='border-foreground min-w-0 border-t-2 pt-5 leading-relaxed sm:pt-7'>
+                {props.children}
+              </div>
+            </article>
+          ) : (
+            <article className='mx-auto w-full max-w-prose py-8 md:py-16'>
+              {props.children}
+            </article>
+          )}
+        </main>
+        {props.footer}
       </div>
     </PublicLayout>
   )
@@ -41,13 +61,5 @@ export function DocumentLoading() {
         <Skeleton className='h-4 w-4/5' />
       </div>
     </DocumentLayout>
-  )
-}
-
-export function DocumentTitle(props: { children: ReactNode }) {
-  return (
-    <h1 className='mb-8 border-b pb-6 text-3xl font-semibold tracking-tight text-balance md:mb-10 md:text-5xl'>
-      {props.children}
-    </h1>
   )
 }

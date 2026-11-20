@@ -168,7 +168,7 @@ test('the default contact page identifies the page and explains missing contact 
   expect(
     screen.getByRole('heading', {
       level: 2,
-      name: "Contact details haven't been set up yet.",
+      name: 'Support contacts',
     })
   ).toBeVisible()
 })

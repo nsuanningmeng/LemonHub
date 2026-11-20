@@ -60,25 +60,39 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   return (
     <div
       className={cn(
-        'bg-card @container/account min-w-0 overflow-hidden rounded-lg border',
+        '@container/account min-w-0 overflow-hidden rounded-lg',
+        props.compactRequests ? 'bg-card border' : 'bg-brand-ink text-white',
         props.className
       )}
     >
       <dl
         aria-busy={Boolean(props.loading)}
-        className='grid grid-cols-2 @xl/account:grid-cols-[1.15fr_1fr_1fr]'
+        className={cn(
+          'grid grid-cols-2',
+          props.compactRequests && '@xl/account:grid-cols-[1.15fr_1fr_1fr]'
+        )}
       >
         {stats.map((item, index) => (
           <div
             key={item.label}
             className={cn(
               'min-w-0 px-4 py-3 sm:px-5 sm:py-4',
+              index === 0 && 'col-span-2 border-b',
               index === 0 &&
-                'bg-muted/50 col-span-2 border-b @xl/account:col-span-1 @xl/account:border-r @xl/account:border-b-0',
+                props.compactRequests &&
+                'bg-muted/50 @xl/account:col-span-1 @xl/account:border-r @xl/account:border-b-0',
+              !props.compactRequests && 'border-white/20',
               index === 2 && 'border-l'
             )}
           >
-            <dt className='text-muted-foreground text-xs leading-4 font-medium sm:truncate'>
+            <dt
+              className={cn(
+                'text-xs leading-4 font-medium sm:truncate',
+                props.compactRequests
+                  ? 'text-muted-foreground'
+                  : 'text-white/80'
+              )}
+            >
               {item.label}
             </dt>
             <dd className='mt-2'>
@@ -88,14 +102,22 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
                 <span
                   className={cn(
                     'block max-w-full overflow-x-auto font-semibold tracking-tight whitespace-nowrap tabular-nums',
-                    index === 0 ? 'text-3xl leading-9' : 'text-2xl leading-9'
+                    index === 0 && !props.compactRequests
+                      ? 'text-brand-citrus text-4xl leading-tight sm:text-5xl'
+                      : 'text-2xl leading-9'
                   )}
                   title={item.value ?? undefined}
                 >
                   {item.value ?? '—'}
                 </span>
               )}
-              <span className='text-muted-foreground mt-1 hidden text-xs @xl/account:block'>
+              <span
+                className={cn(
+                  'mt-1 hidden text-xs',
+                  props.compactRequests &&
+                    'text-muted-foreground @xl/account:block'
+                )}
+              >
                 {item.description}
               </span>
             </dd>

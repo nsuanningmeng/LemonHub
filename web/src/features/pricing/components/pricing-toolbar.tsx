@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ArrowUpDown, Check, Filter, Grid2X2, Table2 } from 'lucide-react'
+import { ArrowUpDown, Check, Filter, List, Table2 } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -167,15 +167,15 @@ export function PricingToolbar(props: PricingToolbarProps) {
   )
 
   return (
-    <div className='border-b pb-3'>
-      <div className='flex flex-wrap items-center justify-between gap-2.5'>
+    <div className='min-w-0'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
         <div className='flex items-center gap-2'>
           <Button
             type='button'
             variant='outline'
             size='sm'
             onClick={() => setMobileFiltersOpen(true)}
-            className='gap-1.5 xl:hidden'
+            className='h-9 gap-1.5'
           >
             <Filter className='size-4' />
             {t('Filter')}
@@ -186,7 +186,10 @@ export function PricingToolbar(props: PricingToolbarProps) {
             )}
           </Button>
 
-          <div className='text-muted-foreground flex items-baseline gap-1 text-sm'>
+          <div
+            role='status'
+            className='text-muted-foreground flex items-baseline gap-1 text-xs'
+          >
             <span className='text-foreground font-semibold tabular-nums'>
               {props.filteredCount.toLocaleString()}
             </span>
@@ -257,8 +260,8 @@ export function PricingToolbar(props: PricingToolbarProps) {
           options={[
             {
               value: VIEW_MODES.CARD,
-              icon: Grid2X2,
-              tooltip: t('Card view'),
+              icon: List,
+              tooltip: t('List view'),
             },
             {
               value: VIEW_MODES.TABLE,
@@ -279,7 +282,7 @@ export function PricingToolbar(props: PricingToolbarProps) {
         >
           <SheetHeader className={sideDrawerHeaderClassName()}>
             <SheetTitle>{t('Filter')}</SheetTitle>
-            <SheetDescription>
+            <SheetDescription className='sr-only'>
               {t('Filter models by provider, group, type, endpoint, and tags.')}
             </SheetDescription>
           </SheetHeader>

@@ -22,7 +22,6 @@ import { useTranslation } from 'react-i18next'
 import { useStatus } from '@/hooks/use-status'
 
 import { AuthLayout } from '../auth-layout'
-import { TermsFooter } from '../components/terms-footer'
 import { UserAuthForm } from './components/user-auth-form'
 
 export function SignIn() {
@@ -31,35 +30,25 @@ export function SignIn() {
   const { status } = useStatus()
 
   return (
-    <AuthLayout>
-      <div className='w-full space-y-8'>
-        <div className='space-y-2'>
-          <h1 className='text-3xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]'>
-            {t('Sign in')}
-          </h1>
-          {!status?.self_use_mode_enabled &&
-            status?.register_enabled !== false && (
-              <p className='text-muted-foreground text-start text-sm leading-relaxed'>
-                {t("Don't have an account?")}{' '}
-                <Link
-                  to='/sign-up'
-                  className='hover:text-primary font-medium underline underline-offset-4'
-                >
-                  {t('Sign up')}
-                </Link>
-                .
-              </p>
-            )}
-        </div>
-
-        <UserAuthForm redirectTo={redirect} />
-
-        <TermsFooter
-          variant='sign-in'
-          status={status}
-          className='text-center'
-        />
-      </div>
+    <AuthLayout
+      title={t('Sign in')}
+      description={t('Manage your keys, usage and balance.')}
+      secondaryAction={
+        !status?.self_use_mode_enabled &&
+        status?.register_enabled !== false && (
+          <>
+            {t("Don't have an account?")}{' '}
+            <Link
+              to='/sign-up'
+              className='text-foreground font-medium underline underline-offset-4'
+            >
+              {t('Create an account')}
+            </Link>
+          </>
+        )
+      }
+    >
+      <UserAuthForm redirectTo={redirect} />
     </AuthLayout>
   )
 }

@@ -20,6 +20,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, test, vi } from 'vitest'
 
+import { buildBaseParams } from '../../lib/utils'
 import { CompactDateTimeRangePicker } from '../compact-date-time-range-picker'
 
 test('editing a log date range preserves existing seconds and accepts a second-precision boundary', async () => {
@@ -40,5 +41,38 @@ test('editing a log date range preserves existing seconds and accepts a second-p
   expect(onChange).toHaveBeenCalledWith({
     start,
     end: new Date(2026, 8, 1, 9, 20, 49),
+  })
+})
+
+test('keeps reversed bounds editable and permits an exact-second interval', async () => {
+  const onChange = vi.fn()
+  const time = new Date(2026, 8, 1, 9, 20, 35)
+  render(
+    <CompactDateTimeRangePicker start={time} end={time} onChange={onChange} />
+  )
+  await userEvent.click(screen.getByRole('button', { name: /2026-09-01/ }))
+  const endInput = screen.getByLabelText('End Time')
+  fireEvent.change(endInput, { target: { value: '2026-09-01T09:20:34' } })
+  expect(screen.getByRole('alert')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
+  expect(onChange).not.toHaveBeenCalled()
+  fireEvent.change(endInput, { target: { value: '2026-09-01T09:20:35' } })
+  await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+  expect(onChange).toHaveBeenCalledWith({ start: time, end: time })
+})
+
+test('preserves a zero timestamp and converts seconds only for the APIs that require them', () => {
+  const range = {
+    page: 1,
+    pageSize: 10,
+    searchParams: { startTime: 0, endTime: 1000 },
+  }
+  expect(buildBaseParams(range)).toMatchObject({
+    start_timestamp: 0,
+    end_timestamp: 1,
+  })
+  expect(buildBaseParams({ ...range, useMilliseconds: true })).toMatchObject({
+    start_timestamp: 0,
+    end_timestamp: 1000,
   })
 })

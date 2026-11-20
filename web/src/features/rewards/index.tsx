@@ -31,11 +31,12 @@ export function Rewards() {
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('My Rewards')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
-        <div className='mx-auto flex w-full max-w-7xl flex-col gap-7 py-3 sm:gap-8 sm:py-5'>
+        <div className='grid w-full items-start gap-6 lg:grid-cols-[minmax(15rem,.65fr)_minmax(0,1.6fr)]'>
           <RewardSummaryCards />
-          <Tabs defaultValue='fixed' className='gap-6'>
+          <Tabs defaultValue='fixed' className='min-w-0 gap-4'>
             <TabsList
-              className='h-10 max-w-full p-1'
+              variant='line'
+              className='h-10 max-w-full'
               aria-label={t('Reward types')}
             >
               <TabsTrigger value='fixed' className='px-4'>
@@ -52,7 +53,9 @@ export function Rewards() {
               <PendingRewards type='random' />
             </TabsContent>
           </Tabs>
-          <RewardHistory />
+          <div className='min-w-0 lg:col-span-2'>
+            <RewardHistory />
+          </div>
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

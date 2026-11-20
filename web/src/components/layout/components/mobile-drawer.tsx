@@ -31,6 +31,7 @@ import type { AuthUser } from '@/stores/auth-store'
 
 import { MOBILE_DRAWER_ANIMATION, MOBILE_DRAWER_CONFIG } from '../constants'
 import type { TopNavLink } from '../types'
+import { NavLinkItem } from './nav-link-item'
 
 /**
  * Brand logo component with skeleton loading
@@ -101,12 +102,9 @@ function MobileUserProfile({ user, onNavigate }: MobileUserProfileProps) {
             <div className='flex items-center gap-1.5'>
               <span className='text-muted-foreground text-xs'>{roleLabel}</span>
               {user.group && (
-                <>
-                  <span className='text-muted-foreground text-xs'>·</span>
-                  <span className='text-muted-foreground text-xs'>
-                    {String(user.group)}
-                  </span>
-                </>
+                <span className='text-muted-foreground text-xs'>
+                  {String(user.group)}
+                </span>
               )}
             </div>
           </div>
@@ -261,19 +259,17 @@ export function MobileDrawer({
                   </div>
                 ) : (
                   <AnimatePresence>
-                    {mobileLinksList.map((link, index) => (
+                    {mobileLinksList.map((link) => (
                       <motion.div
-                        key={`${link.href}-${index}`}
+                        key={link.href + link.title}
                         className='border-border border-b p-2.5 last:border-b-0'
                         variants={MOBILE_DRAWER_ANIMATION.menuItem as Variants}
                       >
-                        <Link
-                          to={link.href}
+                        <NavLinkItem
+                          link={link}
                           className='text-primary/60 hover:text-primary/80 transition-colors'
-                          onClick={onClose}
-                        >
-                          {link.title}
-                        </Link>
+                          onNavigate={onClose}
+                        />
                       </motion.div>
                     ))}
                   </AnimatePresence>

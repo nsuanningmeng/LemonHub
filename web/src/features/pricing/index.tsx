@@ -19,21 +19,22 @@ For commercial licensing, please contact support@quantumnous.com
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import '@/styles/model-directory.css'
 import { ErrorState } from '@/components/error-state'
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
+import { getLobeIcon } from '@/lib/lobe-icon'
 
 import {
   LoadingSkeleton,
   EmptyState,
   SearchBar,
   PricingTable,
-  PricingSidebar,
   PricingToolbar,
   ModelCardGrid,
   ModelDetailsDrawer,
 } from './components'
-import { EXCLUDED_GROUPS, VIEW_MODES } from './constants'
+import { EXCLUDED_GROUPS, FILTER_ALL, VIEW_MODES } from './constants'
 import { useFilters } from './hooks/use-filters'
 import { usePricingData } from './hooks/use-pricing-data'
 
@@ -111,6 +112,11 @@ export function Pricing() {
     [usableGroup]
   )
 
+  const listedVendors = useMemo(() => {
+    const vendorIds = new Set(models.map((model) => model.vendor_id))
+    return vendors.filter((vendor) => vendorIds.has(vendor.id))
+  }, [models, vendors])
+
   const handleClearAll = useCallback(() => {
     clearFilters()
     clearSearch()
@@ -165,52 +171,59 @@ export function Pricing() {
 
   return (
     <PublicLayout showMainContainer={false}>
-      <main className='mx-auto w-full max-w-[76rem] px-5 pt-24 pb-12 sm:px-8 sm:pt-28'>
+      <main className='mx-auto w-full max-w-[76rem] px-5 pt-20 pb-12 sm:px-8 sm:pt-24'>
         <PageTransition>
-          <header className='mb-6 grid gap-5 border-b pb-6 sm:mb-8 sm:pb-8 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] lg:items-end lg:gap-10'>
-            <div>
-              <h1 className='text-4xl leading-tight font-semibold tracking-tight sm:text-5xl'>
-                {t('Model Square')}
-              </h1>
-              <p className='text-muted-foreground mt-3 max-w-xl text-sm leading-relaxed sm:text-base'>
-                {t(
-                  'Discover curated AI models, compare pricing and capabilities, and choose the right model for every scenario.'
-                )}
-              </p>
-            </div>
-            <SearchBar
-              value={searchInput}
-              onChange={setSearchInput}
-              onClear={clearSearch}
-              placeholder={t(
-                'Search model name, provider, endpoint, or tag...'
-              )}
-            />
+          <header className='model-directory-head'>
+            <h1>{t('Model directory')}</h1>
+            <dl>
+              <div>
+                <dt>{t('Models')}</dt>
+                <dd>{isLoading ? '—' : models.length}</dd>
+              </div>
+              <div>
+                <dt>{t('Providers')}</dt>
+                <dd>{isLoading ? '—' : listedVendors.length}</dd>
+              </div>
+            </dl>
           </header>
-
-          <div className='grid items-start gap-6 xl:grid-cols-[15rem_minmax(0,1fr)] xl:gap-8'>
-            <PricingSidebar
-              quotaTypeFilter={quotaTypeFilter}
-              endpointTypeFilter={endpointTypeFilter}
-              vendorFilter={vendorFilter}
-              groupFilter={groupFilter}
-              tagFilter={tagFilter}
-              onQuotaTypeChange={setQuotaTypeFilter}
-              onEndpointTypeChange={setEndpointTypeFilter}
-              onVendorChange={setVendorFilter}
-              onGroupChange={setGroupFilter}
-              onTagChange={setTagFilter}
-              vendors={vendors || []}
-              groups={availableGroups}
-              groupRatios={groupRatio}
-              tags={availableTags}
-              models={models || []}
-              hasActiveFilters={hasActiveFilters}
-              onClearFilters={clearFilters}
-              className='hover-scrollbar sticky top-20 hidden max-h-[calc(100dvh-6rem)] overflow-y-auto border-e pe-5 xl:block'
-            />
-
-            <div className='min-w-0 space-y-4'>
+          <section aria-label={t('Models')} className='min-w-0'>
+            {listedVendors.length > 0 && (
+              <div
+                role='group'
+                aria-label={t('Provider')}
+                className='model-provider-index'
+              >
+                <button
+                  type='button'
+                  aria-pressed={vendorFilter === FILTER_ALL}
+                  onClick={() => setVendorFilter(FILTER_ALL)}
+                >
+                  {t('All providers')}
+                </button>
+                {listedVendors.map((vendor) => (
+                  <button
+                    type='button'
+                    key={vendor.id}
+                    aria-pressed={vendorFilter === vendor.name}
+                    onClick={() => setVendorFilter(vendor.name)}
+                  >
+                    {vendor.icon && (
+                      <span aria-hidden='true'>
+                        {getLobeIcon(vendor.icon, 16)}
+                      </span>
+                    )}
+                    {vendor.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className='model-directory-tools'>
+              <SearchBar
+                value={searchInput}
+                onChange={setSearchInput}
+                onClear={clearSearch}
+                placeholder={t('Search models')}
+              />
               <PricingToolbar
                 filteredCount={filteredModels.length}
                 totalCount={models?.length}
@@ -241,10 +254,9 @@ export function Pricing() {
                 activeFilterCount={activeFilterCount}
                 onClearFilters={clearFilters}
               />
-
-              {renderPricingContent()}
             </div>
-          </div>
+            {renderPricingContent()}
+          </section>
 
           {selectedModel && (
             <ModelDetailsDrawer

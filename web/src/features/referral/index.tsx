@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ErrorState } from '@/components/error-state'
 import { SectionPageLayout } from '@/components/layout'
 import { TransferDialog } from '@/features/wallet/components/dialogs/transfer-dialog'
 import { useAffiliate } from '@/features/wallet/hooks'
@@ -54,30 +55,48 @@ export function Referral() {
           {t('Referral Dashboard')}
         </SectionPageLayout.Title>
         <SectionPageLayout.Content>
-          <div className='mx-auto flex w-full max-w-5xl flex-col gap-4 sm:gap-5'>
-            <p className='text-muted-foreground text-sm'>
-              {t('Invite friends — earn rewards on their top-ups')}
-            </p>
+          <div className='grid w-full min-w-0 gap-5 xl:grid-cols-[minmax(0,1.65fr)_minmax(16rem,.8fr)] xl:items-start'>
+            <div className='min-w-0 xl:col-span-2'>
+              {stats.isError && !stats.data ? (
+                <ErrorState
+                  title={t('Could not load referral totals')}
+                  onRetry={() => void stats.refetch()}
+                />
+              ) : (
+                <ReferralStatsCards
+                  stats={stats.data}
+                  loading={stats.isLoading}
+                  affiliateLink={affiliateLink}
+                  onTransfer={() => setTransferDialogOpen(true)}
+                />
+              )}
+            </div>
+            <div className='min-w-0'>
+              {leaderboard.isError && !leaderboard.data ? (
+                <ErrorState
+                  title={t('Could not load referral rankings')}
+                  onRetry={() => void leaderboard.refetch()}
+                />
+              ) : (
+                <ReferralLeaderboardTable
+                  items={leaderboard.data}
+                  loading={leaderboard.isLoading}
+                  isCashSettled={stats.data?.is_cash_settled}
+                />
+              )}
+            </div>
 
-            <ReferralStatsCards
-              stats={stats.data}
-              loading={stats.isLoading}
-              affiliateLink={affiliateLink}
-              onTransfer={() => setTransferDialogOpen(true)}
-            />
-
-            <ReferralLeaderboardTable
-              items={leaderboard.data}
-              loading={leaderboard.isLoading}
-              isCashSettled={stats.data?.is_cash_settled}
-            />
-
-            {isAdmin && <ReferralAdminSection />}
-
-            <ReferralRules
-              commissionPercent={stats.data?.commission_percent}
-              isCashSettled={stats.data?.is_cash_settled}
-            />
+            {stats.data && (
+              <ReferralRules
+                commissionPercent={stats.data?.commission_percent}
+                isCashSettled={stats.data.is_cash_settled}
+              />
+            )}
+            {isAdmin && (
+              <div className='min-w-0 xl:col-span-2'>
+                <ReferralAdminSection />
+              </div>
+            )}
           </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>

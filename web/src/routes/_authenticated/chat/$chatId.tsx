@@ -17,12 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, createFileRoute, redirect } from '@tanstack/react-router'
-import { Loader2, MessageCircleWarning } from 'lucide-react'
+import { MessageCircleWarning } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { useActiveChatKey } from '@/features/chat/hooks/use-active-chat-key'
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
 import {
@@ -42,11 +44,17 @@ export const Route = createFileRoute('/_authenticated/chat/$chatId')({
 function ChatRouteComponent() {
   const { t } = useTranslation()
   const { chatId } = Route.useParams()
-  const { chatPresets, serverAddress } = useChatPresets()
+  const {
+    chatPresets,
+    serverAddress,
+    loading,
+    error: configError,
+    refetch,
+  } = useChatPresets()
   const preset = useMemo(() => {
     const index = Number(chatId)
     if (!Number.isInteger(index)) return undefined
-    return chatPresets[index]
+    return chatPresets.find((candidate) => candidate.id === String(index))
   }, [chatId, chatPresets])
 
   const isWebLink = preset?.type === 'web'
@@ -61,7 +69,7 @@ function ChatRouteComponent() {
     isPending,
     isError,
     error,
-  } = useActiveChatKey(Boolean(preset && requiresActiveKey))
+  } = useActiveChatKey(!loading && Boolean(preset && requiresActiveKey))
 
   const iframeSrc = useMemo(() => {
     if (!preset || !isWebLink) return ''
@@ -72,6 +80,28 @@ function ChatRouteComponent() {
       serverAddress,
     })
   }, [activeKey, isWebLink, preset, requiresActiveKey, serverAddress])
+
+  if (loading) {
+    return (
+      <LoadingState className='min-h-80' message={t('Loading configuration')} />
+    )
+  }
+
+  const dashboardLink = (
+    <Link to='/dashboard' className={buttonVariants({ variant: 'outline' })}>
+      {t('Return to dashboard')}
+    </Link>
+  )
+
+  if (!preset && configError) {
+    return (
+      <ErrorState
+        title={t('Unable to open chat')}
+        onRetry={() => void refetch()}
+        action={dashboardLink}
+      />
+    )
+  }
 
   if (!preset) {
     return (
@@ -85,9 +115,7 @@ function ChatRouteComponent() {
             {t('The requested chat preset does not exist or has been removed.')}
           </p>
         </div>
-        <Button variant='outline' render={<Link to='/dashboard' />}>
-          {t('Return to dashboard')}
-        </Button>
+        {dashboardLink}
       </div>
     )
   }
@@ -105,21 +133,17 @@ function ChatRouteComponent() {
             )}
           </p>
         </div>
-        <Button variant='outline' render={<Link to='/dashboard' />}>
-          {t('Return to dashboard')}
-        </Button>
+        {dashboardLink}
       </div>
     )
   }
 
   if (requiresActiveKey && isPending) {
     return (
-      <div className='flex h-full flex-col items-center justify-center gap-4'>
-        <Loader2 className='text-muted-foreground h-8 w-8 animate-spin' />
-        <p className='text-muted-foreground text-sm'>
-          {t('Preparing your chat link…')}
-        </p>
-      </div>
+      <LoadingState
+        className='min-h-80'
+        message={t('Preparing your chat link…')}
+      />
     )
   }
 
@@ -153,13 +177,16 @@ function ChatRouteComponent() {
     )
   }
 
+  // The route parameter selects a numeric index. The URL comes from the
+  // administrator's web chat presets. These clients may use their own origin
+  // for login popups and storage, and request camera or microphone access.
   return (
     <iframe
       src={iframeSrc}
       key={iframeSrc}
       className='h-full w-full border-0'
       allow='camera; microphone'
-      title={`Chat preset: ${preset.name}`}
+      title={preset.name.trim() || t('Chat')}
     />
   )
 }

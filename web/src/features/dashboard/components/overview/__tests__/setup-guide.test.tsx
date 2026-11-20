@@ -121,7 +121,7 @@ test('completed setup uses a compact toggle, restores focus after hiding, and pr
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
   expect(
     screen.getByRole('heading', {
-      name: 'Build on your API gateway in minutes',
+      name: 'Connect your first application',
     })
   ).toBeVisible()
   screen.getByRole('button', { name: 'Hide setup guide' }).focus()
@@ -130,7 +130,7 @@ test('completed setup uses a compact toggle, restores focus after hiding, and pr
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
   expect(
     screen.queryByRole('heading', {
-      name: 'Build on your API gateway in minutes',
+      name: 'Connect your first application',
     })
   ).not.toBeInTheDocument()
   expect(localStorage.getItem('dashboard_overview_setup_guide_expanded')).toBe(

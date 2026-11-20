@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
 import DOMPurify from 'dompurify'
-import { Fragment, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
@@ -43,12 +43,6 @@ interface FooterProps {
   copyright?: string
   className?: string
 }
-
-const NEW_API_FOOTER_ATTRIBUTION_KEY = [
-  'footer',
-  'new' + 'api',
-  'projectAttributionSuffix',
-].join('.')
 
 function FooterLinkItem(props: { link: FooterLink }) {
   const { t } = useTranslation()
@@ -81,7 +75,7 @@ function FooterLinkItem(props: { link: FooterLink }) {
 // Renders User Agreement / Privacy Policy links inline with the parent's
 // copyright row when either is configured in System Settings → Site. Emits
 // fragmented siblings so the parent flex container's gap controls spacing.
-function LegalLinks(props: { leadingSeparator?: boolean }) {
+function LegalLinks() {
   const { t } = useTranslation()
   const { status } = useStatus()
   const items: { key: string; label: string; href: string }[] = []
@@ -104,48 +98,31 @@ function LegalLinks(props: { leadingSeparator?: boolean }) {
   }
   return (
     <>
-      {items.map((item, index) => (
-        <Fragment key={item.key}>
-          {(props.leadingSeparator || index > 0) && (
-            <span aria-hidden='true' className='text-muted-foreground/30'>
-              ·
-            </span>
-          )}
-          <Link
-            to={item.href}
-            className='hover:text-foreground transition-colors duration-200'
-          >
-            {item.label}
-          </Link>
-        </Fragment>
+      {items.map((item) => (
+        <Link
+          key={item.key}
+          to={item.href}
+          className='hover:text-foreground transition-colors duration-150'
+        >
+          {item.label}
+        </Link>
       ))}
     </>
   )
 }
 
-// inline=true returns just the inner span for composition in a parent flex
-// row. inline=false wraps in a centered/right-aligned div (default).
-function ProjectAttribution(props: { currentYear: number; inline?: boolean }) {
-  const { t } = useTranslation()
-  const content = (
-    <span className='text-muted-foreground'>
-      &copy; {props.currentYear}{' '}
-      <a
-        href='https://github.com/QuantumNous/new-api'
-        target='_blank'
-        rel='noopener noreferrer'
-        className='text-foreground hover:text-foreground font-medium transition-colors'
-      >
-        {t('New API')}
-      </a>
-      . {t(NEW_API_FOOTER_ATTRIBUTION_KEY)}
-    </span>
-  )
-  if (props.inline) {
-    return content
-  }
+// NOTICE specifies this exact upstream attribution and repository link.
+function ProjectAttribution() {
   return (
-    <div className='text-muted-foreground text-xs sm:text-end'>{content}</div>
+    <a
+      lang='en'
+      href='https://github.com/QuantumNous/new-api'
+      target='_blank'
+      rel='noopener noreferrer'
+      className='text-muted-foreground hover:text-foreground text-xs underline decoration-current/50 underline-offset-2'
+    >
+      Frontend design and development by New API contributors.
+    </a>
   )
 }
 
@@ -228,18 +205,16 @@ export function Footer(props: FooterProps) {
 
   if (footerHtml) {
     return (
-      <footer
-        className={cn('bg-muted/35 relative z-10 border-t', props.className)}
-      >
+      <footer className={cn('bg-card relative z-10 border-t', props.className)}>
         <div className='mx-auto w-full max-w-[76rem] px-5 py-5 md:px-8'>
           <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
             <div
               className='custom-footer text-muted-foreground min-w-0 text-start text-sm [overflow-wrap:anywhere]'
               dangerouslySetInnerHTML={{ __html: sanitizedFooterHtml }}
             />
-            <div className='text-muted-foreground flex w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t pt-4 text-xs sm:w-auto sm:justify-end sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'>
+            <div className='text-muted-foreground flex w-full flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:w-auto sm:justify-end'>
               <LegalLinks />
-              <ProjectAttribution currentYear={currentYear} inline />
+              <ProjectAttribution />
             </div>
           </div>
         </div>
@@ -248,9 +223,7 @@ export function Footer(props: FooterProps) {
   }
 
   return (
-    <footer
-      className={cn('bg-muted/35 relative z-10 border-t', props.className)}
-    >
+    <footer className={cn('bg-card relative z-10 border-t', props.className)}>
       <div className='mx-auto max-w-[76rem] px-5 py-6 md:px-8 md:py-9'>
         <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
           {/* Brand column */}
@@ -268,9 +241,6 @@ export function Footer(props: FooterProps) {
                 {displayName}
               </span>
             </Link>
-            <p className='text-muted-foreground mt-2 text-sm leading-relaxed'>
-              {t('Powerful API Management Platform')}
-            </p>
           </div>
 
           {/* Links columns */}
@@ -296,15 +266,14 @@ export function Footer(props: FooterProps) {
 
         {/* Copyright + optional legal links inline on the left, project
             attribution on the right; wraps on narrow screens. */}
-        <div className='mt-5 flex flex-col items-start justify-between gap-x-3 gap-y-2 border-t pt-4 sm:flex-row sm:items-center'>
+        <div className='mt-4 flex flex-col items-start justify-between gap-x-3 gap-y-2 sm:flex-row sm:items-center'>
           <div className='text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
             <span>
-              &copy; {currentYear} {displayName}.{' '}
-              {props.copyright ?? t('footer.defaultCopyright')}
+              &copy; {currentYear} {displayName} {props.copyright}
             </span>
-            <LegalLinks leadingSeparator />
+            <LegalLinks />
           </div>
-          <ProjectAttribution currentYear={currentYear} />
+          <ProjectAttribution />
         </div>
       </div>
     </footer>

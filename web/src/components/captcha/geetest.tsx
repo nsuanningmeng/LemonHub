@@ -59,7 +59,7 @@ export function Geetest({
   onExpire,
   className,
 }: GeetestProps) {
-  const containerId = useId().replace(/[^a-zA-Z0-9_-]/g, '')
+  const containerId = useId().replaceAll(/[^a-zA-Z0-9_-]/g, '')
   const domId = `geetest-${containerId}`
   const onVerifyRef = useRef(onVerify)
   const onExpireRef = useRef(onExpire)
@@ -98,8 +98,8 @@ export function Geetest({
       render()
     } else {
       const scriptId = 'geetest-gt4'
-      const existing = document.getElementById(
-        scriptId
+      const existing = document.querySelector(
+        `#${scriptId}`
       ) as HTMLScriptElement | null
       if (existing) {
         existing.addEventListener('load', render)

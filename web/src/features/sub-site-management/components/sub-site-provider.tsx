@@ -20,7 +20,7 @@ import React, { useState } from 'react'
 
 import useDialogState from '@/hooks/use-dialog'
 
-import { type Site, type SubSiteDialogType } from '../types'
+import type { Site, SubSiteDialogType } from '../types'
 
 type SubSiteContextType = {
   open: SubSiteDialogType | null

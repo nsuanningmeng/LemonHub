@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { Menu } from 'lucide-react'
-import { useMemo } from 'react'
+import { ChevronDown, Grid2X2 } from 'lucide-react'
+import type { HTMLAttributes, MouseEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -32,104 +32,66 @@ import { cn } from '@/lib/utils'
 
 import type { TopNavLink } from '../types'
 
-type TopNavProps = React.HTMLAttributes<HTMLElement> & {
+type TopNavProps = HTMLAttributes<HTMLElement> & {
   links: TopNavLink[]
+  label?: string
+  onNavigate?: (event: MouseEvent<HTMLAnchorElement>, link: TopNavLink) => void
 }
 
-/**
- * 顶部导航栏组件
- * 在大屏幕显示水平导航，在小屏幕显示下拉菜单
- */
-export function TopNav({ className, links, ...props }: TopNavProps) {
+export function TopNav(props: TopNavProps) {
   const { t } = useTranslation()
-  // 规范化链接，确保所有可选属性都有默认值
-  const normalizedLinks = useMemo(
-    () =>
-      links.map((link) => ({
-        isActive: false,
-        disabled: false,
-        external: false,
-        ...link,
-      })),
-    [links]
-  )
+  const { links, label: customLabel, onNavigate, ...wrapperProps } = props
+  const label = customLabel ?? t('Platform')
 
   return (
-    <div className='@container/topnav flex min-w-8 flex-1 justify-end sm:me-1'>
-      {/* Compact menu when the toolbar leaves too little room for links. */}
-      <div className='@min-[47rem]/topnav:hidden'>
-        <DropdownMenu modal={false}>
-          <DropdownMenuTrigger
-            render={<Button size='icon' variant='ghost' className='size-8' />}
-            aria-label={t('Open menu')}
-          >
-            <Menu />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side='bottom' align='start'>
-            {normalizedLinks.map(
-              ({ title, href, isActive, disabled, external }) => (
-                <DropdownMenuItem
-                  disabled={disabled}
-                  key={`${title}-${href}`}
-                  render={
-                    external ? (
-                      <a
-                        href={href}
-                        target='_blank'
-                        rel='noopener noreferrer'
-                        className={!isActive ? 'text-muted-foreground' : ''}
-                      >
-                        {title}
-                      </a>
-                    ) : (
-                      <Link
-                        to={href}
-                        className={!isActive ? 'text-muted-foreground' : ''}
-                        disabled={disabled}
-                      >
-                        {title}
-                      </Link>
-                    )
-                  }
-                />
-              )
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* 桌面端水平导航 */}
-      <nav
-        className={cn(
-          'hidden min-w-0 items-center gap-3 overflow-x-auto whitespace-nowrap @min-[47rem]/topnav:flex',
-          className
-        )}
-        {...props}
-      >
-        {normalizedLinks.map(({ title, href, isActive, disabled, external }) =>
-          external ? (
-            <a
-              key={`${title}-${href}`}
-              href={disabled ? undefined : href}
-              aria-disabled={disabled || undefined}
-              target='_blank'
-              rel='noopener noreferrer'
-              className={`hover:text-primary text-sm font-medium transition-colors ${isActive ? '' : 'text-muted-foreground'}`}
+    <div {...wrapperProps}>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger
+          aria-label={label}
+          render={
+            <Button
+              variant='ghost'
+              className='h-9 gap-1.5 px-2 text-sm font-medium'
+            />
+          }
+        >
+          {!customLabel && <Grid2X2 aria-hidden='true' className='size-4' />}
+          <span className={customLabel ? undefined : 'hidden md:inline'}>
+            {label}
+          </span>
+          <ChevronDown
+            aria-hidden='true'
+            className={cn('size-3.5', !customLabel && 'hidden md:block')}
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side='bottom' align='end' className='min-w-44'>
+          {links.map((link) => (
+            <DropdownMenuItem
+              key={link.href + link.title}
+              disabled={link.disabled}
+              render={
+                link.external ? (
+                  <a
+                    href={link.disabled ? undefined : link.href}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    onClick={(event) => onNavigate?.(event, link)}
+                  />
+                ) : (
+                  <Link
+                    to={link.href}
+                    disabled={link.disabled}
+                    activeOptions={{ exact: true }}
+                    onClick={(event) => onNavigate?.(event, link)}
+                  />
+                )
+              }
             >
-              {title}
-            </a>
-          ) : (
-            <Link
-              key={`${title}-${href}`}
-              to={href}
-              disabled={disabled}
-              className={`hover:text-primary text-sm font-medium transition-colors ${isActive ? '' : 'text-muted-foreground'}`}
-            >
-              {title}
-            </Link>
-          )
-        )}
-      </nav>
+              {t(link.title)}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }

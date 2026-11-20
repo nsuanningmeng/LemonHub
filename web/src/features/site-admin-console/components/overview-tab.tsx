@@ -17,10 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ErrorState } from '@/components/error-state'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,10 +33,8 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-import {
-  WalletLogsTable,
-  formatMilliYuan,
-} from '@/components/wallet-logs-table'
+import { WalletLogsTable } from '@/components/wallet-logs-table'
+import { formatMilliYuan } from '@/lib/wallet-log'
 
 import { getDashboard, getWalletLogs, updateWarnThreshold } from '../api'
 import { SUCCESS_MESSAGES } from '../constants'
@@ -46,36 +45,43 @@ export function OverviewTab() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: DASHBOARD_QUERY_KEY,
     queryFn: async () => {
       const res = await getDashboard()
+      if (!res.success) {
+        throw new Error(res.message || 'Failed to load')
+      }
       return res.data ?? null
     },
   })
 
-  const [thresholdYuan, setThresholdYuan] = useState('')
+  const [draftThreshold, setDraftThreshold] = useState<string | null>(null)
   const [savingThreshold, setSavingThreshold] = useState(false)
-
-  useEffect(() => {
-    if (data) {
-      setThresholdYuan((data.wallet_warn_threshold / 1000).toFixed(3))
-    }
-  }, [data])
+  const [saveError, setSaveError] = useState('')
+  const thresholdYuan =
+    draftThreshold ??
+    (data ? (data.wallet_warn_threshold / 1000).toFixed(3) : '')
 
   const handleSaveThreshold = async () => {
-    const yuan = parseFloat(thresholdYuan)
-    if (!Number.isFinite(yuan) || yuan < 0) {
-      toast.error(t('Amount must be greater than 0'))
+    const yuan = Number(thresholdYuan)
+    if (!thresholdYuan.trim() || !Number.isFinite(yuan) || yuan < 0) {
+      setSaveError(t('Enter a threshold of zero or more'))
       return
     }
+    setSaveError('')
     setSavingThreshold(true)
     try {
       const result = await updateWarnThreshold(Math.round(yuan * 1000))
       if (result.success) {
         toast.success(t(SUCCESS_MESSAGES.WARN_THRESHOLD_UPDATED))
-        queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY })
+        await queryClient.invalidateQueries({ queryKey: DASHBOARD_QUERY_KEY })
+        setDraftThreshold(null)
+      } else {
+        setSaveError(result.message || t('Failed to save'))
       }
+    } catch {
+      setSaveError(t('Failed to save'))
     } finally {
       setSavingThreshold(false)
     }
@@ -89,6 +95,10 @@ export function OverviewTab() {
     )
   }
 
+  if (isError && !data) {
+    return <ErrorState onRetry={() => void refetch()} />
+  }
+
   if (!data) {
     return (
       <div className='text-muted-foreground py-16 text-center text-sm'>
@@ -99,29 +109,37 @@ export function OverviewTab() {
 
   return (
     <div className='flex flex-col gap-4'>
-      <div className='grid gap-4 md:grid-cols-2'>
+      <div className='grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'>
         {/* Wallet card */}
         <Card>
           <CardHeader>
-            <CardTitle>{t('Wallet')}</CardTitle>
-            <CardDescription>{t('Current Balance')}</CardDescription>
+            <CardTitle>{t('Current Balance')}</CardTitle>
           </CardHeader>
           <CardContent className='flex flex-col gap-4'>
-            <div className='font-mono text-3xl font-semibold'>
+            <div className='text-4xl font-semibold tracking-tight tabular-nums'>
               ¥{formatMilliYuan(data.wallet_balance)}
             </div>
             <div className='flex flex-col gap-2'>
-              <label className='text-muted-foreground text-xs'>
-                {t('Wallet Warn Threshold')} ({t('CNY')})
+              <label
+                htmlFor='site-wallet-threshold'
+                className='text-muted-foreground text-xs'
+              >
+                {t('Wallet Warn Threshold')} <span>{t('CNY')}</span>
               </label>
               <div className='flex items-center gap-2'>
                 <Input
+                  id='site-wallet-threshold'
                   type='number'
                   step='0.001'
                   min='0'
                   value={thresholdYuan}
-                  onChange={(e) => setThresholdYuan(e.target.value)}
-                  className='w-[160px]'
+                  aria-describedby={saveError ? 'threshold-error' : undefined}
+                  disabled={savingThreshold}
+                  onChange={(e) => {
+                    setDraftThreshold(e.target.value)
+                    setSaveError('')
+                  }}
+                  className='max-w-40 min-w-0'
                 />
                 <Button
                   size='sm'
@@ -131,6 +149,15 @@ export function OverviewTab() {
                   {savingThreshold ? t('Saving...') : t('Save')}
                 </Button>
               </div>
+              {saveError && (
+                <p
+                  id='threshold-error'
+                  role='alert'
+                  className='text-destructive text-sm'
+                >
+                  {saveError}
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -157,7 +184,7 @@ export function OverviewTab() {
               </span>
             </InfoRow>
             <InfoRow label={t('Domains')}>
-              <span className='text-muted-foreground max-w-[260px] truncate'>
+              <span className='text-muted-foreground min-w-0 text-end wrap-anywhere'>
                 {data.domains.length === 0 ? '-' : data.domains.join(', ')}
               </span>
             </InfoRow>
@@ -175,6 +202,9 @@ export function OverviewTab() {
             queryKey='site-admin-wallet-logs'
             fetchLogs={async (params) => {
               const res = await getWalletLogs(params)
+              if (!res.success) {
+                throw new Error(res.message || t('Request failed'))
+              }
               return {
                 items: res.data?.items ?? [],
                 total: res.data?.total ?? 0,

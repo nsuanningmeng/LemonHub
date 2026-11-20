@@ -126,8 +126,7 @@ it('requests server status on page one and refreshes after disabling a derived e
   expect(
     get.mock.calls.some(([url]) => url === '/api/token/?p=3&size=20')
   ).toBe(true)
-  await userEvent.click(screen.getByRole('button', { name: 'Status' }))
-  await userEvent.click(await screen.findByText('Expired'))
+  await userEvent.click(screen.getByRole('button', { name: 'Expired' }))
   await screen.findByText('expired-server-row')
   await waitFor(() =>
     expect(

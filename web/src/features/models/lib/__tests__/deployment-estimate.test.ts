@@ -16,9 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { mount } from 'ascii.rest'
-import * as earth from 'ascii.rest/pieces/earth'
+import { expect, test } from 'vitest'
 
-export function playEarth(element: HTMLPreElement) {
-  return mount(element, earth, { fps: 10 })
-}
+import { formatDeploymentEstimate } from '../deployments-utils'
+
+test('uses the server estimate, including a zero price and older response shapes', () => {
+  expect(
+    formatDeploymentEstimate({
+      price_breakdown: { TotalCost: '2.75' },
+      currency: 'usdc',
+    })
+  ).toBe('2.75 USDC')
+  expect(formatDeploymentEstimate({ total_cost: 0 }, 'usd')).toBe('0 USD')
+  expect(formatDeploymentEstimate({ total: 16, currency: 'usd' })).toBe(
+    '16 USD'
+  )
+  expect(formatDeploymentEstimate({ currency: 'usd' })).toBe('')
+})

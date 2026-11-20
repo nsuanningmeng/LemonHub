@@ -91,7 +91,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
           checked={table.getIsAllPageRowsSelected()}
           indeterminate={table.getIsSomePageRowsSelected()}
           onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label='Select all'
+          aria-label={t('Select all')}
           className='translate-y-[2px]'
         />
       ),
@@ -99,7 +99,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
         <Checkbox
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label='Select row'
+          aria-label={t('Select row')}
           className='translate-y-[2px]'
         />
       ),
@@ -177,14 +177,14 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
             <TooltipContent>
               <div className='space-y-1 text-xs'>
                 <div>
-                  {t('Used:')} {formatQuota(used)}
+                  {t('Used')} {formatQuota(used)}
                 </div>
                 <div>
-                  {t('Remaining:')} {formatQuota(remaining)} (
+                  {t('Remaining')} {formatQuota(remaining)} (
                   {percentage.toFixed(1)}%)
                 </div>
                 <div>
-                  {t('Total:')} {formatQuota(total)}
+                  {t('Total')} {formatQuota(total)}
                 </div>
               </div>
             </TooltipContent>

@@ -27,7 +27,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import '@/styles/home.css'
 
-import { Features, Hero, HowItWorks, ModelIntegrations } from './components'
+import { Features, Hero, HowItWorks } from './components'
 import { useHomePageContent } from './hooks'
 
 export function Home() {
@@ -108,7 +108,6 @@ export function Home() {
     <PublicLayout showMainContainer={false}>
       <main className='gateway-home'>
         <Hero isAuthenticated={isAuthenticated} />
-        <ModelIntegrations />
         <HowItWorks />
         <Features />
       </main>

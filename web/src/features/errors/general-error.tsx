@@ -16,13 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useNavigate, useRouter } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { Button, buttonVariants } from '@/components/ui/button'
 
+import { ErrorPage } from './error-page'
 import {
   claimResourceReload,
   getResourceBuildId,
@@ -50,8 +49,6 @@ export function GeneralError({
   error,
 }: GeneralErrorProps) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const { history } = useRouter()
   const status = getHttpStatus(error)
   const resourceFailure = isResourceLoadError(error)
   useEffect(() => {
@@ -70,7 +67,7 @@ export function GeneralError({
   const isRateLimited = status === 429
   let title = isRateLimited
     ? t('Too many requests')
-    : `${t('Oops! Something went wrong')} ${`:')`}`
+    : t('This page could not be loaded.')
   let description = isRateLimited
     ? t('Please wait a moment before trying again.')
     : t('Please try again later.')
@@ -81,51 +78,35 @@ export function GeneralError({
     )
   }
 
+  const hasExtraActions = resourceFailure || !minimal
   return (
-    <div className={cn('h-svh w-full', className)}>
-      <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
-        {!minimal && !resourceFailure && (
-          <h1 className='text-[7rem] leading-tight font-bold'>
-            {status ?? 500}
-          </h1>
-        )}
-        <span className='font-medium'>{title}</span>
-        <p className='text-muted-foreground text-center'>
-          {t('We apologize for the inconvenience.')} <br /> {description}
-        </p>
-        {!minimal && (
-          <p className='text-muted-foreground text-center text-sm'>
-            {t('If this keeps happening, please report it on GitHub Issues.')}
-          </p>
-        )}
-        {resourceFailure && (
-          <Button onClick={() => window.location.reload()}>
-            {t('Reload page')}
-          </Button>
-        )}
-        {!minimal && (
-          <div className='mt-6 flex flex-wrap justify-center gap-4'>
-            <Button variant='outline' onClick={() => history.go(-1)}>
-              {t('Go Back')}
-            </Button>
-            <Button
-              variant='outline'
-              render={
-                <a
-                  href={FEEDBACK_URL}
-                  target='_blank'
-                  rel='noopener noreferrer'
-                />
-              }
-            >
-              {t('Report an issue')}
-            </Button>
-            <Button onClick={() => navigate({ to: '/' })}>
-              {t('Back to Home')}
-            </Button>
-          </div>
-        )}
-      </div>
-    </div>
+    <ErrorPage
+      className={className}
+      minimal={minimal}
+      code={minimal || resourceFailure ? undefined : (status ?? 500)}
+      title={title}
+      description={description}
+      action={
+        hasExtraActions && (
+          <>
+            {resourceFailure && (
+              <Button onClick={() => window.location.reload()}>
+                {t('Reload page')}
+              </Button>
+            )}
+            {!minimal && (
+              <a
+                href={FEEDBACK_URL}
+                target='_blank'
+                rel='noopener noreferrer'
+                className={buttonVariants({ variant: 'outline' })}
+              >
+                {t('Report an issue')}
+              </a>
+            )}
+          </>
+        )
+      }
+    />
   )
 }

@@ -17,14 +17,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { GatewayAtlas } from '../components/gateway-atlas'
 
+beforeEach(() => {
+  vi.stubGlobal('IntersectionObserver', class {})
+  vi.stubGlobal('OffscreenCanvas', class {})
+  vi.stubGlobal('Worker', class {})
+  vi.spyOn(navigator, 'hardwareConcurrency', 'get').mockReturnValue(8)
+})
+
 afterEach(() => vi.unstubAllGlobals())
 
-test('a reader requesting reduced motion gets the complete static globe and the copyable endpoint', async () => {
+test('a reader requesting reduced motion sees the static panorama without the playback control', () => {
   vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
     matches: query.includes('prefers-reduced-motion'),
     media: query,
@@ -35,33 +41,27 @@ test('a reader requesting reduced motion gets the complete static globe and the 
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
   }))
-  vi.stubGlobal('IntersectionObserver', class {})
-  const user = userEvent.setup()
-  const { container } = render(
-    <GatewayAtlas baseUrl='https://gateway.test/v1' />
-  )
-  expect(container.querySelector('pre')?.textContent?.split('\n')).toHaveLength(
-    30
-  )
+  const { container } = render(<GatewayAtlas />)
+  expect(container.querySelector('img')).toHaveAttribute('width', '1400')
+  expect(container.querySelector('img')).toHaveAttribute('height', '700')
+  expect(container.querySelector('canvas')).not.toHaveAttribute('data-ready')
   expect(
     screen.queryByRole('button', { name: /animation/i })
   ).not.toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Copy URL' }))
-  expect(await navigator.clipboard.readText()).toBe('https://gateway.test/v1')
 })
 
-test('a device saving data shows a still globe without a playback control', () => {
+test('a device saving data shows a still landscape without a playback control', () => {
   const previous = Object.getOwnPropertyDescriptor(navigator, 'connection')
   Object.defineProperty(navigator, 'connection', {
     configurable: true,
     value: { saveData: true },
   })
-  vi.stubGlobal('IntersectionObserver', class {})
   try {
-    const { container } = render(
-      <GatewayAtlas baseUrl='https://gateway.test/v1' />
+    const { container } = render(<GatewayAtlas />)
+    expect(container.querySelector('img')).toHaveAttribute(
+      'src',
+      expect.stringContaining('earthrise')
     )
-    expect(container.querySelector('pre')).toHaveTextContent('@')
     expect(
       screen.queryByRole('button', { name: /animation/i })
     ).not.toBeInTheDocument()

@@ -32,7 +32,6 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { ROLE } from '@/lib/roles'
-import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { ModelsChartPreferences } from './components/models/models-chart-preferences'
@@ -117,29 +116,17 @@ const LazyFlowCharts = lazy(() =>
 
 function LogStatCardsFallback() {
   return (
-    <div className='bg-card @container/model-stats min-w-0 overflow-hidden rounded-lg border'>
-      <div className='bg-border grid min-w-0 grid-cols-2 gap-px @lg/model-stats:grid-cols-4 @5xl/model-stats:grid-cols-7'>
-        {LOG_STAT_CARD_FALLBACK_KEYS.map((key, index) => (
-          <div
-            key={key}
-            className={cn(
-              'bg-card min-w-0 px-3 py-3 sm:px-4 sm:py-4',
-              index === LOG_STAT_CARD_FALLBACK_KEYS.length - 1 &&
-                'col-span-2 @5xl/model-stats:col-span-1'
-            )}
-          >
-            <div className='flex items-center gap-1.5 sm:gap-2'>
-              <Skeleton className='size-4 rounded-sm sm:size-7 sm:rounded-md' />
-              <Skeleton className='h-4 w-16' />
-            </div>
-            <Skeleton className='mt-1 h-5 w-16 sm:mt-2 sm:h-7 sm:w-20' />
-            <Skeleton className='mt-1 hidden h-3.5 w-28 md:block' />
-          </div>
-        ))}
-      </div>
-      <div className='border-t px-3 py-2'>
-        <Skeleton className='h-4 w-full max-w-md' />
-      </div>
+    <div className='bg-card min-w-0 rounded-lg border px-5 py-4'>
+      <Skeleton className='mb-3 h-5 w-32' />
+      {LOG_STAT_CARD_FALLBACK_KEYS.map((key) => (
+        <div
+          key={key}
+          className='flex items-center justify-between gap-4 border-t py-3'
+        >
+          <Skeleton className='h-4 w-24' />
+          <Skeleton className='h-5 w-16' />
+        </div>
+      ))}
     </div>
   )
 }
@@ -186,13 +173,13 @@ const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
     titleKey: 'Overview',
   },
   models: {
-    titleKey: 'Model Call Analytics',
+    titleKey: 'Model usage',
   },
   flow: {
-    titleKey: 'Flow',
+    titleKey: 'Request flow',
   },
   users: {
-    titleKey: 'User Analytics',
+    titleKey: 'User activity',
   },
 }
 
@@ -334,7 +321,10 @@ export function Dashboard() {
           <div className='flex flex-wrap items-center justify-between gap-1.5 sm:gap-2'>
             {showSectionTabs ? (
               <Tabs value={activeSection} onValueChange={handleSectionChange}>
-                <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                <TabsList
+                  variant='line'
+                  className='max-w-full flex-wrap justify-start gap-2 rounded-none group-data-horizontal/tabs:h-auto'
+                >
                   {visibleSections.map((section) => (
                     <TabsTrigger key={section} value={section}>
                       {t(SECTION_META[section].titleKey)}
@@ -353,21 +343,31 @@ export function Dashboard() {
           </div>
           {activeSection === 'models' && (
             <>
-              <FadeIn>
-                <Suspense fallback={<LogStatCardsFallback />}>
-                  <LazyLogStatCards
-                    filters={modelFilters}
-                    onDataUpdate={handleDataUpdate}
-                  />
-                </Suspense>
-              </FadeIn>
-              {isAdmin && (
-                <FadeIn delay={0.05}>
-                  <Suspense fallback={<PerformanceOverviewFallback />}>
-                    <LazyPerformanceOverview />
-                  </Suspense>
-                </FadeIn>
-              )}
+              <div className='@container/model-reports'>
+                <div className='grid items-start gap-4 @min-[59rem]/model-reports:grid-cols-[minmax(0,1fr)_minmax(17rem,.38fr)]'>
+                  <FadeIn className='min-w-0'>
+                    <Suspense fallback={<ModelChartsFallback />}>
+                      <LazyModelCharts
+                        data={modelData}
+                        loading={dataLoading}
+                        defaultChartTab={chartPreferences.modelAnalyticsChart}
+                        timeGranularity={
+                          modelFilters.time_granularity ||
+                          DEFAULT_TIME_GRANULARITY
+                        }
+                      />
+                    </Suspense>
+                  </FadeIn>
+                  <FadeIn className='min-w-0'>
+                    <Suspense fallback={<LogStatCardsFallback />}>
+                      <LazyLogStatCards
+                        filters={modelFilters}
+                        onDataUpdate={handleDataUpdate}
+                      />
+                    </Suspense>
+                  </FadeIn>
+                </div>
+              </div>
               <FadeIn delay={0.1}>
                 <Suspense fallback={<ModelChartsFallback />}>
                   <LazyConsumptionDistributionChart
@@ -382,18 +382,13 @@ export function Dashboard() {
                   />
                 </Suspense>
               </FadeIn>
-              <FadeIn delay={0.15}>
-                <Suspense fallback={<ModelChartsFallback />}>
-                  <LazyModelCharts
-                    data={modelData}
-                    loading={dataLoading}
-                    defaultChartTab={chartPreferences.modelAnalyticsChart}
-                    timeGranularity={
-                      modelFilters.time_granularity || DEFAULT_TIME_GRANULARITY
-                    }
-                  />
-                </Suspense>
-              </FadeIn>
+              {isAdmin && (
+                <FadeIn delay={0.05}>
+                  <Suspense fallback={<PerformanceOverviewFallback />}>
+                    <LazyPerformanceOverview />
+                  </Suspense>
+                </FadeIn>
+              )}
             </>
           )}
           {activeSection === 'users' && (

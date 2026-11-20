@@ -58,15 +58,17 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
 
   if (props.loading) {
     return (
-      <Card data-card-hover='false' className='bg-muted/20 py-0'>
+      <Card data-card-hover='false' className='bg-card py-0'>
         <CardContent className='space-y-4 p-4 sm:p-5'>
-          <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className='space-y-2'>
-                <Skeleton className='h-3.5 w-20' />
-                <Skeleton className='h-6 w-24' />
-              </div>
-            ))}
+          <div className='grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 xl:grid-cols-6'>
+            {['balance', 'paid', 'month', 'activated', 'invited', 'rate'].map(
+              (metric) => (
+                <div key={metric} className='min-w-0 space-y-2'>
+                  <Skeleton className='h-3.5 w-20 max-w-full' />
+                  <Skeleton className='h-6 w-24 max-w-full' />
+                </div>
+              )
+            )}
           </div>
           <div className='border-t pt-4'>
             <Skeleton className='h-3.5 w-28' />
@@ -84,7 +86,7 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
   // Commission Rate is shown to everyone; trim trailing zeros, e.g. 5 → "5%".
   const rateTile: StatTile = {
     label: t('Commission Rate'),
-    value: `${parseFloat((stats?.commission_percent ?? 0).toFixed(2))}%`,
+    value: `${Number.parseFloat((stats?.commission_percent ?? 0).toFixed(2))}%`,
     icon: Percent,
   }
 
@@ -150,7 +152,7 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
       ]
 
   return (
-    <Card data-card-hover='false' className='bg-muted/20 py-0'>
+    <Card data-card-hover='false' className='bg-card py-0'>
       <CardContent className='space-y-4 p-4 sm:p-5'>
         {isCashSettled && (
           <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
@@ -167,7 +169,7 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
             </span>
           </div>
         )}
-        <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6'>
+        <div className='grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 xl:grid-cols-6'>
           {tiles.map((tile) => (
             <div key={tile.label} className='min-w-0'>
               <div className='text-muted-foreground flex items-center gap-1.5'>
@@ -175,11 +177,9 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
                   className='size-3.5 shrink-0 opacity-70'
                   aria-hidden='true'
                 />
-                <span className='truncate text-[10px] font-medium tracking-wider uppercase'>
-                  {tile.label}
-                </span>
+                <span className='text-xs font-medium'>{tile.label}</span>
               </div>
-              <div className='text-foreground mt-1 truncate text-lg font-semibold tabular-nums'>
+              <div className='text-foreground mt-1 text-xl font-semibold tabular-nums'>
                 {tile.value}
               </div>
             </div>
@@ -189,16 +189,16 @@ export function ReferralStatsCards(props: ReferralStatsCardsProps) {
         <div className='border-t pt-4'>
           <Label
             htmlFor='referral-link'
-            className='text-muted-foreground text-xs font-medium tracking-wider uppercase'
+            className='text-muted-foreground text-xs font-medium'
           >
             {t('Your Referral Link')}
           </Label>
-          <div className='mt-2 flex items-center gap-2'>
+          <div className='mt-2 flex flex-wrap items-center gap-2'>
             <Input
               id='referral-link'
               value={props.affiliateLink}
               readOnly
-              className='border-muted bg-background/70 h-9 min-w-0 flex-1 font-mono text-xs'
+              className='bg-background h-9 min-w-32 flex-1 font-mono text-xs'
             />
             <CopyButton
               value={props.affiliateLink}

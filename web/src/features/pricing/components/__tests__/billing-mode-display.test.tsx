@@ -175,9 +175,7 @@ describe('compact model pricing', () => {
     })
     expect(within(priceCell).getByText('$1')).toBeInTheDocument()
     expect(within(priceCell).getByText('$3')).toBeInTheDocument()
-    expect(
-      within(priceCell).getByText('/ 1M tokens · 2 tiers')
-    ).toBeInTheDocument()
+    expect(within(priceCell).getByText('2 tiers')).toBeInTheDocument()
     expect(within(row).getByText('Dynamic Pricing')).toBeInTheDocument()
 
     await user.click(row)

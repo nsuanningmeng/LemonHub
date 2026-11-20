@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type Column } from '@tanstack/react-table'
+import type { Column } from '@tanstack/react-table'
 import { Check as CheckIcon, PlusCircle as PlusCircledIcon } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
@@ -81,7 +81,7 @@ function DataTableFacetedFilterInner<TData, TValue>({
     <Popover>
       <PopoverTrigger
         render={
-          <Button variant='outline' size='sm' className='h-8 border-dashed' />
+          <Button variant='outline' size='sm' className='h-8 border-solid' />
         }
       >
         <PlusCircledIcon className='size-4' />
@@ -128,6 +128,10 @@ function DataTableFacetedFilterInner<TData, TValue>({
             <CommandGroup>
               {options.map((option) => {
                 const isSelected = selectedValues.has(option.value)
+                const count = option.count ?? facets?.get(option.value)
+                const icon =
+                  option.iconNode ??
+                  (option.icon && <option.icon className='size-4' />)
                 return (
                   <CommandItem
                     key={option.value}
@@ -143,28 +147,22 @@ function DataTableFacetedFilterInner<TData, TValue>({
                     >
                       <CheckIcon className={cn('text-background h-4 w-4')} />
                     </div>
-                    {option.iconNode ? (
+                    {icon && (
                       <span className='text-muted-foreground flex size-4 items-center justify-center'>
-                        {option.iconNode}
+                        {icon}
                       </span>
-                    ) : option.icon ? (
-                      <option.icon className='text-muted-foreground size-4' />
-                    ) : null}
+                    )}
                     <span
                       className='min-w-0 flex-1 truncate'
                       title={t(option.label)}
                     >
                       {t(option.label)}
                     </span>
-                    {typeof option.count === 'number' ? (
+                    {count !== undefined && (
                       <span className='text-muted-foreground ms-auto flex h-4 min-w-4 items-center justify-center font-mono text-xs'>
-                        {option.count}
+                        {count}
                       </span>
-                    ) : facets?.get(option.value) ? (
-                      <span className='ms-auto flex h-4 w-4 items-center justify-center font-mono text-xs'>
-                        {facets.get(option.value)}
-                      </span>
-                    ) : null}
+                    )}
                   </CommandItem>
                 )
               })}
@@ -209,5 +207,5 @@ function getNextSelectedValues(
     nextSelectedValues.add(optionValue)
   }
 
-  return Array.from(nextSelectedValues)
+  return [...nextSelectedValues]
 }

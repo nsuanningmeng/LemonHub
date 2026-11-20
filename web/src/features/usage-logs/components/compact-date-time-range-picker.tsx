@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { CalendarDays } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -58,12 +58,15 @@ export function CompactDateTimeRangePicker({
   const [draftStart, setDraftStart] = useState(toInputValue(start))
   const [draftEnd, setDraftEnd] = useState(toInputValue(end))
 
+  const hintId = useId()
+  const reversed = Boolean(draftStart && draftEnd && draftEnd < draftStart)
+
   const label = useMemo(() => {
     if (!start && !end) return t('Date Range')
     // Keep the selected second-precision boundaries visible in the trigger.
     const startText = start ? dayjs(start).format('YYYY-MM-DD HH:mm:ss') : '-'
     const endText = end ? dayjs(end).format('YYYY-MM-DD HH:mm:ss') : '-'
-    return `${startText} ~ ${endText}`
+    return `${startText} – ${endText}`
   }, [end, start, t])
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -75,6 +78,7 @@ export function CompactDateTimeRangePicker({
   }
 
   const applyDraft = () => {
+    if (reversed) return
     onChange({
       start: fromInputValue(draftStart),
       end: fromInputValue(draftEnd),
@@ -136,7 +140,7 @@ export function CompactDateTimeRangePicker({
         className='w-[min(520px,calc(100vw-2rem))] p-3'
       >
         <div className='space-y-3'>
-          <div className='grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-end'>
+          <div className='grid gap-3 sm:grid-cols-2 sm:items-end'>
             <div className='space-y-1.5'>
               <div className='text-muted-foreground text-xs'>
                 {t('Start Time')}
@@ -150,9 +154,6 @@ export function CompactDateTimeRangePicker({
                 className='h-8 text-sm leading-5 tabular-nums'
               />
             </div>
-            <span className='text-muted-foreground hidden pb-2 text-xs sm:block'>
-              ~
-            </span>
             <div className='space-y-1.5'>
               <div className='text-muted-foreground text-xs'>
                 {t('End Time')}
@@ -160,6 +161,9 @@ export function CompactDateTimeRangePicker({
               <Input
                 type='datetime-local'
                 aria-label={t('End Time')}
+                min={draftStart || undefined}
+                aria-invalid={reversed}
+                aria-describedby={reversed ? hintId : undefined}
                 step={1}
                 value={draftEnd}
                 onChange={(e) => setDraftEnd(e.target.value)}
@@ -167,6 +171,12 @@ export function CompactDateTimeRangePicker({
               />
             </div>
           </div>
+
+          {reversed && (
+            <p role='alert' id={hintId} className='text-destructive text-xs'>
+              {t('End time cannot be earlier than start time')}
+            </p>
+          )}
 
           <div className='flex flex-wrap gap-1.5'>
             <Button
@@ -217,7 +227,12 @@ export function CompactDateTimeRangePicker({
           </div>
 
           <div className='flex justify-end'>
-            <Button size='sm' className='h-8' onClick={applyDraft}>
+            <Button
+              size='sm'
+              className='h-8'
+              disabled={reversed}
+              onClick={applyDraft}
+            >
               {t('Confirm')}
             </Button>
           </div>

@@ -82,6 +82,45 @@ function detectOS(): 'windows' | 'darwin' | 'linux' {
   return 'linux'
 }
 
+function FamilySection({
+  title,
+  tools,
+  icon: Icon,
+  onSelect,
+}: {
+  title: string
+  tools: ClientIntegration[]
+  icon: LucideIcon
+  onSelect: (tool: ClientIntegration) => void
+}) {
+  if (tools.length === 0) return null
+  return (
+    <div className='space-y-3'>
+      <div className='text-muted-foreground flex items-center gap-2 text-sm font-medium'>
+        <Icon size={16} />
+        <span>{title}</span>
+      </div>
+      <div className='grid grid-cols-2 gap-3 sm:grid-cols-3'>
+        {tools.map((tool) => (
+          <button
+            type='button'
+            key={tool.id}
+            onClick={() => onSelect(tool)}
+            className='bg-card hover:border-primary focus:ring-primary flex flex-col items-center gap-3 rounded-xl border p-4 transition-colors focus:ring-2 focus:outline-none'
+          >
+            <div className='bg-primary/5 text-primary flex h-12 w-12 items-center justify-center rounded-lg'>
+              <Icon aria-hidden='true' />
+            </div>
+            <span className='text-center text-sm font-semibold'>
+              {tool.name}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export function ConnectAppDialog({
   open,
   onOpenChange,
@@ -130,12 +169,13 @@ export function ConnectAppDialog({
   }, [open])
 
   const renderToolGallery = () => {
-    if (loadingIntegrations)
+    if (loadingIntegrations) {
       return (
         <div className='flex h-40 items-center justify-center'>
           <Code2 className='animate-spin' />
         </div>
       )
+    }
 
     const families = {
       cli: integrationsData?.filter((i) => i.family === 'cli') || [],
@@ -144,64 +184,32 @@ export function ConnectAppDialog({
       web: integrationsData?.filter((i) => i.family === 'web') || [],
     }
 
-    const FamilySection = ({
-      title,
-      tools,
-      icon: Icon,
-    }: {
-      title: string
-      tools: ClientIntegration[]
-      icon: LucideIcon
-    }) => {
-      if (tools.length === 0) return null
-      return (
-        <div className='space-y-3'>
-          <div className='text-muted-foreground flex items-center gap-2 text-sm font-medium'>
-            <Icon size={16} />
-            <span>{t(title)}</span>
-          </div>
-          <div className='grid grid-cols-2 gap-3 sm:grid-cols-3'>
-            {tools.map((tool) => (
-              <button
-                key={tool.id}
-                onClick={() => setSelectedTool(tool)}
-                className='bg-card hover:border-primary focus:ring-primary flex flex-col items-center gap-3 rounded-xl border p-4 transition-all hover:shadow-md focus:ring-2 focus:outline-none'
-              >
-                <div className='bg-primary/5 text-primary flex h-12 w-12 items-center justify-center rounded-lg'>
-                  {tool.family === 'cli' ? (
-                    <Terminal />
-                  ) : tool.family === 'desktop' ? (
-                    <Laptop />
-                  ) : tool.family === 'editor' ? (
-                    <Puzzle />
-                  ) : (
-                    <Globe />
-                  )}
-                </div>
-                <span className='text-center text-sm font-semibold'>
-                  {tool.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )
-    }
-
     return (
       <div className='space-y-6'>
         <FamilySection
-          title='Desktop Apps'
+          title={t('Desktop Apps')}
+          onSelect={setSelectedTool}
           tools={families.desktop}
           icon={Laptop}
         />
-        <FamilySection title='CLI Tools' tools={families.cli} icon={Terminal} />
         <FamilySection
-          title='Editors & Extensions'
+          title={t('CLI Tools')}
+          onSelect={setSelectedTool}
+          tools={families.cli}
+          icon={Terminal}
+        />
+        <FamilySection
+          title={t('Editors & Extensions')}
+          onSelect={setSelectedTool}
           tools={families.editor}
           icon={Puzzle}
         />
-        <FamilySection title='Web Clients' tools={families.web} icon={Globe} />
+        <FamilySection
+          title={t('Web Clients')}
+          onSelect={setSelectedTool}
+          tools={families.web}
+          icon={Globe}
+        />
       </div>
     )
   }
@@ -217,9 +225,9 @@ export function ConnectAppDialog({
     const key = real || revealKey ? realKey : MASKED_KEY
     const model = effectiveModel || '<your-model>'
     return template
-      .replace(/{address}/g, address)
-      .replace(/{key}/g, key)
-      .replace(/{model}/g, model)
+      .replaceAll('{address}', address)
+      .replaceAll('{key}', key)
+      .replaceAll('{model}', model)
   }
 
   const handleDownload = async (artifact: ClientArtifact) => {
@@ -244,6 +252,7 @@ export function ConnectAppDialog({
       a.download = artifact.filename || 'config.sh'
       document.body.appendChild(a)
       a.click()
+      a.remove()
       window.URL.revokeObjectURL(url)
     } catch {
       toast.error(t('Download failed'))
@@ -266,6 +275,7 @@ export function ConnectAppDialog({
           <Button
             variant='ghost'
             size='icon'
+            aria-label={t('Back')}
             onClick={() => setSelectedTool(null)}
           >
             <ChevronLeft />
@@ -325,8 +335,18 @@ export function ConnectAppDialog({
         )}
 
         <div className='space-y-4'>
-          {artifacts.map((artifact, i) => (
-            <div key={i} className='space-y-2'>
+          {artifacts.map((artifact) => (
+            <div
+              key={[
+                artifact.level,
+                artifact.platform,
+                artifact.kind,
+                artifact.label,
+                artifact.filename,
+                artifact.template,
+              ].join('|')}
+              className='space-y-2'
+            >
               {artifact.kind === 'deeplink' && (
                 <div className='space-y-2'>
                   <Button
@@ -356,7 +376,7 @@ export function ConnectAppDialog({
                     <pre className='overflow-x-auto rounded-lg bg-zinc-950 p-4 font-mono text-sm text-zinc-50'>
                       {resolveTemplate(artifact.template)}
                     </pre>
-                    <div className='absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100'>
+                    <div className='absolute top-2 right-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100'>
                       <CopyButton
                         value={resolveTemplate(artifact.template, true)}
                       />
@@ -381,15 +401,9 @@ export function ConnectAppDialog({
                   <Label className='mb-2 block font-bold'>
                     {artifact.label || t('Manual Steps')}
                   </Label>
-                  <div className='prose dark:prose-invert max-w-none text-sm'>
-                    {resolveTemplate(artifact.template)
-                      .split('\n')
-                      .map((line, j) => (
-                        <p key={j} className='mb-1'>
-                          {line}
-                        </p>
-                      ))}
-                  </div>
+                  <p className='text-sm leading-relaxed whitespace-pre-line'>
+                    {resolveTemplate(artifact.template)}
+                  </p>
                 </div>
               )}
             </div>

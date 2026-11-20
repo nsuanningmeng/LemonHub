@@ -27,6 +27,9 @@ test('long action groups wrap before squeezing the page title away', () => {
   render(
     <SectionPageLayout>
       <SectionPageLayout.Title>Support tickets</SectionPageLayout.Title>
+      <SectionPageLayout.Description>
+        Manage support requests
+      </SectionPageLayout.Description>
       <SectionPageLayout.Actions>
         <button type='button'>Filter by ticket status</button>
         <button type='button'>Create ticket</button>
@@ -36,6 +39,9 @@ test('long action groups wrap before squeezing the page title away', () => {
   )
   const title = screen.getByRole('heading', { name: 'Support tickets' })
   expect(title.parentElement).toHaveClass('basis-32')
+  expect(title.parentElement).toContainElement(
+    screen.getByText('Manage support requests')
+  )
   expect(
     screen.getByRole('button', { name: 'Create ticket' }).parentElement
   ).toHaveClass('max-w-full', 'min-w-0')

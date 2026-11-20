@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { toIntlLocale } from '@/i18n/languages'
 import { cn, getPageNumbers } from '@/lib/utils'
 
 type DataTablePaginationProps<TData> = {
@@ -49,24 +50,31 @@ const PAGE_SIZE_SELECT_ITEMS = PAGE_SIZE_OPTIONS.map((pageSize) => ({
 export function DataTablePagination<TData>({
   table,
 }: DataTablePaginationProps<TData>) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const pagination = table.getState().pagination
   const currentPage = pagination.pageIndex + 1
   const pageSize = pagination.pageSize
   const totalPages = table.getPageCount()
   const totalRows = table.getRowCount()
+  const locale = toIntlLocale(i18n.language)
+  const firstRow =
+    totalRows > 0 ? Math.min(pagination.pageIndex * pageSize + 1, totalRows) : 0
+  const lastRow = Math.min(currentPage * pageSize, totalRows)
   const pageNumbers = getPageNumbers(currentPage, totalPages)
 
   return (
     <div className='@container/pagination w-full min-w-0'>
       <div className='flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2'>
         <div className='flex items-center gap-2 @lg/pagination:gap-4'>
-          <div className='flex items-baseline gap-1.5 text-xs whitespace-nowrap'>
-            <span className='text-muted-foreground'>{t('Total:')}</span>
-            <span className='text-foreground tabular-nums'>
-              {totalRows.toLocaleString()}
-            </span>
-          </div>
+          <p className='text-muted-foreground text-xs whitespace-nowrap tabular-nums'>
+            {totalRows === 0
+              ? t('No records')
+              : t('{{first}}–{{last}} of {{total}}', {
+                  first: firstRow.toLocaleString(locale),
+                  last: lastRow.toLocaleString(locale),
+                  total: totalRows.toLocaleString(locale),
+                })}
+          </p>
 
           <div className='flex shrink-0 items-center gap-1.5 @lg/pagination:gap-2'>
             <p className='text-muted-foreground hidden text-sm font-medium whitespace-nowrap @2xl/pagination:block'>

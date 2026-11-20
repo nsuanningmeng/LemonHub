@@ -205,7 +205,8 @@ export function ModelsTable() {
       skeletonKeyPrefix='model-skeleton'
       applyHeaderSize
       toolbarProps={{
-        searchPlaceholder: t('Filter by model name...'),
+        primaryFilter: 'status',
+        searchPlaceholder: t('Model name'),
         searchDebounceMs: 500,
         filters: [
           {

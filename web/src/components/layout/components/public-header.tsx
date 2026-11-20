@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useNavigate } from '@tanstack/react-router'
-import { ArrowUpRight, Menu, X } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -35,6 +35,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
@@ -45,6 +46,7 @@ import { defaultTopNavLinks } from '../config/top-nav.config'
 import type { TopNavLink } from '../types'
 import { HeaderLogo } from './header-logo'
 import { NavLinkList } from './nav-link-item'
+import { TopNav } from './top-nav'
 
 const AUTH_PROMPT_SECONDS = 5
 
@@ -90,17 +92,22 @@ export function PublicHeader(props: PublicHeaderProps) {
   const [authPromptSecondsLeft, setAuthPromptSecondsLeft] =
     useState(AUTH_PROMPT_SECONDS)
   const user = useAuthStore((state) => state.auth.user)
-  const {
-    systemName,
-    logo: systemLogo,
-    loading,
-    logoLoaded,
-  } = useSystemConfig()
+  const { systemName, logo: systemLogo, loading } = useSystemConfig()
   const dynamicLinks = useTopNavLinks()
   const notifications = useNotifications()
+  const isMobile = useIsMobile()
   const isAuthenticated = !!user
   const displaySiteName = customSiteName || systemName
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
+  const productLinks = links.filter(
+    (link) =>
+      link.href === '/dashboard' ||
+      link.href === '/pricing' ||
+      link.title === t('Docs')
+  )
+  let primaryLinks = productLinks.length ? productLinks : links.slice(0, 3)
+  if (links.length <= 4) primaryLinks = links
+  const secondaryLinks = links.filter((link) => !primaryLinks.includes(link))
 
   useEffect(() => {
     if (!authPromptTarget) return
@@ -163,6 +170,27 @@ export function PublicHeader(props: PublicHeaderProps) {
     [t]
   )
 
+  const hasUtilityControls =
+    showLanguageSwitcher || showThemeSwitch || showNotifications
+  const utilityControls = (
+    <>
+      {showLanguageSwitcher && <LanguageSwitcher />}
+      {showThemeSwitch && <ThemeSwitch />}
+      {showNotifications && (
+        <NotificationPopover
+          open={notifications.popoverOpen}
+          onOpenChange={notifications.setPopoverOpen}
+          unreadCount={notifications.unreadCount}
+          activeTab={notifications.activeTab}
+          onTabChange={notifications.setActiveTab}
+          notice={notifications.notice}
+          announcements={notifications.announcements}
+          loading={notifications.loading}
+        />
+      )}
+    </>
+  )
+
   return (
     <>
       <header
@@ -171,12 +199,12 @@ export function PublicHeader(props: PublicHeaderProps) {
           props.className
         )}
       >
-        <div className='mx-auto flex h-16 max-w-[76rem] items-center gap-3 px-5 md:px-8'>
+        <div className='mx-auto flex h-16 max-w-[76rem] items-center gap-3 px-5 md:gap-6 md:px-8'>
           <Link
             to={homeUrl}
             className='text-foreground focus-visible:ring-ring inline-flex max-w-56 min-w-0 items-center gap-2.5 rounded-sm focus-visible:ring-2'
           >
-            <span className='flex size-7 shrink-0 items-center justify-center'>
+            <span className='flex size-8 shrink-0 items-center justify-center'>
               {loading && <Skeleton className='size-full rounded-md' />}
               {!loading &&
                 (customLogo ?? (
@@ -184,13 +212,12 @@ export function PublicHeader(props: PublicHeaderProps) {
                     src={systemLogo}
                     alt=''
                     loading={loading}
-                    logoLoaded={logoLoaded}
                     className='size-full rounded-none object-contain'
                   />
                 ))}
             </span>
             <span
-              className='truncate text-lg font-semibold tracking-tight'
+              className='truncate text-xl font-semibold tracking-tight'
               title={displaySiteName}
             >
               {loading ? <Skeleton className='h-5 w-20' /> : displaySiteName}
@@ -199,39 +226,37 @@ export function PublicHeader(props: PublicHeaderProps) {
           {props.leftContent}
 
           {props.showNavigation !== false && (
-            <nav className='ms-2 hidden min-w-0 flex-1 items-center gap-0.5 overflow-x-auto xl:flex'>
+            <nav
+              aria-label={t('Platform')}
+              className='hidden min-w-0 items-center gap-1 lg:flex'
+            >
               {props.navContent ?? (
-                <NavLinkList
-                  links={links}
-                  onNavigate={handleNavLinkClick}
-                  className='hover:bg-muted aria-[current=page]:text-foreground aria-[current=page]:decoration-primary shrink-0 rounded-sm px-2 py-2 text-sm font-medium whitespace-nowrap underline-offset-[5px] aria-[current=page]:underline'
-                />
+                <>
+                  <NavLinkList
+                    links={primaryLinks}
+                    onNavigate={handleNavLinkClick}
+                    className='hover:bg-muted aria-[current=page]:text-foreground shrink-0 rounded-sm px-3 py-2 text-sm font-medium whitespace-nowrap aria-[current=page]:font-semibold'
+                  />
+                  {secondaryLinks.length > 0 && (
+                    <TopNav
+                      label={t('More')}
+                      links={secondaryLinks}
+                      onNavigate={handleNavLinkClick}
+                    />
+                  )}
+                </>
               )}
             </nav>
           )}
 
           <div className='ms-auto flex shrink-0 items-center gap-0.5 sm:gap-1'>
-            {showLanguageSwitcher && <LanguageSwitcher />}
-            {showThemeSwitch && <ThemeSwitch />}
-            {showNotifications && (
-              <NotificationPopover
-                open={notifications.popoverOpen}
-                onOpenChange={notifications.setPopoverOpen}
-                unreadCount={notifications.unreadCount}
-                activeTab={notifications.activeTab}
-                onTabChange={notifications.setActiveTab}
-                notice={notifications.notice}
-                announcements={notifications.announcements}
-                loading={notifications.loading}
-              />
+            {!isMobile && hasUtilityControls && (
+              <div className='hidden items-center gap-0.5 md:flex'>
+                {utilityControls}
+              </div>
             )}
             {showAuthButtons && (
-              <div
-                className={cn(
-                  'ms-1 border-s ps-2',
-                  !isAuthenticated && 'hidden sm:block'
-                )}
-              >
+              <div className='ms-2'>
                 {loading && <Skeleton className='h-8 w-18 rounded-md' />}
                 {!loading &&
                   (isAuthenticated ? (
@@ -239,7 +264,6 @@ export function PublicHeader(props: PublicHeaderProps) {
                   ) : (
                     <Button size='sm' render={<Link to='/sign-in' />}>
                       {t('Sign in')}
-                      <ArrowUpRight aria-hidden='true' />
                     </Button>
                   ))}
               </div>
@@ -252,7 +276,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   <Button
                     variant='ghost'
                     size='icon'
-                    className='size-10 xl:hidden'
+                    className='size-10 lg:hidden'
                   />
                 }
                 aria-label={t('Toggle navigation menu')}
@@ -291,8 +315,13 @@ export function PublicHeader(props: PublicHeaderProps) {
                     />
                   </nav>
                 )}
+                {isMobile && hasUtilityControls && (
+                  <div className='mt-auto flex flex-wrap items-center gap-2 border-t px-5 py-3'>
+                    {utilityControls}
+                  </div>
+                )}
                 {showAuthButtons && (
-                  <div className='mt-auto border-t p-5'>
+                  <div className='px-5 pt-2 pb-5'>
                     <Button
                       className='h-11 w-full'
                       render={
@@ -303,7 +332,6 @@ export function PublicHeader(props: PublicHeaderProps) {
                       }
                     >
                       {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
-                      <ArrowUpRight aria-hidden='true' />
                     </Button>
                   </div>
                 )}

@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useLocation } from '@tanstack/react-router'
-import { ChevronRight } from 'lucide-react'
-import { type ReactNode, useState, useEffect } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { type ReactNode, useState, useEffect, useId } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import {
@@ -37,7 +37,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   SidebarGroup,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -60,16 +59,40 @@ import { ChatPresetsItem } from './chat-presets-item'
  * Sidebar navigation group component
  * Renders a group of navigation items, supporting regular links and collapsible submenus
  */
-export function NavGroup({ title, items }: NavGroupProps) {
+export function NavGroup({
+  title,
+  items,
+  supportsIconMode = true,
+}: NavGroupProps & { supportsIconMode?: boolean }) {
   const { state, isMobile } = useSidebar()
   const href = useLocation({ select: (location) => location.href })
 
+  const [expanded, setExpanded] = useState(true)
+  const menuId = useId()
+  const iconMode = supportsIconMode && state === 'collapsed' && !isMobile
+  const containsCurrentPage = items.some((item) => checkIsActive(href, item))
+
+  useEffect(() => {
+    if (containsCurrentPage) setExpanded(true)
+  }, [href, containsCurrentPage])
+
   return (
-    <SidebarGroup className='px-2 py-0.5'>
-      <SidebarGroupLabel className='text-muted-foreground px-2.5 font-mono text-[0.6875rem] font-medium tracking-[0.08em] uppercase'>
-        {title}
-      </SidebarGroupLabel>
-      <SidebarMenu>
+    <SidebarGroup className='px-2.5 py-0.5'>
+      <button
+        type='button'
+        aria-expanded={expanded}
+        aria-controls={menuId}
+        onClick={() => setExpanded(!expanded)}
+        className='console-group-trigger group-data-[collapsible=icon]:hidden'
+      >
+        <span>{title}</span>
+        <ChevronDown aria-hidden='true' />
+      </button>
+      <SidebarMenu
+        id={menuId}
+        hidden={!expanded && !iconMode}
+        className='gap-0.5'
+      >
         {items.map((item) => {
           const key = `${item.title}-${item.url || item.type}`
 
@@ -86,7 +109,7 @@ export function NavGroup({ title, items }: NavGroupProps) {
           }
 
           // In collapsed state on non-mobile, render dropdown menu
-          if (state === 'collapsed' && !isMobile) {
+          if (iconMode) {
             return (
               <SidebarMenuCollapsedDropdown
                 key={key}

@@ -32,10 +32,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Spinner } from '@/components/ui/spinner'
-import { formatMilliYuan } from '@/components/wallet-logs-table'
+import { formatMilliYuan } from '@/lib/wallet-log'
 
 import { reconcileSites } from '../api'
-import { type ReconcileResult } from '../types'
+import type { ReconcileResult } from '../types'
 import { useSubSite } from './sub-site-provider'
 
 export function SubSiteReconcileDialog() {

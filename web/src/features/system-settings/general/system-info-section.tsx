@@ -157,7 +157,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                 name='SystemName'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('System Name')}</FormLabel>
+                    <FormLabel>{t('Public site name')}</FormLabel>
                     <FormControl>
                       <Input placeholder={t('New API')} {...field} />
                     </FormControl>
@@ -216,7 +216,7 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                 name='Logo'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Logo URL')}</FormLabel>
+                    <FormLabel>{t('Site logo address')}</FormLabel>
                     <FormControl>
                       <Input
                         placeholder={t('https://example.com/logo.png')}

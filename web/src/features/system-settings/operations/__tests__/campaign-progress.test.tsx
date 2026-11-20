@@ -203,7 +203,8 @@ test.each(['sending', 'failed'] as const)(
       skip_count: null,
     })
 
-    expect(row.getByText('Attempted: 3 · Candidates: 10')).toBeInTheDocument()
+    expect(row.getByText('Attempted: 3')).toBeInTheDocument()
+    expect(row.getByText('Candidates: 10')).toBeInTheDocument()
     expect(row.getByText('Skipped: not recorded')).toBeInTheDocument()
     expect(row.queryByText(/Processed:/)).not.toBeInTheDocument()
   }

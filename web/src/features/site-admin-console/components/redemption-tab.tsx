@@ -42,7 +42,7 @@ import {
   voidRedemption,
 } from '../api'
 import { SUCCESS_MESSAGES } from '../constants'
-import { type Redemption } from '../types'
+import type { Redemption } from '../types'
 import { GeneratedKeysDialog } from './generated-keys-dialog'
 import { useRedemptionColumns } from './redemption-columns'
 import { RedemptionGenerateDrawer } from './redemption-generate-drawer'

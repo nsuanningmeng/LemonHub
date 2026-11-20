@@ -97,7 +97,7 @@ export function ThemeProvider({
         .querySelector('meta[name="theme-color"]')
         ?.setAttribute(
           'content',
-          nextResolvedTheme === 'dark' ? '#181d19' : '#f8f9f6'
+          nextResolvedTheme === 'dark' ? '#151e2d' : '#f7f7f3'
         )
       setResolvedTheme(nextResolvedTheme)
     }

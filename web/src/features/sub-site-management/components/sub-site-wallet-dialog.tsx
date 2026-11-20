@@ -50,10 +50,8 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  WalletLogsTable,
-  formatMilliYuan,
-} from '@/components/wallet-logs-table'
+import { WalletLogsTable } from '@/components/wallet-logs-table'
+import { formatMilliYuan } from '@/lib/wallet-log'
 
 import { adjustSiteWallet, getSiteWalletLogs, rechargeSiteWallet } from '../api'
 import {
@@ -193,7 +191,9 @@ export function SubSiteWalletDialog() {
                           min='0'
                           placeholder='0.000'
                           onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
                           }
                         />
                       </FormControl>
@@ -251,7 +251,9 @@ export function SubSiteWalletDialog() {
                           step='0.001'
                           placeholder='0.000'
                           onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
                           }
                         />
                       </FormControl>
@@ -305,6 +307,9 @@ export function SubSiteWalletDialog() {
               refreshKey={logsRefresh}
               fetchLogs={async (params) => {
                 const res = await getSiteWalletLogs(siteId, params)
+                if (!res.success) {
+                  throw new Error(res.message || t('Request failed'))
+                }
                 return {
                   items: res.data?.items ?? [],
                   total: res.data?.total ?? 0,

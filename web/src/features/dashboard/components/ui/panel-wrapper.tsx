@@ -49,7 +49,7 @@ function PanelHeader(props: {
   )
 
   return (
-    <div className='border-b px-4 py-3 sm:px-5'>
+    <div className='py-1'>
       {props.actions != null ? (
         <div className='flex items-start justify-between gap-2'>
           {heading}
@@ -66,7 +66,7 @@ export function PanelWrapper(props: PanelWrapperProps) {
   const { t } = useTranslation()
   const resolvedEmptyMessage = props.emptyMessage ?? t('No data available')
   const frameClassName = cn(
-    'min-w-0 overflow-hidden rounded-lg border bg-card',
+    'min-w-0 py-3 md:grid md:grid-cols-[minmax(12rem,.55fr)_minmax(0,1.45fr)] md:items-start md:gap-5 md:py-4',
     props.className
   )
 
@@ -76,7 +76,7 @@ export function PanelWrapper(props: PanelWrapperProps) {
       <div
         aria-busy='true'
         aria-label={t('Loading')}
-        className='space-y-2 px-4 py-5 sm:px-5'
+        className='space-y-2 py-3'
       >
         <Skeleton className='h-3 w-3/5' />
         <Skeleton className='h-3 w-2/5' />
@@ -84,7 +84,7 @@ export function PanelWrapper(props: PanelWrapperProps) {
     )
   } else if (props.empty) {
     content = (
-      <p className='text-muted-foreground px-4 py-5 text-sm sm:px-5'>
+      <p className='text-muted-foreground py-2 text-sm'>
         {resolvedEmptyMessage}
       </p>
     )

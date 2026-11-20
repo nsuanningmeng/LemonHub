@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import { Power, PowerOff, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -36,7 +36,7 @@ import {
   handleBatchDisableUsers,
   handleBatchEnableUsers,
 } from '../lib'
-import { type User } from '../types'
+import type { User } from '../types'
 import { useUsers } from './users-provider'
 
 interface DataTableBulkActionsProps {

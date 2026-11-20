@@ -59,22 +59,32 @@ export function LoginSessionItem({ session, onRevoke }: LoginSessionItemProps) {
           </p>
           {session.current && <Badge variant='secondary'>{t('Current')}</Badge>}
         </div>
-        <p className='text-muted-foreground mt-1 text-xs'>
-          {t('IP: {{ip}} · Method: {{method}}', {
-            ip: session.ip || t('Unknown'),
-            method: loginMethodLabel(session.login_method, t),
-          })}
-        </p>
-        <p className='text-muted-foreground mt-1 text-xs'>
-          {t('Last active {{time}} · Expires {{expires}}', {
-            time: formatTimestampRelative(
-              session.last_active_at,
-              'seconds',
-              locale
-            ),
-            expires: dayjs.unix(session.expires_at).format('YYYY-MM-DD HH:mm'),
-          })}
-        </p>
+        <div className='text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs'>
+          <span>{t('IP: {{ip}}', { ip: session.ip || t('Unknown') })}</span>
+          <span>
+            {t('Method: {{method}}', {
+              method: loginMethodLabel(session.login_method, t),
+            })}
+          </span>
+        </div>
+        <div className='text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs'>
+          <span>
+            {t('Last active {{time}}', {
+              time: formatTimestampRelative(
+                session.last_active_at,
+                'seconds',
+                locale
+              ),
+            })}
+          </span>
+          <span>
+            {t('Expires {{expires}}', {
+              expires: dayjs
+                .unix(session.expires_at)
+                .format('YYYY-MM-DD HH:mm'),
+            })}
+          </span>
+        </div>
       </div>
       <Button
         type='button'

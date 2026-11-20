@@ -69,6 +69,7 @@ import {
   getHardwareTypes,
 } from '../../api'
 import { deploymentsQueryKeys } from '../../lib'
+import { formatDeploymentEstimate } from '../../lib/deployments-utils'
 
 const BUILTIN_IMAGE = 'ollama/ollama:latest'
 const DEFAULT_TRAFFIC_PORT = 11434
@@ -196,10 +197,10 @@ export function CreateDeploymentDrawer({
         map.set(key, { label: String(name), value: key })
       }
     })
-    return Array.from(map.values())
+    return [...map.values()]
   }, [replicasData])
 
-  const { data: priceData, isLoading: _isLoadingPrice } = useQuery({
+  const { data: priceData, isFetching: isCalculatingPrice } = useQuery({
     queryKey: [
       'deployment-price',
       hardwareId,
@@ -361,18 +362,14 @@ export function CreateDeploymentDrawer({
     })
   }, [open, form])
 
-  const priceSummary = useMemo<string>(() => {
-    const est = priceData?.data
-    if (!est || typeof est !== 'object') return ''
-    const total =
-      (est as Record<string, unknown>)?.total_cost ??
-      (est as Record<string, unknown>)?.total ??
-      ''
-    const currency = (est as Record<string, unknown>)?.currency ?? ''
-    if (total === '' && currency === '') return ''
-    return `${total} ${currency}`.trim()
-  }, [priceData])
-  void priceSummary
+  const priceSummary = formatDeploymentEstimate(
+    priceData?.data,
+    currency || 'USDC'
+  )
+  let nameHint = ''
+  if (isCheckingName) nameHint = t('Checking name...')
+  else if (nameAvailable === true) nameHint = t('Name is available')
+  else if (nameAvailable === false) nameHint = t('Name is not available')
 
   return (
     <Sheet
@@ -417,13 +414,7 @@ export function CreateDeploymentDrawer({
                     </FormControl>
                     {open && field.value?.trim() ? (
                       <div className='text-muted-foreground text-xs'>
-                        {isCheckingName
-                          ? t('Checking name...')
-                          : nameAvailable === true
-                            ? t('Name is available')
-                            : nameAvailable === false
-                              ? t('Name is not available')
-                              : ''}
+                        {nameHint}
                       </div>
                     ) : null}
                     <FormMessage />
@@ -460,12 +451,10 @@ export function CreateDeploymentDrawer({
                     <FormItem>
                       <FormLabel>{t('Hardware type')}</FormLabel>
                       <Select
-                        items={[
-                          ...hardwareOptions.map((opt) => ({
-                            value: opt.value,
-                            label: opt.label,
-                          })),
-                        ]}
+                        items={hardwareOptions.map((opt) => ({
+                          value: opt.value,
+                          label: opt.label,
+                        }))}
                         value={field.value}
                         onValueChange={(v) => field.onChange(v)}
                         disabled={isLoadingHardware}
@@ -618,9 +607,11 @@ export function CreateDeploymentDrawer({
             {/* Price Estimation */}
             <SideDrawerSection>
               <h3 className='text-sm font-medium'>{t('Price estimation')}</h3>
-              <p className='text-muted-foreground text-xs'>
-                {t('Price estimation description')}
-              </p>
+              <output className='text-foreground block font-mono text-lg font-semibold tabular-nums'>
+                {isCalculatingPrice
+                  ? t('Calculating...')
+                  : priceSummary || t('Not available')}
+              </output>
 
               <FormField
                 control={form.control}

@@ -88,7 +88,7 @@ test('hidden filter values avoid password autofill and remain unchanged when sho
     </QueryClientProvider>
   )
   await user.click(
-    await screen.findByRole('button', { name: i18next.t('Expand') })
+    await screen.findByRole('button', { name: i18next.t('Filters') })
   )
   const group = screen.getByPlaceholderText(i18next.t('Group'))
   const token = screen.getByPlaceholderText(i18next.t('Token Name'))

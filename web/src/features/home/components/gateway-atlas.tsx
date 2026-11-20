@@ -16,13 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Crosshair, Pause, Play, Waypoints } from 'lucide-react'
+import { Pause, Play } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { CopyButton } from '@/components/copy-button'
-
-import { EARTH_FIRST_FRAME } from '../lib/earth-first-frame'
+import poster from '../assets/earthrise.webp'
 
 type DeviceHints = Navigator & {
   connection?: { saveData?: boolean }
@@ -33,6 +31,8 @@ function supportsAnimation(): boolean {
   const device = navigator as DeviceHints
   return (
     typeof IntersectionObserver !== 'undefined' &&
+    typeof OffscreenCanvas !== 'undefined' &&
+    typeof Worker !== 'undefined' &&
     typeof window.matchMedia === 'function' &&
     !device.connection?.saveData &&
     (device.deviceMemory ?? 8) > 2 &&
@@ -40,11 +40,13 @@ function supportsAnimation(): boolean {
   )
 }
 
-export function GatewayAtlas(props: { baseUrl: string }) {
+export function GatewayAtlas() {
   const { t } = useTranslation()
-  const screenRef = useRef<HTMLPreElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const lastTime = useRef(0)
   const [available, setAvailable] = useState(supportsAnimation)
   const [paused, setPaused] = useState(false)
+  const [ready, setReady] = useState(false)
   const [reduced, setReduced] = useState(
     () =>
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? true
@@ -52,70 +54,99 @@ export function GatewayAtlas(props: { baseUrl: string }) {
 
   useEffect(() => {
     if (!available) return
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const update = () => setReduced(query.matches)
-    query.addEventListener('change', update)
-    return () => query.removeEventListener('change', update)
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const change = () => setReduced(media.matches)
+    media.addEventListener('change', change)
+    return () => media.removeEventListener('change', change)
   }, [available])
 
   useEffect(() => {
-    const screen = screenRef.current
-    if (!screen || !available || paused || reduced) return
-
-    let cancelled = false
-    let stop: (() => void) | undefined
-    // The package's player handles offscreen and background-tab suspension.
-    // The still frame remains visible while the single-piece chunk loads.
-    import('../lib/play-earth')
-      .then(({ playEarth }) => {
-        if (!cancelled) stop = playEarth(screen)
-      })
-      .catch(() => {
-        if (!cancelled) setAvailable(false)
-      })
-
+    const canvas = canvasRef.current
+    if (!canvas || !available || reduced || paused) return
+    const context = canvas.getContext('bitmaprenderer')
+    if (!context) {
+      setAvailable(false)
+      return
+    }
+    let visible = false
+    let live = true
+    let worker: Worker | undefined
+    function sync() {
+      const play = visible && !document.hidden
+      if (!worker && play) {
+        try {
+          worker = new Worker(
+            new URL('../lib/horizon.worker.ts', import.meta.url)
+          )
+          worker.addEventListener(
+            'message',
+            (event: MessageEvent<{ bitmap: ImageBitmap; seconds: number }>) => {
+              if (!live) {
+                event.data.bitmap.close()
+                return
+              }
+              context?.transferFromImageBitmap(event.data.bitmap)
+              lastTime.current = event.data.seconds
+              setReady(true)
+            }
+          )
+          worker.addEventListener('error', () => {
+            if (live) setAvailable(false)
+          })
+          worker.postMessage({ play, seconds: lastTime.current })
+        } catch {
+          setAvailable(false)
+        }
+        return
+      }
+      worker?.postMessage({ play })
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      visible = entry.isIntersecting
+      sync()
+    })
+    observer.observe(canvas)
+    document.addEventListener('visibilitychange', sync)
     return () => {
-      cancelled = true
-      stop?.()
+      live = false
+      observer.disconnect()
+      document.removeEventListener('visibilitychange', sync)
+      worker?.terminate()
     }
   }, [available, paused, reduced])
 
   return (
-    <div className='gateway-atlas'>
-      <div className='gateway-atlas-heading'>
-        <span>
-          <Waypoints size={15} aria-hidden='true' />
-          {t('API Endpoints')}
-        </span>
-        {available && !reduced && (
-          <button
-            type='button'
-            className='gateway-motion'
-            onClick={() => setPaused(!paused)}
-            aria-label={paused ? t('Play animation') : t('Pause animation')}
-            title={paused ? t('Play animation') : t('Pause animation')}
-          >
-            {paused ? <Play size={14} /> : <Pause size={14} />}
-          </button>
-        )}
-      </div>
-      <div aria-hidden='true' className='gateway-scope'>
-        <i className='gateway-orbit' />
-        <Crosshair className='gateway-sight gateway-sight-left' />
-        <Crosshair className='gateway-sight gateway-sight-right' />
-        <pre ref={screenRef}>{EARTH_FIRST_FRAME}</pre>
-      </div>
-      <div className='gateway-address'>
-        <div className='min-w-0'>
-          <span>{t('Base URL')}</span>
-          <code>{props.baseUrl}</code>
-        </div>
-        <CopyButton
-          value={props.baseUrl}
-          aria-label={t('Copy URL')}
-          className='gateway-copy'
+    <div className='gateway-panorama'>
+      <div className='gateway-landscape' aria-hidden='true'>
+        <img
+          src={poster}
+          alt=''
+          width={1400}
+          height={700}
+          fetchPriority='high'
+        />
+        <canvas
+          ref={canvasRef}
+          width={1400}
+          height={700}
+          data-ready={(ready && available) || undefined}
         />
       </div>
+      {available && !reduced && (
+        <button
+          className='gateway-motion'
+          type='button'
+          onClick={() => setPaused(!paused)}
+          aria-label={paused ? t('Play animation') : t('Pause animation')}
+          title={paused ? t('Play animation') : t('Pause animation')}
+        >
+          {paused ? (
+            <Play size={14} aria-hidden='true' />
+          ) : (
+            <Pause size={14} aria-hidden='true' />
+          )}
+        </button>
+      )}
     </div>
   )
 }

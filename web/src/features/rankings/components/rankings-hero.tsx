@@ -42,7 +42,7 @@ export function RankingsHero(props: RankingsHeroProps) {
         </h1>
         <p className='text-muted-foreground mt-3 max-w-xl text-base leading-relaxed'>
           {t(
-            'Discover the most-used models and rising vendors on the platform, updated from live usage data.'
+            'Compare model traffic and provider share for the selected period.'
           )}
         </p>
       </div>
@@ -58,7 +58,7 @@ export function RankingsHero(props: RankingsHeroProps) {
               checked={props.period === period.id}
               onChange={() => props.onPeriodChange(period.id)}
             />
-            <span className='text-muted-foreground peer-checked:bg-card peer-checked:text-foreground peer-focus-visible:outline-ring hover:text-foreground flex min-h-9 cursor-pointer items-center rounded-md px-3 text-sm font-medium peer-checked:shadow-xs peer-focus-visible:outline-2'>
+            <span className='text-muted-foreground peer-checked:bg-brand-citrus peer-checked:text-brand-ink peer-focus-visible:outline-ring hover:text-foreground flex min-h-9 cursor-pointer items-center rounded-md px-3 text-sm font-medium peer-checked:shadow-xs peer-focus-visible:outline-2'>
               {t(period.labelKey)}
             </span>
           </label>

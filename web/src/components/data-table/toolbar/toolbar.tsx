@@ -17,14 +17,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Table } from '@tanstack/react-table'
-import { ChevronDown, Loader2, Search, X as Cross2Icon } from 'lucide-react'
+import {
+  ChevronDown,
+  Loader2,
+  Search,
+  SlidersHorizontal,
+  X as Cross2Icon,
+} from 'lucide-react'
 import * as React from 'react'
 import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useDebounce } from '@/hooks'
+import { useDebounce, useMediaQuery } from '@/hooks'
 import { cn } from '@/lib/utils'
 
 import { DataTableFacetedFilter } from './faceted-filter'
@@ -51,7 +57,7 @@ type SearchDraft = {
 export type DataTableToolbarProps<TData> = {
   table: Table<TData>
   /**
-   * Placeholder for the default search input. Defaults to `t('Filter...')`.
+   * Placeholder for the default search input. Defaults to `t('Search')`.
    */
   searchPlaceholder?: string
   /**
@@ -68,6 +74,8 @@ export type DataTableToolbarProps<TData> = {
    * Column-level filter chips (faceted multi-select / single-select).
    */
   filters?: FilterDef[]
+  /** Single-choice filter pinned above the search row. */
+  primaryFilter?: string
   /**
    * Replaces the default search input entirely. Use when the primary
    * "search" is something custom — e.g. a date-time range picker.
@@ -154,6 +162,9 @@ export type DataTableToolbarProps<TData> = {
 export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const narrow = useMediaQuery('(max-width: 640px)')
+  const filterPanelId = React.useId()
   const [isSearchComposing, setIsSearchComposing] = useState(false)
 
   const filters = props.filters ?? []
@@ -165,7 +176,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     !!props.table.getState().globalFilter ||
     !!props.hasAdditionalFilters
 
-  const placeholder = props.searchPlaceholder ?? t('Filter...')
+  const placeholder = props.searchPlaceholder ?? t('Search')
   const currentSearchValue = props.searchKey
     ? ((props.table.getColumn(props.searchKey)?.getFilterValue() as string) ??
       '')
@@ -244,7 +255,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   }
 
   const searchInput = (
-    <div className='relative w-full min-w-0 sm:w-48 lg:w-56'>
+    <div className='relative min-w-32 flex-1 sm:w-56 sm:flex-none lg:w-64'>
       <Search
         aria-hidden='true'
         className='text-muted-foreground pointer-events-none absolute start-3 top-1/2 z-1 size-4 -translate-y-1/2'
@@ -261,11 +272,42 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     </div>
   )
 
+  const primary = filters.find(
+    (filter) => filter.singleSelect && filter.columnId === props.primaryFilter
+  )
+  const scopeColumn = primary && props.table.getColumn(primary.columnId)
+  const selectedScope = (
+    scopeColumn?.getFilterValue() as string[] | undefined
+  )?.[0]
+  const scopeFilter = primary && scopeColumn && (
+    <div
+      role='group'
+      aria-label={primary.title}
+      className='flex w-full min-w-0 gap-1 overflow-x-auto border-b pb-1'
+    >
+      {[{ label: t('All'), value: '' }, ...primary.options].map((option) => (
+        <button
+          type='button'
+          key={option.value}
+          aria-pressed={(selectedScope ?? '') === option.value}
+          className='text-muted-foreground hover:text-foreground focus-visible:ring-ring aria-pressed:bg-muted aria-pressed:text-foreground shrink-0 rounded-md px-3 py-2 text-sm font-medium focus-visible:ring-2 focus-visible:ring-inset aria-pressed:font-semibold'
+          onClick={() =>
+            scopeColumn.setFilterValue(
+              option.value ? [option.value] : undefined
+            )
+          }
+        >
+          {t(option.label)}
+        </button>
+      ))}
+    </div>
+  )
+
   const filterChips = React.useMemo(
     () =>
       filters.map((filter) => {
         const column = props.table.getColumn(filter.columnId)
-        if (!column) return null
+        if (!column || filter.columnId === primary?.columnId) return null
         return (
           <DataTableFacetedFilter
             key={filter.columnId}
@@ -277,7 +319,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
         )
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props.filters, props.table]
+    [props.filters, props.table, primary?.columnId]
   )
 
   const handleReset = () => {
@@ -346,15 +388,60 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     </Button>
   ) : null
 
+  const hasSecondaryFilters = Boolean(
+    props.additionalSearch ||
+    filters.some((filter) => filter.columnId !== primary?.columnId)
+  )
+  const secondaryActiveCount = props.table
+    .getState()
+    .columnFilters.filter(
+      (entry) => entry.id !== primary?.columnId && entry.id !== props.searchKey
+    ).length
+  const filterFields = hasSecondaryFilters && (
+    <>
+      {narrow && (
+        <Button
+          type='button'
+          variant='outline'
+          aria-expanded={showFilters}
+          aria-controls={filterPanelId}
+          onClick={() => setShowFilters((open) => !open)}
+        >
+          <SlidersHorizontal aria-hidden='true' className='size-4' />
+          {t('Filters')}
+          {secondaryActiveCount > 0 && (
+            <span className='font-mono tabular-nums'>
+              {secondaryActiveCount}
+            </span>
+          )}
+        </Button>
+      )}
+      <div
+        id={filterPanelId}
+        hidden={narrow && !showFilters}
+        className={cn(
+          'contents',
+          narrow &&
+            (showFilters
+              ? 'order-last flex w-full flex-wrap items-center gap-2 border-t pt-2'
+              : 'hidden')
+        )}
+      >
+        {props.additionalSearch}
+        {filterChips}
+      </div>
+    </>
+  )
+
   const hasLeftActions = props.leftActions != null
 
   if (hasLeftActions) {
     return (
       <div className={cn('flex flex-col gap-2', props.className)}>
+        {scopeFilter}
         <div className='flex flex-wrap items-center gap-2'>
           {props.customSearch !== undefined ? props.customSearch : searchInput}
-          {props.additionalSearch}
-          {filterChips}
+          {filterFields}
           <div className='ms-auto flex max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-2'>
             {expandToggle}
           </div>
@@ -382,9 +469,9 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
 
   return (
     <div className={cn('flex flex-wrap items-center gap-2', props.className)}>
+      {scopeFilter}
       {props.customSearch !== undefined ? props.customSearch : searchInput}
-      {props.additionalSearch}
-      {filterChips}
+      {filterFields}
       {expanded && hasExpandable && props.expandable}
 
       <div className='ms-auto flex max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-2'>

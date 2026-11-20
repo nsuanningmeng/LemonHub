@@ -202,18 +202,27 @@ export type WebPreviewBodyProps = ComponentProps<'iframe'> & {
 export const WebPreviewBody = ({
   className,
   loading,
+  sandbox,
   src,
+  srcDoc,
   ...props
 }: WebPreviewBodyProps) => {
   const { t } = useTranslation()
   const { url } = useWebPreview()
+  // An inline document inherits this site's origin. Give it an opaque origin
+  // by default. Hosted previews can use their own origin for storage and auth.
+  const defaultSandbox =
+    srcDoc !== undefined
+      ? 'allow-scripts allow-forms allow-popups allow-presentation'
+      : 'allow-scripts allow-same-origin allow-forms allow-popups allow-presentation'
 
   return (
     <div className='flex-1'>
       <iframe
         className={cn('size-full', className)}
-        sandbox='allow-scripts allow-same-origin allow-forms allow-popups allow-presentation'
+        sandbox={sandbox ?? defaultSandbox}
         src={(src ?? url) || undefined}
+        srcDoc={srcDoc}
         title={t('Preview')}
         {...props}
       />
@@ -238,6 +247,7 @@ export const WebPreviewConsole = ({
 }: WebPreviewConsoleProps) => {
   const { t } = useTranslation()
   const { consoleOpen, setConsoleOpen } = useWebPreview()
+  const occurrenceCounts = new Map<string, number>()
 
   return (
     <Collapsible
@@ -272,22 +282,31 @@ export const WebPreviewConsole = ({
           {logs.length === 0 ? (
             <p className='text-muted-foreground'>{t('No console output')}</p>
           ) : (
-            logs.map((log, index) => (
-              <div
-                className={cn(
-                  'text-xs',
-                  log.level === 'error' && 'text-destructive',
-                  log.level === 'warn' && 'text-warning',
-                  log.level === 'log' && 'text-foreground'
-                )}
-                key={`${log.timestamp.getTime()}-${index}`}
-              >
-                <span className='text-muted-foreground'>
-                  {dayjs(log.timestamp).format('HH:mm:ss')}
-                </span>{' '}
-                {log.message}
-              </div>
-            ))
+            logs.map((log) => {
+              const signature = JSON.stringify([
+                log.timestamp.getTime(),
+                log.level,
+                log.message,
+              ])
+              const occurrence = occurrenceCounts.get(signature) ?? 0
+              occurrenceCounts.set(signature, occurrence + 1)
+              return (
+                <div
+                  className={cn(
+                    'text-xs',
+                    log.level === 'error' && 'text-destructive',
+                    log.level === 'warn' && 'text-warning',
+                    log.level === 'log' && 'text-foreground'
+                  )}
+                  key={`${signature}:${occurrence}`}
+                >
+                  <span className='text-muted-foreground'>
+                    {dayjs(log.timestamp).format('HH:mm:ss')}
+                  </span>{' '}
+                  {log.message}
+                </div>
+              )
+            })
           )}
           {children}
         </div>

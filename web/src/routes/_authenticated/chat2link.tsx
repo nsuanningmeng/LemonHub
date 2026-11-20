@@ -16,15 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Loader2 } from 'lucide-react'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { Loader2, MessageCircle } from 'lucide-react'
 import { useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Button, buttonVariants } from '@/components/ui/button'
 import { useActiveChatKey } from '@/features/chat/hooks/use-active-chat-key'
 import { useChatPresets } from '@/features/chat/hooks/use-chat-presets'
 import { resolveChatUrl } from '@/features/chat/lib/chat-links'
+import { isSidebarModuleEnabled } from '@/lib/nav-modules'
 
 export const Route = createFileRoute('/_authenticated/chat2link')({
   component: Chat2LinkPage,
@@ -33,7 +35,8 @@ export const Route = createFileRoute('/_authenticated/chat2link')({
 function Chat2LinkPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { chatPresets, serverAddress } = useChatPresets()
+  const { chatPresets, serverAddress, loading, error, refetch } =
+    useChatPresets()
 
   const firstWebPreset = useMemo(
     () => chatPresets.find((p) => p.type === 'web'),
@@ -45,12 +48,7 @@ function Chat2LinkPage() {
   )
 
   useEffect(() => {
-    if (!firstWebPreset) {
-      if (chatPresets.length > 0) {
-        toast.error(t('No available Web chat links'))
-      }
-      return
-    }
+    if (!firstWebPreset) return
 
     if (activeKey === undefined && !keyError) return
 
@@ -73,21 +71,46 @@ function Chat2LinkPage() {
     if (url) {
       window.location.href = url
     }
-  }, [
-    firstWebPreset,
-    activeKey,
-    keyError,
-    serverAddress,
-    chatPresets.length,
-    navigate,
-    t,
-  ])
+  }, [firstWebPreset, activeKey, keyError, serverAddress, navigate, t])
+
+  if (!firstWebPreset && !loading) {
+    const playgroundEnabled = isSidebarModuleEnabled('chat', 'playground')
+    return (
+      <div className='mx-auto flex min-h-80 max-w-md flex-col items-center justify-center gap-4 px-5 text-center'>
+        <MessageCircle aria-hidden className='text-muted-foreground size-7' />
+        <h1 className='text-xl font-semibold'>
+          {error ? t('Unable to open chat') : t('No available Web chat links')}
+        </h1>
+        <div className='flex flex-wrap justify-center gap-2'>
+          {error && (
+            <Button onClick={() => void refetch()}>{t('Retry')}</Button>
+          )}
+          <Link
+            to={playgroundEnabled ? '/playground' : '/dashboard'}
+            className={buttonVariants({
+              variant: error ? 'outline' : 'default',
+            })}
+          >
+            {playgroundEnabled ? t('Playground') : t('Return to dashboard')}
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className='flex h-full flex-col items-center justify-center gap-3'>
-      <Loader2 className='text-muted-foreground h-8 w-8 animate-spin' />
+    <div
+      className='flex min-h-80 flex-col items-center justify-center gap-3'
+      role='status'
+    >
+      <Loader2
+        aria-hidden
+        className='text-muted-foreground size-7 animate-spin'
+      />
       <p className='text-muted-foreground text-sm'>
-        {t('Redirecting to chat page...')}
+        {loading && !firstWebPreset
+          ? t('Loading configuration')
+          : t('Redirecting to chat page...')}
       </p>
     </div>
   )

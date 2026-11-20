@@ -675,7 +675,10 @@ function RateLimitsSection(props: { model: PricingModel }) {
   return (
     <section>
       <SectionTitle icon={Gauge}>
-        {t('Rate limits')} · {t('Example')}
+        {t('Rate limits')}{' '}
+        <span className='text-muted-foreground ms-1 text-xs font-normal'>
+          {t('Example')}
+        </span>
       </SectionTitle>
       <StaticDataTable
         className={tableStyles.sectionContainer}

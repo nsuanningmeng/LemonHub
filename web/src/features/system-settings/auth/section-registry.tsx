@@ -27,7 +27,7 @@ import { PasskeySection } from './passkey-section'
 const AUTH_SECTIONS = [
   {
     id: 'basic-auth',
-    titleKey: 'Basic Authentication',
+    titleKey: 'Sign-in methods',
     build: (settings: AuthSettings) => (
       <BasicAuthSection
         defaultValues={{

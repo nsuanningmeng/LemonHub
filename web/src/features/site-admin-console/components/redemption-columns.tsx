@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ColumnDef } from '@tanstack/react-table'
+import type { ColumnDef } from '@tanstack/react-table'
 import { Ban, MoreHorizontal as DotsHorizontalIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -31,15 +31,15 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { formatMilliYuan } from '@/components/wallet-logs-table'
 import { formatQuota, formatTimestampToDate } from '@/lib/format'
+import { formatMilliYuan } from '@/lib/wallet-log'
 
 import {
   REDEMPTION_STATUS,
   REDEMPTION_STATUSES,
   isRedemptionExpired,
 } from '../constants'
-import { type Redemption } from '../types'
+import type { Redemption } from '../types'
 
 export function useRedemptionColumns(
   onVoid: (redemption: Redemption) => void

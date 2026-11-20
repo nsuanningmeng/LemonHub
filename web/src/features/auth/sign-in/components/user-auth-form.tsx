@@ -346,6 +346,15 @@ export function UserAuthForm({
     </>
   )
 
+  const legalConsent = (
+    <LegalConsent
+      status={status}
+      checked={agreedToLegal}
+      onCheckedChange={setAgreedToLegal}
+      className='mt-1'
+    />
+  )
+
   return (
     <Form {...form}>
       <form
@@ -353,6 +362,7 @@ export function UserAuthForm({
         className={cn('grid gap-4', className)}
         {...props}
       >
+        {hasAlternativeLogin && legalConsent}
         {hasAlternativeLogin && alternativeLoginMethods}
 
         {passwordLoginEnabled && (
@@ -401,16 +411,6 @@ export function UserAuthForm({
               )}
             />
 
-            {/* Submit Button */}
-            <Button
-              type='submit'
-              className='mt-2 w-full justify-center gap-2'
-              disabled={isLoading}
-            >
-              {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
-              {t('Sign in')}
-            </Button>
-
             {/* Human verification */}
             {isCaptchaEnabled && (
               <div className='mt-2'>
@@ -424,12 +424,17 @@ export function UserAuthForm({
           </>
         )}
 
-        <LegalConsent
-          status={status}
-          checked={agreedToLegal}
-          onCheckedChange={setAgreedToLegal}
-          className='mt-1'
-        />
+        {!hasAlternativeLogin && legalConsent}
+        {passwordLoginEnabled && (
+          <Button
+            type='submit'
+            className='mt-2 w-full justify-center gap-2'
+            disabled={isLoading}
+          >
+            {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
+            {t('Sign in')}
+          </Button>
+        )}
 
         {!hasAlternativeLogin && alternativeLoginMethods}
       </form>

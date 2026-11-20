@@ -122,8 +122,8 @@ export function ModelCharts(props: ModelChartsProps) {
   ].join('-')
 
   return (
-    <div className='overflow-hidden rounded-lg border'>
-      <div className='flex w-full flex-col gap-1.5 border-b px-3 py-2 sm:gap-3 sm:px-5 sm:py-3 lg:flex-row lg:items-center lg:justify-between'>
+    <div className='bg-card @container/model-chart overflow-hidden rounded-lg border'>
+      <div className='flex w-full flex-col gap-1.5 border-b px-3 py-2 sm:gap-3 sm:px-5 sm:py-3 @min-[45rem]/model-chart:flex-row @min-[45rem]/model-chart:items-center @min-[45rem]/model-chart:justify-between'>
         <div className='flex items-center gap-2'>
           <IconBadge tone='chart-4' size='sm'>
             <PieChartIcon />
@@ -136,16 +136,16 @@ export function ModelCharts(props: ModelChartsProps) {
           </span>
         </div>
 
-        <div className='bg-muted/60 inline-flex h-7 w-full overflow-x-auto rounded-lg border p-0.5 sm:h-8 sm:w-auto'>
+        <div className='flex max-w-full flex-wrap gap-1'>
           {MODEL_ANALYTICS_CHART_OPTIONS.map((tab) => (
             <button
               key={tab.value}
               type='button'
               aria-pressed={activeTab === tab.value}
               onClick={() => setActiveTab(tab.value)}
-              className={`shrink-0 rounded-md px-3 text-xs font-medium transition-colors ${
+              className={`focus-visible:ring-ring min-h-8 shrink-0 rounded-md px-2.5 text-xs font-medium transition-colors focus-visible:ring-2 ${
                 activeTab === tab.value
-                  ? 'bg-background text-foreground shadow-sm'
+                  ? 'bg-muted text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >

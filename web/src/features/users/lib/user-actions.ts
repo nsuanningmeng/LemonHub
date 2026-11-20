@@ -20,7 +20,7 @@ import i18next from 'i18next'
 import { toast } from 'sonner'
 
 import { deleteUser, manageUser } from '../api'
-import { type ManageUserAction } from '../types'
+import type { ManageUserAction } from '../types'
 
 // ============================================================================
 // User Action Messages

@@ -32,9 +32,12 @@ export function LoadingSkeleton(props: LoadingSkeletonProps) {
       {viewMode === VIEW_MODES.TABLE ? (
         <TableContentSkeleton />
       ) : (
-        <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+        <div className='divide-border bg-card divide-y border-y'>
           {['first', 'second', 'third', 'fourth'].map((key) => (
-            <div key={key} className='bg-card space-y-4 rounded-lg border p-5'>
+            <div
+              key={key}
+              className='grid min-h-24 items-center gap-4 p-4 sm:grid-cols-[2fr_1fr_1fr_1fr]'
+            >
               <div className='flex items-center gap-3'>
                 <Skeleton className='size-9 rounded-md' />
                 <Skeleton className='h-5 w-2/5' />

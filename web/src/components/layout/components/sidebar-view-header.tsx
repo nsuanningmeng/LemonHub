@@ -52,7 +52,7 @@ export function SidebarViewHeader(props: SidebarViewHeaderProps) {
           <SidebarMenuButton
             tooltip={t(props.view.parent.label)}
             className={cn(
-              'text-muted-foreground hover:text-foreground',
+              'text-sidebar-foreground hover:text-sidebar-foreground',
               'gap-1.5 font-medium'
             )}
             render={

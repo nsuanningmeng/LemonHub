@@ -26,7 +26,6 @@ import { buttonVariants } from '@/components/ui/button'
 import {
   DocumentLayout,
   DocumentLoading,
-  DocumentTitle,
 } from '@/features/public-documents/document-layout'
 import { isHttpUrl, isLikelyHtml } from '@/lib/content-format'
 
@@ -64,8 +63,7 @@ export function LegalDocument({
 
   if (!success || !hasContent || isUrl) {
     return (
-      <DocumentLayout>
-        <DocumentTitle>{title}</DocumentTitle>
+      <DocumentLayout title={title}>
         <div className='flex items-start gap-4'>
           <FileText
             aria-hidden='true'
@@ -74,9 +72,7 @@ export function LegalDocument({
           <div>
             <p className='text-muted-foreground leading-relaxed'>
               {success && isUrl
-                ? t(
-                    'The administrator configured an external link for this document.'
-                  )
+                ? t('This document is published on an external site.')
                 : data?.message || emptyMessage}
             </p>
             {success && isUrl && (
@@ -105,8 +101,7 @@ export function LegalDocument({
   }
 
   return (
-    <DocumentLayout>
-      <DocumentTitle>{title}</DocumentTitle>
+    <DocumentLayout title={title}>
       <RichContent
         mode='markdown'
         content={rawContent}

@@ -16,13 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  BarChartIcon,
-  CodeSquareIcon,
-  GraduationCapIcon,
-  MessageSquarePlusIcon,
-  NotepadTextIcon,
-} from 'lucide-react'
+import { BarChart3, BookOpenText, Code2, Languages } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -32,53 +26,53 @@ type PlaygroundEmptyStateProps = {
 }
 
 const starterPrompts = [
-  { icon: BarChartIcon, text: 'Analyze data' },
-  { icon: NotepadTextIcon, text: 'Summarize text' },
-  { icon: CodeSquareIcon, text: 'Code' },
-  { icon: GraduationCapIcon, text: 'Get advice' },
+  { icon: Code2, text: 'Write a SQL query that counts requests per day' },
+  {
+    icon: BarChart3,
+    text: 'Explain the difference between mean and median latency',
+  },
+  {
+    icon: BookOpenText,
+    text: 'Summarize how an API key authenticates a request',
+  },
+  {
+    icon: Languages,
+    text: 'Translate a short API error message into three languages',
+  },
 ]
 
 export function PlaygroundEmptyState({
   onSelectPrompt,
 }: PlaygroundEmptyStateProps) {
   const { t } = useTranslation()
-
   return (
-    <div className='flex min-h-[min(520px,calc(100svh-18rem))] items-center justify-center px-1 py-8 md:py-12'>
-      <div className='grid w-full max-w-2xl gap-5 text-center'>
-        <div className='bg-muted/50 text-muted-foreground mx-auto flex size-11 items-center justify-center rounded-xl border'>
-          <MessageSquarePlusIcon className='size-5' aria-hidden='true' />
-        </div>
-
-        <div className='grid gap-2'>
-          <h2 className='text-xl font-semibold tracking-tight text-balance md:text-2xl'>
-            {t('Start a playground chat')}
-          </h2>
-          <p className='text-muted-foreground mx-auto max-w-lg text-sm leading-6 text-balance'>
-            {t(
-              'Test a model with a starter prompt, or write your own request below.'
-            )}
-          </p>
-        </div>
-
-        <div className='grid gap-2 sm:grid-cols-2'>
-          {starterPrompts.map(({ icon: Icon, text }) => {
-            const prompt = t(text)
-
-            return (
-              <Button
-                className='h-auto min-h-11 justify-start gap-2 px-3 py-2.5 text-left whitespace-normal'
-                key={text}
-                onClick={() => onSelectPrompt(prompt)}
-                variant='outline'
-              >
-                <Icon className='text-muted-foreground size-4' />
-                <span>{prompt}</span>
-              </Button>
-            )
-          })}
+    <section className='mx-auto grid w-full max-w-3xl gap-5 py-5 sm:py-10 md:grid-cols-[minmax(0,.65fr)_minmax(0,1fr)] md:items-start md:gap-8'>
+      <div>
+        <h1 className='text-2xl leading-tight font-semibold tracking-tight md:text-4xl'>
+          {t('Model playground')}
+        </h1>
+        <p className='text-muted-foreground mt-2 max-w-sm text-sm leading-relaxed'>
+          {t('Choose a model and send a request to compare its response')}
+        </p>
+      </div>
+      <div>
+        <h2 className='text-muted-foreground mb-2 text-sm font-medium'>
+          {t('Sample requests')}
+        </h2>
+        <div className='divide-y border-y'>
+          {starterPrompts.map(({ icon: Icon, text }) => (
+            <Button
+              key={text}
+              variant='ghost'
+              className='h-auto min-h-11 w-full justify-start gap-3 rounded-none px-1.5 py-2 text-start whitespace-normal'
+              onClick={() => onSelectPrompt(t(text))}
+            >
+              <Icon className='text-primary size-4' aria-hidden='true' />
+              {t(text)}
+            </Button>
+          ))}
         </div>
       </div>
-    </div>
+    </section>
   )
 }

@@ -41,17 +41,27 @@ export function SiteAdminConsole() {
           onValueChange={(value) => setTab(String(value))}
           className='gap-4'
         >
-          <TabsList>
-            <TabsTrigger value='overview'>{t('Overview & Wallet')}</TabsTrigger>
-            <TabsTrigger value='redemption'>
-              {t('Redemption Codes')}
-            </TabsTrigger>
-            <TabsTrigger value='branding'>{t('Branding Settings')}</TabsTrigger>
-            <TabsTrigger value='pay-config'>
-              {t('Payment Settings')}
-            </TabsTrigger>
-            <TabsTrigger value='pricing'>{t('Model Pricing')}</TabsTrigger>
-          </TabsList>
+          <div className='max-w-full overflow-x-auto border-b pb-1'>
+            <TabsList
+              variant='line'
+              aria-label={t('Agent Console')}
+              className='h-auto min-h-10 justify-start gap-3'
+            >
+              <TabsTrigger value='overview'>
+                {t('Overview & Wallet')}
+              </TabsTrigger>
+              <TabsTrigger value='redemption'>
+                {t('Redemption Codes')}
+              </TabsTrigger>
+              <TabsTrigger value='branding'>
+                {t('Branding Settings')}
+              </TabsTrigger>
+              <TabsTrigger value='pay-config'>
+                {t('Payment Settings')}
+              </TabsTrigger>
+              <TabsTrigger value='pricing'>{t('Model Pricing')}</TabsTrigger>
+            </TabsList>
+          </div>
 
           <TabsContent value='overview'>
             <OverviewTab />

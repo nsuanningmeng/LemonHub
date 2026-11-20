@@ -290,13 +290,10 @@ export function SubscriptionPlansCard({
                   </span>
                 )}
                 {allSubscriptions.length > activeSubscriptions.length && (
-                  <>
-                    <span className='text-muted-foreground/30'>·</span>
-                    <span className='text-muted-foreground'>
-                      {allSubscriptions.length - activeSubscriptions.length}{' '}
-                      {t('expired')}
-                    </span>
-                  </>
+                  <span className='text-muted-foreground ms-2'>
+                    {allSubscriptions.length - activeSubscriptions.length}{' '}
+                    {t('expired')}
+                  </span>
                 )}
               </span>
             </div>
@@ -448,12 +445,13 @@ export function SubscriptionPlansCard({
                       key={subscription?.id}
                       className='bg-background rounded-md border p-3 text-xs'
                     >
-                      <div className='flex items-center justify-between'>
-                        <div className='flex items-center gap-2'>
-                          <span className='font-medium'>
-                            {planTitle
-                              ? `${planTitle} · ${t('Subscription')} #${subscription?.id}`
-                              : `${t('Subscription')} #${subscription?.id}`}
+                      <div className='flex flex-wrap items-start justify-between gap-2'>
+                        <div className='flex flex-wrap items-center gap-2'>
+                          {planTitle && (
+                            <span className='font-medium'>{planTitle}</span>
+                          )}
+                          <span className='text-muted-foreground'>
+                            {t('Subscription')} #{subscription?.id}
                           </span>
                           {statusBadge}
                         </div>
@@ -482,15 +480,28 @@ export function SubscriptionPlansCard({
                         {totalAmount > 0 ? (
                           <Tooltip>
                             <TooltipTrigger
-                              render={<span className='cursor-help' />}
+                              render={
+                                <span
+                                  tabIndex={0}
+                                  className='inline-flex cursor-help flex-wrap gap-x-3'
+                                />
+                              }
                             >
-                              {formatQuota(usedAmount)}/
-                              {formatQuota(totalAmount)} · {t('Remaining')}{' '}
-                              {formatQuota(remainAmount)}
+                              <span>
+                                {formatQuota(usedAmount)}/
+                                {formatQuota(totalAmount)}
+                              </span>
+                              <span>
+                                {t('Remaining')} {formatQuota(remainAmount)}
+                              </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              {t('Raw Quota')}: {usedAmount}/{totalAmount} ·{' '}
-                              {t('Remaining')} {remainAmount}
+                              <span className='block'>
+                                {t('Raw Quota')}: {usedAmount}/{totalAmount}
+                              </span>
+                              <span className='block'>
+                                {t('Remaining')} {remainAmount}
+                              </span>
                             </TooltipContent>
                           </Tooltip>
                         ) : (

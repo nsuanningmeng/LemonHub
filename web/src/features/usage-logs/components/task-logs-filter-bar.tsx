@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
-import { type Table } from '@tanstack/react-table'
+import type { Table } from '@tanstack/react-table'
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -80,10 +80,12 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   useEffect(() => {
     const { start, end } = getDefaultTimeRange()
     const baseFilters = {
-      startTime: searchParams.startTime
-        ? new Date(searchParams.startTime)
-        : start,
-      endTime: searchParams.endTime ? new Date(searchParams.endTime) : end,
+      startTime:
+        searchParams.startTime != null
+          ? new Date(searchParams.startTime)
+          : start,
+      endTime:
+        searchParams.endTime != null ? new Date(searchParams.endTime) : end,
       ...(searchParams.channel
         ? { channel: String(searchParams.channel) }
         : {}),

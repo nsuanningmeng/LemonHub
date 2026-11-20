@@ -100,11 +100,7 @@ function runtimeLabel(instance: SystemInstance) {
   const runtime = instance.info?.runtime
   if (!runtime?.goos && !runtime?.goarch) return '-'
 
-  const parts: string[] = []
-  if (runtime.goos || runtime.goarch) {
-    parts.push([runtime.goos, runtime.goarch].filter(Boolean).join('/'))
-  }
-  return parts.join(' · ')
+  return [runtime.goos, runtime.goarch].filter(Boolean).join('/')
 }
 
 function getNodeName(instance: SystemInstance) {

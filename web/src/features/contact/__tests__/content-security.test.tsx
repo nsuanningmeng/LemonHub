@@ -24,7 +24,12 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { Contact } from '..'
 
 vi.mock('@/components/layout', () => ({
-  PublicLayout: (props: PropsWithChildren) => <main>{props.children}</main>,
+  PublicLayout: (props: PropsWithChildren<{ showMainContainer?: boolean }>) =>
+    props.showMainContainer === false ? (
+      props.children
+    ) : (
+      <main>{props.children}</main>
+    ),
 }))
 
 afterEach(cleanup)

@@ -171,7 +171,12 @@ export function MarketShareSection(props: MarketShareSectionProps) {
               key: (datum: Record<string, unknown>) =>
                 String(datum?.vendor ?? ''),
               value: (datum: Record<string, unknown>) =>
-                `${(Number(datum?.share) * 100).toFixed(1)}% · ${formatTokens(Number(datum?.tokens) || 0)}`,
+                `${(Number(datum?.share) * 100).toFixed(1)}%`,
+            },
+            {
+              key: t('tokens'),
+              value: (datum: Record<string, unknown>) =>
+                `${formatTokens(Number(datum?.tokens) || 0)}`,
             },
           ],
         },
@@ -203,7 +208,7 @@ export function MarketShareSection(props: MarketShareSectionProps) {
       },
       animation: false,
     }
-  }, [chartGridColor, chartTextColor, colourMap, orderedPoints])
+  }, [chartGridColor, chartTextColor, colourMap, orderedPoints, t])
 
   const visible = props.rows.slice(0, MAX_VENDORS_IN_LIST)
   const half = Math.ceil(visible.length / 2)
@@ -211,7 +216,7 @@ export function MarketShareSection(props: MarketShareSectionProps) {
   const right = visible.slice(half)
 
   return (
-    <section className='bg-card overflow-hidden rounded-lg border'>
+    <section className='border-foreground min-w-0 overflow-hidden border-t-2'>
       {/* Chart block ----------------------------------------------------- */}
       <header className='px-5 py-4'>
         <h2 className='text-foreground inline-flex items-center gap-2 text-xl font-semibold tracking-tight'>
@@ -257,7 +262,7 @@ export function MarketShareSection(props: MarketShareSectionProps) {
             {t('No vendor data available')}
           </div>
         ) : (
-          <div className='grid grid-cols-1 gap-x-8 px-5 pt-1 pb-4 md:grid-cols-2'>
+          <div className='grid grid-cols-1 gap-x-8 px-5 pt-1 pb-4 md:grid-cols-2 xl:grid-cols-1'>
             <VendorList rows={left} colourMap={colourMap} />
             {right.length > 0 && (
               <VendorList rows={right} colourMap={colourMap} />

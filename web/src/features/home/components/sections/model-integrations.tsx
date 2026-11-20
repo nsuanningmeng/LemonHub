@@ -20,33 +20,70 @@ import Anthropic from '@lobehub/icons/es/Anthropic/components/Mono'
 import DeepSeek from '@lobehub/icons/es/DeepSeek/components/Mono'
 import Gemini from '@lobehub/icons/es/Gemini/components/Mono'
 import OpenAI from '@lobehub/icons/es/OpenAI/components/Mono'
+import { Link } from '@tanstack/react-router'
+import { ArrowRight, ArrowUpRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 const INTEGRATIONS = [
-  { name: 'OpenAI', icon: OpenAI },
-  { name: 'Anthropic', icon: Anthropic },
-  { name: 'Gemini', icon: Gemini },
-  { name: 'DeepSeek', icon: DeepSeek },
+  {
+    name: 'OpenAI',
+    vendor: 'OpenAI',
+    protocol: 'Chat / Responses',
+    icon: OpenAI,
+  },
+  {
+    name: 'Anthropic',
+    vendor: 'Anthropic',
+    protocol: 'Messages',
+    icon: Anthropic,
+  },
+  {
+    name: 'Gemini',
+    vendor: 'Google',
+    protocol: 'generateContent',
+    icon: Gemini,
+  },
+  { name: 'DeepSeek', vendor: 'DeepSeek', protocol: 'Chat', icon: DeepSeek },
 ]
 
 export function ModelIntegrations() {
   const { t } = useTranslation()
   return (
-    <section
-      className='gateway-integrations'
-      aria-labelledby='integrations-title'
-    >
-      <div className='gateway-container gateway-integrations-row'>
-        <h2 id='integrations-title'>{t('Model integrations')}</h2>
-        <ul>
-          {INTEGRATIONS.map(({ name, icon: Icon }) => (
-            <li key={name}>
-              <Icon size={26} aria-hidden='true' />
-              <span>{name}</span>
-            </li>
-          ))}
-        </ul>
+    <aside className='gateway-directory' aria-labelledby='integrations-title'>
+      <h2 id='integrations-title'>{t('Model directory')}</h2>
+      <ul>
+        {INTEGRATIONS.map(({ name, vendor, protocol, icon: Icon }) => (
+          <li key={name}>
+            <Link
+              to='/pricing'
+              search={{ vendor }}
+              aria-label={t('Browse {{provider}} models', { provider: name })}
+            >
+              <span className='gateway-provider-icon'>
+                <Icon size={23} aria-hidden='true' />
+              </span>
+              <span>
+                <strong>{name}</strong>
+                <small>{protocol}</small>
+              </span>
+              <ArrowRight size={16} aria-hidden='true' />
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <div className='gateway-apps'>
+        <h3>{t('Supported Applications')}</h3>
+        <a
+          href='https://cherry-ai.com'
+          target='_blank'
+          rel='noopener noreferrer'
+        >
+          Cherry Studio <ArrowUpRight size={14} aria-hidden='true' />
+        </a>
+        <a href='https://ccswitch.io' target='_blank' rel='noopener noreferrer'>
+          CC Switch <ArrowUpRight size={14} aria-hidden='true' />
+        </a>
       </div>
-    </section>
+    </aside>
   )
 }

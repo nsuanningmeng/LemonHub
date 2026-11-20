@@ -24,20 +24,17 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { getUserQuotaDates } from '@/features/dashboard/api'
-import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
-import { useStatus } from '@/hooks/use-status'
-import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { StatCard } from '../ui/stat-card'
+import { WorkspaceActivityChart } from './workspace-activity-chart'
 
-const SUMMARY_SPARKLINE_BUCKETS = 12
+const ACTIVITY_BUCKET_COUNT = 12
 
-type SummarySparklineKey = 'balance' | 'usage' | 'requests'
+type ActivityMetric = 'usage' | 'requests'
 
 function getBucketIndex(
   timestamp: number,
@@ -50,52 +47,22 @@ function getBucketIndex(
   return Math.min(bucketCount - 1, Math.max(0, Math.floor(ratio * bucketCount)))
 }
 
-function buildSummarySparklines(
+function buildActivitySeries(
   data: QuotaDataItem[],
-  currentBalance: number,
   start: number,
   end: number
-): Record<SummarySparklineKey, number[]> {
-  const usage = Array.from({ length: SUMMARY_SPARKLINE_BUCKETS }, () => 0)
-  const requests = Array.from({ length: SUMMARY_SPARKLINE_BUCKETS }, () => 0)
+): Record<ActivityMetric, number[]> {
+  const usage = Array.from({ length: ACTIVITY_BUCKET_COUNT }, () => 0)
+  const requests = Array.from({ length: ACTIVITY_BUCKET_COUNT }, () => 0)
 
   for (const item of data) {
     const timestamp = Number(item.created_at) || start
-    const index = getBucketIndex(
-      timestamp,
-      start,
-      end,
-      SUMMARY_SPARKLINE_BUCKETS
-    )
+    const index = getBucketIndex(timestamp, start, end, ACTIVITY_BUCKET_COUNT)
     usage[index] += Number(item.quota) || 0
     requests[index] += Number(item.count) || 0
   }
 
-  let balance = currentBalance
-  const balanceTrend = Array.from(
-    { length: SUMMARY_SPARKLINE_BUCKETS },
-    () => 0
-  )
-
-  for (let index = SUMMARY_SPARKLINE_BUCKETS - 1; index >= 0; index--) {
-    balanceTrend[index] = Math.max(0, balance)
-    balance += usage[index]
-  }
-
-  return {
-    balance: balanceTrend,
-    usage,
-    requests,
-  }
-}
-
-function getSummarySparkline(
-  key: string,
-  sparklineData: Record<SummarySparklineKey, number[]>
-): number[] | undefined {
-  if (key === 'usage') return sparklineData.usage
-  if (key === 'requests') return sparklineData.requests
-  return undefined
+  return { usage, requests }
 }
 
 function getRunwayDays(
@@ -138,7 +105,6 @@ const HEALTH_CONFIG: Record<
 export function SummaryCards() {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
-  const { status, loading } = useStatus()
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
   const remainQuota = Number(user?.quota ?? 0)
@@ -162,54 +128,29 @@ export function SummaryCards() {
     staleTime: 60 * 1000,
   })
 
-  const summaryValues = useMemo(() => {
-    return {
-      usedDisplay: formatQuota(usedQuota),
-      requestCountDisplay: formatNumber(requestCount),
-    }
-  }, [requestCount, usedQuota])
-
-  const currencyEnabledFromStore = isCurrencyDisplayEnabled()
-  const statusCurrencyFlag =
-    typeof status?.display_in_currency === 'boolean'
-      ? Boolean(status.display_in_currency)
-      : undefined
-  const currencyEnabled =
-    statusCurrencyFlag !== undefined
-      ? statusCurrencyFlag
-      : currencyEnabledFromStore
-  const currencyLabel = currencyEnabled ? getCurrencyLabel() : 'Tokens'
-
-  const sparklineData = useMemo(
+  const activitySeries = useMemo(
     () =>
-      buildSummarySparklines(
+      buildActivitySeries(
         usageTrendQuery.data?.data ?? [],
-        remainQuota,
         summaryTimeRange.start_timestamp,
         summaryTimeRange.end_timestamp
       ),
     [
-      remainQuota,
       summaryTimeRange.end_timestamp,
       summaryTimeRange.start_timestamp,
       usageTrendQuery.data?.data,
     ]
   )
 
-  const recentUsage = useMemo(
-    () =>
-      (usageTrendQuery.data?.data ?? []).reduce(
-        (total, item) => total + (Number(item.quota) || 0),
-        0
-      ),
-    [usageTrendQuery.data?.data]
+  const recentUsage = activitySeries.usage.reduce(
+    (sum, quota) => sum + quota,
+    0
   )
 
   const healthLevel = getHealthLevel(remainQuota, recentUsage)
   const healthCfg = HEALTH_CONFIG[healthLevel]
   const runwayDays = getRunwayDays(remainQuota, recentUsage)
 
-  const todayUsageDisplay = formatQuota(recentUsage)
   let runwayDisplay: string
   if (runwayDays !== null) {
     if (runwayDays < 1) {
@@ -225,93 +166,75 @@ export function SummaryCards() {
     runwayDisplay = t('No recent usage')
   }
 
-  const items = useSummaryCardsConfig({
-    ...summaryValues,
-    todayUsageDisplay,
-    currencyEnabled,
-    currencyLabel,
-  }).map((config, index) => {
-    const tones = ['accent-1', 'accent-2', 'accent-3'] as const
-
-    return {
-      key: config.key,
-      title: config.title,
-      value: config.value,
-      desc: config.description,
-      icon: config.icon,
-      tone: tones[index] ?? 'accent-3',
-      sparkline:
-        config.key === 'todayUsage'
-          ? sparklineData.usage
-          : getSummarySparkline(config.key, sparklineData),
-      sparklineVariant: 'line' as const,
-    }
-  })
+  const trendFailed =
+    usageTrendQuery.isError || usageTrendQuery.data?.success === false
 
   return (
-    <section className='bg-card @container/overview min-w-0 overflow-hidden rounded-lg border'>
-      <div className='flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5'>
-        <h3 className='text-base font-semibold tracking-tight'>
-          {t('Usage at a glance')}
-        </h3>
+    <section className='@container/overview min-w-0 border-y'>
+      <div className='grid min-w-0 gap-x-6 @3xl/overview:grid-cols-[minmax(0,1.8fr)_minmax(13.5rem,.82fr)]'>
+        <WorkspaceActivityChart
+          series={activitySeries}
+          start={summaryTimeRange.start_timestamp}
+          end={summaryTimeRange.end_timestamp}
+          failed={trendFailed}
+          loading={usageTrendQuery.isLoading}
+          retry={() => void usageTrendQuery.refetch()}
+        />
+        <div className='bg-brand-ink my-4 flex min-w-0 flex-col justify-between gap-4 rounded-lg p-5 text-white sm:p-6'>
+          <div>
+            <p className='text-sm font-medium text-white/80'>
+              {t('Available credits')}
+            </p>
+            <p className='mt-2 max-w-full overflow-x-auto text-4xl font-semibold tracking-tight whitespace-nowrap tabular-nums'>
+              {formatQuota(remainQuota)}
+            </p>
+          </div>
+          <div>
+            <div className='flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
+              <span className='inline-flex items-center gap-1.5'>
+                <span
+                  aria-hidden='true'
+                  className={cn('size-2 rounded-full', healthCfg.dotClass)}
+                />
+                {t(healthCfg.labelKey)}
+              </span>
+              {!trendFailed && !usageTrendQuery.isLoading && (
+                <span className='text-white/75'>{runwayDisplay}</span>
+              )}
+            </div>
+            <Button
+              size='sm'
+              className='bg-brand-citrus text-brand-ink hover:bg-brand-citrus/90 mt-4 w-full justify-between'
+              render={<Link to='/wallet' />}
+            >
+              {t('Manage funds')} <ArrowRight data-icon='inline-end' />
+            </Button>
+          </div>
+        </div>
+      </div>
+      <div className='flex flex-wrap items-center gap-x-6 gap-y-2 border-t py-3 text-sm'>
+        <span className='text-muted-foreground'>
+          {t('Lifetime usage')}{' '}
+          <b className='text-foreground ms-1 font-medium tabular-nums'>
+            {formatQuota(usedQuota)}
+          </b>
+        </span>
+        <span className='text-muted-foreground'>
+          {t('Lifetime requests')}{' '}
+          <b className='text-foreground ms-1 font-medium tabular-nums'>
+            {formatNumber(requestCount)}
+          </b>
+        </span>
         <Button
-          variant='ghost'
           size='sm'
+          variant='ghost'
+          className='sm:ms-auto'
           render={
             <Link to='/dashboard/$section' params={{ section: 'models' }} />
           }
         >
-          {t('Model Call Analytics')} <ArrowRight data-icon='inline-end' />
+          {t('Explore analytics')} <ArrowRight data-icon='inline-end' />
         </Button>
-      </div>
-      <div className='grid @3xl/overview:grid-cols-[minmax(12rem,.85fr)_minmax(0,2fr)]'>
-        <div className='bg-muted/60 flex min-w-0 flex-col justify-between gap-4 border-b p-4 sm:p-5 @3xl/overview:border-r @3xl/overview:border-b-0'>
-          <div>
-            <div className='flex flex-wrap items-center justify-between gap-2'>
-              <h4 className='text-sm font-medium'>{t('Credit remaining')}</h4>
-              <span className='text-muted-foreground inline-flex items-center gap-1.5 text-xs'>
-                <span
-                  className={cn('size-1.5 rounded-full', healthCfg.dotClass)}
-                  aria-hidden='true'
-                />
-                {t(healthCfg.labelKey)}
-              </span>
-            </div>
-            <p className='mt-2 overflow-x-auto text-3xl font-semibold tracking-tight whitespace-nowrap tabular-nums sm:text-4xl'>
-              {formatQuota(remainQuota)}
-            </p>
-          </div>
-          <div className='flex flex-wrap items-center justify-between gap-2'>
-            <div className='text-muted-foreground text-xs'>
-              {t('Runway')}{' '}
-              <span className='text-foreground ms-1 font-medium'>
-                {runwayDisplay}
-              </span>
-            </div>
-            <Button size='sm' variant='outline' render={<Link to='/wallet' />}>
-              {t('Wallet')} <ArrowRight data-icon='inline-end' />
-            </Button>
-          </div>
-        </div>
-        <div className='@container/summary min-w-0'>
-          <div className='grid h-full grid-cols-1 divide-y @md/summary:grid-cols-3 @md/summary:divide-x @md/summary:divide-y-0'>
-            {items.map((item) => (
-              <div key={item.key} className='min-w-0 p-4 sm:p-5'>
-                <StatCard
-                  title={item.title}
-                  value={item.value}
-                  description={item.desc}
-                  icon={item.icon}
-                  tone={item.tone}
-                  sparkline={item.sparkline}
-                  sparklineVariant={item.sparklineVariant}
-                  loading={loading}
-                  compactMobile
-                />
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
     </section>
   )

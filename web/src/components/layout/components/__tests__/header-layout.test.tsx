@@ -44,6 +44,7 @@ import { SearchProvider } from '@/context/search-provider'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { Header } from '../header'
+import { NavGroup } from '../nav-group'
 import { PublicHeader } from '../public-header'
 import { SystemBrand } from '../system-brand'
 import { TopNav } from '../top-nav'
@@ -75,6 +76,10 @@ function HeaderFixture() {
           />
           <Search />
         </Header>
+        <NavGroup
+          title='Usage'
+          items={[{ title: 'Usage Logs', url: '/usage-logs' }]}
+        />
         <CommandMenu />
       </SearchProvider>
     </SidebarProvider>
@@ -193,6 +198,36 @@ test('the compact public menu exposes configured links on demand and returns key
   expect(trigger).toHaveFocus()
 })
 
+test('a protected destination in the public More menu shows the sign-in prompt', async () => {
+  const user = userEvent.setup()
+  client.setQueryData(['status'], {
+    HeaderNavModules: JSON.stringify({
+      rankings: { enabled: true, requireAuth: true },
+    }),
+  })
+  client.setQueryData(['notice'], { success: true, data: '' })
+  const router = createRouter({
+    routeTree: createRootRoute({
+      component: () => (
+        <PublicHeader showAuthButtons={false} showNotifications={false} />
+      ),
+    }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
+  await user.click(await screen.findByRole('button', { name: 'More' }))
+  await user.click(await screen.findByRole('menuitem', { name: 'Rankings' }))
+  const prompt = await screen.findByRole('dialog', { name: 'Sign in required' })
+  expect(
+    within(prompt).getByRole('button', { name: 'Sign in now' })
+  ).toBeVisible()
+  expect(router.state.location.pathname).toBe('/')
+})
+
 test('a long inline site name can shrink while the logo keeps its size', async () => {
   await renderHeader()
   const brand = screen.getByRole('link', { name: 'Go to home' })
@@ -214,14 +249,9 @@ test('mobile search keeps an accessible name while the text and keyboard hint wa
   ).toBeVisible()
 })
 
-test('navigation uses the space available in the toolbar and keeps every link accessible in its compact menu', async () => {
+test('the platform menu keeps internal and external destinations accessible', async () => {
   await renderHeader()
-  const menu = screen.getByRole('button', { name: 'Open menu' })
-  expect(menu.parentElement).toHaveClass('@min-[47rem]/topnav:hidden')
-  expect(screen.getByRole('navigation')).toHaveClass(
-    'whitespace-nowrap',
-    '@min-[47rem]/topnav:flex'
-  )
+  const menu = screen.getByRole('button', { name: 'Platform' })
   await userEvent.setup().click(menu)
   const items = await screen.findByRole('menu')
   expect(
@@ -230,4 +260,20 @@ test('navigation uses the space available in the toolbar and keeps every link ac
   expect(
     within(items).getByRole('menuitem', { name: 'Documentation' })
   ).toHaveAttribute('href', 'https://example.com/docs')
+})
+
+test('a sidebar group can hide its links and reopen with the keyboard', async () => {
+  const user = userEvent.setup()
+  await renderHeader()
+  const group = screen.getByRole('button', { name: 'Usage' })
+  expect(group).toHaveAttribute('aria-expanded', 'true')
+  group.focus()
+  await user.keyboard('{Enter}')
+  expect(group).toHaveAttribute('aria-expanded', 'false')
+  expect(screen.queryByRole('link', { name: 'Usage Logs' })).toBeNull()
+  await user.keyboard(' ')
+  expect(screen.getByRole('link', { name: 'Usage Logs' })).toHaveAttribute(
+    'href',
+    '/usage-logs'
+  )
 })

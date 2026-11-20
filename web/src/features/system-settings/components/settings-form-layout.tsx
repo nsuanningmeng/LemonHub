@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import '@/styles/settings-editor.css'
 import type { ComponentProps, ReactNode } from 'react'
 
 import { FormItem } from '@/components/ui/form'
@@ -52,14 +53,7 @@ export function SettingsFormGrid(props: SettingsFormGridProps) {
   return (
     <div
       data-settings-form-span='full'
-      className={cn(
-        'grid min-w-0 gap-x-6 gap-y-5 @3xl/settings:grid-cols-2',
-        '@3xl/settings:[&>[data-settings-form-span=full]]:col-span-2',
-        '[&>[data-slot=form-item]]:min-w-0',
-        '@3xl/settings:[&>[data-slot=form-item]:has(textarea)]:col-span-2',
-        '@3xl/settings:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2',
-        props.className
-      )}
+      className={cn('settings-fields min-w-0', props.className)}
     >
       {props.children}
     </div>
@@ -72,7 +66,7 @@ export function SettingsFormGridItem(props: SettingsFormGridItemProps) {
       data-settings-form-span={props.span === 'full' ? 'full' : undefined}
       className={cn(
         'min-w-0',
-        props.span === 'full' && '@3xl/settings:col-span-2',
+
         props.className
       )}
     >
@@ -175,18 +169,6 @@ export function SettingsControlChildren({
 
 export function SettingsForm({ className, ...props }: ComponentProps<'form'>) {
   return (
-    <form
-      className={cn(
-        'bg-card grid min-w-0 gap-x-6 gap-y-5 rounded-lg border p-4 sm:p-6 @3xl/settings:grid-cols-2',
-        '@3xl/settings:[&>*:not([data-slot=form-item])]:col-span-2',
-        '@3xl/settings:[&>[data-settings-form-span=full]]:col-span-2',
-        '@3xl/settings:[&>[data-slot=alert]]:col-span-2',
-        '[&>[data-slot=form-item]]:min-w-0',
-        '@3xl/settings:[&>[data-slot=form-item]:has(textarea)]:col-span-2',
-        '@3xl/settings:[&>[data-slot=form-item]:has([data-slot=switch])]:col-span-2',
-        className
-      )}
-      {...props}
-    />
+    <form className={cn('settings-editor min-w-0', className)} {...props} />
   )
 }

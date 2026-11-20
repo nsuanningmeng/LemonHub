@@ -174,7 +174,8 @@ export function RedemptionsTable() {
       skeletonKeyPrefix='redemptions-skeleton'
       applyHeaderSize
       toolbarProps={{
-        searchPlaceholder: t('Filter by name or ID...'),
+        primaryFilter: 'status',
+        searchPlaceholder: t('Name or ID'),
         searchDebounceMs: 500,
         filters: [
           {

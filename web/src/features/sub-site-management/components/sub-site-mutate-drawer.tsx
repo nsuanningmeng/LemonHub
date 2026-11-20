@@ -29,6 +29,8 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -68,7 +70,7 @@ import {
   transformFormToPayload,
   transformSiteToForm,
 } from '../lib'
-import { type Site } from '../types'
+import type { Site } from '../types'
 import { useSubSite } from './sub-site-provider'
 
 type SubSiteMutateDrawerProps = {
@@ -87,28 +89,48 @@ export function SubSiteMutateDrawer({
   const { triggerRefresh } = useSubSite()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showPayConfig, setShowPayConfig] = useState(false)
+  const [loadedId, setLoadedId] = useState<number | null>(null)
+  const [loadError, setLoadError] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const id = currentRow?.id
+  const waitingForSite = isUpdate && loadedId !== id
 
   const form = useForm<SiteFormValues>({
     resolver: zodResolver(getSiteFormSchema(t)),
     defaultValues: SITE_FORM_DEFAULT_VALUES,
   })
 
-  // Load existing data when updating
   useEffect(() => {
-    if (open && isUpdate && currentRow) {
-      // Fetch fresh data for update
-      getSite(currentRow.id).then((result) => {
-        if (result.success && result.data) {
+    let active = true
+    setLoadedId(null)
+    setLoadError(false)
+    setShowPayConfig(false)
+    if (open && id !== undefined) {
+      const loadSite = async () => {
+        try {
+          const result = await getSite(id)
+          if (!active) return
+          if (!result.success || !result.data) {
+            setLoadError(true)
+            return
+          }
           form.reset(transformSiteToForm(result.data))
+          setLoadedId(id)
+        } catch {
+          if (active) setLoadError(true)
         }
-      })
-    } else if (open && !isUpdate) {
-      // Reset to defaults for create
+      }
+      void loadSite()
+    } else if (open) {
       form.reset(SITE_FORM_DEFAULT_VALUES)
     }
-  }, [open, isUpdate, currentRow, form])
+    return () => {
+      active = false
+    }
+  }, [open, id, form, attempt])
 
   const onSubmit = async (data: SiteFormValues) => {
+    if (waitingForSite || isSubmitting) return
     setIsSubmitting(true)
     try {
       const payload = transformFormToPayload(data)
@@ -132,6 +154,12 @@ export function SubSiteMutateDrawer({
           toast.error(result.message || t('Failed to create sub-site'))
         }
       }
+    } catch {
+      toast.error(
+        isUpdate
+          ? t('Failed to update sub-site')
+          : t('Failed to create sub-site')
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -159,17 +187,21 @@ export function SubSiteMutateDrawer({
             {isUpdate ? t('Update Sub-site') : t('Create Sub-site')}
           </SheetTitle>
           <SheetDescription>
-            {isUpdate
-              ? t('Update the sub-site by providing necessary info.')
-              : t('Add a new sub-site by providing necessary info.')}{' '}
-            {t("Click save when you're done.")}
+            {t('Manage site identity, domains and pricing')}
           </SheetDescription>
         </SheetHeader>
+        {waitingForSite &&
+          (loadError ? (
+            <ErrorState onRetry={() => setAttempt((value) => value + 1)} />
+          ) : (
+            <LoadingState />
+          ))}
         <Form {...form}>
           <form
             id='sub-site-form'
             onSubmit={form.handleSubmit(onSubmit)}
-            className={sideDrawerFormClassName()}
+            hidden={waitingForSite}
+            className={waitingForSite ? 'hidden' : sideDrawerFormClassName()}
           >
             <SideDrawerSection>
               {/* Name */}
@@ -271,7 +303,7 @@ export function SubSiteMutateDrawer({
                       items={statusItems}
                       value={String(field.value)}
                       onValueChange={(v) =>
-                        v !== null && field.onChange(parseInt(v, 10))
+                        v !== null && field.onChange(Number.parseInt(v, 10))
                       }
                     >
                       <FormControl>
@@ -306,7 +338,9 @@ export function SubSiteMutateDrawer({
                         max='10000'
                         placeholder='10000'
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value, 10) || 10000)
+                          field.onChange(
+                            Number.parseInt(e.target.value, 10) || 10000
+                          )
                         }
                       />
                     </FormControl>
@@ -332,7 +366,9 @@ export function SubSiteMutateDrawer({
                         min='10000'
                         placeholder='10000'
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value, 10) || 10000)
+                          field.onChange(
+                            Number.parseInt(e.target.value, 10) || 10000
+                          )
                         }
                       />
                     </FormControl>
@@ -360,7 +396,9 @@ export function SubSiteMutateDrawer({
                         min='0'
                         placeholder='0'
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value, 10) || 0)
+                          field.onChange(
+                            Number.parseInt(e.target.value, 10) || 0
+                          )
                         }
                       />
                     </FormControl>
@@ -388,7 +426,9 @@ export function SubSiteMutateDrawer({
                         min='0'
                         placeholder='0'
                         onChange={(e) =>
-                          field.onChange(parseInt(e.target.value, 10) || 0)
+                          field.onChange(
+                            Number.parseInt(e.target.value, 10) || 0
+                          )
                         }
                       />
                     </FormControl>
@@ -520,7 +560,7 @@ export function SubSiteMutateDrawer({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t('Payment configuration JSON (Phase 4).')}
+                          {t('Payment configuration JSON')}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -535,7 +575,11 @@ export function SubSiteMutateDrawer({
           <SheetClose render={<Button variant='outline' />}>
             {t('Close')}
           </SheetClose>
-          <Button form='sub-site-form' type='submit' disabled={isSubmitting}>
+          <Button
+            form='sub-site-form'
+            type='submit'
+            disabled={isSubmitting || waitingForSite}
+          >
             {isSubmitting ? t('Saving...') : t('Save changes')}
           </Button>
         </SheetFooter>

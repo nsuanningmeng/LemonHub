@@ -24,7 +24,7 @@ import { HeroTerminalDemo } from '../components/hero-terminal-demo'
 
 test('choosing a different protocol by keyboard shows its endpoint and authentication header', async () => {
   const user = userEvent.setup()
-  render(<HeroTerminalDemo />)
+  render(<HeroTerminalDemo serverUrl='https://gateway.test' />)
   const chat = screen.getByRole('tab', { name: 'Chat' })
   await user.click(chat)
   expect(screen.getByRole('tabpanel')).toHaveTextContent('/v1/chat/completions')
@@ -38,4 +38,27 @@ test('choosing a different protocol by keyboard shows its endpoint and authentic
     'anthropic-version: 2023-06-01'
   )
   expect(screen.getByRole('tabpanel')).not.toHaveTextContent('Bearer')
+})
+
+test('a developer can edit the model, copy its request, and inspect the response', async () => {
+  const user = userEvent.setup()
+  render(<HeroTerminalDemo serverUrl='https://gateway.test' />)
+  await user.type(
+    screen.getByRole('textbox', { name: 'Model name' }),
+    "custom'model"
+  )
+  await user.click(screen.getByRole('button', { name: 'Copy code' }))
+  const copied = await navigator.clipboard.readText()
+  expect(copied).toContain(
+    "curl -X POST 'https://gateway.test/v1/chat/completions'"
+  )
+  expect(copied).toContain("custom'\\''model")
+  await user.click(screen.getByRole('button', { name: 'Response' }))
+  expect(screen.getByRole('button', { name: 'Response' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(screen.getByRole('tabpanel')).toHaveTextContent('choices')
+  await user.click(screen.getByRole('button', { name: 'Copy URL' }))
+  expect(await navigator.clipboard.readText()).toBe('https://gateway.test/v1')
 })

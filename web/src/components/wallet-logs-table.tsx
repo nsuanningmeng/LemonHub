@@ -17,13 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { type ColumnDef } from '@tanstack/react-table'
-import type { TFunction } from 'i18next'
+import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
-import { StatusBadge, type StatusVariant } from '@/components/status-badge'
+import { ErrorState } from '@/components/error-state'
+import { StatusBadge } from '@/components/status-badge'
 import {
   Select,
   SelectContent,
@@ -33,66 +33,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { formatTimestampToDate } from '@/lib/format'
-
-// ============================================================================
-// Wallet Log Types
-// ============================================================================
-
-/**
- * Wallet ledger entry. All money fields are stored in 厘 (int64, 0.001 CNY).
- * `amount` is signed (positive = credit, negative = debit).
- */
-export type WalletLog = {
-  id: number
-  site_id: number
-  type: number
-  amount: number // 厘, signed
-  balance_after: number // 厘
-  related_id: number
-  remark: string
-  operator_user_id: number
-  created_time: number
-}
-
-export const WALLET_LOG_TYPE = {
-  RECHARGE: 1,
-  GENERATE_DEDUCTION: 2,
-  VOID_REFUND: 3,
-  RECHARGE_DEDUCTION: 4,
-  MANUAL_ADJUST: 5,
-} as const
-
-const WALLET_LOG_TYPES: Record<
-  number,
-  { labelKey: string; variant: StatusVariant }
-> = {
-  [WALLET_LOG_TYPE.RECHARGE]: { labelKey: 'Recharge', variant: 'success' },
-  [WALLET_LOG_TYPE.GENERATE_DEDUCTION]: {
-    labelKey: 'Generation Deduction',
-    variant: 'warning',
-  },
-  [WALLET_LOG_TYPE.VOID_REFUND]: { labelKey: 'Void Refund', variant: 'info' },
-  [WALLET_LOG_TYPE.RECHARGE_DEDUCTION]: {
-    labelKey: 'Goods Deduction',
-    variant: 'neutral',
-  },
-  [WALLET_LOG_TYPE.MANUAL_ADJUST]: {
-    labelKey: 'Manual Adjustment',
-    variant: 'purple',
-  },
-}
-
-export function getWalletLogTypeOptions(t: TFunction) {
-  return Object.entries(WALLET_LOG_TYPES).map(([value, cfg]) => ({
-    value,
-    label: t(cfg.labelKey),
-  }))
-}
-
-/** Convert 厘 (0.001 CNY) to a 元 display string with 3 decimals. */
-export function formatMilliYuan(milli: number): string {
-  return (milli / 1000).toFixed(3)
-}
+import {
+  formatMilliYuan,
+  getWalletLogTypeOptions,
+  WALLET_LOG_TYPES,
+  type WalletLog,
+} from '@/lib/wallet-log'
 
 function useWalletLogColumns(): ColumnDef<WalletLog>[] {
   const { t } = useTranslation()
@@ -201,7 +147,7 @@ export function WalletLogsTable({
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
   const [type, setType] = useState<number | undefined>(undefined)
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: [
       queryKey,
       pagination.pageIndex + 1,
@@ -241,11 +187,11 @@ export function WalletLogsTable({
         value={type === undefined ? 'all' : String(type)}
         onValueChange={(v) => {
           if (v === null) return
-          setType(v === 'all' ? undefined : parseInt(String(v), 10))
+          setType(v === 'all' ? undefined : Number.parseInt(String(v), 10))
           setPagination((p) => ({ ...p, pageIndex: 0 }))
         }}
       >
-        <SelectTrigger className='w-[200px]'>
+        <SelectTrigger aria-label={t('Type')} className='w-[200px]'>
           <SelectValue />
         </SelectTrigger>
         <SelectContent alignItemWithTrigger={false}>
@@ -260,6 +206,18 @@ export function WalletLogsTable({
       </Select>
     </div>
   )
+
+  if (error && !data) {
+    return (
+      <div className='space-y-3'>
+        {toolbar}
+        <ErrorState
+          description={error.message}
+          onRetry={() => void refetch()}
+        />
+      </div>
+    )
+  }
 
   return (
     <DataTablePage

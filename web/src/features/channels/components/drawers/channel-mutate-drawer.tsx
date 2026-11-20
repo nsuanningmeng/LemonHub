@@ -511,8 +511,9 @@ function ChannelEditorNav(props: {
               <p className='truncate text-sm font-medium'>
                 {props.providerLabel}
               </p>
-              <p className='text-muted-foreground truncate text-xs'>
-                {props.statusLabel} · {props.progressLabel}
+              <p className='text-muted-foreground flex flex-wrap gap-x-2 text-xs'>
+                <span>{props.statusLabel}</span>
+                <span>{props.progressLabel}</span>
               </p>
             </div>
           </div>

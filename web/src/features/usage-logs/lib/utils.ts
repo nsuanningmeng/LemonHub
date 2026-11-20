@@ -91,23 +91,7 @@ function timestampToSeconds(ms: number): number {
   return Math.floor(ms / 1000)
 }
 
-/**
- * Build query parameters from filters
- */
-export function buildQueryParams(
-  params: Record<string, unknown>
-): URLSearchParams {
-  const queryParams = new URLSearchParams()
-
-  Object.entries(params).forEach(([key, value]) => {
-    // Keep 0 as a valid value, only filter out undefined, null, and empty string
-    if (value !== undefined && value !== null && value !== '') {
-      queryParams.append(key, String(value))
-    }
-  })
-
-  return queryParams
-}
+export { buildQueryParams } from '../api'
 
 /**
  * Build time range parameters with default values
@@ -117,15 +101,16 @@ function buildTimeRangeParams(
   searchParams: Record<string, unknown>,
   useMilliseconds: boolean
 ): { start_timestamp?: number; end_timestamp?: number } {
-  const hasTimeParams = searchParams.startTime ?? searchParams.endTime
+  const hasTimeParams =
+    searchParams.startTime != null || searchParams.endTime != null
   const defaultTimeRange = !hasTimeParams ? getDefaultTimeRange() : null
 
   const convertTimestamp = (timestamp: number) =>
     useMilliseconds ? timestamp : timestampToSeconds(timestamp)
 
   const getTimestamp = (paramTime?: unknown, defaultTime?: Date) => {
-    const time = (paramTime as number) || defaultTime?.getTime()
-    return time ? convertTimestamp(time) : undefined
+    const time = (paramTime as number | undefined) ?? defaultTime?.getTime()
+    return time == null ? undefined : convertTimestamp(time)
   }
 
   return {

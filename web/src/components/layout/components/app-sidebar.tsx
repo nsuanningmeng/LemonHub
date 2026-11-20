@@ -19,13 +19,19 @@ For commercial licensing, please contact support@quantumnous.com
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
-import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarRail,
+} from '@/components/ui/sidebar'
 import { useLayout } from '@/context/layout-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 
 import { NavGroup } from './nav-group'
 import { SidebarViewHeader } from './sidebar-view-header'
+import { SystemBrand } from './system-brand'
 
 /**
  * Application sidebar.
@@ -52,9 +58,12 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible={collapsible} variant={variant}>
+      <SidebarHeader className='console-sidebar-header'>
+        <SystemBrand variant='rail' />
+      </SidebarHeader>
       {view && <SidebarViewHeader view={view} />}
 
-      <SidebarContent className='py-1'>
+      <SidebarContent className='console-sidebar-links'>
         <AnimatePresence mode='wait' initial={false}>
           <motion.nav
             aria-label={t('Sidebar')}
@@ -65,11 +74,17 @@ export function AppSidebar() {
             animate={MOTION_VARIANTS.sidebarSlide.animate}
             exit={shouldReduce ? undefined : MOTION_VARIANTS.sidebarSlide.exit}
             transition={MOTION_TRANSITION.fast}
-            className='flex flex-col gap-2 pb-3'
+            className='flex flex-col gap-1 pb-4'
           >
-            {navGroups.map((props) => (
-              <NavGroup key={props.id || props.title} {...props} />
-            ))}
+            {navGroups
+              .filter((group) => group.items.length > 0)
+              .map((group) => (
+                <NavGroup
+                  key={group.id || group.title}
+                  {...group}
+                  supportsIconMode={collapsible === 'icon'}
+                />
+              ))}
           </motion.nav>
         </AnimatePresence>
       </SidebarContent>

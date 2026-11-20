@@ -27,6 +27,7 @@ import { render, screen } from '@testing-library/react'
 import { expect, test } from 'vitest'
 
 import { Hero } from '../components/sections/hero'
+import { HowItWorks } from '../components/sections/how-it-works'
 
 test('a configured tenant sees its own hero copy, endpoint and documentation alongside the signed-in action', async () => {
   const client = new QueryClient({
@@ -41,7 +42,14 @@ test('a configured tenant sees its own hero copy, endpoint and documentation alo
     server_address: 'https://models.example.test/',
   })
   const router = createRouter({
-    routeTree: createRootRoute({ component: () => <Hero isAuthenticated /> }),
+    routeTree: createRootRoute({
+      component: () => (
+        <>
+          <Hero isAuthenticated />
+          <HowItWorks />
+        </>
+      ),
+    }),
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
   await router.load()
