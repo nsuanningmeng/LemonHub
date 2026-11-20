@@ -539,7 +539,7 @@ function ModelHeader(props: { model: PricingModel }) {
   const description = model.description || model.vendor_description || null
 
   return (
-    <header className='border-b pb-4'>
+    <header className='pb-4'>
       <div className='flex items-center gap-2.5'>
         {modelIcon}
         <h1 className='min-w-0 font-mono text-xl font-bold tracking-tight break-all sm:text-2xl'>
@@ -547,7 +547,7 @@ function ModelHeader(props: { model: PricingModel }) {
         </h1>
         <CopyButton
           value={model.model_name || ''}
-          className='ms-auto size-9 shrink-0'
+          className='size-8 shrink-0'
           iconClassName='size-3'
           tooltip={t('Copy model name')}
           successTooltip={t('Copied!')}
@@ -652,9 +652,12 @@ function PriceSection(props: {
       <section>
         <SectionTitle>{t('Base Price')}</SectionTitle>
         {dynamicSummary.primaryEntries.length > 0 ? (
-          <div className='bg-muted/40 grid grid-cols-2 divide-x border-y'>
+          <div className='grid grid-cols-2 gap-2'>
             {dynamicSummary.primaryEntries.map((entry) => (
-              <div key={entry.key} className='min-w-0 px-3 py-3'>
+              <div
+                key={entry.key}
+                className='bg-muted/20 rounded-lg border p-3'
+              >
                 <div className='text-muted-foreground text-xs'>
                   {t(entry.shortLabel)}
                 </div>
@@ -673,14 +676,14 @@ function PriceSection(props: {
           </p>
         )}
         {dynamicSummary.secondaryEntries.length > 0 && (
-          <div className='mt-1 px-3 py-2.5'>
+          <div className='bg-muted/20 mt-3 rounded-lg border px-3 py-2.5'>
             <div className='space-y-1.5'>
               {dynamicSummary.secondaryEntries.map((entry) => (
                 <div
                   key={entry.key}
                   className='flex items-baseline justify-between gap-4'
                 >
-                  <span className='text-muted-foreground text-sm'>
+                  <span className='text-muted-foreground/70 text-sm'>
                     {t(entry.shortLabel)}
                   </span>
                   <span className='text-muted-foreground font-mono text-sm tabular-nums'>
@@ -743,9 +746,9 @@ function PriceSection(props: {
   return (
     <section>
       <SectionTitle>{t('Base Price')}</SectionTitle>
-      <div className='bg-muted/40 grid grid-cols-2 divide-x border-y'>
+      <div className='grid grid-cols-2 gap-2'>
         {primaryPriceTypes.map((item) => (
-          <div key={item.type} className='min-w-0 px-3 py-3'>
+          <div key={item.type} className='bg-muted/20 rounded-lg border p-3'>
             <div className='text-muted-foreground text-xs'>{item.label}</div>
             <div className='text-foreground mt-1 font-mono text-base font-semibold tabular-nums'>
               {renderPrice(item.type)}
@@ -754,14 +757,14 @@ function PriceSection(props: {
         ))}
       </div>
       {secondaryItems.length > 0 && (
-        <div className='mt-1 px-3 py-2.5'>
+        <div className='bg-muted/20 mt-3 rounded-lg border px-3 py-2.5'>
           <div className='space-y-1.5'>
             {secondaryItems.map((item) => (
               <div
                 key={item.type}
                 className='flex items-baseline justify-between gap-4'
               >
-                <span className='text-muted-foreground text-sm'>
+                <span className='text-muted-foreground/70 text-sm'>
                   {item.label}
                 </span>
                 <span className='text-muted-foreground font-mono text-sm tabular-nums'>
@@ -1099,7 +1102,7 @@ function GroupPricingSection(props: {
       />
       <div className='-mx-4 sm:mx-0'>
         {isTokenBased && (
-          <p className='text-muted-foreground mt-1.5 px-4 text-xs sm:px-0'>
+          <p className='text-muted-foreground/40 mt-1.5 px-4 text-[10px] sm:px-0'>
             {t('Prices shown per {{unit}} tokens', { unit: tokenUnitLabel })}
           </p>
         )}
@@ -1149,14 +1152,14 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
       <ModelHeader model={props.model} />
 
       <Tabs defaultValue='overview' className='gap-4'>
-        <TabsList className='grid w-full grid-cols-3 gap-1 rounded-none border-b bg-transparent pb-1 group-data-horizontal/tabs:h-auto'>
+        <TabsList className='bg-muted/60 grid w-full grid-cols-3 gap-1 rounded-lg p-1 group-data-horizontal/tabs:h-auto'>
           {TAB_VALUES.map((value) => {
             const Icon = TAB_META[value].icon
             return (
               <TabsTrigger
                 key={value}
                 value={value}
-                className='h-9 min-w-0 gap-1.5 rounded-md px-3 text-xs sm:text-sm'
+                className='h-8 min-w-0 gap-1.5 rounded-md px-3 text-xs sm:text-sm'
               >
                 <Icon className='size-3.5' />
                 <span className='truncate'>{t(TAB_META[value].labelKey)}</span>
@@ -1166,7 +1169,10 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
         </TabsList>
 
         <TabsContent value='overview' className='space-y-6 outline-none'>
-          <section className='space-y-5 border-b pb-5'>
+          <OverviewSummaryGrid model={props.model} />
+
+          <section className='bg-card/60 space-y-5 rounded-xl border p-4 shadow-sm'>
+            <SectionTitle>{t('Pricing')}</SectionTitle>
             <PriceSection
               model={props.model}
               priceRate={props.priceRate}
@@ -1189,7 +1195,6 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
             />
           </section>
 
-          <OverviewSummaryGrid model={props.model} />
           <ModelBackendDetailsSection model={props.model} />
         </TabsContent>
 

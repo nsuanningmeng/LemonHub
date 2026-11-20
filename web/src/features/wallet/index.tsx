@@ -16,10 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Receipt } from 'lucide-react'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { Button } from '@/components/ui/button'
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { getSelf } from '@/lib/api'
@@ -305,19 +307,20 @@ export function Wallet(props: WalletProps) {
   return (
     <>
       <SectionPageLayout>
-        <SectionPageLayout.Title>
-          {t('Funds and billing')}
-        </SectionPageLayout.Title>
+        <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => setBillingDialogOpen(true)}
+          >
+            <Receipt data-icon='inline-start' />
+            {t('Order History')}
+          </Button>
+        </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
-            <div className='grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]'>
-              <WalletStatsCard user={user} loading={userLoading} />
-              <BillingHistoryDialog
-                showPreview
-                open={billingDialogOpen}
-                onOpenChange={setBillingDialogOpen}
-              />
-            </div>
+            <WalletStatsCard user={user} loading={userLoading} />
 
             <div
               className={
@@ -401,6 +404,11 @@ export function Wallet(props: WalletProps) {
         onConfirm={handleTransfer}
         availableQuota={user?.aff_quota ?? 0}
         transferring={transferring}
+      />
+
+      <BillingHistoryDialog
+        open={billingDialogOpen}
+        onOpenChange={setBillingDialogOpen}
       />
 
       <CreemConfirmDialog

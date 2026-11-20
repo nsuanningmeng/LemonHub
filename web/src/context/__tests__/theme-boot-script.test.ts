@@ -53,6 +53,8 @@ afterEach(() => {
   vi.restoreAllMocks()
   localStorage.clear()
   document.documentElement.classList.remove('light', 'dark')
+  document.documentElement.removeAttribute('data-home')
+  window.history.replaceState({}, '', '/')
 })
 
 describe('index.html theme boot script', () => {
@@ -84,6 +86,25 @@ describe('index.html theme boot script', () => {
       localStorage.setItem(THEME_STORAGE_KEYS.mode, 'dark')
       runBootScript()
       expect(meta.content).toBe('#151e2d')
+    } finally {
+      meta.remove()
+    }
+  })
+
+  it.each([
+    ['/', 'light', '#f7f7f3', true],
+    ['/dashboard', 'light', '#f8f9f6', false],
+    ['/pricing', 'dark', '#181d19', false],
+  ] as const)('starts %s in its own palette', (path, mode, color, isHome) => {
+    const meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    document.head.append(meta)
+    try {
+      window.history.replaceState({}, '', path)
+      localStorage.setItem(THEME_STORAGE_KEYS.mode, mode)
+      runBootScript()
+      expect(meta.content).toBe(color)
+      expect(document.documentElement.hasAttribute('data-home')).toBe(isHome)
     } finally {
       meta.remove()
     }

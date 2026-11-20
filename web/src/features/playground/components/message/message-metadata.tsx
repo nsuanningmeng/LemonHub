@@ -68,13 +68,16 @@ export function MessageMetadata(props: MessageMetadataProps) {
   return (
     <div
       className={cn(
-        'text-muted-foreground mt-1 flex min-h-4 flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-none',
+        'text-muted-foreground mt-1 flex min-h-4 items-center gap-1.5 text-[11px] leading-none',
         props.alignment === 'right' && 'justify-end'
       )}
     >
       {messageTime && <time>{messageTime}</time>}
       {duration && (
-        <span>{t('Response time: {{duration}}', { duration })}</span>
+        <>
+          {messageTime && <span aria-hidden='true'>·</span>}
+          <span>{t('Response time: {{duration}}', { duration })}</span>
+        </>
       )}
     </div>
   )

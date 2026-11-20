@@ -19,22 +19,35 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { ArrowRight } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { getUserQuotaDates } from '@/features/dashboard/api'
+import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
+import { useStatus } from '@/hooks/use-status'
+import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { WorkspaceActivityChart } from './workspace-activity-chart'
+import { StatCard } from '../ui/stat-card'
+import {
+  WorkspaceActivityChart,
+  type ActivityMetric,
+} from './workspace-activity-chart'
 
-const ACTIVITY_BUCKET_COUNT = 12
-
-type ActivityMetric = 'usage' | 'requests'
+const SUMMARY_SPARKLINE_BUCKETS = 12
 
 function getBucketIndex(
   timestamp: number,
@@ -47,22 +60,36 @@ function getBucketIndex(
   return Math.min(bucketCount - 1, Math.max(0, Math.floor(ratio * bucketCount)))
 }
 
-function buildActivitySeries(
+function buildSummarySparklines(
   data: QuotaDataItem[],
   start: number,
   end: number
 ): Record<ActivityMetric, number[]> {
-  const usage = Array.from({ length: ACTIVITY_BUCKET_COUNT }, () => 0)
-  const requests = Array.from({ length: ACTIVITY_BUCKET_COUNT }, () => 0)
+  const usage = Array.from({ length: SUMMARY_SPARKLINE_BUCKETS }, () => 0)
+  const requests = Array.from({ length: SUMMARY_SPARKLINE_BUCKETS }, () => 0)
 
   for (const item of data) {
     const timestamp = Number(item.created_at) || start
-    const index = getBucketIndex(timestamp, start, end, ACTIVITY_BUCKET_COUNT)
+    const index = getBucketIndex(
+      timestamp,
+      start,
+      end,
+      SUMMARY_SPARKLINE_BUCKETS
+    )
     usage[index] += Number(item.quota) || 0
     requests[index] += Number(item.count) || 0
   }
 
   return { usage, requests }
+}
+
+function getSummarySparkline(
+  key: string,
+  sparklineData: Record<ActivityMetric, number[]>
+): number[] | undefined {
+  if (key === 'usage' || key === 'todayUsage') return sparklineData.usage
+  if (key === 'requests') return sparklineData.requests
+  return undefined
 }
 
 function getRunwayDays(
@@ -104,7 +131,9 @@ const HEALTH_CONFIG: Record<
 
 export function SummaryCards() {
   const { t } = useTranslation()
+  const [chartMetric, setChartMetric] = useState<ActivityMetric>('usage')
   const user = useAuthStore((state) => state.auth.user)
+  const { status, loading } = useStatus()
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
   const remainQuota = Number(user?.quota ?? 0)
@@ -128,9 +157,27 @@ export function SummaryCards() {
     staleTime: 60 * 1000,
   })
 
-  const activitySeries = useMemo(
+  const summaryValues = useMemo(() => {
+    return {
+      usedDisplay: formatQuota(usedQuota),
+      requestCountDisplay: formatNumber(requestCount),
+    }
+  }, [requestCount, usedQuota])
+
+  const currencyEnabledFromStore = isCurrencyDisplayEnabled()
+  const statusCurrencyFlag =
+    typeof status?.display_in_currency === 'boolean'
+      ? Boolean(status.display_in_currency)
+      : undefined
+  const currencyEnabled =
+    statusCurrencyFlag !== undefined
+      ? statusCurrencyFlag
+      : currencyEnabledFromStore
+  const currencyLabel = currencyEnabled ? getCurrencyLabel() : 'Tokens'
+
+  const sparklineData = useMemo(
     () =>
-      buildActivitySeries(
+      buildSummarySparklines(
         usageTrendQuery.data?.data ?? [],
         summaryTimeRange.start_timestamp,
         summaryTimeRange.end_timestamp
@@ -142,17 +189,21 @@ export function SummaryCards() {
     ]
   )
 
-  const recentUsage = activitySeries.usage.reduce(
-    (sum, quota) => sum + quota,
-    0
-  )
-
+  const trendFailed =
+    usageTrendQuery.isError || usageTrendQuery.data?.success === false
+  const trendReady = !usageTrendQuery.isPending && !trendFailed
+  const recentUsage = sparklineData.usage.reduce((sum, quota) => sum + quota, 0)
   const healthLevel = getHealthLevel(remainQuota, recentUsage)
   const healthCfg = HEALTH_CONFIG[healthLevel]
   const runwayDays = getRunwayDays(remainQuota, recentUsage)
 
+  const todayUsageDisplay = formatQuota(recentUsage)
   let runwayDisplay: string
-  if (runwayDays !== null) {
+  if (trendFailed) {
+    runwayDisplay = t('Failed to load')
+  } else if (!trendReady) {
+    runwayDisplay = t('Loading')
+  } else if (runwayDays !== null) {
     if (runwayDays < 1) {
       runwayDisplay = t('Less than 1 day left')
     } else if (runwayDays > 999) {
@@ -166,76 +217,149 @@ export function SummaryCards() {
     runwayDisplay = t('No recent usage')
   }
 
-  const trendFailed =
-    usageTrendQuery.isError || usageTrendQuery.data?.success === false
+  const items = useSummaryCardsConfig({
+    ...summaryValues,
+    todayUsageDisplay,
+    currencyEnabled,
+    currencyLabel,
+  }).map((config, index) => {
+    const tones = ['accent-1', 'accent-2', 'accent-3'] as const
+
+    return {
+      key: config.key,
+      title: config.title,
+      value: config.value,
+      desc: config.description,
+      icon: config.icon,
+      tone: tones[index] ?? 'accent-3',
+      sparkline: trendReady
+        ? getSummarySparkline(config.key, sparklineData)
+        : undefined,
+      sparklineVariant: 'line' as const,
+    }
+  })
 
   return (
-    <section className='@container/overview min-w-0 border-y'>
-      <div className='grid min-w-0 gap-x-6 @3xl/overview:grid-cols-[minmax(0,1.8fr)_minmax(13.5rem,.82fr)]'>
-        <WorkspaceActivityChart
-          series={activitySeries}
-          start={summaryTimeRange.start_timestamp}
-          end={summaryTimeRange.end_timestamp}
-          failed={trendFailed}
-          loading={usageTrendQuery.isLoading}
-          retry={() => void usageTrendQuery.refetch()}
-        />
-        <div className='bg-brand-ink my-4 flex min-w-0 flex-col justify-between gap-4 rounded-lg p-5 text-white sm:p-6'>
-          <div>
-            <p className='text-sm font-medium text-white/80'>
-              {t('Available credits')}
-            </p>
-            <p className='mt-2 max-w-full overflow-x-auto text-4xl font-semibold tracking-tight whitespace-nowrap tabular-nums'>
-              {formatQuota(remainQuota)}
-            </p>
-          </div>
-          <div>
-            <div className='flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
-              <span className='inline-flex items-center gap-1.5'>
-                <span
-                  aria-hidden='true'
-                  className={cn('size-2 rounded-full', healthCfg.dotClass)}
-                />
-                {t(healthCfg.labelKey)}
-              </span>
-              {!trendFailed && !usageTrendQuery.isLoading && (
-                <span className='text-white/75'>{runwayDisplay}</span>
-              )}
+    <Dialog>
+      <section className='bg-card @container/overview min-w-0 overflow-hidden rounded-lg border'>
+        <div className='flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5'>
+          <h3 className='text-base font-semibold tracking-tight'>
+            {t('Usage at a glance')}
+          </h3>
+          <Button
+            variant='ghost'
+            size='sm'
+            render={
+              <Link to='/dashboard/$section' params={{ section: 'models' }} />
+            }
+          >
+            {t('Model Call Analytics')} <ArrowRight data-icon='inline-end' />
+          </Button>
+        </div>
+        <div className='grid @3xl/overview:grid-cols-[minmax(12rem,.85fr)_minmax(0,2fr)]'>
+          <div className='bg-muted/60 flex min-w-0 flex-col justify-between gap-4 border-b p-4 sm:p-5 @3xl/overview:border-r @3xl/overview:border-b-0'>
+            <div>
+              <div className='flex flex-wrap items-center justify-between gap-2'>
+                <h4 className='text-sm font-medium'>{t('Credit remaining')}</h4>
+                {(trendReady || remainQuota <= 0) && (
+                  <span className='text-muted-foreground inline-flex items-center gap-1.5 text-xs'>
+                    <span
+                      className={cn(
+                        'size-1.5 rounded-full',
+                        healthCfg.dotClass
+                      )}
+                      aria-hidden='true'
+                    />
+                    {t(healthCfg.labelKey)}
+                  </span>
+                )}
+              </div>
+              <p className='mt-2 overflow-x-auto text-3xl font-semibold tracking-tight whitespace-nowrap tabular-nums sm:text-4xl'>
+                {formatQuota(remainQuota)}
+              </p>
             </div>
-            <Button
-              size='sm'
-              className='bg-brand-citrus text-brand-ink hover:bg-brand-citrus/90 mt-4 w-full justify-between'
-              render={<Link to='/wallet' />}
-            >
-              {t('Manage funds')} <ArrowRight data-icon='inline-end' />
-            </Button>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <div className='text-muted-foreground text-xs'>
+                {t('Runway')}{' '}
+                <span className='text-foreground ms-1 font-medium'>
+                  {runwayDisplay}
+                </span>
+                {trendFailed && (
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => void usageTrendQuery.refetch()}
+                  >
+                    {t('Retry')}
+                  </Button>
+                )}
+              </div>
+              <Button
+                size='sm'
+                variant='outline'
+                render={<Link to='/wallet' />}
+              >
+                {t('Wallet')} <ArrowRight data-icon='inline-end' />
+              </Button>
+            </div>
+          </div>
+          <div className='@container/summary min-w-0'>
+            <div className='grid h-full grid-cols-1 divide-y @md/summary:grid-cols-3 @md/summary:divide-x @md/summary:divide-y-0'>
+              {items.map((item) => {
+                const metric = item.key === 'requests' ? 'requests' : 'usage'
+                const trendLabel =
+                  metric === 'requests'
+                    ? t('Requests by time of day')
+                    : t('Usage by time of day')
+                return (
+                  <div key={item.key} className='relative min-w-0 p-4 sm:p-5'>
+                    {(item.key === 'todayUsage' || item.key === 'requests') && (
+                      <DialogTrigger
+                        type='button'
+                        aria-label={`${trendLabel} (${t('Last 24 hours')})`}
+                        title={`${trendLabel} (${t('Last 24 hours')})`}
+                        onClick={() => setChartMetric(metric)}
+                        className='hover:bg-muted/35 focus-visible:ring-ring absolute inset-0 z-1 cursor-pointer rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-inset'
+                      />
+                    )}
+                    <StatCard
+                      title={item.title}
+                      value={item.value}
+                      description={item.desc}
+                      icon={item.icon}
+                      tone={item.tone}
+                      sparkline={item.sparkline}
+                      sparklineVariant={item.sparklineVariant}
+                      loading={
+                        loading ||
+                        (item.key === 'todayUsage' && usageTrendQuery.isPending)
+                      }
+                      error={item.key === 'todayUsage' && trendFailed}
+                      compactMobile
+                    />
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
-      </div>
-      <div className='flex flex-wrap items-center gap-x-6 gap-y-2 border-t py-3 text-sm'>
-        <span className='text-muted-foreground'>
-          {t('Lifetime usage')}{' '}
-          <b className='text-foreground ms-1 font-medium tabular-nums'>
-            {formatQuota(usedQuota)}
-          </b>
-        </span>
-        <span className='text-muted-foreground'>
-          {t('Lifetime requests')}{' '}
-          <b className='text-foreground ms-1 font-medium tabular-nums'>
-            {formatNumber(requestCount)}
-          </b>
-        </span>
-        <Button
-          size='sm'
-          variant='ghost'
-          className='sm:ms-auto'
-          render={
-            <Link to='/dashboard/$section' params={{ section: 'models' }} />
-          }
-        >
-          {t('Explore analytics')} <ArrowRight data-icon='inline-end' />
-        </Button>
-      </div>
-    </section>
+      </section>
+      <DialogContent className='sm:max-w-2xl'>
+        <DialogHeader>
+          <DialogTitle>{t('Workspace activity')}</DialogTitle>
+          <DialogDescription>{t('Last 24 hours')}</DialogDescription>
+        </DialogHeader>
+        <WorkspaceActivityChart
+          selected={chartMetric}
+          onSelect={setChartMetric}
+          series={sparklineData}
+          start={summaryTimeRange.start_timestamp}
+          end={summaryTimeRange.end_timestamp}
+          loading={usageTrendQuery.isPending}
+          failed={trendFailed}
+          retry={() => void usageTrendQuery.refetch()}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }

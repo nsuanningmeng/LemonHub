@@ -26,6 +26,7 @@ import { buttonVariants } from '@/components/ui/button'
 import {
   DocumentLayout,
   DocumentLoading,
+  DocumentTitle,
 } from '@/features/public-documents/document-layout'
 import { isHttpUrl, isLikelyHtml } from '@/lib/content-format'
 
@@ -63,7 +64,8 @@ export function LegalDocument({
 
   if (!success || !hasContent || isUrl) {
     return (
-      <DocumentLayout title={title}>
+      <DocumentLayout>
+        <DocumentTitle>{title}</DocumentTitle>
         <div className='flex items-start gap-4'>
           <FileText
             aria-hidden='true'
@@ -101,7 +103,8 @@ export function LegalDocument({
   }
 
   return (
-    <DocumentLayout title={title}>
+    <DocumentLayout>
+      <DocumentTitle>{title}</DocumentTitle>
       <RichContent
         mode='markdown'
         content={rawContent}

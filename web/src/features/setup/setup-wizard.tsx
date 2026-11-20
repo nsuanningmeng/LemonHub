@@ -26,6 +26,14 @@ import { toast } from 'sonner'
 import { ErrorState } from '@/components/error-state'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { LoadingState } from '@/components/loading-state'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Form } from '@/components/ui/form'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -271,46 +279,59 @@ export function SetupWizard() {
   }
 
   return (
-    <main className='bg-background min-h-svh'>
-      <header className='bg-card border-b'>
-        <div className='mx-auto flex min-h-16 max-w-[76rem] items-center justify-between gap-4 px-5 sm:px-8'>
-          <div className='flex min-w-0 items-center gap-3'>
+    <main className='bg-background relative min-h-svh py-8 sm:py-12'>
+      <div className='absolute top-4 right-4 sm:top-6 sm:right-6'>
+        <LanguageSwitcher />
+      </div>
+      <div className='mx-auto flex max-w-4xl flex-col gap-6 px-5 sm:gap-8 sm:px-8'>
+        <div className='flex flex-col items-start gap-3 pe-9'>
+          <div className='relative h-12 w-12'>
             {systemConfigLoading ? (
-              <Skeleton className='h-7 w-32' />
+              <Skeleton className='absolute inset-0 rounded-md' />
             ) : (
-              <>
-                <img
-                  src={logo}
-                  alt=''
-                  className='size-7 shrink-0 object-contain'
-                />
-                <span className='truncate font-semibold'>{systemName}</span>
-              </>
+              <img
+                src={logo}
+                alt={t('System logo')}
+                className='h-12 w-12 object-contain'
+              />
             )}
           </div>
-          <LanguageSwitcher />
+          {systemConfigLoading ? (
+            <Skeleton className='h-7 w-40' />
+          ) : (
+            <h1 className='text-3xl font-semibold tracking-tight sm:text-4xl'>
+              {t('Initialize')} {systemName}
+            </h1>
+          )}
+          <p className='text-muted-foreground text-sm text-pretty sm:text-base'>
+            {t(
+              'Follow the guided steps to prepare your workspace before the first login.'
+            )}
+          </p>
         </div>
-      </header>
-      <div className='mx-auto grid max-w-[68rem] gap-8 px-5 py-8 sm:px-8 sm:py-14 md:grid-cols-[minmax(13rem,0.7fr)_minmax(0,1.6fr)] md:gap-16'>
-        <div>
-          <h1 className='text-3xl leading-tight font-semibold tracking-tight sm:text-4xl'>
-            {t('System setup')}
-          </h1>
-          <SetupProgress currentStep={currentStep} />
-        </div>
-        <section
-          aria-labelledby='setup-current-step'
-          className='border-foreground min-w-0 border-t-2 pt-5 md:pt-7'
-        >
-          <h2
-            id='setup-current-step'
-            className='mb-6 text-2xl leading-tight font-semibold tracking-tight'
-          >
-            {t(SETUP_STEPS[currentStep].titleKey)}
-          </h2>
-          {stepBody}
+
+        <Card className='gap-0'>
+          <CardHeader className='px-5 pb-4 sm:px-6'>
+            <CardTitle className='text-xl font-semibold'>
+              {t('System setup wizard')}
+            </CardTitle>
+            <CardDescription>
+              {t('Complete these steps to finish the initial installation.')}
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className='space-y-5 border-y px-5 py-5 sm:px-6'>
+            <SetupProgress currentStep={currentStep} />
+            <section aria-labelledby='setup-current-step'>
+              <h2 id='setup-current-step' className='sr-only'>
+                {t(SETUP_STEPS[currentStep].titleKey)}
+              </h2>
+              {stepBody}
+            </section>
+          </CardContent>
+
           {!isLoading && !isError && (
-            <div className='mt-8 border-t pt-5'>
+            <CardFooter className='w-full justify-end border-0'>
               <StepNavigation
                 currentStep={currentStep}
                 totalSteps={SETUP_STEPS.length}
@@ -319,9 +340,9 @@ export function SetupWizard() {
                 onSubmit={handleSubmit}
                 isSubmitting={mutation.isPending}
               />
-            </div>
+            </CardFooter>
           )}
-        </section>
+        </Card>
       </div>
     </main>
   )

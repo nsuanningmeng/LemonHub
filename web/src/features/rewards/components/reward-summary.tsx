@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Gift, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -45,49 +46,73 @@ export function RewardSummaryCards() {
     )
   }
   return (
-    <aside className='bg-brand-ink rounded-xl px-5 py-6 text-white sm:px-6'>
-      <h2 className='text-sm font-medium text-white/80'>
-        {t('Available reward credit')}
-      </h2>
-      {summary.isPending ? (
-        <Skeleton className='my-3 h-11 w-28' />
-      ) : (
-        <p className='text-brand-citrus mt-2 mb-5 text-4xl font-semibold tracking-tight tabular-nums'>
-          {formatQuotaWithCurrency(summary.data?.fixed_quota ?? 0)}
-        </p>
-      )}
-      <div className='grid gap-3 border-t border-white/25 pt-4'>
-        <section
-          aria-labelledby='reward-credit-heading'
-          className='flex min-w-0 items-baseline justify-between gap-4'
-        >
-          <h3 id='reward-credit-heading' className='text-sm'>
-            {t('Rewards to claim')}
-          </h3>
+    <div className='bg-border grid gap-px overflow-hidden rounded-xl border md:grid-cols-2'>
+      <section
+        aria-labelledby='reward-credit-heading'
+        className='bg-card flex min-w-0 flex-col p-5 sm:p-6'
+      >
+        <div className='flex justify-between gap-4'>
+          <div>
+            <h2 id='reward-credit-heading' className='text-lg font-semibold'>
+              {t('Rewards to claim')}
+            </h2>
+          </div>
+          <div className='text-muted-foreground flex size-6 shrink-0 items-center justify-center'>
+            <Gift className='size-5' aria-hidden='true' />
+          </div>
+        </div>
+        <div className='my-5 flex flex-wrap items-baseline gap-3'>
           {summary.isPending ? (
-            <Skeleton className='h-5 w-8' />
+            <Skeleton className='h-12 w-16' />
           ) : (
-            <span className='text-lg font-semibold tabular-nums'>
+            <span className='text-4xl font-semibold tracking-tight tabular-nums'>
               {summary.data?.fixed_count ?? 0}
             </span>
           )}
-        </section>
-        <section
-          aria-labelledby='reward-packets-heading'
-          className='flex min-w-0 items-baseline justify-between gap-4'
-        >
-          <h3 id='reward-packets-heading' className='text-sm'>
-            {t('My red packets')}
-          </h3>
+          <span className='text-muted-foreground text-sm'>
+            {t('ready to claim')}
+          </span>
+        </div>
+        <div className='text-muted-foreground mt-auto border-t pt-3 text-sm'>
+          {t('Available reward credit')}:{' '}
+          {summary.isPending
+            ? '—'
+            : formatQuotaWithCurrency(summary.data?.fixed_quota ?? 0)}
+        </div>
+      </section>
+      <section
+        aria-labelledby='reward-packets-heading'
+        className='bg-card flex min-w-0 flex-col p-5 sm:p-6'
+      >
+        <div className='flex justify-between gap-4'>
+          <div>
+            <h2 id='reward-packets-heading' className='text-lg font-semibold'>
+              {t('My red packets')}
+            </h2>
+            <p className='text-muted-foreground mt-1 text-sm'>
+              {t('Open a little surprise, straight to your balance')}
+            </p>
+          </div>
+          <div className='text-muted-foreground flex size-6 shrink-0 items-center justify-center'>
+            <Sparkles className='size-5' aria-hidden='true' />
+          </div>
+        </div>
+        <div className='my-5 flex flex-wrap items-baseline gap-3'>
           {summary.isPending ? (
-            <Skeleton className='h-5 w-8' />
+            <Skeleton className='h-12 w-16' />
           ) : (
-            <span className='text-lg font-semibold tabular-nums'>
+            <span className='text-4xl font-semibold tracking-tight tabular-nums'>
               {summary.data?.random_count ?? 0}
             </span>
           )}
-        </section>
-      </div>
-    </aside>
+          <span className='text-muted-foreground text-sm'>
+            {t('ready to claim')}
+          </span>
+        </div>
+        <p className='text-muted-foreground mt-auto border-t pt-3 text-sm'>
+          {t('Your lucky amount will be revealed when opened')}
+        </p>
+      </section>
+    </div>
   )
 }

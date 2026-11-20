@@ -82,7 +82,7 @@ test('both view controls announce their state and keyboard activation selects ta
   const user = userEvent.setup()
   render(<PricingToolbar {...props} onViewModeChange={onViewModeChange} />)
   expect(
-    screen.getByRole('button', { name: 'List view', pressed: true })
+    screen.getByRole('button', { name: 'Card view', pressed: true })
   ).toBeVisible()
   const table = screen.getByRole('button', {
     name: 'Table view',

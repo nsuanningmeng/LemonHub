@@ -37,7 +37,7 @@ type SystemBrandProps = {
    * - 'sidebar': stacked card style (used inside the sidebar header).
    * - 'inline': compact horizontal pill (used inside the top app bar).
    */
-  variant?: 'sidebar' | 'inline' | 'rail'
+  variant?: 'sidebar' | 'inline'
 }
 
 /**
@@ -56,15 +56,14 @@ export function SystemBrand(props: SystemBrandProps) {
   const version =
     status?.version || props.defaultVersion || t('Unknown version')
 
-  if (variant !== 'sidebar') {
+  if (variant === 'inline') {
     return (
       <Link
         to='/'
         aria-label={t('Go to home')}
         className={cn(
           'text-foreground inline-flex h-9 min-w-0 items-center gap-2 rounded-sm px-1 text-base font-semibold tracking-tight transition-colors outline-none select-none',
-          'hover:bg-accent focus-visible:ring-ring/40 focus-visible:ring-2',
-          variant === 'rail' && 'console-rail-brand'
+          'hover:bg-accent focus-visible:ring-ring/40 focus-visible:ring-2'
         )}
       >
         <div className='flex size-6 shrink-0 items-center justify-center'>

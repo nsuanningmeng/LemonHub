@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Table } from '@tanstack/react-table'
-import { Columns3 } from 'lucide-react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -62,8 +61,7 @@ export function DataTableViewOptions<TData>({
           />
         }
       >
-        <Columns3 aria-hidden='true' className='size-4' />
-        <span className='hidden lg:inline'>{t('Columns')}</span>
+        {t('Columns')}
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end' className='w-52'>
         <DropdownMenuGroup>

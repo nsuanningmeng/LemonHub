@@ -25,12 +25,12 @@ export function Header({ className, children, ...props }: HeaderProps) {
   return (
     <header
       className={cn(
-        'bg-background border-border sticky top-0 z-40 h-(--app-header-height) w-full shrink-0 border-b',
+        'bg-sidebar border-sidebar-border sticky top-0 z-40 h-(--app-header-height) w-full shrink-0 border-b',
         className
       )}
       {...props}
     >
-      <div className='flex h-full items-center gap-1 px-2 sm:gap-3 sm:px-5 lg:px-7'>
+      <div className='flex h-full items-center gap-1 px-2 sm:gap-3 sm:px-4'>
         <SidebarTrigger variant='ghost' className='size-8' />
         {children}
       </div>

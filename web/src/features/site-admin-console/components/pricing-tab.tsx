@@ -108,24 +108,12 @@ export function PricingTab() {
               setRate(Number.parseInt(e.target.value, 10) || RETAIL_BASE)
             }
           />
-          <dl className='text-muted-foreground flex flex-wrap gap-x-5 gap-y-1 text-xs'>
-            <div className='flex gap-1.5'>
-              <dt>{t('Current')}</dt>
-              <dd className='text-foreground tabular-nums'>{multiplier}×</dd>
-            </div>
-            <div className='flex gap-1.5'>
-              <dt>{t('platform retail')}</dt>
-              <dd className='tabular-nums'>1.00×</dd>
-            </div>
-            <div className='flex gap-1.5'>
-              <dt>{t('Max allowed')}</dt>
-              <dd className='tabular-nums'>
-                {cap > 0
-                  ? `${(cap / RETAIL_BASE).toFixed(2)}× (${cap})`
-                  : t('No upper cap')}
-              </dd>
-            </div>
-          </dl>
+          <p className='text-muted-foreground text-xs'>
+            {t('Current')}: {multiplier}× ({t('platform retail')} = 1.00×)
+            {cap > 0
+              ? ` · ${t('Max allowed')}: ${(cap / RETAIL_BASE).toFixed(2)}× (${cap})`
+              : ` · ${t('No upper cap')}`}
+          </p>
         </div>
         <div className='flex justify-end'>
           <Button onClick={onSubmit} disabled={submitting}>

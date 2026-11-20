@@ -40,24 +40,23 @@ export function ErrorPage(props: ErrorPageProps) {
     <section
       aria-label={props.title}
       className={cn(
-        'bg-background text-foreground grid min-h-svh content-center px-5 py-12 sm:px-10',
+        'bg-background text-foreground grid min-h-svh w-full place-items-center px-5 py-8',
         props.className
       )}
     >
-      <div className='border-foreground mx-auto w-full max-w-xl border-t-2 pt-5 md:pt-8'>
+      <div className='mx-auto flex w-full max-w-xl flex-col items-center justify-center gap-2 text-center'>
         {props.code && (
-          <p className='text-muted-foreground mb-3 font-mono text-sm tabular-nums'>
-            HTTP {props.code}
+          <p className='text-[7rem] leading-tight font-bold tabular-nums'>
+            <span className='sr-only'>HTTP </span>
+            {props.code}
           </p>
         )}
-        <h1 className='text-3xl leading-tight font-semibold tracking-tight text-balance md:text-5xl'>
-          {props.title}
-        </h1>
-        <p className='text-muted-foreground mt-4 max-w-prose text-base leading-relaxed'>
+        <h1 className='font-medium text-balance'>{props.title}</h1>
+        <p className='text-muted-foreground max-w-prose leading-relaxed'>
           {props.description}
         </p>
         {(!props.minimal || props.action) && (
-          <div className='mt-7 flex flex-wrap items-center gap-2'>
+          <div className='mt-6 flex flex-wrap items-center justify-center gap-4'>
             {props.action}
             {!props.minimal && (
               <>
@@ -68,7 +67,7 @@ export function ErrorPage(props: ErrorPageProps) {
                   {t('Back to Home')}
                 </Button>
                 {history.canGoBack() && (
-                  <Button variant='ghost' onClick={() => history.go(-1)}>
+                  <Button variant='outline' onClick={() => history.go(-1)}>
                     {t('Go Back')}
                   </Button>
                 )}

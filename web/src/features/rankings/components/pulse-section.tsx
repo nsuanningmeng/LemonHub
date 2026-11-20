@@ -42,7 +42,7 @@ export function PulseSection(props: PulseSectionProps) {
   const { t } = useTranslation()
 
   return (
-    <section className='grid grid-cols-1 gap-8 md:grid-cols-2'>
+    <section className='grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-1'>
       <PulseCard
         title={t('Trending up')}
         description={t('Models climbing the leaderboard')}
@@ -85,8 +85,8 @@ function PulseCard(props: {
   children: React.ReactNode
 }) {
   return (
-    <div className='border-foreground min-w-0 overflow-hidden border-t-2'>
-      <header className='border-b py-3'>
+    <div className='bg-card overflow-hidden rounded-lg border'>
+      <header className='border-b px-4 py-3'>
         <h3 className='text-foreground inline-flex items-center gap-2 text-sm font-semibold'>
           {props.icon}
           {props.title}

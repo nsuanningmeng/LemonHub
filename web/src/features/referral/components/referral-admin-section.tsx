@@ -30,9 +30,13 @@ export function ReferralAdminSection() {
   const { t } = useTranslation()
   return (
     <section className='flex flex-col gap-4 sm:gap-5'>
-      <h2 className='border-t pt-5 text-xl font-semibold tracking-tight'>
-        {t('Site referral activity')}
-      </h2>
+      <div className='flex items-center gap-3'>
+        <div className='bg-border h-px flex-1' />
+        <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+          {t('Admin · Site-wide Referrals')}
+        </h2>
+        <div className='bg-border h-px flex-1' />
+      </div>
       <ReferralAdminSummaryCards />
       <ReferralAdminLeaderboard />
     </section>

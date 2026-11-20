@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -24,10 +23,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber, formatQuota } from '@/lib/format'
 
-type ActivitySeries = 'usage' | 'requests'
+export type ActivityMetric = 'usage' | 'requests'
 
 interface WorkspaceActivityChartProps {
-  series: Record<ActivitySeries, number[]>
+  selected: ActivityMetric
+  onSelect: (metric: ActivityMetric) => void
+  series: Record<ActivityMetric, number[]>
   start: number
   end: number
   loading: boolean
@@ -37,7 +38,7 @@ interface WorkspaceActivityChartProps {
 
 export function WorkspaceActivityChart(props: WorkspaceActivityChartProps) {
   const { t, i18n } = useTranslation()
-  const [selected, setSelected] = useState<ActivitySeries>('usage')
+  const { selected } = props
   const values = props.series[selected]
   const formatValue = selected === 'usage' ? formatQuota : formatNumber
   const total = values.reduce((sum, value) => sum + value, 0)
@@ -63,14 +64,8 @@ export function WorkspaceActivityChart(props: WorkspaceActivityChartProps) {
   const line = points.map((p, i) => `${i ? 'L' : 'M'} ${p.x} ${p.y}`).join(' ')
 
   return (
-    <div className='min-w-0 py-4 sm:py-5'>
-      <div className='flex flex-wrap items-start justify-between gap-3'>
-        <div>
-          <h3 className='text-base font-semibold'>{t('Workspace activity')}</h3>
-          <p className='text-muted-foreground mt-0.5 text-xs'>
-            {t('Last 24 hours')}
-          </p>
-        </div>
+    <div className='min-w-0'>
+      <div className='flex justify-start'>
         <div
           className='bg-muted inline-flex rounded-md p-1'
           role='group'
@@ -81,7 +76,7 @@ export function WorkspaceActivityChart(props: WorkspaceActivityChartProps) {
               type='button'
               key={type}
               aria-pressed={type === selected}
-              onClick={() => setSelected(type)}
+              onClick={() => props.onSelect(type)}
               className='text-muted-foreground hover:text-foreground aria-pressed:bg-card aria-pressed:text-foreground focus-visible:ring-ring min-h-7 rounded px-3 text-xs font-medium outline-none focus-visible:ring-2'
             >
               {type === 'usage' ? t('Usage') : t('Requests')}
@@ -143,13 +138,13 @@ export function WorkspaceActivityChart(props: WorkspaceActivityChartProps) {
               ))}
               <path
                 d={`${line} L ${points.at(-1)?.x ?? 600} 99 L ${points[0]?.x ?? 0} 99 Z`}
-                fill='var(--brand-citrus)'
-                opacity='.48'
+                fill='var(--overview-accent-1)'
+                opacity='.18'
               />
               <path
                 d={line}
                 fill='none'
-                stroke='var(--foreground)'
+                stroke='var(--overview-accent-1)'
                 strokeWidth='2.25'
                 strokeLinecap='round'
                 strokeLinejoin='round'

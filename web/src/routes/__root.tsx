@@ -22,10 +22,11 @@ import {
   createRootRouteWithContext,
   Outlet,
   redirect,
+  useLocation,
   useNavigate,
 } from '@tanstack/react-router'
 import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-import { useEffect } from 'react'
+import { useEffect, useLayoutEffect } from 'react'
 
 import { NavigationProgress } from '@/components/navigation-progress'
 import { Toaster } from '@/components/ui/sonner'
@@ -42,11 +43,20 @@ import {
 } from '@/lib/auth-session'
 import { subscribeAuthSessionEvents } from '@/lib/auth-session-sync'
 import { resolveLegacyRoute } from '@/lib/legacy-route'
+import { syncBrowserThemeColor } from '@/lib/theme-color'
 import { useAuthStore } from '@/stores/auth-store'
 
 function RootComponent() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const isHome = useLocation({
+    select: (location) => location.pathname === '/',
+  })
+
+  useLayoutEffect(() => {
+    document.documentElement.toggleAttribute('data-home', isHome)
+    syncBrowserThemeColor()
+  }, [isHome])
 
   // Load system configuration (logo, system name, etc.) from backend
   useSystemConfig({ autoLoad: true })

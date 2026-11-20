@@ -39,7 +39,7 @@ test('direct access to a protected page offers a sign-in destination and a reada
   expect(
     screen.getByRole('heading', { name: 'Sign in required', level: 1 })
   ).toBeVisible()
-  expect(screen.getByText('HTTP 401')).toBeVisible()
+  expect(screen.getByText('401')).toBeVisible()
   expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
     'href',
     '/sign-in'

@@ -67,13 +67,22 @@ export function DataTablePagination<TData>({
       <div className='flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2'>
         <div className='flex items-center gap-2 @lg/pagination:gap-4'>
           <p className='text-muted-foreground text-xs whitespace-nowrap tabular-nums'>
-            {totalRows === 0
-              ? t('No records')
-              : t('{{first}}–{{last}} of {{total}}', {
-                  first: firstRow.toLocaleString(locale),
-                  last: lastRow.toLocaleString(locale),
-                  total: totalRows.toLocaleString(locale),
-                })}
+            {totalRows === 0 ? (
+              t('No records')
+            ) : (
+              <>
+                <span className='sr-only @lg/pagination:not-sr-only'>
+                  {t('{{first}}–{{last}} of {{total}}', {
+                    first: firstRow.toLocaleString(locale),
+                    last: lastRow.toLocaleString(locale),
+                    total: totalRows.toLocaleString(locale),
+                  })}
+                </span>
+                <span aria-hidden='true' className='@lg/pagination:hidden'>
+                  {t('Total')} {totalRows.toLocaleString(locale)}
+                </span>
+              </>
+            )}
           </p>
 
           <div className='flex shrink-0 items-center gap-1.5 @lg/pagination:gap-2'>

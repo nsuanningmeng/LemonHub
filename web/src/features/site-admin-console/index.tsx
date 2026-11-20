@@ -41,12 +41,8 @@ export function SiteAdminConsole() {
           onValueChange={(value) => setTab(String(value))}
           className='gap-4'
         >
-          <div className='max-w-full overflow-x-auto border-b pb-1'>
-            <TabsList
-              variant='line'
-              aria-label={t('Agent Console')}
-              className='h-auto min-h-10 justify-start gap-3'
-            >
+          <div className='max-w-full overflow-x-auto'>
+            <TabsList aria-label={t('Agent Console')}>
               <TabsTrigger value='overview'>
                 {t('Overview & Wallet')}
               </TabsTrigger>

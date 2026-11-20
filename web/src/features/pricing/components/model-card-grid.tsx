@@ -78,12 +78,7 @@ export function ModelCardGrid(props: ModelCardGridProps) {
 
   return (
     <div className='space-y-4 sm:space-y-5'>
-      <div className='model-directory-register'>
-        <div className='model-directory-columns' aria-hidden='true'>
-          <span>{t('Model')}</span>
-          <span>{t('Price')}</span>
-          <span>{t('Performance')}</span>
-        </div>
+      <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
         {pagedModels.map((model) => (
           <ModelCard
             key={model.id ?? model.model_name}

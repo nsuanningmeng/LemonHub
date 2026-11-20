@@ -29,35 +29,37 @@ export function SetupProgress(props: { currentStep: number }) {
   return (
     <ol
       aria-label={t('System setup wizard')}
-      className='mt-5 grid grid-cols-4 gap-1 md:mt-8 md:grid-cols-1 md:gap-0'
+      className='grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4'
     >
       {SETUP_STEPS.map((step, index) => {
         const active = props.currentStep === index
-        const complete = props.currentStep > index
+        const completed = props.currentStep > index
         return (
           <li
             key={step.titleKey}
             aria-current={active ? 'step' : undefined}
             className={cn(
-              'border-border text-muted-foreground flex min-w-0 flex-col items-start gap-2 border-t-2 pt-2 md:flex-row md:items-center md:gap-3 md:border-t-0 md:py-2.5',
-              complete && 'border-primary',
-              active && 'border-foreground text-foreground font-semibold'
+              'border-border text-muted-foreground border-t-2 py-2',
+              completed && 'border-primary/40',
+              active && 'border-primary text-foreground'
             )}
           >
-            <span
-              aria-hidden='true'
-              className={cn(
-                'grid size-6 shrink-0 place-items-center rounded-full font-mono text-xs tabular-nums',
-                active
-                  ? 'bg-brand-citrus text-brand-ink'
-                  : 'bg-muted text-muted-foreground'
-              )}
-            >
-              {complete ? <Check className='size-3.5' /> : index + 1}
-            </span>
-            <span className='text-xs leading-snug [overflow-wrap:anywhere] sm:text-sm'>
+            <div className='flex items-baseline gap-2 text-sm font-semibold'>
+              <span
+                className='font-mono text-xs tabular-nums'
+                aria-hidden='true'
+              >
+                {completed ? (
+                  <Check className='inline size-3' />
+                ) : (
+                  String(index + 1).padStart(2, '0')
+                )}
+              </span>
               {t(step.titleKey)}
-            </span>
+            </div>
+            <p className='text-muted-foreground mt-1 hidden text-xs leading-relaxed sm:block'>
+              {t(step.descriptionKey)}
+            </p>
           </li>
         )
       })}

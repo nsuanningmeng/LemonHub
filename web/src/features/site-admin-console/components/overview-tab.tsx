@@ -109,14 +109,15 @@ export function OverviewTab() {
 
   return (
     <div className='flex flex-col gap-4'>
-      <div className='grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'>
+      <div className='grid gap-4 md:grid-cols-2'>
         {/* Wallet card */}
         <Card>
           <CardHeader>
-            <CardTitle>{t('Current Balance')}</CardTitle>
+            <CardTitle>{t('Wallet')}</CardTitle>
+            <CardDescription>{t('Current Balance')}</CardDescription>
           </CardHeader>
           <CardContent className='flex flex-col gap-4'>
-            <div className='text-4xl font-semibold tracking-tight tabular-nums'>
+            <div className='font-mono text-3xl font-semibold'>
               ¥{formatMilliYuan(data.wallet_balance)}
             </div>
             <div className='flex flex-col gap-2'>
@@ -124,7 +125,7 @@ export function OverviewTab() {
                 htmlFor='site-wallet-threshold'
                 className='text-muted-foreground text-xs'
               >
-                {t('Wallet Warn Threshold')} <span>{t('CNY')}</span>
+                {t('Wallet Warn Threshold')} ({t('CNY')})
               </label>
               <div className='flex items-center gap-2'>
                 <Input
@@ -184,7 +185,10 @@ export function OverviewTab() {
               </span>
             </InfoRow>
             <InfoRow label={t('Domains')}>
-              <span className='text-muted-foreground min-w-0 text-end wrap-anywhere'>
+              <span
+                className='text-muted-foreground max-w-[260px] truncate'
+                title={data.domains.join(', ')}
+              >
                 {data.domains.length === 0 ? '-' : data.domains.join(', ')}
               </span>
             </InfoRow>

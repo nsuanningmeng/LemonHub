@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { AuthLayout } from '../auth-layout'
@@ -24,11 +25,28 @@ import { OtpForm } from './components/otp-form'
 export function Otp() {
   const { t } = useTranslation()
   return (
-    <AuthLayout
-      title={t('Verify your sign-in')}
-      description={t('Please enter the authentication code.')}
-    >
-      <OtpForm />
+    <AuthLayout>
+      <div className='w-full space-y-8'>
+        <div className='space-y-3'>
+          <h1 className='text-3xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]'>
+            {t('Two-factor Authentication')}
+          </h1>
+          <p className='text-muted-foreground text-start text-sm leading-relaxed'>
+            {t('Please enter the authentication code.')}
+          </p>
+          <p className='text-muted-foreground text-start text-sm leading-relaxed'>
+            {t('Session expired?')}{' '}
+            <Link
+              to='/sign-in'
+              className='hover:text-primary font-medium underline underline-offset-4'
+            >
+              {t('Re-login')}
+            </Link>
+          </p>
+        </div>
+
+        <OtpForm />
+      </div>
     </AuthLayout>
   )
 }

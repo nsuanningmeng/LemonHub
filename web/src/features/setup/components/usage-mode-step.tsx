@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/form'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { cn } from '@/lib/utils'
 
 import type { SetupFormValues, SetupUsageMode } from '../types'
 
@@ -83,7 +84,7 @@ export function UsageModeStep({ form }: UsageModeStepProps) {
                 form.clearErrors('usageMode')
                 field.onChange(value as SetupUsageMode)
               }}
-              className='divide-border gap-0 divide-y border-y'
+              className='grid gap-3 sm:grid-cols-3'
             >
               {USAGE_MODE_OPTIONS.map(
                 ({ value, titleKey, descriptionKey, icon: Icon }) => {
@@ -91,9 +92,11 @@ export function UsageModeStep({ form }: UsageModeStepProps) {
                     <Label
                       key={value}
                       htmlFor={`usage-mode-${value}`}
-                      className='group hover:bg-muted/50 has-data-[checked]:bg-accent/60 flex cursor-pointer items-center px-3 py-3.5 text-start font-normal'
+                      className={cn(
+                        'hover:border-primary/40 focus-within:border-primary/50 has-data-[checked]:border-primary has-data-[checked]:ring-primary/20 group bg-card border-muted flex cursor-pointer flex-col gap-3 rounded-xl border p-4 font-normal transition-all has-data-[checked]:ring-2'
+                      )}
                     >
-                      <div className='flex w-full items-center gap-3'>
+                      <div className='flex items-center gap-3'>
                         <RadioGroupItem
                           id={`usage-mode-${value}`}
                           value={value}

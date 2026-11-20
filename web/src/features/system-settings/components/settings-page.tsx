@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import '@/styles/settings-editor.css'
 import { useParams } from '@tanstack/react-router'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -71,7 +70,7 @@ function SettingsPageFrame(props: SettingsPageFrameProps) {
     >
       <SectionPageLayout>
         <SectionPageLayout.Title>
-          <span className='settings-page-title inline-flex max-w-full min-w-0 flex-wrap items-center gap-2 align-middle'>
+          <span className='inline-flex max-w-full min-w-0 flex-wrap items-center gap-2 align-middle'>
             <span>{props.title}</span>
             <span
               ref={setTitleStatusContainer}

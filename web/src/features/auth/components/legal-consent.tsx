@@ -50,7 +50,12 @@ export function LegalConsent({
   }
 
   return (
-    <div className={cn('flex items-start gap-3 py-1', className)}>
+    <div
+      className={cn(
+        'border-border/60 bg-muted/40 flex items-start gap-3 rounded-md border p-3',
+        className
+      )}
+    >
       <Checkbox
         id='legal-consent'
         checked={checked}

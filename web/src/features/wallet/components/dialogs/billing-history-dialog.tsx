@@ -57,13 +57,11 @@ import {
 
 interface BillingHistoryDialogProps {
   open: boolean
-  showPreview?: boolean
   onOpenChange: (open: boolean) => void
 }
 
 export function BillingHistoryDialog({
   open,
-  showPreview,
   onOpenChange,
 }: BillingHistoryDialogProps) {
   const { t } = useTranslation()
@@ -88,17 +86,6 @@ export function BillingHistoryDialog({
   const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
 
   const totalPages = Math.ceil(total / pageSize)
-  const loadFailure = !loading && failed && (
-    <div
-      role='alert'
-      className='flex flex-wrap items-center justify-between gap-3 py-4 text-sm'
-    >
-      <span>{t('Failed to load billing history')}</span>
-      <Button variant='outline' size='sm' onClick={refresh}>
-        {t('Retry')}
-      </Button>
-    </div>
-  )
 
   const handleConfirmComplete = async () => {
     if (confirmTradeNo) {
@@ -111,69 +98,12 @@ export function BillingHistoryDialog({
 
   return (
     <>
-      {showPreview && (
-        <section className='min-w-0 border-y py-4 sm:py-5'>
-          <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-            <h3 className='text-lg font-semibold tracking-tight'>
-              {isAdmin ? t('Platform orders') : t('Your orders')}
-            </h3>
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              onClick={() => onOpenChange(true)}
-            >
-              {t('View orders')}
-            </Button>
-          </div>
-          {loading && (
-            <Skeleton aria-label={t('Loading')} className='h-16 w-full' />
-          )}
-          {loadFailure}
-          {!loading && !failed && records.length === 0 && (
-            <p className='text-muted-foreground py-5 text-sm'>
-              {keyword ? t('No billing records found') : t('No orders yet')}
-            </p>
-          )}
-          {!loading && records.length > 0 && (
-            <ul className='divide-y'>
-              {records.slice(0, 3).map((record) => (
-                <li
-                  key={record.id}
-                  className='flex items-center justify-between gap-3 py-2 text-sm'
-                >
-                  <span className='min-w-0'>
-                    <span className='block truncate font-medium'>
-                      {getPaymentMethodName(record.payment_method, t)}
-                    </span>
-                    <time className='text-muted-foreground block text-xs'>
-                      {formatTimestamp(record.create_time)}
-                    </time>
-                  </span>
-                  <span className='text-end'>
-                    <span className='block font-medium tabular-nums'>
-                      {formatCurrencyFromUSD(record.amount, {
-                        digitsLarge: 2,
-                        digitsSmall: 2,
-                        abbreviate: false,
-                      })}
-                    </span>
-                    <span className='text-muted-foreground text-xs'>
-                      {t(getStatusConfig(record.status).label)}
-                    </span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
       <Dialog
         open={open}
         onOpenChange={onOpenChange}
-        title={t('Order history')}
+        title={t('Billing History')}
         description={t(
-          'Search top-ups by order number and check payment status.'
+          'View your topup transaction records and payment history'
         )}
         contentClassName='flex max-h-[calc(100dvh-2rem)] flex-col max-sm:w-screen max-sm:max-w-none max-sm:rounded-none max-sm:p-4 sm:max-w-4xl'
         contentHeight='auto'
@@ -240,7 +170,17 @@ export function BillingHistoryDialog({
                 ))}
               </div>
             )}
-            {loadFailure}
+            {!loading && failed && (
+              <div
+                role='alert'
+                className='flex flex-wrap items-center justify-between gap-3 py-4 text-sm'
+              >
+                <span>{t('Failed to load billing history')}</span>
+                <Button variant='outline' size='sm' onClick={refresh}>
+                  {t('Retry')}
+                </Button>
+              </div>
+            )}
             {!loading && !failed && records.length === 0 && (
               <div className='text-muted-foreground flex min-h-40 flex-col items-center justify-center py-10 text-center'>
                 <p className='text-sm font-medium'>
@@ -287,7 +227,7 @@ export function BillingHistoryDialog({
                             </Button>
                             {isAdmin && record.user_id != null && (
                               <StatusBadge
-                                label={`${t('User ID')} ${record.user_id}`}
+                                label={`${t('User ID')}: ${record.user_id}`}
                                 variant='neutral'
                                 size='sm'
                                 copyText={String(record.user_id)}

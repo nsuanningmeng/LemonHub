@@ -16,9 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { HardDrive, Server } from 'lucide-react'
+import { Database, HardDrive, Server } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { StatusBadge } from '@/components/status-badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
 import type { SetupStatus } from '../types'
@@ -32,22 +33,26 @@ const DATABASE_META: Record<
   {
     label: string
     descriptionKey: string
+    variant: 'info' | 'success' | 'warning'
   }
 > = {
   sqlite: {
     label: 'SQLite',
     descriptionKey:
       'SQLite stores all data in a single file. Make sure that file is persisted when running in containers.',
+    variant: 'warning',
   },
   mysql: {
     label: 'MySQL',
     descriptionKey:
       'MySQL is a production-ready relational database. Keep your credentials secure.',
+    variant: 'success',
   },
   postgres: {
     label: 'PostgreSQL',
     descriptionKey:
       'PostgreSQL offers advanced reliability and data integrity for production workloads.',
+    variant: 'success',
   },
 }
 
@@ -58,6 +63,7 @@ function resolveDatabaseMeta(type?: string) {
     DATABASE_META[normalized] ?? {
       label: type,
       descriptionKey: 'Custom database driver detected.',
+      variant: 'info' as const,
     }
   )
 }
@@ -76,12 +82,12 @@ export function DatabaseStep({ status }: DatabaseStepProps) {
 
   return (
     <div className='space-y-4'>
-      <div className='flex items-center justify-between pb-2'>
+      <div className='bg-card flex items-center justify-between rounded-lg border p-4'>
         <div className='space-y-1'>
           <p className='text-muted-foreground text-sm font-medium'>
             {t('Detected database')}
           </p>
-          <p className='text-foreground text-2xl font-semibold tracking-tight'>
+          <p className='text-foreground text-base font-semibold'>
             {meta?.label ?? t('Unknown')}
           </p>
           <p className='text-muted-foreground text-sm'>
@@ -91,6 +97,13 @@ export function DatabaseStep({ status }: DatabaseStepProps) {
             )}
           </p>
         </div>
+        <StatusBadge
+          label={meta?.label ?? t('Unknown')}
+          variant={meta?.variant ?? 'info'}
+          className='cursor-default'
+          copyable={false}
+          icon={Database}
+        />
       </div>
 
       {status?.database_type === 'sqlite' && (

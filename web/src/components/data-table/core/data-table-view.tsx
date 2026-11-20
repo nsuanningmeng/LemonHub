@@ -68,7 +68,7 @@ export function DataTableView<TData>(props: DataTableViewProps<TData>) {
   return (
     <div
       className={cn(
-        'bg-card min-w-0 overflow-hidden border-y',
+        'bg-card min-w-0 overflow-hidden rounded-lg border',
         props.containerClassName
       )}
       aria-busy={props.isLoading || undefined}

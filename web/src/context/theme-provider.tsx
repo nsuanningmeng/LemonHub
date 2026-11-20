@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react'
 
+import { syncBrowserThemeColor } from '@/lib/theme-color'
 import {
   readThemePreference,
   THEME_STORAGE_KEYS,
@@ -93,12 +94,7 @@ export function ThemeProvider({
       const nextResolvedTheme = theme === 'system' ? getSystemTheme() : theme
       root.classList.remove('light', 'dark')
       root.classList.add(nextResolvedTheme)
-      document
-        .querySelector('meta[name="theme-color"]')
-        ?.setAttribute(
-          'content',
-          nextResolvedTheme === 'dark' ? '#151e2d' : '#f7f7f3'
-        )
+      syncBrowserThemeColor()
       setResolvedTheme(nextResolvedTheme)
     }
 

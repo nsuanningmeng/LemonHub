@@ -57,31 +57,23 @@ export function Rankings() {
   let content
   if (rankingsQuery.isLoading) {
     content = <RankingsLoading />
-  } else if (
-    snapshot &&
-    [
-      snapshot.models,
-      snapshot.vendors,
-      snapshot.top_movers,
-      snapshot.top_droppers,
-      snapshot.models_history?.points,
-      snapshot.vendor_share_history?.points,
-    ].every((rows) => !rows?.length)
-  ) {
-    content = (
-      <section className='border-border border-y py-14' role='status'>
-        <h2 className='text-2xl font-semibold tracking-tight'>
-          {t('No usage in this period')}
-        </h2>
-        <p className='text-muted-foreground mt-2'>
-          {t('Choose another period to see model activity.')}
-        </p>
-      </section>
-    )
   } else if (snapshot) {
     content = (
-      <div className='space-y-10'>
-        <div className='grid items-start gap-8 xl:grid-cols-2'>
+      <div className='grid items-start gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(0,0.85fr)]'>
+        {[
+          snapshot.models,
+          snapshot.vendors,
+          snapshot.top_movers,
+          snapshot.top_droppers,
+          snapshot.models_history?.points,
+          snapshot.vendor_share_history?.points,
+        ].every((rows) => !rows?.length) && (
+          <p className='sr-only' role='status'>
+            {t('No usage in this period')}.{' '}
+            {t('Choose another period to see model activity.')}
+          </p>
+        )}
+        <div className='min-w-0 space-y-6'>
           <ModelsSection
             history={snapshot.models_history}
             rows={snapshot.models}

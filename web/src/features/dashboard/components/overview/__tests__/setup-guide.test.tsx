@@ -23,7 +23,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
@@ -121,7 +127,7 @@ test('completed setup uses a compact toggle, restores focus after hiding, and pr
   expect(toggle).toHaveAttribute('aria-expanded', 'true')
   expect(
     screen.getByRole('heading', {
-      name: 'Connect your first application',
+      name: 'Build on your API gateway in minutes',
     })
   ).toBeVisible()
   screen.getByRole('button', { name: 'Hide setup guide' }).focus()
@@ -130,7 +136,7 @@ test('completed setup uses a compact toggle, restores focus after hiding, and pr
   expect(toggle).toHaveAttribute('aria-expanded', 'false')
   expect(
     screen.queryByRole('heading', {
-      name: 'Connect your first application',
+      name: 'Build on your API gateway in minutes',
     })
   ).not.toBeInTheDocument()
   expect(localStorage.getItem('dashboard_overview_setup_guide_expanded')).toBe(
@@ -162,4 +168,66 @@ test('an unfinished manually collapsed setup retains its progress and expand act
   expect(
     await screen.findByRole('button', { name: 'Hide setup guide' })
   ).toHaveAttribute('aria-expanded', 'true')
+})
+
+test('the overview keeps the balance visible and can retry unavailable usage', async () => {
+  let usageAvailable = false
+  vi.mocked(api.get).mockImplementation(async (url) => ({
+    data: {
+      success: url !== '/api/data/self' || usageAvailable,
+      data: [],
+    },
+  }))
+  renderOverview()
+  const retry = await screen.findByRole('button', { name: 'Retry' })
+  expect(screen.getByText('Credit remaining')).toBeVisible()
+  expect(screen.getByText('--')).toBeVisible()
+  expect(screen.queryByText('No recent usage')).not.toBeInTheDocument()
+
+  usageAvailable = true
+  await userEvent.click(retry)
+  expect(await screen.findByText('No recent usage')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: 'Retry' })
+  ).not.toBeInTheDocument()
+})
+
+test('usage and request cards open their 24-hour trend with the keyboard and restore focus without fetching again', async () => {
+  const get = vi.mocked(api.get).mockResolvedValue({
+    data: {
+      success: true,
+      data: [
+        { created_at: Math.floor(Date.now() / 1000), quota: 500000, count: 3 },
+      ],
+    },
+  })
+  const user = userEvent.setup()
+  renderOverview()
+  const usage = await screen.findByRole('button', {
+    name: /Usage by time of day/,
+  })
+  const requests = screen.getByRole('button', {
+    name: /Requests by time of day/,
+  })
+
+  for (const [trigger, label] of [
+    [usage, 'Usage by time of day'],
+    [requests, 'Requests by time of day'],
+  ] as const) {
+    trigger.focus()
+    await user.keyboard('{Enter}')
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Workspace activity',
+    })
+    expect(
+      await within(dialog).findByRole('img', { name: label })
+    ).toBeVisible()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(trigger).toHaveFocus())
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  }
+
+  expect(
+    get.mock.calls.filter(([url]) => url === '/api/data/self')
+  ).toHaveLength(1)
 })

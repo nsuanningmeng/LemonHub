@@ -18,9 +18,25 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState, type ComponentProps } from 'react'
 import { expect, test, vi } from 'vitest'
 
-import { WorkspaceActivityChart } from '../workspace-activity-chart'
+import {
+  WorkspaceActivityChart,
+  type ActivityMetric,
+} from '../workspace-activity-chart'
+
+function Chart(
+  props: Omit<
+    ComponentProps<typeof WorkspaceActivityChart>,
+    'selected' | 'onSelect'
+  >
+) {
+  const [metric, setMetric] = useState<ActivityMetric>('usage')
+  return (
+    <WorkspaceActivityChart {...props} selected={metric} onSelect={setMetric} />
+  )
+}
 
 const props = {
   series: { usage: [500000, 1000000], requests: [5, 9] },
@@ -33,7 +49,7 @@ const props = {
 
 test('switching the chart metric using the keyboard displays the selected request total', async () => {
   const user = userEvent.setup()
-  render(<WorkspaceActivityChart {...props} />)
+  render(<Chart {...props} />)
   expect(
     screen.getByRole('img', { name: 'Usage by time of day' })
   ).toBeVisible()
@@ -54,7 +70,7 @@ test('switching the chart metric using the keyboard displays the selected reques
 test('failed data does not show an apparent zero-usage chart and offers retry', async () => {
   const user = userEvent.setup()
   const retry = vi.fn()
-  render(<WorkspaceActivityChart {...props} failed retry={retry} />)
+  render(<Chart {...props} failed retry={retry} />)
   expect(screen.queryByRole('img')).not.toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Retry' }))
   expect(retry).toHaveBeenCalledOnce()
@@ -62,15 +78,10 @@ test('failed data does not show an apparent zero-usage chart and offers retry', 
 
 test('an empty period is visible while zero-cost requests still have a chart', () => {
   const { rerender } = render(
-    <WorkspaceActivityChart {...props} series={{ usage: [0], requests: [0] }} />
+    <Chart {...props} series={{ usage: [0], requests: [0] }} />
   )
   expect(screen.getByText('No activity in this period')).toBeVisible()
-  rerender(
-    <WorkspaceActivityChart
-      {...props}
-      series={{ usage: [0], requests: [10] }}
-    />
-  )
+  rerender(<Chart {...props} series={{ usage: [0], requests: [10] }} />)
   expect(
     screen.getByRole('img', { name: 'Usage by time of day' })
   ).toBeVisible()

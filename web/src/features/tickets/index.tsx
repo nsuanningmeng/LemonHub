@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, Inbox, MessageSquare, Plus } from 'lucide-react'
+import { ChevronRight, Inbox, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -97,50 +97,41 @@ export function Tickets() {
   return (
     <>
       <SectionPageLayout>
-        <SectionPageLayout.Title>{t('Support inbox')}</SectionPageLayout.Title>
+        <SectionPageLayout.Title>
+          {t('Support Tickets')}
+        </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
+          <Select
+            value={status}
+            items={statusItems}
+            onValueChange={(value) => {
+              if (value == null) return
+              setStatus(value)
+              setPage(1)
+            }}
+          >
+            <SelectTrigger
+              size='sm'
+              aria-label={t('Status')}
+              className='max-w-full sm:w-36'
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent alignItemWithTrigger={false}>
+              {statusItems.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button onClick={() => setNewOpen(true)} disabled={!enabled}>
             <Plus className='size-3.5' />
             {t('New Ticket')}
           </Button>
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <div className='bg-card flex w-full min-w-0 flex-col overflow-hidden rounded-xl border'>
-            <div className='bg-muted/50 flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-6'>
-              <h2 className='inline-flex items-center gap-2 font-semibold'>
-                <Inbox aria-hidden='true' className='text-primary size-4' />
-                {t('Ticket history')}
-                {listQuery.isSuccess && enabled && (
-                  <span className='text-muted-foreground text-sm tabular-nums'>
-                    {total}
-                  </span>
-                )}
-              </h2>
-              <Select
-                value={status}
-                items={statusItems}
-                onValueChange={(value) => {
-                  if (value == null) return
-                  setStatus(value)
-                  setPage(1)
-                }}
-              >
-                <SelectTrigger
-                  size='sm'
-                  aria-label={t('Status')}
-                  className='max-w-full sm:w-36'
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  {statusItems.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className='bg-card mx-auto flex w-full max-w-5xl flex-col divide-y overflow-hidden rounded-xl border'>
             {!enabled && (
               <EmptyState
                 title={t('Support tickets are currently disabled.')}
@@ -181,39 +172,32 @@ export function Tickets() {
                   key={ticket.id}
                   type='button'
                   onClick={() => setDetailId(ticket.id)}
-                  className='hover:bg-muted/50 focus-visible:ring-ring grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-b px-4 py-4 text-start last:border-b-0 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset sm:grid-cols-[minmax(0,1fr)_auto_minmax(9rem,auto)_auto] sm:px-6'
+                  className='hover:bg-muted/60 focus-visible:ring-ring flex w-full items-center gap-3 px-4 py-3 text-start transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset'
                 >
-                  <span className='min-w-0'>
-                    <span className='block font-semibold wrap-anywhere'>
-                      {ticket.title}
-                    </span>
-                    <span className='text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
-                      <span>{typeNameOf(ticket.type)}</span>
-                      <span className='inline-flex items-center gap-1'>
-                        <MessageSquare className='size-3' aria-hidden='true' />
-                        <span className='sr-only'>{t('Messages')}</span>
-                        {ticket.message_num ?? 0}
+                  <div className='min-w-0 flex-1'>
+                    <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3'>
+                      <span className='max-w-full truncate font-medium'>
+                        {ticket.title}
                       </span>
-                    </span>
-                  </span>
-                  <span className='flex flex-wrap items-center justify-end gap-1.5'>
-                    <TicketPriorityBadge priority={ticket.priority} />
-                    <TicketStatusBadge status={ticket.status} />
-                  </span>
-                  <span className='text-muted-foreground min-w-0 text-xs sm:text-end'>
-                    <span className='me-1.5 sm:me-0 sm:block'>
-                      {t('Last activity')}
-                    </span>
-                    <span>
-                      {formatTimestamp(
-                        ticket.last_reply_at || ticket.updated_at
-                      )}
-                    </span>
-                  </span>
-                  <ChevronRight
-                    aria-hidden='true'
-                    className='text-muted-foreground size-4 justify-self-end'
-                  />
+                      <div className='flex shrink-0 items-center gap-2'>
+                        <TicketPriorityBadge priority={ticket.priority} />
+                        <TicketStatusBadge status={ticket.status} />
+                      </div>
+                    </div>
+                    <div className='text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
+                      <span>{typeNameOf(ticket.type)}</span>
+                      <span>
+                        {t('Messages')}: {ticket.message_num ?? 0}
+                      </span>
+                      <span>
+                        {t('Last activity')}:{' '}
+                        {formatTimestamp(
+                          ticket.last_reply_at || ticket.updated_at
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronRight className='text-muted-foreground size-4 shrink-0' />
                 </button>
               ))}
 

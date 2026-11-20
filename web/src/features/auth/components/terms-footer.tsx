@@ -68,7 +68,7 @@ export function TermsFooter({
   return (
     <p
       className={cn(
-        'text-muted-foreground mt-4 text-xs leading-relaxed',
+        'text-muted-foreground text-center text-xs leading-relaxed',
         className
       )}
     >

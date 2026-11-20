@@ -39,6 +39,10 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
+import {
+  CardStaggerContainer,
+  CardStaggerItem,
+} from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
@@ -334,6 +338,22 @@ function QuickActionItem(props: { action: QuickAction }) {
   )
 }
 
+function CompactQuickAction(props: { action: QuickAction }) {
+  const Icon = props.action.icon
+
+  return (
+    <Button
+      variant='outline'
+      size='sm'
+      className='h-8 min-w-24 gap-1.5 px-2.5'
+      render={<Link to={props.action.to} />}
+    >
+      <Icon data-icon='inline-start' />
+      <span>{props.action.title}</span>
+    </Button>
+  )
+}
+
 export function OverviewDashboard() {
   const { t } = useTranslation()
   const setupGuideId = useId()
@@ -408,26 +428,26 @@ export function OverviewDashboard() {
   const quickActions = useMemo<QuickAction[]>(
     () => [
       {
-        title: t('Manage API keys'),
+        title: t('API Keys'),
         description: t('Create a key for your app or service'),
         to: '/keys',
         icon: KeyRound,
       },
       {
-        title: t('Review routing'),
+        title: t('Channels'),
         description: t('Configure upstream providers and routing.'),
         to: '/channels',
         icon: RadioTower,
         adminOnly: true,
       },
       {
-        title: t('Inspect requests'),
+        title: t('Usage Logs'),
         description: t('Inspect requests, errors, and billing details'),
         to: '/usage-logs',
         icon: FileText,
       },
       {
-        title: t('Compare model prices'),
+        title: t('Pricing'),
         description: t('Review model rates before scaling traffic'),
         to: '/pricing',
         icon: BookOpen,
@@ -485,6 +505,9 @@ export function OverviewDashboard() {
   const setupStatusReady = apiKeysQuery.isFetched && Boolean(user)
   const setupGuideExpanded =
     manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete)
+  const showLeftContentPanels =
+    isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
+  const showContentPanels = showLeftContentPanels || showUptimePanel
 
   const handleSetupGuideToggle = () => {
     const nextExpanded = !setupGuideExpanded
@@ -497,9 +520,7 @@ export function OverviewDashboard() {
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t('Workspace overview')}
-      </SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('Overview')}</SectionPageLayout.Title>
       <SectionPageLayout.Actions>
         {setupStatusReady && setupComplete && (
           <Button
@@ -518,20 +539,12 @@ export function OverviewDashboard() {
       <SectionPageLayout.Content>
         <div className='flex min-w-0 flex-col gap-5'>
           <SummaryCards />
-          <nav
-            aria-label={t('Quick actions')}
-            className='grid grid-cols-1 gap-x-4 border-b pb-3 sm:grid-cols-2 xl:grid-cols-4'
-          >
-            {visibleQuickActions.map((action) => (
-              <QuickActionItem key={action.to} action={action} />
-            ))}
-          </nav>
           <div id={setupGuideId} hidden={!setupGuideExpanded}>
             {setupGuideExpanded && (
               <section className='bg-card rounded-lg border'>
                 <div className='flex flex-wrap items-start justify-between gap-3 border-b p-4 sm:px-5'>
                   <h3 className='text-base font-semibold tracking-tight'>
-                    {t('Connect your first application')}
+                    {t('Build on your API gateway in minutes')}
                   </h3>
                   <div className='flex flex-wrap gap-2'>
                     <Button
@@ -566,6 +579,16 @@ export function OverviewDashboard() {
                     signals={heroSignals}
                   />
                 </div>
+                <div className='border-t px-3 py-3 sm:px-5'>
+                  <h4 className='px-2 text-sm font-semibold'>
+                    {t('Recommended actions')}
+                  </h4>
+                  <div className='mt-1 grid sm:grid-cols-2 xl:grid-cols-4'>
+                    {visibleQuickActions.map((action) => (
+                      <QuickActionItem key={action.to} action={action} />
+                    ))}
+                  </div>
+                </div>
               </section>
             )}
           </div>
@@ -591,10 +614,16 @@ export function OverviewDashboard() {
                         })}
                       </span>
                     </div>
+                    <p className='text-muted-foreground line-clamp-1 text-xs'>
+                      {t('Setup guide is collapsed. Expand it anytime.')}
+                    </p>
                   </div>
                 </div>
 
                 <div className='flex flex-wrap items-center gap-2'>
+                  {visibleQuickActions.map((action) => (
+                    <CompactQuickAction key={action.title} action={action} />
+                  ))}
                   <Button
                     variant='outline'
                     size='sm'
@@ -611,20 +640,53 @@ export function OverviewDashboard() {
             </div>
           )}
 
-          {isAdmin && <PerformanceHealthPanel />}
-          {(showApiInfoPanel ||
-            showAnnouncementsPanel ||
-            showFAQPanel ||
-            showUptimePanel) && (
-            <section
-              aria-label={t('Gateway information')}
-              className='min-w-0 divide-y border-y [&>section]:rounded-none [&>section]:border-0'
+          {showContentPanels && (
+            <CardStaggerContainer
+              className={cn(
+                'grid grid-cols-1 gap-4',
+                showLeftContentPanels &&
+                  showUptimePanel &&
+                  'xl:grid-cols-[minmax(0,1fr)_22rem]'
+              )}
             >
-              {showApiInfoPanel && <ApiInfoPanel />}
-              {showUptimePanel && <UptimePanel />}
-              {showAnnouncementsPanel && <AnnouncementsPanel />}
-              {showFAQPanel && <FAQPanel />}
-            </section>
+              {showLeftContentPanels && (
+                <div
+                  className={cn(
+                    'grid min-w-0 grid-cols-1 gap-4',
+                    (showApiInfoPanel ||
+                      showAnnouncementsPanel ||
+                      showFAQPanel) &&
+                      'lg:grid-cols-2'
+                  )}
+                >
+                  {isAdmin && (
+                    <CardStaggerItem className='lg:col-span-2'>
+                      <PerformanceHealthPanel />
+                    </CardStaggerItem>
+                  )}
+                  {showApiInfoPanel && (
+                    <CardStaggerItem>
+                      <ApiInfoPanel />
+                    </CardStaggerItem>
+                  )}
+                  {showAnnouncementsPanel && (
+                    <CardStaggerItem>
+                      <AnnouncementsPanel />
+                    </CardStaggerItem>
+                  )}
+                  {showFAQPanel && (
+                    <CardStaggerItem>
+                      <FAQPanel />
+                    </CardStaggerItem>
+                  )}
+                </div>
+              )}
+              {showUptimePanel && (
+                <CardStaggerItem>
+                  <UptimePanel />
+                </CardStaggerItem>
+              )}
+            </CardStaggerContainer>
           )}
         </div>
       </SectionPageLayout.Content>

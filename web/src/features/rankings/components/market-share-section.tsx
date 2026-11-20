@@ -216,7 +216,7 @@ export function MarketShareSection(props: MarketShareSectionProps) {
   const right = visible.slice(half)
 
   return (
-    <section className='border-foreground min-w-0 overflow-hidden border-t-2'>
+    <section className='bg-card overflow-hidden rounded-lg border'>
       {/* Chart block ----------------------------------------------------- */}
       <header className='px-5 py-4'>
         <h2 className='text-foreground inline-flex items-center gap-2 text-xl font-semibold tracking-tight'>
@@ -262,7 +262,7 @@ export function MarketShareSection(props: MarketShareSectionProps) {
             {t('No vendor data available')}
           </div>
         ) : (
-          <div className='grid grid-cols-1 gap-x-8 px-5 pt-1 pb-4 md:grid-cols-2 xl:grid-cols-1'>
+          <div className='grid grid-cols-1 gap-x-8 px-5 pt-1 pb-4 md:grid-cols-2'>
             <VendorList rows={left} colourMap={colourMap} />
             {right.length > 0 && (
               <VendorList rows={right} colourMap={colourMap} />

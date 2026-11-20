@@ -30,14 +30,14 @@ import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
-function LogMetric(props: { label: string; value: string | number }) {
+function StatBadge(props: { label: string; value: string | number }) {
   return (
-    <div className='min-w-0 px-2 py-2.5 sm:px-4'>
-      <dt className='text-muted-foreground text-xs'>{props.label}</dt>
-      <dd className='text-foreground mt-1 font-mono text-base leading-tight font-semibold wrap-anywhere tabular-nums md:text-xl'>
+    <span className='inline-flex min-h-7 items-baseline gap-1.5 text-xs'>
+      <span className='text-muted-foreground'>{props.label}</span>
+      <span className='text-foreground font-mono font-semibold tabular-nums'>
         {props.value}
-      </dd>
-    </div>
+      </span>
+    </span>
   )
 }
 
@@ -80,13 +80,13 @@ export function CommonLogsStats() {
   }
 
   return (
-    <dl className='bg-muted/40 grid min-w-0 grid-cols-3 divide-x border-y'>
-      <LogMetric
+    <div className='flex flex-wrap items-center gap-x-4 gap-y-1.5'>
+      <StatBadge
         label={t('Usage')}
         value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
       />
-      <LogMetric label={t('RPM')} value={stats?.rpm || 0} />
-      <LogMetric label={t('TPM')} value={stats?.tpm || 0} />
-    </dl>
+      <StatBadge label={t('RPM')} value={stats?.rpm || 0} />
+      <StatBadge label={t('TPM')} value={stats?.tpm || 0} />
+    </div>
   )
 }

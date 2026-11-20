@@ -41,117 +41,133 @@ afterEach(() => {
   localStorage.clear()
 })
 
-it('requests server status on page one and refreshes after disabling a derived expired key', async () => {
-  vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
-  let disabled = false
-  const get = vi.spyOn(api, 'get').mockImplementation(async (url) => {
-    if (url.startsWith('/api/token/?')) {
-      const params = new URL(url, 'http://localhost').searchParams
-      const filtered = params.get('status') === '3'
-      return {
-        data: {
-          success: true,
+it.each(['desktop', 'mobile'])(
+  'keeps filters directly accessible on %s and refreshes server status after disabling an expired key',
+  async (viewport) => {
+    const original = window.matchMedia
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      ...original(query),
+      matches: viewport === 'mobile' && query === '(max-width: 640px)',
+    }))
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
+    let disabled = false
+    const get = vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url.startsWith('/api/token/?')) {
+        const params = new URL(url, 'http://localhost').searchParams
+        const filtered = params.get('status') === '3'
+        return {
           data: {
-            total: !filtered ? 60 : Number(!disabled),
-            items:
-              disabled && filtered
-                ? []
-                : [
-                    {
-                      id: 1,
-                      name: filtered
-                        ? 'expired-server-row'
-                        : 'unfiltered-page-row',
-                      key: 'masked',
-                      status: 1,
-                      effective_status: filtered ? 3 : 1,
-                      remain_quota: 100,
-                      used_quota: 0,
-                      unlimited_quota: false,
-                      expired_time: 1,
-                      created_time: 1,
-                      accessed_time: 1,
-                      model_limits_enabled: false,
-                      group: '',
-                      auto_groups: null,
-                      cross_group_retry: false,
-                      model_limits: '',
-                      allow_ips: '',
-                    },
-                  ],
+            success: true,
+            data: {
+              total: !filtered ? 60 : Number(!disabled),
+              items:
+                disabled && filtered
+                  ? []
+                  : [
+                      {
+                        id: 1,
+                        name: filtered
+                          ? 'expired-server-row'
+                          : 'unfiltered-page-row',
+                        key: 'masked',
+                        status: 1,
+                        effective_status: filtered ? 3 : 1,
+                        remain_quota: 100,
+                        used_quota: 0,
+                        unlimited_quota: false,
+                        expired_time: 1,
+                        created_time: 1,
+                        accessed_time: 1,
+                        model_limits_enabled: false,
+                        group: '',
+                        auto_groups: null,
+                        cross_group_retry: false,
+                        model_limits: '',
+                        allow_ips: '',
+                      },
+                    ],
+            },
           },
-        },
+        }
       }
-    }
-    return { data: { success: true, data: {} } }
-  })
-  vi.spyOn(api, 'post').mockResolvedValue({
-    data: { success: true, data: { key: 'local-key' } },
-  })
-  const put = vi.spyOn(api, 'put').mockImplementation(async () => {
-    disabled = true
-    return { data: { success: true } }
-  })
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  clients.push(client)
-  const root = createRootRoute()
-  const auth = createRoute({
-    getParentRoute: () => root,
-    id: '_authenticated',
-  })
-  const keys = createRoute({
-    getParentRoute: () => auth,
-    path: 'keys/',
-    component: () => (
-      <ApiKeysProvider>
-        <ApiKeysTable />
-      </ApiKeysProvider>
-    ),
-  })
-  const router = createRouter({
-    routeTree: root.addChildren([auth.addChildren([keys])]),
-    history: createMemoryHistory({
-      initialEntries: ['/keys/?page=3&pageSize=20'],
-    }),
-  })
-  await router.load()
-  render(
-    <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  )
-  await screen.findByText('unfiltered-page-row')
-  expect(
-    get.mock.calls.some(([url]) => url === '/api/token/?p=3&size=20')
-  ).toBe(true)
-  await userEvent.click(screen.getByRole('button', { name: 'Expired' }))
-  await screen.findByText('expired-server-row')
-  await waitFor(() =>
-    expect(
-      get.mock.calls.some(([url]) => url === '/api/token/?p=1&size=20&status=3')
-    ).toBe(true)
-  )
-  expect(router.state.location.search).toMatchObject({ status: ['3'] })
-  expect(
-    new URLSearchParams(router.state.location.searchStr).get('page') ?? '1'
-  ).toBe('1')
-  await userEvent.click(screen.getByRole('button', { name: 'Disable' }))
-  await waitFor(() =>
-    expect(put).toHaveBeenCalledWith('/api/token/?status_only=true', {
-      id: 1,
-      status: 2,
+      return { data: { success: true, data: {} } }
     })
-  )
-  await waitFor(() =>
-    expect(screen.queryByText('expired-server-row')).not.toBeInTheDocument()
-  )
-  expect(
-    await screen.findByText('No records found. Try adjusting your filters.')
-  ).toBeVisible()
-  expect(
-    get.mock.calls.filter(([url]) => url === '/api/token/?p=1&size=20&status=3')
-      .length
-  ).toBeGreaterThanOrEqual(2)
-})
+    vi.spyOn(api, 'post').mockResolvedValue({
+      data: { success: true, data: { key: 'local-key' } },
+    })
+    const put = vi.spyOn(api, 'put').mockImplementation(async () => {
+      disabled = true
+      return { data: { success: true } }
+    })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    clients.push(client)
+    const root = createRootRoute()
+    const auth = createRoute({
+      getParentRoute: () => root,
+      id: '_authenticated',
+    })
+    const keys = createRoute({
+      getParentRoute: () => auth,
+      path: 'keys/',
+      component: () => (
+        <ApiKeysProvider>
+          <ApiKeysTable />
+        </ApiKeysProvider>
+      ),
+    })
+    const router = createRouter({
+      routeTree: root.addChildren([auth.addChildren([keys])]),
+      history: createMemoryHistory({
+        initialEntries: ['/keys/?page=3&pageSize=20'],
+      }),
+    })
+    await router.load()
+    render(
+      <QueryClientProvider client={client}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    )
+    await screen.findByText('unfiltered-page-row')
+    expect(
+      get.mock.calls.some(([url]) => url === '/api/token/?p=3&size=20')
+    ).toBe(true)
+    expect(screen.getByRole('textbox', { name: 'Key name' })).toBeVisible()
+    expect(screen.getByRole('textbox', { name: 'API key' })).toBeVisible()
+    const status = screen.getByRole('button', { name: 'Status' })
+    expect(status).toBeVisible()
+    await userEvent.click(status)
+    await userEvent.click(await screen.findByText('Expired'))
+    await screen.findByText('expired-server-row')
+    await waitFor(() =>
+      expect(
+        get.mock.calls.some(
+          ([url]) => url === '/api/token/?p=1&size=20&status=3'
+        )
+      ).toBe(true)
+    )
+    expect(router.state.location.search).toMatchObject({ status: ['3'] })
+    expect(
+      new URLSearchParams(router.state.location.searchStr).get('page') ?? '1'
+    ).toBe('1')
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }))
+    await waitFor(() =>
+      expect(put).toHaveBeenCalledWith('/api/token/?status_only=true', {
+        id: 1,
+        status: 2,
+      })
+    )
+    await waitFor(() =>
+      expect(screen.queryByText('expired-server-row')).not.toBeInTheDocument()
+    )
+    expect(
+      await screen.findByText('No records found. Try adjusting your filters.')
+    ).toBeVisible()
+    expect(
+      get.mock.calls.filter(
+        ([url]) => url === '/api/token/?p=1&size=20&status=3'
+      ).length
+    ).toBeGreaterThanOrEqual(2)
+  }
+)

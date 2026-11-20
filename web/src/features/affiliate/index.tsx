@@ -34,7 +34,9 @@ import {
   ADVANTAGES,
   AUDIENCES,
   FAQS,
+  HERO_SELLING_POINTS,
   REFERRAL_TIERS,
+  REFERRAL_VS_AGENT,
   STEPS,
   WHOLESALE_TIERS,
 } from './content'
@@ -71,54 +73,44 @@ function AffiliateSection(props: {
 function AffiliateHero() {
   const { t } = useTranslation()
   return (
-    <header className='grid gap-7 pt-26 pb-10 sm:pt-32 md:pb-14 lg:grid-cols-[1fr_1.12fr] lg:items-center lg:gap-16'>
+    <header className='grid items-end gap-10 pt-28 pb-12 md:pt-36 md:pb-16 lg:grid-cols-[1.2fr_1fr] lg:gap-20'>
       <div>
-        <h1 className='max-w-xl text-5xl leading-[1.03] font-semibold tracking-tight text-balance sm:text-6xl'>
-          {t('Partner programs')}
-        </h1>
-        <p className='text-muted-foreground mt-4 max-w-md leading-relaxed'>
-          {t('Run a branded API site or earn rewards by referring users.')}
+        <p className='text-primary mb-3 text-sm font-medium'>
+          {t('Affiliate Program · Now Recruiting')}
         </p>
-        <a
-          href='#affiliate-advantages'
-          className='mt-4 inline-flex min-h-10 items-center gap-2 font-medium underline underline-offset-4'
-        >
-          {t('Learn More')}
-          <ArrowRight aria-hidden='true' className='size-4' />
-        </a>
-      </div>
-      <div className='bg-brand-ink divide-y divide-white/20 rounded-xl px-5 text-white sm:px-7'>
-        <div className='py-5'>
-          <h2 className='text-lg font-semibold'>{t('Brand Agent')}</h2>
-          <p className='mt-1 text-sm leading-relaxed text-white/80'>
-            {t(
-              'Set retail prices on your own domain and receive customer payments directly.'
-            )}
-          </p>
-          <Link
-            to='/contact'
-            className='text-brand-citrus mt-2 inline-flex min-h-9 items-center gap-2 font-medium underline underline-offset-4'
-          >
+        <h1 className='max-w-2xl text-4xl leading-[1.04] font-semibold tracking-tight text-balance sm:text-6xl'>
+          {t('Become Our Exclusive Agent')}
+        </h1>
+        <p className='text-muted-foreground mt-5 max-w-xl text-base leading-relaxed'>
+          {t(
+            'With just a domain, you can own an AI site under your own brand. Stock at a wholesale discount, set your own retail price, and keep the full margin — user payments land directly in your own account, while the platform handles the tech and models.'
+          )}
+        </p>
+        <div className='mt-6 flex flex-wrap items-center gap-3'>
+          <Link to='/contact' className={buttonVariants({ size: 'lg' })}>
             {t('Apply Now')}
-            <ArrowRight aria-hidden='true' className='size-4' />
+            <ArrowRight aria-hidden='true' />
           </Link>
-        </div>
-        <div className='py-5'>
-          <h2 className='text-lg font-semibold'>{t('Referral Rewards')}</h2>
-          <p className='mt-1 text-sm leading-relaxed text-white/80'>
-            {t(
-              'Share an invite link and earn commission when your referrals top up.'
-            )}
-          </p>
-          <Link
-            to='/referral'
-            className='text-brand-citrus mt-2 inline-flex min-h-9 items-center gap-2 font-medium underline underline-offset-4'
+          <a
+            href='#affiliate-advantages'
+            className={buttonVariants({ size: 'lg', variant: 'outline' })}
           >
-            {t('Get my referral link')}
-            <ArrowRight aria-hidden='true' className='size-4' />
-          </Link>
+            {t('Learn More')}
+          </a>
         </div>
       </div>
+      <ul className='border-primary/60 divide-border divide-y border-t-2'>
+        {HERO_SELLING_POINTS.map(({ icon: Icon, text }) => (
+          <li key={text} className='flex items-start gap-4 py-5'>
+            <Icon
+              aria-hidden='true'
+              className='text-primary mt-0.5 size-5 shrink-0'
+              strokeWidth={1.65}
+            />
+            <span className='text-base leading-relaxed'>{t(text)}</span>
+          </li>
+        ))}
+      </ul>
     </header>
   )
 }
@@ -231,7 +223,7 @@ export function Affiliate() {
         <AffiliateSection
           title={t('Referral Rewards Program')}
           description={t(
-            'The two paths are independent and can run in parallel.'
+            'No site to build. Share your personal invite link, and earn commission whenever the users you bring in top up on this platform. This is a separate path from the Brand Agent program above — choose either, they do not affect each other.'
           )}
         >
           <div>
@@ -265,7 +257,27 @@ export function Affiliate() {
                 </article>
               ))}
             </div>
-            <div className='mt-6'>
+            <aside className='bg-muted/60 mt-7 rounded-lg p-5'>
+              <h3 className='text-base font-semibold'>
+                {t('How is this different from the Brand Agent program?')}
+              </h3>
+              <dl className='mt-3 space-y-2'>
+                {REFERRAL_VS_AGENT.map(({ label, desc }) => (
+                  <div key={label} className='text-sm leading-relaxed'>
+                    <dt className='inline font-semibold'>{t(label)} </dt>
+                    <dd className='text-muted-foreground inline'>{t(desc)}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className='text-muted-foreground mt-3 text-sm'>
+                {t('The two paths are independent and can run in parallel.')}
+              </p>
+            </aside>
+            <div className='mt-6 flex flex-wrap gap-3'>
+              <Link to='/referral' className={buttonVariants()}>
+                {t('Get my referral link')}
+                <ArrowRight aria-hidden='true' />
+              </Link>
               <Link
                 to='/contact'
                 className={buttonVariants({ variant: 'outline' })}
@@ -289,6 +301,26 @@ export function Affiliate() {
             ))}
           </Accordion>
         </AffiliateSection>
+        <section
+          id='affiliate-apply'
+          tabIndex={-1}
+          className='flex scroll-mt-20 flex-col items-start gap-5 border-t py-12 md:flex-row md:items-center md:justify-between'
+        >
+          <div>
+            <h2 className='text-2xl font-semibold tracking-tight'>
+              {t('Ready to start your journey as an agent?')}
+            </h2>
+            <p className='text-muted-foreground mt-2 max-w-prose leading-relaxed'>
+              {t(
+                'One domain, one AI site under your own brand — set your price and start earning today.'
+              )}
+            </p>
+          </div>
+          <Link to='/contact' className={buttonVariants({ size: 'lg' })}>
+            {t('Apply Now')}
+            <ArrowRight aria-hidden='true' />
+          </Link>
+        </section>
       </main>
       <Footer />
     </PublicLayout>

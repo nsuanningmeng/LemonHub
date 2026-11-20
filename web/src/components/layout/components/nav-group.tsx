@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   SidebarGroup,
+  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -77,22 +78,21 @@ export function NavGroup({
   }, [href, containsCurrentPage])
 
   return (
-    <SidebarGroup className='px-2.5 py-0.5'>
-      <button
-        type='button'
+    <SidebarGroup className='px-2 py-0.5'>
+      <SidebarGroupLabel
+        render={<button type='button' />}
         aria-expanded={expanded}
         aria-controls={menuId}
         onClick={() => setExpanded(!expanded)}
-        className='console-group-trigger group-data-[collapsible=icon]:hidden'
+        className='text-muted-foreground hover:text-foreground focus-visible:ring-ring group/label flex w-full cursor-pointer justify-between px-2.5 font-mono text-[0.6875rem] font-medium tracking-[0.08em] uppercase group-data-[collapsible=icon]:hidden focus-visible:ring-2'
       >
         <span>{title}</span>
-        <ChevronDown aria-hidden='true' />
-      </button>
-      <SidebarMenu
-        id={menuId}
-        hidden={!expanded && !iconMode}
-        className='gap-0.5'
-      >
+        <ChevronDown
+          aria-hidden='true'
+          className='size-3 opacity-0 transition-opacity group-hover/label:opacity-100 group-focus-visible/label:opacity-100'
+        />
+      </SidebarGroupLabel>
+      <SidebarMenu id={menuId} hidden={!expanded && !iconMode}>
         {items.map((item) => {
           const key = `${item.title}-${item.url || item.type}`
 

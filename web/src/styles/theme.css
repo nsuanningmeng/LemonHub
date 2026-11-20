@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 @custom-variant dark (&:is(.dark *));
+@custom-variant home (&:where([data-home] *));
 
 @theme inline {
   --font-sans: var(--font-ui-sans);
@@ -97,9 +98,9 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 :root {
-  --radius: 0.625rem;
-  --brand-citrus: #ffe45e;
-  --brand-ink: #17253a;
+  --radius: 0.5rem;
+  --brand-citrus: #d9f46b;
+  --brand-ink: #20271c;
   --ease-interface: cubic-bezier(0.2, 0.7, 0.2, 1);
   --duration-interface: 140ms;
   --app-header-height: 3.5rem;
@@ -108,20 +109,20 @@ For commercial licensing, please contact support@quantumnous.com
   /* Auto uses the browser font. Explicit Sans selects Public Sans. */
   --font-ui-sans: sans-serif;
   --font-body: var(--font-ui-sans);
-  --background: #f7f7f3;
-  --foreground: #182437;
+  --background: #f8f9f6;
+  --foreground: #20251f;
   --card: #ffffff;
   --card-foreground: var(--foreground);
   --popover: #ffffff;
   --popover-foreground: var(--foreground);
-  --primary: #253e62;
+  --primary: #33452d;
   --primary-foreground: #ffffff;
-  --secondary: #e9edf1;
-  --secondary-foreground: #26394f;
-  --muted: #eff1f2;
-  --muted-foreground: #566377;
-  --accent: #e6edf5;
-  --accent-foreground: #193954;
+  --secondary: #e9ede4;
+  --secondary-foreground: #303c2b;
+  --muted: #eef0ea;
+  --muted-foreground: #566054;
+  --accent: #e7edde;
+  --accent-foreground: #2c3a24;
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
   --success: #2c7352;
@@ -132,25 +133,25 @@ For commercial licensing, please contact support@quantumnous.com
   --info-foreground: oklch(0.985 0 0);
   --neutral: oklch(0.708 0 0);
   --neutral-foreground: oklch(0.145 0 0);
-  --border: #d5dbe1;
-  --input: #a5b0be;
-  --ring: #3a6696;
-  --chart-1: #385e9a;
-  --chart-2: #168783;
-  --chart-3: #a17420;
-  --chart-4: #865787;
-  --chart-5: #bb5d46;
+  --border: #d9ded5;
+  --input: #b5bdb0;
+  --ring: #627c42;
+  --chart-1: #507548;
+  --chart-2: #36838b;
+  --chart-3: #9b681d;
+  --chart-4: #76618f;
+  --chart-5: #a45147;
   --overview-accent-1: var(--chart-1);
   --overview-accent-2: var(--chart-2);
   --overview-accent-3: var(--chart-3);
-  --sidebar: #182437;
-  --sidebar-foreground: #e6edf5;
-  --sidebar-primary: var(--brand-citrus);
-  --sidebar-primary-foreground: var(--brand-ink);
-  --sidebar-accent: #2d4059;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #35445a;
-  --sidebar-ring: #ffe45e;
+  --sidebar: #eef1e9;
+  --sidebar-foreground: #30392e;
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: #dfe7d7;
+  --sidebar-accent-foreground: #253c1e;
+  --sidebar-border: #d4dbce;
+  --sidebar-ring: var(--ring);
   --skeleton-base: var(--muted);
   --skeleton-highlight: var(--card);
   --table-row: var(--card);
@@ -185,20 +186,20 @@ For commercial licensing, please contact support@quantumnous.com
 
 .dark {
   color-scheme: dark;
-  --background: #151e2d;
-  --foreground: #edf1f5;
-  --card: #1c2839;
+  --background: #181d19;
+  --foreground: #e9eee6;
+  --card: #202621;
   --card-foreground: var(--foreground);
-  --popover: #243245;
+  --popover: #292f29;
   --popover-foreground: var(--foreground);
-  --primary: #b7cff3;
-  --primary-foreground: #14243c;
-  --secondary: #2e3b50;
-  --secondary-foreground: #e1ebf5;
-  --muted: #263347;
-  --muted-foreground: #b2bfd0;
-  --accent: #31415a;
-  --accent-foreground: #edf3fa;
+  --primary: #c6dc9e;
+  --primary-foreground: #202719;
+  --secondary: #353e32;
+  --secondary-foreground: #e0e8d8;
+  --muted: #2a322b;
+  --muted-foreground: #b2bdaf;
+  --accent: #343e30;
+  --accent-foreground: #e2ebd9;
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
   --success: #85ceaa;
@@ -209,24 +210,24 @@ For commercial licensing, please contact support@quantumnous.com
   --info-foreground: oklch(0.145 0 0);
   --neutral: oklch(0.76 0 0);
   --neutral-foreground: oklch(0.155 0 0);
-  --border: #354559;
-  --input: #60738c;
-  --ring: #adcdf7;
-  --chart-1: #a9c9ff;
-  --chart-2: #78d0bf;
-  --chart-3: #edc276;
-  --chart-4: #d6abdc;
-  --chart-5: #efaa98;
-  --sidebar: #111a28;
-  --sidebar-foreground: #e6edf5;
-  --sidebar-primary: var(--brand-citrus);
-  --sidebar-primary-foreground: var(--brand-ink);
-  --sidebar-accent: #293a50;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #2b3b50;
-  --sidebar-ring: #ffe45e;
+  --border: #3b453b;
+  --input: #586450;
+  --ring: #aecc82;
+  --chart-1: #a5c97a;
+  --chart-2: #72bec0;
+  --chart-3: #daa65e;
+  --chart-4: #bba3d1;
+  --chart-5: #d69787;
+  --sidebar: #151a16;
+  --sidebar-foreground: #dce4d8;
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: #313d2d;
+  --sidebar-accent-foreground: #e2ebd9;
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
   --skeleton-base: var(--muted);
-  --skeleton-highlight: #35465b;
+  --skeleton-highlight: #374138;
   --table-row: var(--card);
   --table-header: color-mix(in oklch, var(--foreground) 6%, var(--background));
   --table-header-hover: color-mix(
@@ -249,4 +250,79 @@ For commercial licensing, please contact support@quantumnous.com
     var(--foreground) 24%,
     var(--background)
   );
+}
+
+/* The landing page uses its own palette, including controls rendered in portals. */
+:root[data-home] {
+  --radius: 0.625rem;
+  --brand-citrus: #ffe45e;
+  --brand-ink: #17253a;
+  --background: #f7f7f3;
+  --foreground: #182437;
+  --primary: #253e62;
+  --secondary: #e9edf1;
+  --secondary-foreground: #26394f;
+  --muted: #eff1f2;
+  --muted-foreground: #566377;
+  --accent: #e6edf5;
+  --accent-foreground: #193954;
+  --border: #d5dbe1;
+  --input: #a5b0be;
+  --ring: #3a6696;
+  --chart-1: #385e9a;
+  --chart-2: #168783;
+  --chart-3: #a17420;
+  --chart-4: #865787;
+  --chart-5: #bb5d46;
+  --sidebar: #182437;
+  --sidebar-foreground: #e6edf5;
+  --sidebar-primary: var(--brand-citrus);
+  --sidebar-primary-foreground: var(--brand-ink);
+  --sidebar-accent: #2d4059;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #35445a;
+  --sidebar-ring: #ffe45e;
+}
+
+:root.dark[data-home] {
+  --background: #151e2d;
+  --foreground: #edf1f5;
+  --card: #1c2839;
+  --popover: #243245;
+  --primary: #b7cff3;
+  --primary-foreground: #14243c;
+  --secondary: #2e3b50;
+  --secondary-foreground: #e1ebf5;
+  --muted: #263347;
+  --muted-foreground: #b2bfd0;
+  --accent: #31415a;
+  --accent-foreground: #edf3fa;
+  --border: #354559;
+  --input: #60738c;
+  --ring: #adcdf7;
+  --chart-1: #a9c9ff;
+  --chart-2: #78d0bf;
+  --chart-3: #edc276;
+  --chart-4: #d6abdc;
+  --chart-5: #efaa98;
+  --sidebar: #111a28;
+  --sidebar-foreground: #e6edf5;
+  --sidebar-primary: var(--brand-citrus);
+  --sidebar-primary-foreground: var(--brand-ink);
+  --sidebar-accent: #293a50;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #2b3b50;
+  --sidebar-ring: #ffe45e;
+  --skeleton-highlight: #35465b;
+}
+
+/* Resolve these against the active preset on body, also used by portaled controls. */
+body {
+  --button-outline-background: var(--background);
+  --button-outline-border: var(--border);
+}
+
+[data-home] body {
+  --button-outline-background: var(--card);
+  --button-outline-border: var(--input);
 }

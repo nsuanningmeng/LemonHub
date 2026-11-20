@@ -16,20 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-.profile-sections > [data-slot='card'] {
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  border-bottom: 1px solid var(--border);
-  background: transparent;
-  box-shadow: none;
-}
+import { createContext } from 'react'
 
-.profile-sections > [data-slot='card'] > [data-slot='card-header'],
-.profile-sections > [data-slot='card'] > [data-slot='card-content'] {
-  padding-inline: 0;
-}
-
-.profile-sections > [data-slot='card'] > [data-slot='card-header'] {
-  border-bottom: 0;
-}
+export const HomePublicShellContext = createContext(false)

@@ -200,70 +200,92 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
 
   return (
-    <article className='model-directory-row'>
-      <div className='model-directory-identity'>
-        <span className='model-directory-icon' aria-hidden='true'>
-          {modelIcon || initial}
+    <article className='bg-card flex min-w-0 flex-col rounded-lg border p-4 sm:p-5'>
+      <div className='flex items-start gap-3'>
+        <span
+          className='bg-muted flex size-9 shrink-0 items-center justify-center rounded-md'
+          aria-hidden='true'
+        >
+          {modelIcon || (
+            <span className='font-mono text-base font-semibold'>{initial}</span>
+          )}
         </span>
-        <div className='min-w-0'>
-          <h2>
-            <button type='button' onClick={props.onClick} title={t('Details')}>
-              {props.model.model_name}
+        <div className='min-w-0 flex-1'>
+          <h2 className='font-mono text-base leading-tight font-semibold tracking-tight'>
+            <button
+              type='button'
+              onClick={props.onClick}
+              title={t('Details')}
+              className='text-start wrap-anywhere underline-offset-4 hover:underline'
+            >
+              {props.model.model_name}{' '}
               <ArrowUpRight
                 aria-hidden='true'
-                className='ms-1 inline size-3.5 align-baseline'
+                className='text-muted-foreground inline size-3.5 align-baseline'
               />
             </button>
           </h2>
-          <div className='model-directory-labels'>
-            {props.model.vendor_name && <span>{props.model.vendor_name}</span>}
-            <ModelBillingModeBadge model={props.model} />
-            {primaryGroup && <span>{primaryGroup}</span>}
-          </div>
-          {props.model.description && (
-            <p className='model-directory-description'>
-              {props.model.description}
+          {props.model.vendor_name && (
+            <p className='text-muted-foreground mt-1 text-xs'>
+              {props.model.vendor_name}
             </p>
           )}
-          {(bottomTags.length > 0 || hiddenCount > 0) && (
-            <div className='model-directory-tags'>
-              {bottomTags.map((item) => (
-                <span key={item}>{item}</span>
-              ))}
-              {hiddenCount > 0 && (
-                <span title={t('Details')}>+{hiddenCount}</span>
-              )}
-            </div>
+        </div>
+        <button
+          type='button'
+          onClick={handleCopy}
+          className='text-muted-foreground hover:bg-muted hover:text-foreground inline-grid size-8 shrink-0 place-items-center rounded-md'
+          title={t('Copy model name')}
+          aria-label={t('Copy model name')}
+        >
+          <Copy aria-hidden='true' className='size-4' />
+        </button>
+      </div>
+
+      {props.model.description && (
+        <p className='text-muted-foreground mt-3 line-clamp-2 text-sm leading-relaxed'>
+          {props.model.description}
+        </p>
+      )}
+
+      <div className='mt-4 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-y py-2.5 text-sm'>
+        {priceSummary}
+        {isTokenBased && (
+          <span className='text-muted-foreground ms-auto font-mono text-xs'>
+            / {tokenUnitLabel}
+          </span>
+        )}
+      </div>
+
+      <div className='mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1'>
+        <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
+          {primaryGroup && (
+            <span className='text-muted-foreground text-sm font-medium'>
+              {primaryGroup}
+            </span>
+          )}
+          <ModelBillingModeBadge model={props.model} />
+        </div>
+        <ModelPerfBadge
+          perf={props.perf}
+          status={props.perfStatus}
+          className='row-span-2 self-start'
+        />
+
+        <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
+          {bottomTags.map((item) => (
+            <span key={item} className='text-muted-foreground text-xs'>
+              {item}
+            </span>
+          ))}
+
+          {hiddenCount > 0 && (
+            <span className='text-muted-foreground text-xs'>
+              +{hiddenCount}
+            </span>
           )}
         </div>
       </div>
-      <div className='model-directory-prices'>
-        <div
-          className='model-directory-amounts'
-          data-token-based={isTokenBased || undefined}
-        >
-          {priceSummary}
-        </div>
-        {isTokenBased && (
-          <small>
-            {t('Prices shown per {{unit}} tokens', { unit: tokenUnitLabel })}
-          </small>
-        )}
-      </div>
-      <ModelPerfBadge
-        perf={props.perf}
-        status={props.perfStatus}
-        className='model-directory-perf'
-      />
-      <button
-        type='button'
-        onClick={handleCopy}
-        className='model-directory-copy'
-        title={t('Copy model name')}
-        aria-label={t('Copy model name')}
-      >
-        <Copy aria-hidden='true' className='size-4' />
-      </button>
     </article>
   )
 })

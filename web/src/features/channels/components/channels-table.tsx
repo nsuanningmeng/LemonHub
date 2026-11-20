@@ -545,7 +545,6 @@ export function ChannelsTable() {
           applyHeaderSize
           afterTable={<ChannelPriorityStatus order={priorityOrder} />}
           toolbarProps={{
-            primaryFilter: 'status',
             searchPlaceholder: t('Name, ID or key'),
             searchDebounceMs: 500,
             onReset: () => {

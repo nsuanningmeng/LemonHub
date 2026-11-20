@@ -187,7 +187,10 @@ export function SubSiteMutateDrawer({
             {isUpdate ? t('Update Sub-site') : t('Create Sub-site')}
           </SheetTitle>
           <SheetDescription>
-            {t('Manage site identity, domains and pricing')}
+            {isUpdate
+              ? t('Update the sub-site by providing necessary info.')
+              : t('Add a new sub-site by providing necessary info.')}{' '}
+            {t("Click save when you're done.")}
           </SheetDescription>
         </SheetHeader>
         {waitingForSite &&

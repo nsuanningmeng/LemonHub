@@ -18,13 +18,15 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
 import DOMPurify from 'dompurify'
-import { useMemo } from 'react'
+import { useContext, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+
+import { HomePublicShellContext } from './public-shell-context'
 
 interface FooterLink {
   text: string
@@ -127,6 +129,7 @@ function ProjectAttribution() {
 }
 
 export function Footer(props: FooterProps) {
+  const isHome = useContext(HomePublicShellContext)
   const { t } = useTranslation()
   const {
     systemName,
@@ -205,14 +208,27 @@ export function Footer(props: FooterProps) {
 
   if (footerHtml) {
     return (
-      <footer className={cn('bg-card relative z-10 border-t', props.className)}>
+      <footer
+        className={cn(
+          'relative z-10 border-t',
+          isHome ? 'bg-card' : 'bg-muted/35',
+          props.className
+        )}
+      >
         <div className='mx-auto w-full max-w-[76rem] px-5 py-5 md:px-8'>
           <div className='flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center'>
             <div
               className='custom-footer text-muted-foreground min-w-0 text-start text-sm [overflow-wrap:anywhere]'
               dangerouslySetInnerHTML={{ __html: sanitizedFooterHtml }}
             />
-            <div className='text-muted-foreground flex w-full flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:w-auto sm:justify-end'>
+            <div
+              className={cn(
+                'text-muted-foreground flex w-full flex-wrap items-center text-xs sm:w-auto sm:justify-end',
+                isHome
+                  ? 'gap-x-4 gap-y-2'
+                  : 'justify-center gap-x-3 gap-y-1 border-t pt-4 sm:border-t-0 sm:border-l sm:pt-0 sm:pl-5'
+              )}
+            >
               <LegalLinks />
               <ProjectAttribution />
             </div>
@@ -223,7 +239,13 @@ export function Footer(props: FooterProps) {
   }
 
   return (
-    <footer className={cn('bg-card relative z-10 border-t', props.className)}>
+    <footer
+      className={cn(
+        'relative z-10 border-t',
+        isHome ? 'bg-card' : 'bg-muted/35',
+        props.className
+      )}
+    >
       <div className='mx-auto max-w-[76rem] px-5 py-6 md:px-8 md:py-9'>
         <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
           {/* Brand column */}
@@ -241,6 +263,11 @@ export function Footer(props: FooterProps) {
                 {displayName}
               </span>
             </Link>
+            {!isHome && (
+              <p className='text-muted-foreground mt-2 text-sm leading-relaxed'>
+                {t('Powerful API Management Platform')}
+              </p>
+            )}
           </div>
 
           {/* Links columns */}
@@ -266,10 +293,16 @@ export function Footer(props: FooterProps) {
 
         {/* Copyright + optional legal links inline on the left, project
             attribution on the right; wraps on narrow screens. */}
-        <div className='mt-4 flex flex-col items-start justify-between gap-x-3 gap-y-2 sm:flex-row sm:items-center'>
+        <div
+          className={cn(
+            'flex flex-col items-start justify-between gap-x-3 gap-y-2 sm:flex-row sm:items-center',
+            isHome ? 'mt-4' : 'mt-5 border-t pt-4'
+          )}
+        >
           <div className='text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
             <span>
-              &copy; {currentYear} {displayName} {props.copyright}
+              &copy; {currentYear} {displayName}{' '}
+              {props.copyright ?? (!isHome && t('footer.defaultCopyright'))}
             </span>
             <LegalLinks />
           </div>

@@ -20,6 +20,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
+  Outlet,
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
@@ -43,9 +45,11 @@ import {
 import { SearchProvider } from '@/context/search-provider'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
+import { Footer } from '../footer'
 import { Header } from '../header'
 import { NavGroup } from '../nav-group'
-import { PublicHeader } from '../public-header'
+import type { PublicHeaderProps } from '../public-header'
+import { PublicLayout } from '../public-layout'
 import { SystemBrand } from '../system-brand'
 import { TopNav } from '../top-nav'
 
@@ -57,6 +61,10 @@ const animationsDescriptor = Object.getOwnPropertyDescriptor(
 const originalConfig = useSystemConfigStore.getState()
 let client: QueryClient
 const siteName = 'LemonHub Enterprise API Gateway with a long name'
+
+function PublicHeaderFixture(props: PublicHeaderProps) {
+  return <PublicLayout headerProps={props}>{null}</PublicLayout>
+}
 
 function HeaderFixture() {
   return (
@@ -161,7 +169,7 @@ test('the compact public menu exposes configured links on demand and returns key
   const router = createRouter({
     routeTree: createRootRoute({
       component: () => (
-        <PublicHeader
+        <PublicHeaderFixture
           mobileLinks={[
             {
               title: 'Model guide',
@@ -209,7 +217,10 @@ test('a protected destination in the public More menu shows the sign-in prompt',
   const router = createRouter({
     routeTree: createRootRoute({
       component: () => (
-        <PublicHeader showAuthButtons={false} showNotifications={false} />
+        <PublicHeaderFixture
+          showAuthButtons={false}
+          showNotifications={false}
+        />
       ),
     }),
     history: createMemoryHistory({ initialEntries: ['/'] }),
@@ -251,7 +262,7 @@ test('mobile search keeps an accessible name while the text and keyboard hint wa
 
 test('the platform menu keeps internal and external destinations accessible', async () => {
   await renderHeader()
-  const menu = screen.getByRole('button', { name: 'Platform' })
+  const menu = screen.getByRole('button', { name: 'Open menu' })
   await userEvent.setup().click(menu)
   const items = await screen.findByRole('menu')
   expect(
@@ -276,4 +287,60 @@ test('a sidebar group can hide its links and reopen with the keyboard', async ()
     'href',
     '/usage-logs'
   )
+})
+
+test('navigation between home and a public route switches the navigation and footer together', async () => {
+  client.setQueryData(['notice'], { success: true, data: '' })
+  const root = createRootRoute({
+    component: () => (
+      <PublicLayout
+        headerProps={{ showNotifications: false, showAuthButtons: false }}
+      >
+        <Outlet />
+        <Footer />
+      </PublicLayout>
+    ),
+  })
+  const home = createRoute({ getParentRoute: () => root, path: '/' })
+  const pricing = createRoute({ getParentRoute: () => root, path: 'pricing' })
+  const router = createRouter({
+    routeTree: root.addChildren([home, pricing]),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
+  const header = await screen.findByRole('banner')
+  expect(within(header).getByRole('button', { name: 'More' })).toBeVisible()
+  expect(
+    within(screen.getByRole('contentinfo')).queryByText(
+      'Powerful API Management Platform'
+    )
+  ).toBeNull()
+  await userEvent.click(
+    within(header).getByRole('link', { name: 'Model directory' })
+  )
+  const pricingHeader = await screen.findByRole('link', {
+    name: 'Model Square',
+  })
+  expect(pricingHeader).toHaveAttribute('href', '/pricing')
+  expect(screen.queryByRole('button', { name: 'More' })).toBeNull()
+  expect(
+    within(screen.getByRole('contentinfo')).getByText(
+      'Powerful API Management Platform'
+    )
+  ).toBeVisible()
+  await userEvent.click(
+    within(screen.getByRole('banner')).getByRole('link', {
+      name: /^Home$/,
+    })
+  )
+  expect(await screen.findByRole('button', { name: 'More' })).toBeVisible()
+  expect(
+    within(screen.getByRole('contentinfo')).queryByText(
+      'Powerful API Management Platform'
+    )
+  ).toBeNull()
 })

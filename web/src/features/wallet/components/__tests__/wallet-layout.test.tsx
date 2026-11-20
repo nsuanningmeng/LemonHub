@@ -106,54 +106,19 @@ test('missing account data keeps wallet totals unavailable until data arrives', 
   )
 })
 
-test('the wallet preview reuses its order rows when opening full history', async () => {
-  const order = {
-    id: 11,
-    user_id: 42,
-    amount: 90,
-    money: 90,
-    trade_no: 'QA-order-11',
-    payment_method: 'alipay',
-    create_time: 1700000000,
-    status: 'success',
-  }
-  const get = vi.spyOn(api, 'get').mockResolvedValue({
-    data: { success: true, data: { items: [order], total: 1 } },
-  })
-  const onOpenChange = vi.fn()
-  const user = userEvent.setup()
-  const { rerender } = render(
-    <BillingHistoryDialog
-      showPreview
-      open={false}
-      onOpenChange={onOpenChange}
-    />
-  )
-  expect(await screen.findByText('Success')).toBeVisible()
-  await user.click(screen.getByRole('button', { name: 'View orders' }))
-  expect(onOpenChange).toHaveBeenCalledWith(true)
-  rerender(
-    <BillingHistoryDialog showPreview open onOpenChange={onOpenChange} />
-  )
-  expect(await screen.findByText('QA-order-11')).toBeVisible()
-  expect(get).toHaveBeenCalledTimes(1)
-})
-
-test('an unavailable order preview offers a retry before showing an empty history', async () => {
+test('billing history can retry a failed request without displaying an empty history', async () => {
   const get = vi.spyOn(api, 'get').mockResolvedValue({
     data: { success: false, message: 'Unavailable' },
   })
-  render(
-    <BillingHistoryDialog open={false} showPreview onOpenChange={vi.fn()} />
-  )
+  render(<BillingHistoryDialog open onOpenChange={vi.fn()} />)
 
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Failed to load billing history'
   )
-  expect(screen.queryByText('No orders yet')).not.toBeInTheDocument()
+  expect(screen.queryByText('No billing records found')).not.toBeInTheDocument()
   get.mockResolvedValue({
     data: { success: true, data: { items: [], total: 0 } },
   })
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
-  expect(await screen.findByText('No orders yet')).toBeVisible()
+  expect(await screen.findByText('No billing records found')).toBeVisible()
 })

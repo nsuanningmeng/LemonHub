@@ -212,7 +212,7 @@ export function OtpForm({ className, ...props }: OtpFormProps) {
           {t('Verify and Sign In')}
         </Button>
 
-        <div className='flex flex-wrap items-center justify-between gap-x-5 gap-y-1 border-t pt-3 text-sm'>
+        <div className='flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm'>
           <Button
             type='button'
             variant='link'

@@ -24,6 +24,7 @@ import { RichContent } from '@/components/rich-content'
 import {
   DocumentLayout,
   DocumentLoading,
+  DocumentTitle,
 } from '@/features/public-documents/document-layout'
 import { useIframePreferences } from '@/hooks/use-iframe-preferences'
 import { isHttpUrl, isLikelyHtml } from '@/lib/content-format'
@@ -35,13 +36,14 @@ function EmptyAboutState() {
   const currentYear = new Date().getFullYear()
 
   return (
-    <DocumentLayout title={t('About')}>
-      <h2 className='text-xl font-semibold tracking-tight'>
-        {t('Project information')}
-      </h2>
-      <p className='text-muted-foreground mt-2 max-w-prose leading-relaxed'>
-        {t('This site runs on New API, an open-source API gateway.')}
-      </p>
+    <DocumentLayout>
+      <DocumentTitle>{t('About')}</DocumentTitle>
+      <div className='space-y-3'>
+        <h2 className='text-xl font-semibold'>{t('Project information')}</h2>
+        <p className='text-muted-foreground max-w-prose leading-relaxed'>
+          {t('This site runs on New API, an open-source API gateway.')}
+        </p>
+      </div>
       <div className='text-muted-foreground [&_a]:decoration-border mt-10 space-y-3 border-t pt-6 text-sm leading-relaxed [overflow-wrap:anywhere] [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:decoration-current'>
         <p>
           <a

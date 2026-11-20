@@ -139,8 +139,9 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
   if (isMobile && props.mobilePinnedFilters != null) {
     return (
       <Drawer open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
-        <div className={cn('space-y-2 border-b pb-2', props.className)}>
-          {!mobilePanelCollapsed && props.stats}
+        <div
+          className={cn('bg-muted/30 rounded-lg border p-3', props.className)}
+        >
           {!mobilePanelCollapsed && (
             <div className='grid gap-2'>{props.mobilePinnedFilters}</div>
           )}
@@ -151,6 +152,7 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
               !mobilePanelCollapsed && 'mt-2'
             )}
           >
+            {!mobilePanelCollapsed && props.stats}
             <div className='flex flex-wrap items-center justify-end gap-1.5'>
               <Button
                 type='button'
@@ -206,7 +208,7 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
           <div className='mx-auto flex w-full max-w-md flex-1 flex-col overflow-hidden'>
             <DrawerHeader className='border-border/70 border-b px-4 py-3 text-left'>
               <DrawerTitle>{t('Filter')}</DrawerTitle>
-              <DrawerDescription className='sr-only'>
+              <DrawerDescription>
                 {t('Adjust filters, then search to refresh the logs.')}
               </DrawerDescription>
             </DrawerHeader>
@@ -243,8 +245,12 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
   }
 
   return (
-    <div className={cn('space-y-2 border-b pb-3', props.className)}>
-      {props.stats}
+    <div
+      className={cn(
+        'bg-muted/30 rounded-lg border p-3 sm:p-3',
+        props.className
+      )}
+    >
       <div className='flex flex-wrap items-start gap-2'>
         <div className='grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]'>
           {props.primaryFilters}
@@ -262,7 +268,8 @@ export function LogsFilterToolbar<TData>(props: LogsFilterToolbarProps<TData>) {
         </div>
       )}
 
-      <div className='flex flex-wrap items-center gap-2'>
+      <div className='mt-3 flex flex-wrap items-center gap-2 border-t pt-3'>
+        {props.stats}
         <div className='ms-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-2'>
           {props.actionStart}
           <Button

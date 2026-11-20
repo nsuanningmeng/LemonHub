@@ -74,8 +74,6 @@ export type DataTableToolbarProps<TData> = {
    * Column-level filter chips (faceted multi-select / single-select).
    */
   filters?: FilterDef[]
-  /** Single-choice filter pinned above the search row. */
-  primaryFilter?: string
   /**
    * Replaces the default search input entirely. Use when the primary
    * "search" is something custom — e.g. a date-time range picker.
@@ -162,7 +160,7 @@ export type DataTableToolbarProps<TData> = {
 export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
-  const [showFilters, setShowFilters] = useState(false)
+  const [showFilters, setShowFilters] = useState(true)
   const narrow = useMediaQuery('(max-width: 640px)')
   const filterPanelId = React.useId()
   const [isSearchComposing, setIsSearchComposing] = useState(false)
@@ -254,8 +252,10 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     queueSearchValue(value)
   }
 
+  const canCollapse =
+    narrow && Boolean(props.additionalSearch) && filters.length > 1
   const searchInput = (
-    <div className='relative min-w-32 flex-1 sm:w-56 sm:flex-none lg:w-64'>
+    <div className='relative w-full min-w-0 sm:w-48 lg:w-56'>
       <Search
         aria-hidden='true'
         className='text-muted-foreground pointer-events-none absolute start-3 top-1/2 z-1 size-4 -translate-y-1/2'
@@ -272,42 +272,11 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     </div>
   )
 
-  const primary = filters.find(
-    (filter) => filter.singleSelect && filter.columnId === props.primaryFilter
-  )
-  const scopeColumn = primary && props.table.getColumn(primary.columnId)
-  const selectedScope = (
-    scopeColumn?.getFilterValue() as string[] | undefined
-  )?.[0]
-  const scopeFilter = primary && scopeColumn && (
-    <div
-      role='group'
-      aria-label={primary.title}
-      className='flex w-full min-w-0 gap-1 overflow-x-auto border-b pb-1'
-    >
-      {[{ label: t('All'), value: '' }, ...primary.options].map((option) => (
-        <button
-          type='button'
-          key={option.value}
-          aria-pressed={(selectedScope ?? '') === option.value}
-          className='text-muted-foreground hover:text-foreground focus-visible:ring-ring aria-pressed:bg-muted aria-pressed:text-foreground shrink-0 rounded-md px-3 py-2 text-sm font-medium focus-visible:ring-2 focus-visible:ring-inset aria-pressed:font-semibold'
-          onClick={() =>
-            scopeColumn.setFilterValue(
-              option.value ? [option.value] : undefined
-            )
-          }
-        >
-          {t(option.label)}
-        </button>
-      ))}
-    </div>
-  )
-
   const filterChips = React.useMemo(
     () =>
       filters.map((filter) => {
         const column = props.table.getColumn(filter.columnId)
-        if (!column || filter.columnId === primary?.columnId) return null
+        if (!column) return null
         return (
           <DataTableFacetedFilter
             key={filter.columnId}
@@ -319,7 +288,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
         )
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props.filters, props.table, primary?.columnId]
+    [props.filters, props.table]
   )
 
   const handleReset = () => {
@@ -388,49 +357,30 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
     </Button>
   ) : null
 
-  const hasSecondaryFilters = Boolean(
-    props.additionalSearch ||
-    filters.some((filter) => filter.columnId !== primary?.columnId)
+  const filtersHidden = canCollapse && !showFilters
+  const filterToggle = canCollapse && (
+    <Button
+      type='button'
+      variant='ghost'
+      size='icon'
+      aria-label={t('Filters')}
+      title={t('Filters')}
+      aria-expanded={showFilters}
+      aria-controls={filterPanelId}
+      onClick={() => setShowFilters((open) => !open)}
+    >
+      <SlidersHorizontal aria-hidden='true' />
+    </Button>
   )
-  const secondaryActiveCount = props.table
-    .getState()
-    .columnFilters.filter(
-      (entry) => entry.id !== primary?.columnId && entry.id !== props.searchKey
-    ).length
-  const filterFields = hasSecondaryFilters && (
-    <>
-      {narrow && (
-        <Button
-          type='button'
-          variant='outline'
-          aria-expanded={showFilters}
-          aria-controls={filterPanelId}
-          onClick={() => setShowFilters((open) => !open)}
-        >
-          <SlidersHorizontal aria-hidden='true' className='size-4' />
-          {t('Filters')}
-          {secondaryActiveCount > 0 && (
-            <span className='font-mono tabular-nums'>
-              {secondaryActiveCount}
-            </span>
-          )}
-        </Button>
-      )}
-      <div
-        id={filterPanelId}
-        hidden={narrow && !showFilters}
-        className={cn(
-          'contents',
-          narrow &&
-            (showFilters
-              ? 'order-last flex w-full flex-wrap items-center gap-2 border-t pt-2'
-              : 'hidden')
-        )}
-      >
-        {props.additionalSearch}
-        {filterChips}
-      </div>
-    </>
+  const filterFields = (
+    <div
+      id={filterPanelId}
+      hidden={filtersHidden}
+      className={filtersHidden ? 'hidden' : 'contents'}
+    >
+      {props.additionalSearch}
+      {filterChips}
+    </div>
   )
 
   const hasLeftActions = props.leftActions != null
@@ -438,7 +388,6 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   if (hasLeftActions) {
     return (
       <div className={cn('flex flex-col gap-2', props.className)}>
-        {scopeFilter}
         <div className='flex flex-wrap items-center gap-2'>
           {props.customSearch !== undefined ? props.customSearch : searchInput}
           {filterFields}
@@ -459,6 +408,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
             {props.preActions}
             {resetButton}
             {searchButton}
+            {filterToggle}
             {viewToggleNode}
             {viewOptionsNode}
           </div>
@@ -469,7 +419,6 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
 
   return (
     <div className={cn('flex flex-wrap items-center gap-2', props.className)}>
-      {scopeFilter}
       {props.customSearch !== undefined ? props.customSearch : searchInput}
       {filterFields}
       {expanded && hasExpandable && props.expandable}
@@ -478,6 +427,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
         {props.preActions}
         {resetButton}
         {searchButton}
+        {filterToggle}
         {viewToggleNode}
         {viewOptionsNode}
         {expandToggle}

@@ -67,31 +67,25 @@ function capability(confirmed: boolean, rejected = false) {
 test('an administrator uses the server capability without root options or a hardcoded terms version', async () => {
   const get = capability(true)
   page()
-  const addPlan = screen.getByRole('button', { name: 'Add subscription plan' })
+  const addPlan = screen.getByRole('button', { name: 'Create Plan' })
   await waitFor(() => expect(addPlan).toBeEnabled(), { timeout: 6000 })
   expect(screen.queryByText(unconfirmed)).not.toBeInTheDocument()
   expect(get.mock.calls.some(([url]) => url === '/api/option/')).toBe(false)
-  await userEvent.click(
-    screen.getByRole('button', { name: 'Add subscription plan' })
-  )
+  await userEvent.click(screen.getByRole('button', { name: 'Create Plan' }))
   await screen.findByRole('dialog')
 })
 test('a confirmed API response of false keeps subscription mutations locked', async () => {
   capability(false)
   page()
   await screen.findByText(unconfirmed)
-  expect(
-    screen.getByRole('button', { name: 'Add subscription plan' })
-  ).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Create Plan' })).toBeDisabled()
 })
 test('a real permission error is shown as a loading failure and Retry can restore the capability', async () => {
   const get = capability(true, true)
   page()
   await screen.findByText(failed)
   expect(screen.queryByText(unconfirmed)).not.toBeInTheDocument()
-  expect(
-    screen.getByRole('button', { name: 'Add subscription plan' })
-  ).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Create Plan' })).toBeDisabled()
   get.mockImplementation(async (url) => ({
     data: {
       success: true,
@@ -103,8 +97,6 @@ test('a real permission error is shown as a loading failure and Retry can restor
   }))
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
   await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: 'Add subscription plan' })
-    ).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Create Plan' })).toBeEnabled()
   )
 })

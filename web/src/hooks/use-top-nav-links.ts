@@ -43,7 +43,7 @@ export type TopNavLink = {
  *   about: true
  * }
  */
-export function useTopNavLinks(): TopNavLink[] {
+export function useTopNavLinks(homePublicShell = false): TopNavLink[] {
   const { t } = useTranslation()
   const { status } = useStatus()
   const { auth } = useAuthStore()
@@ -76,7 +76,11 @@ export function useTopNavLinks(): TopNavLink[] {
   const pricing = modules?.pricing
   if (pricing && typeof pricing === 'object' && pricing.enabled) {
     const requiresAuth = pricing.requireAuth && !isAuthed
-    links.push({ title: t('Model directory'), href: '/pricing', requiresAuth })
+    links.push({
+      title: homePublicShell ? t('Model directory') : t('Model Square'),
+      href: '/pricing',
+      requiresAuth,
+    })
   }
 
   // Rankings

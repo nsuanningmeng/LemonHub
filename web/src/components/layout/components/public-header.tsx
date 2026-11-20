@@ -17,8 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, useNavigate } from '@tanstack/react-router'
-import { Menu, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { ArrowUpRight, Menu, X } from 'lucide-react'
+import { useCallback, useContext, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
@@ -45,8 +45,9 @@ import { useAuthStore } from '@/stores/auth-store'
 import { defaultTopNavLinks } from '../config/top-nav.config'
 import type { TopNavLink } from '../types'
 import { HeaderLogo } from './header-logo'
+import { HomeMoreMenu } from './home-more-menu'
 import { NavLinkList } from './nav-link-item'
-import { TopNav } from './top-nav'
+import { HomePublicShellContext } from './public-shell-context'
 
 const AUTH_PROMPT_SECONDS = 5
 
@@ -93,7 +94,8 @@ export function PublicHeader(props: PublicHeaderProps) {
     useState(AUTH_PROMPT_SECONDS)
   const user = useAuthStore((state) => state.auth.user)
   const { systemName, logo: systemLogo, loading } = useSystemConfig()
-  const dynamicLinks = useTopNavLinks()
+  const isHome = useContext(HomePublicShellContext)
+  const dynamicLinks = useTopNavLinks(isHome)
   const notifications = useNotifications()
   const isMobile = useIsMobile()
   const isAuthenticated = !!user
@@ -199,12 +201,22 @@ export function PublicHeader(props: PublicHeaderProps) {
           props.className
         )}
       >
-        <div className='mx-auto flex h-16 max-w-[76rem] items-center gap-3 px-5 md:gap-6 md:px-8'>
+        <div
+          className={cn(
+            'mx-auto flex h-16 max-w-[76rem] items-center gap-3 px-5 md:px-8',
+            isHome && 'md:gap-6'
+          )}
+        >
           <Link
             to={homeUrl}
             className='text-foreground focus-visible:ring-ring inline-flex max-w-56 min-w-0 items-center gap-2.5 rounded-sm focus-visible:ring-2'
           >
-            <span className='flex size-8 shrink-0 items-center justify-center'>
+            <span
+              className={cn(
+                'flex shrink-0 items-center justify-center',
+                isHome ? 'size-8' : 'size-7'
+              )}
+            >
               {loading && <Skeleton className='size-full rounded-md' />}
               {!loading &&
                 (customLogo ?? (
@@ -217,7 +229,10 @@ export function PublicHeader(props: PublicHeaderProps) {
                 ))}
             </span>
             <span
-              className='truncate text-xl font-semibold tracking-tight'
+              className={cn(
+                'truncate font-semibold tracking-tight',
+                isHome ? 'text-xl' : 'text-lg'
+              )}
               title={displaySiteName}
             >
               {loading ? <Skeleton className='h-5 w-20' /> : displaySiteName}
@@ -228,18 +243,26 @@ export function PublicHeader(props: PublicHeaderProps) {
           {props.showNavigation !== false && (
             <nav
               aria-label={t('Platform')}
-              className='hidden min-w-0 items-center gap-1 lg:flex'
+              className={
+                isHome
+                  ? 'hidden min-w-0 items-center gap-1 lg:flex'
+                  : 'ms-2 hidden min-w-0 flex-1 items-center gap-0.5 overflow-x-auto xl:flex'
+              }
             >
               {props.navContent ?? (
                 <>
                   <NavLinkList
-                    links={primaryLinks}
+                    links={isHome ? primaryLinks : links}
                     onNavigate={handleNavLinkClick}
-                    className='hover:bg-muted aria-[current=page]:text-foreground shrink-0 rounded-sm px-3 py-2 text-sm font-medium whitespace-nowrap aria-[current=page]:font-semibold'
+                    className={cn(
+                      'hover:bg-muted aria-[current=page]:text-foreground shrink-0 rounded-sm py-2 text-sm font-medium whitespace-nowrap',
+                      isHome
+                        ? 'px-3 aria-[current=page]:font-semibold'
+                        : 'aria-[current=page]:decoration-primary px-2 underline-offset-[5px] aria-[current=page]:underline'
+                    )}
                   />
-                  {secondaryLinks.length > 0 && (
-                    <TopNav
-                      label={t('More')}
+                  {isHome && secondaryLinks.length > 0 && (
+                    <HomeMoreMenu
                       links={secondaryLinks}
                       onNavigate={handleNavLinkClick}
                     />
@@ -250,13 +273,19 @@ export function PublicHeader(props: PublicHeaderProps) {
           )}
 
           <div className='ms-auto flex shrink-0 items-center gap-0.5 sm:gap-1'>
-            {!isMobile && hasUtilityControls && (
+            {isHome && !isMobile && hasUtilityControls && (
               <div className='hidden items-center gap-0.5 md:flex'>
                 {utilityControls}
               </div>
             )}
+            {!isHome && utilityControls}
             {showAuthButtons && (
-              <div className='ms-2'>
+              <div
+                className={cn(
+                  isHome ? 'ms-2' : 'ms-1 border-s ps-2',
+                  !isHome && !isAuthenticated && 'hidden sm:block'
+                )}
+              >
                 {loading && <Skeleton className='h-8 w-18 rounded-md' />}
                 {!loading &&
                   (isAuthenticated ? (
@@ -264,6 +293,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                   ) : (
                     <Button size='sm' render={<Link to='/sign-in' />}>
                       {t('Sign in')}
+                      {!isHome && <ArrowUpRight aria-hidden='true' />}
                     </Button>
                   ))}
               </div>
@@ -276,7 +306,9 @@ export function PublicHeader(props: PublicHeaderProps) {
                   <Button
                     variant='ghost'
                     size='icon'
-                    className='size-10 lg:hidden'
+                    className={
+                      isHome ? 'size-10 lg:hidden' : 'size-10 xl:hidden'
+                    }
                   />
                 }
                 aria-label={t('Toggle navigation menu')}
@@ -315,13 +347,17 @@ export function PublicHeader(props: PublicHeaderProps) {
                     />
                   </nav>
                 )}
-                {isMobile && hasUtilityControls && (
+                {isHome && isMobile && hasUtilityControls && (
                   <div className='mt-auto flex flex-wrap items-center gap-2 border-t px-5 py-3'>
                     {utilityControls}
                   </div>
                 )}
                 {showAuthButtons && (
-                  <div className='px-5 pt-2 pb-5'>
+                  <div
+                    className={
+                      isHome ? 'px-5 pt-2 pb-5' : 'mt-auto border-t p-5'
+                    }
+                  >
                     <Button
                       className='h-11 w-full'
                       render={
@@ -332,6 +368,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                       }
                     >
                       {isAuthenticated ? t('Go to Dashboard') : t('Sign in')}
+                      {!isHome && <ArrowUpRight aria-hidden='true' />}
                     </Button>
                   </div>
                 )}

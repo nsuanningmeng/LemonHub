@@ -18,6 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useState } from 'react'
 
+export function syncBrowserThemeColor() {
+  const background = getComputedStyle(document.documentElement)
+    .getPropertyValue('--background')
+    .trim()
+  if (background) {
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', background)
+  }
+}
+
 /**
  * Resolve a theme color token (e.g. `--foreground`) to an `rgba()` string a
  * canvas chart can draw with. The token is read from `<body>` so theme preset

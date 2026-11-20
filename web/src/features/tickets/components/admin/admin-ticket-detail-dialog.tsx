@@ -181,14 +181,12 @@ export function AdminTicketDetailDialog({
                 </div>
               )}
             </div>
-            <DialogDescription className='flex flex-wrap items-baseline gap-x-3 gap-y-1 wrap-anywhere'>
-              {ticket && (
-                <>
-                  <span className='font-mono'>#{ticket.id}</span>
-                  {ticket.username && <span>{ticket.username}</span>}
-                  {ticket.user_email && <span>{ticket.user_email}</span>}
-                </>
-              )}
+            <DialogDescription className='[overflow-wrap:anywhere] break-words'>
+              {ticket
+                ? `#${ticket.id} · ${ticket.username ?? ''} ${
+                    ticket.user_email ? `(${ticket.user_email})` : ''
+                  }`.trim()
+                : ''}
             </DialogDescription>
           </DialogHeader>
 

@@ -16,8 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useLocation } from '@tanstack/react-router'
+
 import type { TopNavLink } from '../types'
 import { PublicHeader, type PublicHeaderProps } from './public-header'
+import { HomePublicShellContext } from './public-shell-context'
 
 type PublicLayoutProps = {
   children: React.ReactNode
@@ -33,26 +36,35 @@ type PublicLayoutProps = {
 }
 
 export function PublicLayout(props: PublicLayoutProps) {
+  const isHome = useLocation({
+    select: (location) => location.pathname === '/',
+  })
   return (
-    <div className='bg-background text-foreground relative min-h-svh overflow-x-clip'>
-      <PublicHeader
-        navContent={props.navContent}
-        navLinks={props.navLinks}
-        showThemeSwitch={props.showThemeSwitch}
-        showAuthButtons={props.showAuthButtons}
-        showNotifications={props.showNotifications}
-        logo={props.logo}
-        siteName={props.siteName}
-        {...props.headerProps}
-      />
+    <HomePublicShellContext.Provider value={isHome}>
+      <div
+        data-public-shell={isHome ? 'home' : 'standard'}
+        className='bg-background text-foreground relative min-h-svh overflow-x-clip'
+      >
+        <PublicHeader
+          key={isHome ? 'home' : 'standard'}
+          navContent={props.navContent}
+          navLinks={props.navLinks}
+          showThemeSwitch={props.showThemeSwitch}
+          showAuthButtons={props.showAuthButtons}
+          showNotifications={props.showNotifications}
+          logo={props.logo}
+          siteName={props.siteName}
+          {...props.headerProps}
+        />
 
-      {props.showMainContainer !== false ? (
-        <main className='container px-4 py-6 pt-20 md:px-4'>
-          {props.children}
-        </main>
-      ) : (
-        props.children
-      )}
-    </div>
+        {props.showMainContainer !== false ? (
+          <main className='container px-4 py-6 pt-20 md:px-4'>
+            {props.children}
+          </main>
+        ) : (
+          props.children
+        )}
+      </div>
+    </HomePublicShellContext.Provider>
   )
 }

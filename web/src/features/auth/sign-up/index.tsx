@@ -19,29 +19,42 @@ For commercial licensing, please contact support@quantumnous.com
 import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
+import { useStatus } from '@/hooks/use-status'
+
 import { AuthLayout } from '../auth-layout'
+import { TermsFooter } from '../components/terms-footer'
 import { SignUpForm } from './components/sign-up-form'
 
 export function SignUp() {
   const { t } = useTranslation()
+  const { status } = useStatus()
 
   return (
-    <AuthLayout
-      title={t('Create an account')}
-      description={t('Choose credentials for your API account.')}
-      secondaryAction={
-        <>
-          {t('Already have an account?')}{' '}
-          <Link
-            to='/sign-in'
-            className='text-foreground font-medium underline underline-offset-4'
-          >
-            {t('Sign in')}
-          </Link>
-        </>
-      }
-    >
-      <SignUpForm />
+    <AuthLayout>
+      <div className='w-full space-y-8'>
+        <div className='space-y-2'>
+          <h1 className='text-3xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]'>
+            {t('Create an account')}
+          </h1>
+          <p className='text-muted-foreground text-start text-sm leading-relaxed'>
+            {t('Already have an account?')}{' '}
+            <Link
+              to='/sign-in'
+              className='hover:text-primary font-medium underline underline-offset-4'
+            >
+              {t('Sign in')}
+            </Link>
+          </p>
+        </div>
+
+        <SignUpForm />
+
+        <TermsFooter
+          variant='sign-up'
+          status={status}
+          className='text-center'
+        />
+      </div>
     </AuthLayout>
   )
 }
