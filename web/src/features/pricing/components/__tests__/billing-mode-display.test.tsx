@@ -130,7 +130,7 @@ describe('compact model pricing', () => {
       </QueryClientProvider>
     )
     expect(screen.getByRole('row', { name: /test-model/ })).toHaveTextContent(
-      '/ 1M tokens'
+      '1M tokens'
     )
     rerender(
       <QueryClientProvider client={client}>
@@ -138,10 +138,41 @@ describe('compact model pricing', () => {
       </QueryClientProvider>
     )
     const row = screen.getByRole('row', { name: /test-model/ })
-    expect(row).toHaveTextContent('/ 1K tokens')
+    expect(row).toHaveTextContent('1K tokens')
     expect(row).toHaveTextContent('$0.003')
-    expect(row).not.toHaveTextContent('/ 1M tokens')
+    expect(row).not.toHaveTextContent('1M tokens')
   })
+
+  test.each(['M', 'K'] as const)(
+    'a fixed request price is identical in the card and table with token unit %s',
+    (tokenUnit) => {
+      const fixedModel = {
+        ...model(''),
+        billing_mode: undefined,
+        quota_type: 1,
+        model_price: 2.5,
+      }
+      render(
+        <QueryClientProvider client={client}>
+          <ModelCard
+            model={fixedModel}
+            tokenUnit={tokenUnit}
+            onClick={() => {}}
+          />
+          <PricingTable models={[fixedModel]} tokenUnit={tokenUnit} />
+        </QueryClientProvider>
+      )
+      const views = [
+        screen.getByRole('article', { name: fixedModel.model_name }),
+        screen.getByRole('row', { name: /test-model/ }),
+      ]
+      for (const view of views) {
+        expect(view).toHaveTextContent('$2.5')
+        expect(view).toHaveTextContent(/request/i)
+        expect(view).not.toHaveTextContent(/1[KM]/)
+      }
+    }
+  )
 
   test('table rows open model details with Enter and Space', async () => {
     const user = userEvent.setup()
