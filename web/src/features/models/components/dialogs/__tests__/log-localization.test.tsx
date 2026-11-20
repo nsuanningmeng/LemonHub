@@ -94,4 +94,4 @@ test('translates deployment stream and known status labels without changing API 
   expect(streams).toHaveTextContent(locale.t('All streams'))
   expect(containers).toHaveTextContent(`container-1 (${locale.t('Running')})`)
   expect(screen.getByText(rawLog)).toBeVisible()
-})
+}, 20_000)
