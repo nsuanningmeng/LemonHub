@@ -26,18 +26,25 @@ import {
 } from '@tanstack/react-router'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import i18next from 'i18next'
+import { I18nextProvider } from 'react-i18next'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import { createLocaleI18n } from '@/i18n/__tests__/helpers'
 import { api } from '@/lib/api'
 import { Route } from '@/routes/_authenticated/chat/$chatId'
+import { useAuthStore } from '@/stores/auth-store'
+
+const initialAuth = useAuthStore.getState()
 
 afterEach(() => {
+  useAuthStore.setState(initialAuth, true)
   cleanup()
   localStorage.removeItem('status')
   vi.restoreAllMocks()
 })
 
-function renderPresetRoute(chatId: string) {
+function renderPresetRoute(chatId: string, locale = i18next) {
   const root = createRootRoute()
   const auth = createRoute({ getParentRoute: () => root, id: '_authenticated' })
   const route = createRoute({
@@ -58,7 +65,9 @@ function renderPresetRoute(chatId: string) {
   })
   return render(
     <QueryClientProvider client={client}>
-      <RouterProvider router={router} />
+      <I18nextProvider i18n={locale}>
+        <RouterProvider router={router} />
+      </I18nextProvider>
     </QueryClientProvider>
   )
 }
@@ -111,4 +120,43 @@ test('failed configuration can be retried and embeds the configured client by it
     '/api/status',
     '/api/status',
   ])
+})
+
+test('localizes known key errors, keeps the server message, and retries the active chat key', async () => {
+  const locale = await createLocaleI18n('zhCN')
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'tester', role: 1 })
+  vi.spyOn(api, 'get')
+    .mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          chats: [{ Support: 'https://chat.example.test/?token={key}' }],
+        },
+      },
+    })
+    .mockResolvedValueOnce({ data: { success: true, data: { items: [] } } })
+    .mockResolvedValueOnce({
+      data: { success: false, message: 'Account service stopped' },
+    })
+    .mockResolvedValueOnce({
+      data: { success: true, data: { items: [{ id: 2, status: 1 }] } },
+    })
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { key: 'test-chat-token' } },
+  })
+  renderPresetRoute('0', locale)
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    '当前没有已启用的 API 密钥，请先创建或启用密钥'
+  )
+  expect(screen.getByRole('link', { name: 'API 密钥' })).toHaveAttribute(
+    'href',
+    '/keys'
+  )
+  await userEvent.click(screen.getByRole('button', { name: '重试' }))
+  expect(await screen.findByText('Account service stopped')).toBeVisible()
+  await userEvent.click(screen.getByRole('button', { name: '重试' }))
+  expect(await screen.findByTitle('Support')).toHaveAttribute(
+    'src',
+    'https://chat.example.test/?token=sk-test-chat-token'
+  )
 })

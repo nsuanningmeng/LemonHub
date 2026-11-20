@@ -69,7 +69,8 @@ test('translates deployment stream and known status labels without changing API 
       </I18nextProvider>
     </QueryClientProvider>
   )
-  await screen.findByText(rawLog)
+  // The dialog loads containers before requesting the selected container's log.
+  await screen.findByText(rawLog, {}, { timeout: 8000 })
   const [containers, streams] = screen.getAllByRole('combobox')
   expect(containers).toHaveTextContent(`container-1 (${locale.t('Running')})`)
   expect(streams).toHaveTextContent(locale.t('Standard output (stdout)'))

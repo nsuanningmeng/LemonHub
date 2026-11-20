@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link, createFileRoute, redirect } from '@tanstack/react-router'
+import type { TFunction } from 'i18next'
 import { MessageCircleWarning } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -40,6 +41,22 @@ export const Route = createFileRoute('/_authenticated/chat/$chatId')({
   },
   component: ChatRouteComponent,
 })
+
+function describeChatKeyError(error: Error | null, t: TFunction) {
+  switch (error?.message) {
+    case 'Failed to load API keys':
+      return t('Failed to load API keys')
+    case 'Failed to load API key':
+      return t('Failed to load API key')
+    case 'No enabled API keys found. Create or enable one first.':
+      return t('No enabled API keys found. Create or enable one first.')
+    default:
+      return (
+        error?.message ||
+        t('Unable to generate chat link. Please check your API keys.')
+      )
+  }
+}
 
 function ChatRouteComponent() {
   const { t } = useTranslation()
@@ -69,6 +86,7 @@ function ChatRouteComponent() {
     isPending,
     isError,
     error,
+    refetch: refetchKey,
   } = useActiveChatKey(!loading && Boolean(preset && requiresActiveKey))
 
   const iframeSrc = useMemo(() => {
@@ -148,17 +166,17 @@ function ChatRouteComponent() {
   }
 
   if (requiresActiveKey && (isError || !activeKey || !iframeSrc)) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : 'Unable to generate chat link. Please check your API keys.'
     return (
-      <div className='flex h-full flex-col items-center justify-center p-6'>
-        <Alert variant='destructive' className='max-w-xl'>
-          <AlertTitle>{t('Unable to open chat')}</AlertTitle>
-          <AlertDescription>{message}</AlertDescription>
-        </Alert>
-      </div>
+      <ErrorState
+        title={t('Unable to open chat')}
+        description={describeChatKeyError(error, t)}
+        onRetry={() => void refetchKey()}
+        action={
+          <Link to='/keys' className={buttonVariants({ variant: 'outline' })}>
+            {t('API Keys')}
+          </Link>
+        }
+      />
     )
   }
 
