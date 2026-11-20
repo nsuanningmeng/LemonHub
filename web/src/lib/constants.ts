@@ -22,7 +22,18 @@ For commercial licensing, please contact support@quantumnous.com
 
 // System Configuration Defaults
 export const DEFAULT_SYSTEM_NAME = 'LemonHub'
-export const DEFAULT_LOGO = '/logo.png'
+export const DEFAULT_LOGO = '/lemonhub-mark.svg'
+
+/** Stock upstream branding is the unset state for a LemonHub installation. */
+export function resolveSystemName(value?: string | null): string {
+  const name = value?.trim()
+  return !name || name === 'New API' ? DEFAULT_SYSTEM_NAME : name
+}
+
+export function resolveSystemLogo(value?: string | null): string {
+  const logo = value?.trim()
+  return !logo || logo === '/logo.png' ? DEFAULT_LOGO : logo
+}
 
 // LocalStorage Keys
 export const STORAGE_KEYS = {

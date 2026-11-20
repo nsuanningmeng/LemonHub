@@ -24,6 +24,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import {
+  act,
   cleanup,
   render,
   screen,
@@ -113,6 +114,21 @@ function renderOverview() {
   )
 }
 
+test('a long display name stays readable by wrapping within the overview greeting', async () => {
+  const displayName = 'WWWWWWWWWWWWWWWWWWWW'
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'member',
+    display_name: displayName,
+    role: 1,
+  })
+  renderOverview()
+
+  const greeting = await screen.findByText(new RegExp(displayName))
+  expect(greeting).toBeVisible()
+  expect(greeting).toHaveClass('wrap-anywhere')
+})
+
 test('completed setup uses a compact toggle, restores focus after hiding, and preserves announcements', async () => {
   const user = userEvent.setup()
   renderOverview()
@@ -168,6 +184,163 @@ test('an unfinished manually collapsed setup retains its progress and expand act
   expect(
     await screen.findByRole('button', { name: 'Hide setup guide' })
   ).toHaveAttribute('aria-expanded', 'true')
+})
+
+test('completed onboarding keeps workspace shortcuts reachable and hides administrator routes for members', async () => {
+  renderOverview()
+  const shortcuts = await screen.findByRole('region', {
+    name: 'Workspace shortcuts',
+  })
+  expect(
+    within(shortcuts).getByRole('link', { name: 'API Keys' })
+  ).toHaveAttribute('href', '/keys')
+  expect(
+    within(shortcuts).getByRole('link', { name: /Usage Logs/ })
+  ).toHaveAttribute('href', '/usage-logs')
+  expect(
+    within(shortcuts).getByRole('link', { name: /Pricing/ })
+  ).toHaveAttribute('href', '/pricing')
+  expect(
+    within(shortcuts).queryByRole('link', { name: /Channels/ })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Setup guide' })).toHaveAttribute(
+    'aria-expanded',
+    'false'
+  )
+  expect(screen.getByRole('link', { name: 'Open playground' })).toHaveAttribute(
+    'href',
+    '/playground'
+  )
+  expect(
+    screen.getByRole('region', { name: 'Usage at a glance' })
+  ).toBeVisible()
+})
+
+test('an administrator can reach channel management from persistent workspace shortcuts', async () => {
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'admin',
+    role: 10,
+    quota: 500000,
+    request_count: 1,
+  })
+  client.setQueryData(['perf-metrics-summary', 24], { data: { models: [] } })
+  renderOverview()
+  const shortcuts = await screen.findByRole('region', {
+    name: 'Workspace shortcuts',
+  })
+  expect(
+    within(shortcuts).getByRole('link', { name: /Channels/ })
+  ).toHaveAttribute('href', '/channels')
+})
+
+test('disabled navigation modules are removed from overview links and onboarding while account data stays visible', async () => {
+  localStorage.setItem('dashboard_overview_setup_guide_expanded', 'expanded')
+  client.setQueryData(['status'], {
+    api_info_enabled: false,
+    announcements_enabled: false,
+    faq_enabled: false,
+    uptime_kuma_enabled: false,
+    SidebarModulesAdmin: JSON.stringify({
+      console: { enabled: true, token: false, log: false },
+      personal: { enabled: true, topup: false },
+      chat: { enabled: true, playground: false },
+    }),
+  })
+  renderOverview()
+  await screen.findByRole('region', { name: 'Usage at a glance' })
+  expect(
+    screen
+      .queryAllByRole('link')
+      .filter((link) =>
+        ['/keys', '/wallet', '/usage-logs', '/playground'].includes(
+          link.getAttribute('href') ?? ''
+        )
+      )
+  ).toHaveLength(0)
+  expect(
+    screen.queryByRole('button', { name: 'Setup guide' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('region', { name: 'Setup guide' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Pricing' })).toBeVisible()
+})
+
+test('status content changes replace visible dashboard panels without reloading the page', async () => {
+  renderOverview()
+  expect(
+    await screen.findByRole('region', { name: 'Announcements' })
+  ).toBeVisible()
+  await act(async () => {
+    client.setQueryData(['status'], {
+      announcements_enabled: false,
+      api_info_enabled: true,
+      api_info: [
+        {
+          route: 'Regional endpoint',
+          url: 'https://example.test/v1',
+          description: 'Tenant route',
+          color: 'blue',
+        },
+      ],
+      faq_enabled: true,
+      faq: [
+        {
+          id: 1,
+          question: 'How do I connect?',
+          answer: 'Use your regional endpoint.',
+        },
+      ],
+      uptime_kuma_enabled: false,
+    })
+  })
+  expect(
+    screen.queryByRole('region', { name: 'Announcements' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('region', { name: 'API Info' })).toBeVisible()
+  expect(screen.getByText('Regional endpoint')).toBeVisible()
+  expect(
+    screen.getByRole('button', { name: 'How do I connect?' })
+  ).toBeVisible()
+})
+
+test('the open setup guide keeps long request details readable and copies the complete authorized request', async () => {
+  const endpoint = 'https://regional-endpoint-with-a-long-name.example.test/v1'
+  const model = 'provider/production-reasoning-model-with-a-long-name'
+  localStorage.setItem('dashboard_overview_setup_guide_expanded', 'expanded')
+  client.setQueryData(['status'], {
+    api_info_enabled: true,
+    api_info: [{ route: 'Production', url: endpoint }],
+    announcements_enabled: false,
+    faq_enabled: false,
+    uptime_kuma_enabled: false,
+  })
+  client.setQueryData(['dashboard', 'overview', 'user-models'], [model])
+  const user = userEvent.setup()
+  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+  vi.spyOn(api, 'post').mockResolvedValue({
+    data: { success: true, data: { key: 'actual-authorized-key' } },
+  })
+  renderOverview()
+  const preview = await screen.findByRole('region', {
+    name: 'First API request',
+  })
+  const request = within(preview).getByText(
+    (_, element) =>
+      element?.tagName === 'CODE' &&
+      element.textContent?.includes(model) === true
+  )
+  expect(request).toHaveTextContent(`${endpoint}/chat/completions`)
+  expect(request.closest('pre')).toHaveClass('overflow-x-auto')
+  expect(request).not.toHaveTextContent('actual-authorized-key')
+  await user.click(
+    within(preview).getByRole('button', { name: 'Copy ready-to-run curl' })
+  )
+  expect(copy).toHaveBeenCalledWith(
+    expect.stringContaining('Bearer sk-actual-authorized-key')
+  )
+  expect(copy).toHaveBeenCalledWith(expect.stringContaining(model))
 })
 
 test('the overview keeps the balance visible and can retry unavailable usage', async () => {

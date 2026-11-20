@@ -169,9 +169,11 @@ export function ResetPasswordConfirm({
                   )}
                 </Button>
               </div>
-              <p className='text-muted-foreground text-xs'>
-                {t('Password has been copied to clipboard')}
-              </p>
+              {copied && (
+                <p role='status' className='text-muted-foreground text-xs'>
+                  {t('Password has been copied to clipboard')}
+                </p>
+              )}
             </div>
           )}
 

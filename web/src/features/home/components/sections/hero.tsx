@@ -29,20 +29,24 @@ export function Hero(props: { isAuthenticated: boolean }) {
   const { t } = useTranslation()
   const { status } = useStatus()
   const siteTitle = status?.system_name?.trim()
+  const firstLine = status?.home_title_line1?.trim()
+  const secondLine = status?.home_title_line2?.trim()
   const badge =
     status?.home_badge?.trim() ||
     (siteTitle !== DEFAULT_SYSTEM_NAME ? siteTitle : undefined)
 
   return (
-    <section aria-labelledby='gateway-heading' className='gateway-hero'>
+    <section
+      aria-labelledby='home-title'
+      className='gateway-hero'
+      data-custom-heading={firstLine || secondLine ? true : undefined}
+    >
       <GatewayAtlas />
-      <div className='gateway-hero-content'>
+      <div id='gateway-heading' className='gateway-hero-content'>
         {badge && <div className='gateway-signature'>{badge}</div>}
-        <h1 id='gateway-heading'>
-          <span>
-            {status?.home_title_line1?.trim() || t('The developer’s')}
-          </span>{' '}
-          <span>{status?.home_title_line2?.trim() || t('AI gateway')}</span>
+        <h1 id='home-title'>
+          <span>{firstLine || t('The developer’s')}</span>{' '}
+          <span>{secondLine || t('AI gateway')}</span>
         </h1>
         <p>
           {t(

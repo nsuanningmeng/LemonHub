@@ -16,44 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronDown, RotateCcw } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
-import {
-  ENDPOINT_TYPES,
-  FILTER_ALL,
-  QUOTA_TYPES,
-  getEndpointTypeLabels,
-  getQuotaTypeLabels,
-} from '../constants'
+import { ENDPOINT_TYPES, FILTER_ALL, getEndpointTypeLabels } from '../constants'
 import { parseTags } from '../lib/filters'
 import type { PricingModel, PricingVendor } from '../types'
-
-type FilterOption = {
-  value: string
-  label: string
-  count?: number
-  suffix?: string
-  icon?: ReactNode
-}
-
-type FilterSectionProps = {
-  title: string
-  value: string
-  options: FilterOption[]
-  onChange: (value: string) => void
-}
+import { CatalogBillingFilter } from './catalog-billing-filter'
+import { FilterSection, type FilterOption } from './catalog-filter-section'
 
 export interface PricingSidebarProps {
   quotaTypeFilter: string
@@ -91,75 +66,8 @@ function formatGroupRatio(ratio: number | undefined): string | undefined {
   return `x${formatted}`
 }
 
-function FilterChip(props: {
-  option: FilterOption
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type='button'
-      onClick={props.onClick}
-      aria-pressed={props.active}
-      className={cn(
-        'group inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-medium transition-colors',
-        props.active
-          ? 'border-primary bg-primary text-primary-foreground'
-          : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
-      )}
-      title={props.option.label}
-    >
-      {props.option.icon && (
-        <span className='shrink-0'>{props.option.icon}</span>
-      )}
-      <span className='truncate'>{props.option.label}</span>
-      {(props.option.suffix || props.option.count != null) && (
-        <span
-          className={cn(
-            'rounded-sm px-1 font-mono tabular-nums',
-            props.active
-              ? 'bg-primary-foreground/15 text-primary-foreground'
-              : 'bg-muted text-muted-foreground'
-          )}
-        >
-          {props.option.suffix ?? props.option.count}
-        </span>
-      )}
-    </button>
-  )
-}
-
-function FilterSection(props: FilterSectionProps) {
-  return (
-    <Collapsible
-      defaultOpen
-      className='border-border/70 border-b pb-3 last:border-b-0'
-    >
-      <CollapsibleTrigger className='group flex w-full items-center justify-between py-2.5 text-left'>
-        <span className='text-foreground text-sm font-semibold'>
-          {props.title}
-        </span>
-        <ChevronDown className='text-muted-foreground size-4 transition-transform group-data-[panel-open]:rotate-180' />
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className='flex flex-wrap gap-1.5'>
-          {props.options.map((option) => (
-            <FilterChip
-              key={option.value}
-              option={option}
-              active={props.value === option.value}
-              onClick={() => props.onChange(option.value)}
-            />
-          ))}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
-
 export function PricingSidebar(props: PricingSidebarProps) {
   const { t } = useTranslation()
-  const quotaTypeLabels = getQuotaTypeLabels(t)
   const endpointTypeLabels = getEndpointTypeLabels(t)
 
   const vendorOptions: FilterOption[] = [
@@ -191,24 +99,6 @@ export function PricingSidebar(props: PricingSidebarProps) {
       label: group,
       suffix: formatGroupRatio(props.groupRatios?.[group]),
     })),
-  ]
-
-  const quotaOptions: FilterOption[] = [
-    {
-      value: QUOTA_TYPES.ALL,
-      label: quotaTypeLabels[QUOTA_TYPES.ALL],
-      count: props.models.length,
-    },
-    {
-      value: QUOTA_TYPES.TOKEN,
-      label: quotaTypeLabels[QUOTA_TYPES.TOKEN],
-      count: countBy(props.models, (model) => model.quota_type === 0),
-    },
-    {
-      value: QUOTA_TYPES.REQUEST,
-      label: quotaTypeLabels[QUOTA_TYPES.REQUEST],
-      count: countBy(props.models, (model) => model.quota_type === 1),
-    },
   ]
 
   const tagOptions: FilterOption[] = [
@@ -247,7 +137,10 @@ export function PricingSidebar(props: PricingSidebarProps) {
   ]
 
   return (
-    <aside className={cn('min-w-0', props.className)}>
+    <aside
+      aria-label={t('Catalog filters')}
+      className={cn('min-w-0', props.className)}
+    >
       <div className='mb-2 flex min-h-9 items-center justify-between gap-2'>
         <h2 className='text-foreground text-base font-semibold'>
           {t('Filter')}
@@ -273,12 +166,14 @@ export function PricingSidebar(props: PricingSidebarProps) {
 
       <div className='space-y-1'>
         <FilterSection
+          defaultOpen
           title={t('Groups')}
           value={props.groupFilter}
           options={groupOptions}
           onChange={props.onGroupChange}
         />
         <FilterSection
+          defaultOpen
           title={t('All Vendors')}
           value={props.vendorFilter}
           options={vendorOptions}
@@ -290,10 +185,9 @@ export function PricingSidebar(props: PricingSidebarProps) {
           options={tagOptions}
           onChange={props.onTagChange}
         />
-        <FilterSection
-          title={t('Pricing Type')}
+        <CatalogBillingFilter
+          models={props.models}
           value={props.quotaTypeFilter}
-          options={quotaOptions}
           onChange={props.onQuotaTypeChange}
         />
         <FilterSection

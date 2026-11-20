@@ -34,12 +34,14 @@ import {
 import { getUserQuotaDates } from '@/features/dashboard/api'
 import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
+import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { useStatus } from '@/hooks/use-status'
-import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
+import { getCurrencyLabel } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { StatCard } from '../ui/stat-card'
 import {
@@ -133,7 +135,9 @@ export function SummaryCards() {
   const { t } = useTranslation()
   const [chartMetric, setChartMetric] = useState<ActivityMetric>('usage')
   const user = useAuthStore((state) => state.auth.user)
-  const { status, loading } = useStatus()
+  const { loading } = useStatus()
+  const currency = useSystemConfigStore((state) => state.config.currency)
+  const showWallet = useIsSidebarModuleVisible('/wallet')
 
   const summaryTimeRange = useMemo(() => computeTimeRange(1), [])
   const remainQuota = Number(user?.quota ?? 0)
@@ -149,30 +153,27 @@ export function SummaryCards() {
       summaryTimeRange.end_timestamp,
     ],
     queryFn: async () =>
-      getUserQuotaDates({
-        start_timestamp: summaryTimeRange.start_timestamp,
-        end_timestamp: summaryTimeRange.end_timestamp,
-        default_time: 'hour',
+      getUserQuotaDates(
+        {
+          start_timestamp: summaryTimeRange.start_timestamp,
+          end_timestamp: summaryTimeRange.end_timestamp,
+          default_time: 'hour',
+        },
+        false,
+        { skipBusinessError: true, skipErrorHandler: true }
+      ).catch((cause: unknown) => {
+        // Retain known account totals and let the usage card offer local recovery.
+        throw new Error('Failed to fetch usage', { cause })
       }),
     staleTime: 60 * 1000,
+    retry: false,
   })
 
-  const summaryValues = useMemo(() => {
-    return {
-      usedDisplay: formatQuota(usedQuota),
-      requestCountDisplay: formatNumber(requestCount),
-    }
-  }, [requestCount, usedQuota])
-
-  const currencyEnabledFromStore = isCurrencyDisplayEnabled()
-  const statusCurrencyFlag =
-    typeof status?.display_in_currency === 'boolean'
-      ? Boolean(status.display_in_currency)
-      : undefined
-  const currencyEnabled =
-    statusCurrencyFlag !== undefined
-      ? statusCurrencyFlag
-      : currencyEnabledFromStore
+  const summaryValues = {
+    usedDisplay: formatQuota(usedQuota),
+    requestCountDisplay: formatNumber(requestCount),
+  }
+  const currencyEnabled = currency.quotaDisplayType !== 'TOKENS'
   const currencyLabel = currencyEnabled ? getCurrencyLabel() : 'Tokens'
 
   const sparklineData = useMemo(
@@ -200,7 +201,7 @@ export function SummaryCards() {
   const todayUsageDisplay = formatQuota(recentUsage)
   let runwayDisplay: string
   if (trendFailed) {
-    runwayDisplay = t('Failed to load')
+    runwayDisplay = t('Failed to fetch usage')
   } else if (!trendReady) {
     runwayDisplay = t('Loading')
   } else if (runwayDays !== null) {
@@ -241,7 +242,10 @@ export function SummaryCards() {
 
   return (
     <Dialog>
-      <section className='bg-card @container/overview min-w-0 overflow-hidden rounded-lg border'>
+      <section
+        aria-label={t('Usage at a glance')}
+        className='bg-card @container/overview min-w-0 overflow-hidden rounded-lg border'
+      >
         <div className='flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3 sm:px-5'>
           <h3 className='text-base font-semibold tracking-tight'>
             {t('Usage at a glance')}
@@ -294,13 +298,15 @@ export function SummaryCards() {
                   </Button>
                 )}
               </div>
-              <Button
-                size='sm'
-                variant='outline'
-                render={<Link to='/wallet' />}
-              >
-                {t('Wallet')} <ArrowRight data-icon='inline-end' />
-              </Button>
+              {showWallet && (
+                <Button
+                  size='sm'
+                  variant='outline'
+                  render={<Link to='/wallet' />}
+                >
+                  {t('Wallet')} <ArrowRight data-icon='inline-end' />
+                </Button>
+              )}
             </div>
           </div>
           <div className='@container/summary min-w-0'>

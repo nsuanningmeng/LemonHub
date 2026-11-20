@@ -74,7 +74,10 @@ export function TableEmpty({
       <TableCell colSpan={colSpan} className='p-0 whitespace-normal'>
         <Empty className='min-h-52 sm:min-h-60'>
           <EmptyHeader>
-            <EmptyMedia variant='icon'>
+            <EmptyMedia
+              variant='icon'
+              className='border-brand-line bg-brand-highlight/25 text-foreground rounded-xl border'
+            >
               {icon || <Database className='size-6' />}
             </EmptyMedia>
             <EmptyTitle>{resolvedTitle}</EmptyTitle>

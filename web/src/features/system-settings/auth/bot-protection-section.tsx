@@ -17,8 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
-import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
@@ -49,6 +47,7 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
+import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 const botProtectionSchema = z.object({
@@ -102,45 +101,40 @@ export function BotProtectionSection({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
 
-  const form = useForm<BotProtectionFormValues>({
-    resolver: zodResolver(botProtectionSchema),
-    defaultValues,
-  })
+  const { form, handleSubmit, isSubmitting } =
+    useSettingsForm<BotProtectionFormValues>({
+      resolver: zodResolver(botProtectionSchema),
+      defaultValues,
+      onSubmit: async (data, changedFields) => {
+        const updates = Object.entries(data).filter(
+          ([key]) => key in changedFields
+        )
 
-  useEffect(() => {
-    form.reset(defaultValues)
-  }, [defaultValues, form])
+        // Apply the enable toggle LAST: the backend enable-guard checks whether the
+        // *currently persisted* provider is configured, so the new provider and its
+        // credentials must be saved before TurnstileCheckEnabled flips to true —
+        // otherwise switching provider and enabling in one save is rejected.
+        updates.sort(([a], [b]) => {
+          if (a === 'TurnstileCheckEnabled') return 1
+          if (b === 'TurnstileCheckEnabled') return -1
+          return 0
+        })
 
-  const provider = form.watch('CaptchaProvider')
-
-  const onSubmit = async (data: BotProtectionFormValues) => {
-    const updates = Object.entries(data).filter(
-      ([key, value]) =>
-        value !== defaultValues[key as keyof BotProtectionFormValues]
-    )
-
-    // Apply the enable toggle LAST: the backend enable-guard checks whether the
-    // *currently persisted* provider is configured, so the new provider and its
-    // credentials must be saved before TurnstileCheckEnabled flips to true —
-    // otherwise switching provider and enabling in one save is rejected.
-    updates.sort(([a], [b]) => {
-      if (a === 'TurnstileCheckEnabled') return 1
-      if (b === 'TurnstileCheckEnabled') return -1
-      return 0
+        for (const [key, value] of updates) {
+          await updateOption.mutateAsync({ key, value: value ?? '' })
+        }
+      },
     })
 
-    for (const [key, value] of updates) {
-      await updateOption.mutateAsync({ key, value: value ?? '' })
-    }
-  }
+  const provider = form.watch('CaptchaProvider')
 
   return (
     <SettingsSection title={t('Bot Protection')}>
       <Form {...form}>
-        <SettingsForm onSubmit={form.handleSubmit(onSubmit)} autoComplete='off'>
+        <SettingsForm onSubmit={handleSubmit} autoComplete='off'>
           <SettingsPageFormActions
-            onSave={form.handleSubmit(onSubmit)}
-            isSaving={updateOption.isPending}
+            onSave={handleSubmit}
+            isSaving={isSubmitting || updateOption.isPending}
           />
           <FormField
             control={form.control}

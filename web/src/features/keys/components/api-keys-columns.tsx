@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import type { ColumnDef } from '@tanstack/react-table'
+import type { CellContext, ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
@@ -49,11 +49,13 @@ import {
 import { DataTableRowActions } from './data-table-row-actions'
 
 function getQuotaProgressColor(percentage: number): string {
-  if (percentage <= 10) return '[&_[data-slot=progress-indicator]]:bg-rose-500'
-  if (percentage <= 30) {
-    return '[&_[data-slot=progress-indicator]]:bg-amber-500'
+  if (percentage <= 10) {
+    return '[&_[data-slot=progress-indicator]]:bg-destructive'
   }
-  return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
+  if (percentage <= 30) {
+    return '[&_[data-slot=progress-indicator]]:bg-warning'
+  }
+  return '[&_[data-slot=progress-indicator]]:bg-success'
 }
 
 function useGroupRatios(): Record<string, number | string> {
@@ -74,6 +76,10 @@ function useGroupRatios(): Record<string, number | string> {
   })
 
   return data ?? {}
+}
+
+function renderApiKeyCell(props: CellContext<ApiKey, unknown>) {
+  return <ApiKeyCell apiKey={props.row.original} />
 }
 
 export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
@@ -111,7 +117,9 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
       accessorKey: 'name',
       header: t('Name'),
       cell: ({ row }) => (
-        <span className='font-medium'>{row.getValue('name')}</span>
+        <span className='font-semibold tracking-tight'>
+          {row.getValue('name')}
+        </span>
       ),
       size: 180,
       meta: { mobileTitle: true },
@@ -139,7 +147,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
       id: 'key',
       accessorKey: 'key',
       header: t('API Key'),
-      cell: ({ row }) => <ApiKeyCell apiKey={row.original} />,
+      cell: renderApiKeyCell,
       enableSorting: false,
       size: 260,
     },
@@ -325,7 +333,7 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
     {
       id: 'actions',
       header: () => t('Actions'),
-      cell: ({ row }) => <DataTableRowActions row={row} />,
+      cell: DataTableRowActions,
       meta: { pinned: 'right' as const },
     },
   ]

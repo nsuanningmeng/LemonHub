@@ -63,7 +63,10 @@ export function DataTablePagination<TData>({
   const pageNumbers = getPageNumbers(currentPage, totalPages)
 
   return (
-    <div className='@container/pagination w-full min-w-0'>
+    <nav
+      aria-label={t('Table pagination')}
+      className='@container/pagination w-full min-w-0'
+    >
       <div className='flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2'>
         <div className='flex items-center gap-2 @lg/pagination:gap-4'>
           <p className='text-muted-foreground text-xs whitespace-nowrap tabular-nums'>
@@ -188,6 +191,6 @@ export function DataTablePagination<TData>({
           </Button>
         </div>
       </div>
-    </div>
+    </nav>
   )
 }

@@ -136,10 +136,17 @@ describe('OAuth settings saves', () => {
       await user.click(screen.getByRole('button', { name: 'Save Changes' }))
 
       await waitFor(() =>
-        expect(api.put).toHaveBeenCalledWith('/api/option/', {
-          key: 'GitHubClientId',
-          value: 'github-client',
-        })
+        expect(api.put).toHaveBeenCalledWith(
+          '/api/option/',
+          {
+            key: 'GitHubClientId',
+            value: 'github-client',
+          },
+          expect.objectContaining({
+            skipBusinessError: true,
+            skipErrorHandler: true,
+          })
+        )
       )
       expect(api.put).toHaveBeenCalledTimes(1)
       expect(discovery).not.toHaveBeenCalled()
@@ -177,10 +184,17 @@ describe('OAuth settings saves', () => {
     await user.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith('/api/option/', {
-        key: 'oidc.enabled',
-        value: false,
-      })
+      expect(api.put).toHaveBeenCalledWith(
+        '/api/option/',
+        {
+          key: 'oidc.enabled',
+          value: false,
+        },
+        expect.objectContaining({
+          skipBusinessError: true,
+          skipErrorHandler: true,
+        })
+      )
     )
     expect(api.put).toHaveBeenCalledTimes(1)
   })
@@ -243,14 +257,28 @@ describe('OAuth settings saves', () => {
 
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(4))
     expect(get).toHaveBeenCalledWith('https://provider.example.com/discovery')
-    expect(api.put).toHaveBeenCalledWith('/api/option/', {
-      key: 'oidc.enabled',
-      value: true,
-    })
-    expect(api.put).toHaveBeenCalledWith('/api/option/', {
-      key: 'oidc.token_endpoint',
-      value: 'https://provider.example.com/token',
-    })
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/option/',
+      {
+        key: 'oidc.enabled',
+        value: true,
+      },
+      expect.objectContaining({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
+    )
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/option/',
+      {
+        key: 'oidc.token_endpoint',
+        value: 'https://provider.example.com/token',
+      },
+      expect.objectContaining({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
+    )
     expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled()
   })
 
@@ -291,22 +319,50 @@ describe('OAuth settings saves', () => {
       expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled()
     )
     await waitFor(() => expect(api.put).toHaveBeenCalledTimes(4))
-    expect(api.put).toHaveBeenCalledWith('/api/option/', {
-      key: 'oidc.well_known',
-      value: 'https://provider.example.com/discovery',
-    })
-    expect(api.put).toHaveBeenCalledWith('/api/option/', {
-      key: 'oidc.authorization_endpoint',
-      value: response.data.authorization_endpoint,
-    })
-    expect(api.put).toHaveBeenCalledWith('/api/option/', {
-      key: 'oidc.token_endpoint',
-      value: response.data.token_endpoint,
-    })
-    expect(api.put).toHaveBeenCalledWith('/api/option/', {
-      key: 'oidc.user_info_endpoint',
-      value: response.data.userinfo_endpoint,
-    })
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/option/',
+      {
+        key: 'oidc.well_known',
+        value: 'https://provider.example.com/discovery',
+      },
+      expect.objectContaining({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
+    )
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/option/',
+      {
+        key: 'oidc.authorization_endpoint',
+        value: response.data.authorization_endpoint,
+      },
+      expect.objectContaining({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
+    )
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/option/',
+      {
+        key: 'oidc.token_endpoint',
+        value: response.data.token_endpoint,
+      },
+      expect.objectContaining({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
+    )
+    expect(api.put).toHaveBeenCalledWith(
+      '/api/option/',
+      {
+        key: 'oidc.user_info_endpoint',
+        value: response.data.userinfo_endpoint,
+      },
+      expect.objectContaining({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
+    )
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Save Changes' })).toBeEnabled()
     )
@@ -338,10 +394,42 @@ describe('OAuth settings saves', () => {
     get.mockResolvedValue({ data: {} })
     await user.click(screen.getByRole('button', { name: 'Save Changes' }))
     await waitFor(() =>
-      expect(api.put).toHaveBeenCalledWith('/api/option/', {
-        key: 'oidc.well_known',
-        value: 'https://provider.example.com/discovery',
-      })
+      expect(api.put).toHaveBeenCalledWith(
+        '/api/option/',
+        {
+          key: 'oidc.well_known',
+          value: 'https://provider.example.com/discovery',
+        },
+        expect.objectContaining({
+          skipBusinessError: true,
+          skipErrorHandler: true,
+        })
+      )
     )
   })
+})
+
+it('keeps OAuth provider tabs in readable rows on phones and keyboard navigation reaches the last provider', async () => {
+  const user = userEvent.setup()
+  await renderSettings()
+
+  expect(screen.getByRole('tablist')).toHaveClass(
+    'h-auto!',
+    'grid-cols-2',
+    'sm:grid-cols-3',
+    'lg:grid-cols-6'
+  )
+  const firstTab = screen.getByRole('tab', { name: 'GitHub' })
+  firstTab.focus()
+  await user.keyboard('{End}')
+
+  expect(screen.getByRole('tab', { name: 'WeChat' })).toHaveFocus()
+  await user.keyboard('{Enter}')
+  expect(screen.getByRole('tab', { name: 'WeChat' })).toHaveAttribute(
+    'aria-selected',
+    'true'
+  )
+  expect(
+    screen.getByRole('switch', { name: 'Enable WeChat Auth' })
+  ).toBeVisible()
 })

@@ -17,14 +17,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { X } from 'lucide-react'
-import { useState, useRef, type KeyboardEvent } from 'react'
+import {
+  useState,
+  type ComponentPropsWithRef,
+  type KeyboardEvent,
+  type FocusEvent,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { cn } from '@/lib/utils'
 
-interface TagInputProps {
+interface TagInputProps extends Omit<
+  ComponentPropsWithRef<'input'>,
+  'value' | 'onChange' | 'defaultValue'
+> {
   value: string[]
   onChange: (tags: string[]) => void
   placeholder?: string
@@ -38,11 +47,14 @@ export function TagInput({
   placeholder,
   className,
   disabled = false,
+  ref,
+  onKeyDown,
+  onBlur,
+  ...inputProps
 }: TagInputProps) {
   const { t } = useTranslation()
   const placeholderText = placeholder ?? t('Add tags...')
   const [inputValue, setInputValue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
 
   const addTag = (tag: string) => {
     const trimmed = tag.trim()
@@ -57,6 +69,8 @@ export function TagInput({
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    onKeyDown?.(e)
+    if (e.defaultPrevented || disabled || isComposingKeyboardEvent(e)) return
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault()
       addTag(inputValue)
@@ -66,8 +80,9 @@ export function TagInput({
     }
   }
 
-  const handleBlur = () => {
-    if (inputValue.trim()) {
+  const handleBlur = (event: FocusEvent<HTMLInputElement>) => {
+    onBlur?.(event)
+    if (!disabled && inputValue.trim()) {
       addTag(inputValue)
     }
   }
@@ -75,10 +90,10 @@ export function TagInput({
   return (
     <div
       className={cn(
-        'border-input focus-within:border-ring focus-within:ring-ring/50 flex min-h-9 w-full flex-wrap items-center gap-2 rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-within:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
+        'border-input focus-within:border-ring focus-within:ring-ring/50 has-aria-invalid:border-destructive has-aria-invalid:ring-destructive/20 flex min-h-9 w-full flex-wrap items-center gap-2 rounded-md border bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none focus-within:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50 md:text-sm',
         className
       )}
-      onClick={() => inputRef.current?.focus()}
+      onClick={(event) => event.currentTarget.querySelector('input')?.focus()}
     >
       {value.map((tag) => (
         <Badge key={tag} variant='secondary' className='gap-1 pr-1'>
@@ -88,7 +103,7 @@ export function TagInput({
               type='button'
               variant='ghost'
               size='icon-sm'
-              aria-label='Remove tag'
+              aria-label={t('Remove {{value}}', { value: tag })}
               onClick={(e) => {
                 e.stopPropagation()
                 removeTag(tag)
@@ -101,7 +116,8 @@ export function TagInput({
         </Badge>
       ))}
       <input
-        ref={inputRef}
+        {...inputProps}
+        ref={ref}
         type='text'
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}

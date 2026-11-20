@@ -30,7 +30,7 @@ const EXAMPLES = [
   {
     name: 'Chat',
     path: '/v1/chat/completions',
-    headers: ['Authorization: Bearer $API_KEY'],
+    headers: ['Authorization: Bearer $LEMONHUB_API_KEY'],
     body: (model: string) => ({ model, messages: [message] }),
     response: {
       choices: [{ message: { role: 'assistant', content: 'Hello!' } }],
@@ -39,7 +39,7 @@ const EXAMPLES = [
   {
     name: 'Responses',
     path: '/v1/responses',
-    headers: ['Authorization: Bearer $API_KEY'],
+    headers: ['Authorization: Bearer $LEMONHUB_API_KEY'],
     body: (model: string) => ({ model, input: 'Hello!' }),
     response: {
       output: [
@@ -50,14 +50,14 @@ const EXAMPLES = [
   {
     name: 'Claude',
     path: '/v1/messages',
-    headers: ['x-api-key: $API_KEY', 'anthropic-version: 2023-06-01'],
+    headers: ['x-api-key: $LEMONHUB_API_KEY', 'anthropic-version: 2023-06-01'],
     body: (model: string) => ({ model, max_tokens: 128, messages: [message] }),
     response: { content: [{ type: 'text', text: 'Hello!' }] },
   },
   {
     name: 'Gemini',
     path: '/v1beta/models/{model}:generateContent',
-    headers: ['x-goog-api-key: $API_KEY'],
+    headers: ['x-goog-api-key: $LEMONHUB_API_KEY'],
     body: (_model: string) => ({ contents: [{ parts: [{ text: 'Hello!' }] }] }),
     response: {
       candidates: [{ content: { role: 'model', parts: [{ text: 'Hello!' }] } }],
@@ -69,14 +69,15 @@ function shellLiteral(value: string) {
   return `'${value.replaceAll("'", "'\\''")}'`
 }
 
-export function HeroTerminalDemo(props: { serverUrl: string }) {
+export function HeroTerminalDemo(props: { serverUrl?: string }) {
   const { t } = useTranslation()
   const [model, setModel] = useState('')
   const [response, setResponse] = useState(false)
   const modelName = model.trim() || 'your-model'
-  const baseUrl = `${props.serverUrl}/v1`
+  const serverUrl = props.serverUrl ?? window.location.origin
+  const baseUrl = `${serverUrl}/v1`
   return (
-    <div className='gateway-examples'>
+    <section className='gateway-examples' aria-label={t('API examples')}>
       <div className='gateway-connection'>
         <div className='gateway-address'>
           <span>{t('Base URL')}</span>
@@ -111,7 +112,7 @@ export function HeroTerminalDemo(props: { serverUrl: string }) {
           )
           const body = JSON.stringify(item.body(modelName), null, 2)
           const command = [
-            `curl -X POST ${shellLiteral(props.serverUrl + path)}`,
+            `curl -X POST ${shellLiteral(serverUrl + path)}`,
             ...item.headers.map((header) => `  -H "${header}"`),
             '  -H "Content-Type: application/json"',
             `  -d ${shellLiteral(body)}`,
@@ -156,6 +157,6 @@ export function HeroTerminalDemo(props: { serverUrl: string }) {
           )
         })}
       </Tabs>
-    </div>
+    </section>
   )
 }

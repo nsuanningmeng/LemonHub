@@ -180,6 +180,14 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 			}
 			config.ThinkingBudget = kitutil.GetPointer(clampThinkingBudget(modelName, budget))
 		} else {
+			if strings.HasPrefix(modelName, "gemini-4-argon") {
+				switch level {
+				case "minimal":
+					level = "low"
+				case "xhigh", "max":
+					level = "high"
+				}
+			}
 			config.ThinkingLevel = level
 		}
 		geminiRequest.GenerationConfig.ThinkingConfig = config

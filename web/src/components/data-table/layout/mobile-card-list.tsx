@@ -57,13 +57,14 @@ interface MobileCardListProps<TData> {
   isLoading?: boolean
   emptyTitle?: string
   emptyDescription?: string
+  emptyAction?: React.ReactNode
   getRowKey?: (row: Row<TData>) => string | number
   getRowClassName?: (row: Row<TData>) => string | undefined
 }
 
 function ListSkeleton() {
   return (
-    <div className='divide-y overflow-hidden rounded-lg border'>
+    <div className='divide-y overflow-hidden'>
       {[1, 2, 3, 4, 5].map((i) => (
         <div key={i} className='px-3 py-2.5'>
           <div className='flex items-center justify-between'>
@@ -88,7 +89,7 @@ function ListSkeleton() {
 
 function FallbackListSkeleton() {
   return (
-    <div className='divide-y overflow-hidden rounded-lg border'>
+    <div className='divide-y overflow-hidden'>
       {[1, 2, 3, 4, 5].map((i) => (
         <div key={i} className='space-y-1.5 px-3 py-2.5'>
           {[1, 2, 3].map((j) => (
@@ -106,7 +107,7 @@ function FallbackListSkeleton() {
 /**
  * Mobile-optimized list view for table data.
  *
- * Renders rows inside a single bordered container with dividers —
+ * Renders rows as a continuous list with dividers —
  * a Vercel/Stripe-style list rather than individual cards.
  *
  * Per-row content is shared with the desktop card view via
@@ -142,7 +143,7 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
 
   if (!rows || rows.length === 0) {
     return (
-      <div className='rounded-lg border p-6'>
+      <div className='py-8'>
         <Empty className='border-none p-0'>
           <EmptyHeader>
             <EmptyMedia variant='icon'>
@@ -151,13 +152,14 @@ export function MobileCardList<TData>(props: MobileCardListProps<TData>) {
             <EmptyTitle>{resolvedEmptyTitle}</EmptyTitle>
             <EmptyDescription>{resolvedEmptyDescription}</EmptyDescription>
           </EmptyHeader>
+          {props.emptyAction}
         </Empty>
       </div>
     )
   }
 
   return (
-    <div className='divide-y overflow-hidden rounded-lg border'>
+    <div className='divide-y overflow-hidden'>
       {rows.map((row) => {
         const key = getRowKey ? getRowKey(row) : row.id
         return (

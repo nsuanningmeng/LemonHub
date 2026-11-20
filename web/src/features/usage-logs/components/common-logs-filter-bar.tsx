@@ -37,6 +37,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { isComposingKeyboardEvent } from '@/lib/keyboard'
 
 import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
@@ -230,7 +231,7 @@ export function CommonLogsFilterBar<TData>(
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') handleApply()
+      if (e.key === 'Enter' && !isComposingKeyboardEvent(e)) handleApply()
     },
     [handleApply]
   )

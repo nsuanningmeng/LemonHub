@@ -1,0 +1,49 @@
+{
+  "name": "lemonhub",
+  "like": "neutral",
+  "mode": "both",
+  "settings": [
+    {
+      "thing": "spacing",
+      "value": "medium",
+      "source": "dial"
+    },
+    {
+      "thing": "font",
+      "value": "Public Sans Variable",
+      "source": "dial"
+    },
+    {
+      "thing": "surfaces",
+      "value": "outlined",
+      "source": "dial"
+    },
+    {
+      "thing": "type",
+      "value": "standard",
+      "source": "dial"
+    },
+    {
+      "thing": "accent",
+      "value": "#3559E3",
+      "source": "dial"
+    },
+    {
+      "thing": "neutral",
+      "value": "#707A91",
+      "source": "dial"
+    },
+    {
+      "thing": "vibrancy",
+      "value": "65",
+      "source": "dial"
+    },
+    {
+      "thing": "corners",
+      "value": "medium",
+      "source": "dial"
+    }
+  ],
+  "palette": "78c0a381ae43124613c2b3ce2286ba883698619a63d7fd96785dc141542229ca",
+  "lifted": []
+}

@@ -133,7 +133,9 @@ it.each(['desktop', 'mobile'])(
     expect(
       get.mock.calls.some(([url]) => url === '/api/token/?p=3&size=20')
     ).toBe(true)
-    expect(screen.getByRole('textbox', { name: 'Key name' })).toBeVisible()
+    expect(
+      screen.getByRole('textbox', { name: 'Filter by name...' })
+    ).toBeVisible()
     expect(screen.getByRole('textbox', { name: 'API key' })).toBeVisible()
     const status = screen.getByRole('button', { name: 'Status' })
     expect(status).toBeVisible()
@@ -162,7 +164,9 @@ it.each(['desktop', 'mobile'])(
       expect(screen.queryByText('expired-server-row')).not.toBeInTheDocument()
     )
     expect(
-      await screen.findByText('No records found. Try adjusting your filters.')
+      await screen.findByText(
+        'No keys match these filters. Try another name, key or status.'
+      )
     ).toBeVisible()
     expect(
       get.mock.calls.filter(

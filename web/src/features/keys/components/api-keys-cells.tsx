@@ -79,28 +79,25 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
     copyIcon = <Loader2 className='size-3.5 animate-spin' />
     copyTooltip = t('Loading...')
   } else if (isCopied) {
-    copyIcon = <Check className='size-3.5 text-green-600' />
+    copyIcon = <Check className='text-success size-3.5' />
     copyTooltip = t('Copied!')
   }
 
   return (
-    <div className='flex max-w-full min-w-0 items-center'>
+    <div className='border-border/70 bg-muted/40 flex max-w-full min-w-0 items-center gap-1 rounded-md border px-2'>
       <Popover open={popoverOpen} onOpenChange={handlePopoverOpen}>
         <PopoverTrigger
           render={
             <Button
               variant='ghost'
               size='sm'
-              className='text-muted-foreground h-7 max-w-full min-w-0 justify-start truncate px-0 font-mono text-xs hover:bg-transparent aria-expanded:bg-transparent'
+              className='text-muted-foreground h-7 max-w-full min-w-0 shrink justify-start truncate px-0 font-mono text-xs hover:bg-transparent aria-expanded:bg-transparent'
             />
           }
         >
           <span className='truncate'>{maskedKey}</span>
         </PopoverTrigger>
-        <PopoverContent
-          className='w-auto max-w-[min(90vw,28rem)]'
-          align='start'
-        >
+        <PopoverContent className='w-80 max-w-[min(90vw,28rem)]' align='start'>
           <div className='space-y-2'>
             <p className='text-muted-foreground text-xs'>{t('Full API Key')}</p>
             {isLoading ? (
@@ -113,10 +110,11 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
             ) : (
               <input
                 readOnly
+                aria-label={t('Full API Key')}
                 value={resolvedFullKey || maskedKey}
                 autoFocus
                 onFocus={(e) => e.target.select()}
-                className='bg-muted/50 w-full min-w-[280px] rounded-md border px-3 py-2 font-mono text-xs outline-none'
+                className='bg-muted/50 w-full min-w-0 rounded-md border px-3 py-2 font-mono text-xs outline-none'
               />
             )}
           </div>
@@ -129,6 +127,7 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
               variant='ghost'
               size='icon'
               className='size-7 shrink-0'
+              aria-label={copyTooltip}
               onClick={handleCopy}
               disabled={isLoading}
             />

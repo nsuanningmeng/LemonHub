@@ -22,6 +22,7 @@ import { SearchIcon, Tick02Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Command as CommandPrimitive } from 'cmdk'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   Dialog,
@@ -50,8 +51,8 @@ function Command({
 }
 
 function CommandDialog({
-  title = 'Command Palette',
-  description = 'Search for a command to run...',
+  title,
+  description,
   children,
   className,
   showCloseButton = false,
@@ -63,19 +64,22 @@ function CommandDialog({
   showCloseButton?: boolean
   children: React.ReactNode
 }) {
+  const { t } = useTranslation()
   return (
     <Dialog {...props}>
-      <DialogHeader className='sr-only'>
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
       <DialogContent
         className={cn(
-          'top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0',
+          'top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0 [@media(max-height:36rem)]:top-1/2 [@media(max-height:36rem)]:-translate-y-1/2 [@media(max-height:36rem)]:grid-rows-[minmax(0,1fr)]',
           className
         )}
         showCloseButton={showCloseButton}
       >
+        <DialogHeader className='sr-only'>
+          <DialogTitle>{title ?? t('Command palette')}</DialogTitle>
+          <DialogDescription>
+            {description ?? t('Type a command or search...')}
+          </DialogDescription>
+        </DialogHeader>
         {children}
       </DialogContent>
     </Dialog>

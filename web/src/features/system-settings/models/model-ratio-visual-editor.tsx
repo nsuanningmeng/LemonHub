@@ -136,7 +136,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
   ref
 ) {
   const { t } = useTranslation()
-  const isMobile = useMediaQuery('(max-width: 767px)')
+  const isNarrowViewport = useMediaQuery('(max-width: 1279px)')
   const [sheetOpen, setSheetOpen] = useState(false)
   const [editorOpen, setEditorOpen] = useState(false)
   const [editData, setEditData] = useState<ModelRatioData | null>(null)
@@ -245,7 +245,6 @@ const ModelRatioVisualEditorComponent = forwardRef<
           isDraftNew: Boolean(!saved && draft),
         }
       })
-      .filter((row) => !row.isDraftDeleted)
       .filter(
         (row) =>
           filterMode !== 'unset' || isBasePricingUnset(row.draft ?? row.saved)
@@ -321,16 +320,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
         requestRuleExpr: editableModel.requestRuleExpr,
       })
       setEditorOpen(true)
-      if (isMobile) setSheetOpen(true)
+      if (isNarrowViewport) setSheetOpen(true)
     },
-    [isMobile]
+    [isNarrowViewport]
   )
 
   const handleAdd = useCallback(() => {
     setEditData(null)
     setEditorOpen(true)
-    if (isMobile) setSheetOpen(true)
-  }, [isMobile])
+    if (isNarrowViewport) setSheetOpen(true)
+  }, [isNarrowViewport])
 
   const handleGlobalFilterChange = useCallback<OnChangeFn<string>>(
     (updater) => {
@@ -442,16 +441,88 @@ const ModelRatioVisualEditorComponent = forwardRef<
     ]
   )
 
+  const handleUndo = useCallback(
+    (name: string) => {
+      const maps: Array<[string, string, string]> = [
+        ['ModelPrice', modelPrice, savedModelPrice],
+        ['ModelRatio', modelRatio, savedModelRatio],
+        ['CacheRatio', cacheRatio, savedCacheRatio],
+        ['CreateCacheRatio', createCacheRatio, savedCreateCacheRatio],
+        ['CompletionRatio', completionRatio, savedCompletionRatio],
+        ['ImageRatio', imageRatio, savedImageRatio],
+        ['AudioRatio', audioRatio, savedAudioRatio],
+        [
+          'AudioCompletionRatio',
+          audioCompletionRatio,
+          savedAudioCompletionRatio,
+        ],
+        ['billing_setting.billing_mode', billingMode, savedBillingMode],
+        ['billing_setting.billing_expr', billingExpr, savedBillingExpr],
+      ]
+      try {
+        const changes = maps.map(([field, draftText, savedText]) => {
+          const draft = JSON.parse(draftText || '{}')
+          const saved = JSON.parse(savedText || '{}')
+          if (
+            !draft ||
+            !saved ||
+            typeof draft !== 'object' ||
+            typeof saved !== 'object' ||
+            Array.isArray(draft) ||
+            Array.isArray(saved)
+          ) {
+            throw new Error()
+          }
+          let next = { ...draft }
+          if (Object.hasOwn(saved, name)) {
+            next = { ...next, [name]: saved[name] }
+          } else {
+            delete next[name]
+          }
+          return [field, JSON.stringify(next, null, 2)] as const
+        })
+        for (const [field, value] of changes) onChange(field, value)
+      } catch {
+        toast.error(t('Invalid JSON'))
+      }
+    },
+    [
+      modelPrice,
+      modelRatio,
+      cacheRatio,
+      createCacheRatio,
+      completionRatio,
+      imageRatio,
+      audioRatio,
+      audioCompletionRatio,
+      billingMode,
+      billingExpr,
+      savedModelPrice,
+      savedModelRatio,
+      savedCacheRatio,
+      savedCreateCacheRatio,
+      savedCompletionRatio,
+      savedImageRatio,
+      savedAudioRatio,
+      savedAudioCompletionRatio,
+      savedBillingMode,
+      savedBillingExpr,
+      onChange,
+      t,
+    ]
+  )
+
   const columns = useMemo(
     () =>
       buildModelRatioColumns({
         onDelete: handleDelete,
+        onUndo: handleUndo,
         onEdit: handleEdit,
         deleteDisabled: filterMode === 'unset',
         t,
         unsetMode: filterMode === 'unset',
       }),
-    [handleEdit, handleDelete, filterMode, t]
+    [handleEdit, handleDelete, handleUndo, filterMode, t]
   )
 
   const ensurePageInRange = useCallback((pageCount: number) => {
@@ -686,7 +757,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
 
   return (
     <div className='flex flex-col gap-4'>
-      <div className='grid h-[clamp(720px,calc(100vh-12rem),900px)] min-h-0 gap-4 md:grid-cols-[minmax(300px,0.72fr)_minmax(520px,1.28fr)] xl:grid-cols-[minmax(320px,0.68fr)_minmax(640px,1.32fr)]'>
+      <div className='grid h-[clamp(720px,calc(100vh-12rem),900px)] min-h-0 min-w-0 gap-4 xl:grid-cols-[minmax(0,0.68fr)_minmax(0,1.32fr)]'>
         <div className='flex min-h-0 min-w-0 flex-col gap-3'>
           <DataTableToolbar
             table={table}
@@ -786,7 +857,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     const target = event.target as HTMLElement
                     if (!event.currentTarget.contains(target)) return
                     if (target.closest('button, [role="checkbox"]')) return
-                    handleEdit(row.original)
+                    if (!row.original.isDraftDeleted) handleEdit(row.original)
                   }}
                 />
               )}
@@ -796,7 +867,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
           {hasRows && <DataTablePagination table={table} />}
         </div>
 
-        <div className='hidden min-h-0 min-w-0 md:block'>
+        <div className='hidden min-h-0 min-w-0 xl:block'>
           {editorOpen ? (
             <ModelPricingEditorPanel
               ref={editorPanelRef}
@@ -839,7 +910,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         </DataTableBulkActions>
       )}
 
-      {isMobile && (
+      {isNarrowViewport && (
         <ModelPricingSheet
           ref={editorPanelRef}
           open={sheetOpen}

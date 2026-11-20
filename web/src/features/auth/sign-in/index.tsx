@@ -23,6 +23,7 @@ import { useStatus } from '@/hooks/use-status'
 
 import { AuthLayout } from '../auth-layout'
 import { TermsFooter } from '../components/terms-footer'
+import { getRegistrationOptions } from '../lib/registration-options'
 import { UserAuthForm } from './components/user-auth-form'
 
 export function SignIn() {
@@ -37,18 +38,17 @@ export function SignIn() {
           <h1 className='text-3xl leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]'>
             {t('Sign in')}
           </h1>
-          {!status?.self_use_mode_enabled &&
-            status?.register_enabled !== false && (
-              <p className='text-muted-foreground text-start text-sm leading-relaxed'>
-                {t("Don't have an account?")}{' '}
-                <Link
-                  to='/sign-up'
-                  className='hover:text-primary font-medium underline underline-offset-4'
-                >
-                  {t('Sign up')}
-                </Link>
-              </p>
-            )}
+          {getRegistrationOptions(status).enabled && (
+            <p className='text-muted-foreground text-start text-sm leading-relaxed'>
+              {t("Don't have an account?")}{' '}
+              <Link
+                to='/sign-up'
+                className='hover:text-primary font-medium underline underline-offset-4'
+              >
+                {t('Sign up')}
+              </Link>
+            </p>
+          )}
         </div>
 
         <UserAuthForm redirectTo={redirect} />

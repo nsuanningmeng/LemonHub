@@ -90,6 +90,79 @@ describe('compact model pricing', () => {
   })
 
   test.each([
+    { expression: 'tier("request", 5)', quotaType: 0, hasTokenUnit: false },
+    {
+      expression: 'tier("base", p * 3 + c * 15)',
+      quotaType: 1,
+      hasTokenUnit: true,
+    },
+  ])(
+    'card unit follows active expression $expression instead of stale quota metadata',
+    ({ expression, quotaType, hasTokenUnit }) => {
+      render(
+        <QueryClientProvider client={client}>
+          <ModelCard
+            model={{ ...model(expression), quota_type: quotaType }}
+            onClick={() => {}}
+          />
+        </QueryClientProvider>
+      )
+      expect(Boolean(screen.queryByText('/ 1M'))).toBe(hasTokenUnit)
+    }
+  )
+
+  test('request expression rows never show token units from stale quota metadata', () => {
+    render(
+      <QueryClientProvider client={client}>
+        <PricingTable models={[model('tier("request", 5)')]} tokenUnit='K' />
+      </QueryClientProvider>
+    )
+    const row = screen.getByRole('row', { name: /test-model/ })
+    expect(row).toHaveTextContent('Per Request')
+    expect(row).not.toHaveTextContent(/1[KM] tokens/)
+  })
+
+  test('table price units refresh without replacing the model data', () => {
+    const models = [model('tier("base", p * 3 + c * 15)')]
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <PricingTable models={models} tokenUnit='M' />
+      </QueryClientProvider>
+    )
+    expect(screen.getByRole('row', { name: /test-model/ })).toHaveTextContent(
+      '/ 1M tokens'
+    )
+    rerender(
+      <QueryClientProvider client={client}>
+        <PricingTable models={models} tokenUnit='K' />
+      </QueryClientProvider>
+    )
+    const row = screen.getByRole('row', { name: /test-model/ })
+    expect(row).toHaveTextContent('/ 1K tokens')
+    expect(row).toHaveTextContent('$0.003')
+    expect(row).not.toHaveTextContent('/ 1M tokens')
+  })
+
+  test('table rows open model details with Enter and Space', async () => {
+    const user = userEvent.setup()
+    const onModelClick = vi.fn()
+    render(
+      <QueryClientProvider client={client}>
+        <PricingTable
+          models={[model('tier("base", p * 3 + c * 15)')]}
+          onModelClick={onModelClick}
+        />
+      </QueryClientProvider>
+    )
+    const row = screen.getByRole('row', { name: /test-model/ })
+    expect(row).toHaveAttribute('tabindex', '0')
+    row.focus()
+    await user.keyboard('{Enter} ')
+    expect(onModelClick).toHaveBeenCalledTimes(2)
+    expect(onModelClick).toHaveBeenLastCalledWith('test-model')
+  })
+
+  test.each([
     {
       name: 'time-dependent tiers',
       expression:

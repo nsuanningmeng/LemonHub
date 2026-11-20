@@ -95,6 +95,26 @@ For commercial licensing, please contact support@quantumnous.com
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --color-tone-blue: var(--tone-blue);
+  --color-tone-blue-foreground: var(--tone-blue-foreground);
+  --color-tone-blue-strong: var(--tone-blue-strong);
+  --color-tone-blue-border: var(--tone-blue-border);
+  --color-tone-teal: var(--tone-teal);
+  --color-tone-teal-foreground: var(--tone-teal-foreground);
+  --color-tone-teal-strong: var(--tone-teal-strong);
+  --color-tone-teal-border: var(--tone-teal-border);
+  --color-tone-violet: var(--tone-violet);
+  --color-tone-violet-foreground: var(--tone-violet-foreground);
+  --color-tone-violet-strong: var(--tone-violet-strong);
+  --color-tone-violet-border: var(--tone-violet-border);
+  --color-tone-peach: var(--tone-peach);
+  --color-tone-peach-foreground: var(--tone-peach-foreground);
+  --color-tone-peach-strong: var(--tone-peach-strong);
+  --color-tone-peach-border: var(--tone-peach-border);
+  --color-brand-highlight: var(--brand-highlight);
+  --color-brand-paper: var(--brand-paper);
+  --color-brand-muted: var(--brand-muted);
+  --color-brand-line: var(--brand-line);
 }
 
 :root {
@@ -182,6 +202,12 @@ For commercial licensing, please contact support@quantumnous.com
     var(--foreground) 16%,
     var(--background)
   );
+  --workspace-rail-width: 15.5rem;
+  --workspace-rail-icon-width: 3.5rem;
+  --brand-highlight: var(--studio-highlight, oklch(0.923 0.04 267));
+  --brand-paper: var(--studio-paper, oklch(0.979 0.005 250));
+  --brand-muted: oklch(0.52 0.027 250);
+  --brand-line: oklch(0.87 0.019 250);
 }
 
 .dark {

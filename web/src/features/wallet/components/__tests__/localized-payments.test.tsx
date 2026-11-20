@@ -94,7 +94,7 @@ test('recharge language changes preserve preset amounts, savings and selection c
           discount: {},
         }}
         presetAmounts={[{ value: 730, discount: 0.8 }, { value: 100 }]}
-        selectedPreset={null}
+        selectedPreset={730}
         onSelectPreset={select}
         topupAmount={5}
         onTopupAmountChange={vi.fn()}
@@ -122,6 +122,11 @@ test('recharge language changes preserve preset amounts, savings and selection c
   const discounted = screen.getByRole('button', {
     name: '730 优惠 20% 支付 584 • 节省 146',
   })
+  expect(discounted).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('button', { name: '100 支付 100' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  )
   expect(
     within(discounted).getByText('• 节省 146', { selector: 'span' })
   ).toBeInTheDocument()

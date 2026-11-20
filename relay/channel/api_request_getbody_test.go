@@ -32,16 +32,9 @@ func TestApplyUpstreamBodyMetadataSetsReplayableMetadata(t *testing.T) {
 	require.NoError(t, err)
 	defer closer.Close()
 
-	// NewRequest hides the body's dynamic type behind req.Body, so metadata
-	// extraction must use the original body passed to NewRequest.
+	// NewRequest cannot infer replay metadata from an arbitrary reader.
 	req, err := http.NewRequest(http.MethodPost, "https://example.com/v1/chat/completions", body)
 	require.NoError(t, err)
-	assert.Nil(t, req.GetBody)
-	assert.Zero(t, req.ContentLength)
-	_, requestBodyIsReplayable := req.Body.(common.ReplayableBody)
-	assert.False(t, requestBodyIsReplayable)
-
-	ApplyUpstreamBodyMetadata(req, req.Body)
 	assert.Nil(t, req.GetBody)
 	assert.Zero(t, req.ContentLength)
 
@@ -86,9 +79,15 @@ func TestApplyUpstreamBodyMetadataHidesRawBodyStorageCloser(t *testing.T) {
 	assert.EqualValues(t, len(payload), req.ContentLength)
 	require.NotNil(t, req.GetBody)
 
+	// A raw storage rewind must not alter an in-flight request cursor.
+	prefix := make([]byte, 5)
+	_, err = io.ReadFull(req.Body, prefix)
+	require.NoError(t, err)
+	_, err = storage.Seek(0, io.SeekStart)
+	require.NoError(t, err)
 	sent, err := io.ReadAll(req.Body)
 	require.NoError(t, err)
-	assert.Equal(t, payload, sent)
+	assert.Equal(t, payload, append(prefix, sent...))
 	require.NoError(t, req.Body.Close())
 
 	replayBody, err := req.GetBody()
@@ -614,4 +613,52 @@ func TestUpstreamGetBody_HTTP2CannotRetryWithoutGetBody(t *testing.T) {
 	assert.Equal(t, 1, srv.streamCount)
 	require.Len(t, srv.attemptBodies, 1)
 	assert.Equal(t, payload, srv.attemptBodies[0])
+}
+
+func TestDoRequestKeepsUploadOpenAfterEarlyHTTP2Response(t *testing.T) {
+	service.InitHttpClient()
+	payload := []byte(`{"model":"test-model","input":"upload after response headers"}`)
+	type receivedBody struct {
+		body []byte
+		err  error
+	}
+	received := make(chan receivedBody, 1)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		body, err := io.ReadAll(r.Body)
+		received <- receivedBody{body: body, err: err}
+		_, _ = io.WriteString(w, "ok")
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	t.Cleanup(server.Close)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}}
+	client, err := service.GetHttpClientWithProxySettings("", info.ChannelSetting)
+	require.NoError(t, err)
+	originalTransport := client.Transport
+	client.Transport = server.Client().Transport
+	t.Cleanup(func() { client.Transport = originalTransport })
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL, reader)
+	require.NoError(t, err)
+	req.ContentLength = int64(len(payload))
+	resp, err := DoRequest(nil, req, info)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	require.Equal(t, "HTTP/2.0", resp.Proto)
+	// No request bytes are available until headers have reached the caller.
+	// The transport still owns the upload body at this point.
+	_, err = writer.Write(payload)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	response, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", string(response))
+	actual := <-received
+	require.NoError(t, actual.err)
+	assert.Equal(t, payload, actual.body)
 }

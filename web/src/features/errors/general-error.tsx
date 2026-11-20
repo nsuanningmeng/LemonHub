@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 
 import { ErrorPage } from './error-page'
 import {
@@ -27,8 +27,6 @@ import {
   getResourceBuildId,
   isResourceLoadError,
 } from './lib/resource-recovery'
-
-const FEEDBACK_URL = 'https://github.com/QuantumNous/new-api/issues'
 
 type GeneralErrorProps = React.HTMLAttributes<HTMLDivElement> & {
   minimal?: boolean
@@ -78,33 +76,29 @@ export function GeneralError({
     )
   }
 
-  const hasExtraActions = resourceFailure || !minimal
   return (
     <ErrorPage
       className={className}
       minimal={minimal}
       code={minimal || resourceFailure ? undefined : (status ?? 500)}
       title={title}
-      description={description}
+      description={
+        <>
+          <p>{description}</p>
+          {!minimal && !resourceFailure && (
+            <p className='mt-3 text-sm'>
+              {t(
+                'If the problem continues, contact your workspace administrator.'
+              )}
+            </p>
+          )}
+        </>
+      }
       action={
-        hasExtraActions && (
-          <>
-            {resourceFailure && (
-              <Button onClick={() => window.location.reload()}>
-                {t('Reload page')}
-              </Button>
-            )}
-            {!minimal && (
-              <a
-                href={FEEDBACK_URL}
-                target='_blank'
-                rel='noopener noreferrer'
-                className={buttonVariants({ variant: 'outline' })}
-              >
-                {t('Report an issue')}
-              </a>
-            )}
-          </>
+        resourceFailure && (
+          <Button onClick={() => window.location.reload()}>
+            {t('Reload page')}
+          </Button>
         )
       }
     />

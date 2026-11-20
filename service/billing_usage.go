@@ -129,6 +129,9 @@ func usageFromOpenAIBillingUsage(billingUsage *dto.BillingUsage) *dto.Usage {
 		if usage.PromptTokensDetails.CacheWriteTokens == 0 && inputDetails.CacheWriteTokens > 0 {
 			usage.PromptTokensDetails.CacheWriteTokens = inputDetails.CacheWriteTokens
 		}
+		if usage.PromptTokensDetails.CacheCreationInputTokens == 0 && inputDetails.CacheCreationInputTokens > 0 {
+			usage.PromptTokensDetails.CacheCreationInputTokens = inputDetails.CacheCreationInputTokens
+		}
 		if usage.PromptTokensDetails.CacheWriteTokensDetails == nil {
 			usage.PromptTokensDetails.CacheWriteTokensDetails = inputDetails.Clone().CacheWriteTokensDetails
 		}

@@ -23,7 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
-import { DEFAULT_TOKEN_UNIT } from '../constants'
+import { DEFAULT_TOKEN_UNIT, FILTER_ALL } from '../constants'
 import {
   getDynamicDisplayGroupRatio,
   getDynamicPricingSummary,
@@ -63,7 +63,6 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const tags = parseTags(props.model.tags)
   const groups = props.model.enable_groups || []
-  const endpoints = props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
   const initial = props.model.model_name?.charAt(0).toUpperCase() || '?'
@@ -84,12 +83,14 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       })
     : null
 
-  const primaryGroup = groups[0]
-  const bottomTags = [...endpoints.slice(0, 2), ...tags.slice(0, 2)]
-  const hiddenCount =
-    Math.max(groups.length - 1, 0) +
-    Math.max(endpoints.length - 2, 0) +
-    Math.max(tags.length - 2, 0)
+  const primaryGroup =
+    props.selectedGroup &&
+    props.selectedGroup !== FILTER_ALL &&
+    groups.includes(props.selectedGroup)
+      ? props.selectedGroup
+      : undefined
+  const bottomTags = tags.slice(0, 2)
+  const hiddenCount = Math.max(tags.length - 2, 0)
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -200,7 +201,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
 
   return (
-    <article className='bg-card flex min-w-0 flex-col rounded-lg border p-4 sm:p-5'>
+    <article
+      aria-label={props.model.model_name}
+      className='bg-card flex min-w-0 flex-col rounded-lg border p-4 sm:p-5'
+    >
       <div className='flex items-start gap-3'>
         <span
           className='bg-muted flex size-9 shrink-0 items-center justify-center rounded-md'
@@ -211,7 +215,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           )}
         </span>
         <div className='min-w-0 flex-1'>
-          <h2 className='font-mono text-base leading-tight font-semibold tracking-tight'>
+          <h2 className='font-mono text-base leading-tight font-semibold tracking-tight [overflow-wrap:anywhere]'>
             <button
               type='button'
               onClick={props.onClick}
@@ -243,7 +247,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       </div>
 
       {props.model.description && (
-        <p className='text-muted-foreground mt-3 line-clamp-2 text-sm leading-relaxed'>
+        <p className='text-muted-foreground mt-3 line-clamp-2 text-sm leading-relaxed wrap-anywhere'>
           {props.model.description}
         </p>
       )}
@@ -260,7 +264,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       <div className='mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1'>
         <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
           {primaryGroup && (
-            <span className='text-muted-foreground text-sm font-medium'>
+            <span className='text-muted-foreground max-w-full text-sm font-medium wrap-anywhere'>
               {primaryGroup}
             </span>
           )}
@@ -274,7 +278,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
 
         <div className='flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 sm:gap-x-3 sm:gap-y-1'>
           {bottomTags.map((item) => (
-            <span key={item} className='text-muted-foreground text-xs'>
+            <span
+              key={item}
+              className='text-muted-foreground max-w-full text-xs wrap-anywhere'
+            >
               {item}
             </span>
           ))}

@@ -60,24 +60,8 @@ export function useSidebarData(): SidebarData {
   return {
     navGroups: [
       {
-        id: 'chat',
-        title: t('Chat'),
-        items: [
-          {
-            title: t('Playground'),
-            url: '/playground',
-            icon: FlaskConical,
-          },
-          {
-            title: t('Chat'),
-            icon: MessageSquare,
-            type: 'chat-presets',
-          },
-        ],
-      },
-      {
         id: 'general',
-        title: t('General'),
+        title: t('Workspace'),
         items: [
           {
             title: t('Overview'),
@@ -85,7 +69,7 @@ export function useSidebarData(): SidebarData {
             icon: Activity,
           },
           {
-            title: t('Dashboard'),
+            title: t('Usage analytics'),
             url: '/dashboard/models',
             icon: LayoutDashboard,
           },
@@ -114,8 +98,24 @@ export function useSidebarData(): SidebarData {
         ],
       },
       {
+        id: 'chat',
+        title: t('Build'),
+        items: [
+          {
+            title: t('Playground'),
+            url: '/playground',
+            icon: FlaskConical,
+          },
+          {
+            title: t('Chat'),
+            icon: MessageSquare,
+            type: 'chat-presets',
+          },
+        ],
+      },
+      {
         id: 'personal',
-        title: t('Personal'),
+        title: t('Account'),
         items: [
           {
             title: t('Wallet'),
@@ -153,7 +153,7 @@ export function useSidebarData(): SidebarData {
       },
       {
         id: 'admin',
-        title: t('Admin'),
+        title: t('Operations'),
         items: [
           {
             title: t('Channels'),

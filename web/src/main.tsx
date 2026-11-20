@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+// Establish cascade layers before any component or theme stylesheet.
+import './styles/index.css'
 import {
   QueryCache,
   QueryClient,
@@ -30,7 +32,7 @@ import { toast } from 'sonner'
 
 import { getStatus } from '@/lib/api'
 import { installBuildMetadata } from '@/lib/build-metadata'
-import { applyFaviconToDom } from '@/lib/dom-utils'
+import { applySystemMetadataToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -41,9 +43,6 @@ import { ThemeProvider } from './context/theme-provider'
 import { i18nReady } from './i18n/config'
 // Generated Routes
 import { routeTree } from './routeTree.gen'
-
-// Styles
-import './styles/index.css'
 
 // Ensure VChart theme is initialized before any chart mounts (prevents white default theme flash)
 // VChart theme is driven by our ThemeProvider (html.light/html.dark) via per-chart `theme` prop.
@@ -113,46 +112,17 @@ const rootElement = document.querySelector<HTMLElement>('#root')
 if (!rootElement) {
   throw new Error('Root element not found')
 }
-// Set document.title and favicon from cached status, then refresh from network
+// Apply cached metadata before rendering, then refresh from the server.
+// useSystemConfig applies favicons only after the logo has loaded successfully.
 ;(function initSystemBranding() {
   try {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
-    const apply = (name: string) => {
-      document.title = name
-      const metaTitle = document.querySelector(
-        'meta[name="title"]'
-      ) as HTMLMetaElement | null
-      if (metaTitle) metaTitle.setAttribute('content', name)
-    }
-    const ensureMeta = (metaName: string): HTMLMetaElement => {
-      let el = document.querySelector(
-        `meta[name="${metaName}"]`
-      ) as HTMLMetaElement | null
-      if (!el) {
-        el = document.createElement('meta')
-        el.setAttribute('name', metaName)
-        document.head.appendChild(el)
-      }
-      return el
-    }
-    // Apply admin-configured SEO meta tags. Empty values keep the static
-    // defaults in index.html instead of blanking them out.
-    const applySeo = (description?: unknown, keywords?: unknown) => {
-      if (typeof description === 'string' && description.trim() !== '') {
-        ensureMeta('description').setAttribute('content', description)
-      }
-      if (typeof keywords === 'string' && keywords.trim() !== '') {
-        ensureMeta('keywords').setAttribute('content', keywords)
-      }
-    }
     // Cache-first
     try {
       const saved = localStorage.getItem('status')
       if (saved) {
         const s = JSON.parse(saved)
-        if (s?.system_name) apply(s.system_name)
-        if (s?.logo) applyFaviconToDom(s.logo)
-        applySeo(s?.seo_description, s?.seo_keywords)
+        applySystemMetadataToDom(s)
       }
     } catch {
       /* empty */
@@ -160,16 +130,14 @@ if (!rootElement) {
     // Background refresh
     getStatus()
       .then((s) => {
-        if (s?.system_name) {
-          apply(s.system_name as string)
+        if (s) {
+          applySystemMetadataToDom(s)
           try {
             localStorage.setItem('status', JSON.stringify(s))
           } catch {
             /* empty */
           }
         }
-        if (s?.logo) applyFaviconToDom(s.logo as string)
-        applySeo(s?.seo_description, s?.seo_keywords)
       })
       .catch(() => {
         /* empty */
@@ -178,21 +146,26 @@ if (!rootElement) {
     /* empty */
   }
 })()
-// Start the interface in the selected language, including the first route's labels.
-void i18nReady.then(() => {
-  if (rootElement.innerHTML) return
-  const root = ReactDOM.createRoot(rootElement)
-  root.render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider>
-          <FontProvider>
-            <DirectionProvider>
-              <RouterProvider router={router} />
-            </DirectionProvider>
-          </FontProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </StrictMode>
-  )
-})
+// Wait for the detected locale before mounting translated components.
+i18nReady
+  .then(() => {
+    if (!rootElement.innerHTML) {
+      const root = ReactDOM.createRoot(rootElement)
+      root.render(
+        <StrictMode>
+          <QueryClientProvider client={queryClient}>
+            <ThemeProvider>
+              <FontProvider>
+                <DirectionProvider>
+                  <RouterProvider router={router} />
+                </DirectionProvider>
+              </FontProvider>
+            </ThemeProvider>
+          </QueryClientProvider>
+        </StrictMode>
+      )
+    }
+  })
+  .catch((error: unknown) => {
+    console.error('Failed to initialize application translations', error)
+  })

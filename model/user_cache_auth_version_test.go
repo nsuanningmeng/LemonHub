@@ -93,7 +93,7 @@ func TestUserAuthFieldUpdateRejectsVersionMismatch(t *testing.T) {
 		Id: userID, Group: "current", Username: "cached", AuthVersion: 3,
 	}, true))
 
-	err := updateUserCacheFieldAtVersion(userID, "Group", "stale", 2)
+	err := writeUserCache(&UserBase{Id: userID, Group: "stale", AuthVersion: 2}, false)
 
 	assert.ErrorIs(t, err, ErrUserAuthCachePending)
 	group, err := common.RDB.HGet(t.Context(), getUserCacheKey(userID), "Group").Result()
@@ -101,23 +101,24 @@ func TestUserAuthFieldUpdateRejectsVersionMismatch(t *testing.T) {
 	assert.Equal(t, "current", group)
 }
 
-func TestUserAuthFieldUpdateDoesNotPromoteIncompleteOldSchema(t *testing.T) {
+func TestUserAuthRefreshRehydratesOldSchemaWithSiteOwnership(t *testing.T) {
+	truncateTables(t)
 	useUserCacheMiniRedis(t)
-	const userID = 4203
-	key := getUserCacheKey(userID)
+	user := User{Username: "cache-site-upgrade", SiteId: 3, AuthVersion: 1, Email: "new@example.com", Quota: 100}
+	require.NoError(t, DB.Create(&user).Error)
+	key := getUserCacheKey(user.Id)
 	require.NoError(t, common.RDB.HSet(t.Context(), key, map[string]interface{}{
-		"Id":          userID,
-		"Email":       "old@example.com",
-		"AuthVersion": 1,
-		"CacheSchema": userCacheSchemaVersion - 1,
+		"Id": user.Id, "Email": "old@example.com", "AuthVersion": 1,
+		"CacheSchema": userCacheSchemaVersion - 1, "Quota": 30,
 	}).Err())
-
-	require.NoError(t, updateUserCacheFieldAtVersion(userID, "Email", "new@example.com", 1))
-	schema, err := common.RDB.HGet(t.Context(), key, "CacheSchema").Int()
+	_, err := cacheGetUserBase(user.Id)
+	require.Error(t, err)
+	require.NoError(t, PublishUserAuthCache(user.Id))
+	cached, err := cacheGetUserBase(user.Id)
 	require.NoError(t, err)
-	assert.Equal(t, userCacheSchemaVersion-1, schema)
-	_, err = cacheGetUserBase(userID)
-	assert.Error(t, err, "an old hash without SiteId must be rehydrated, not marked current")
+	assert.Equal(t, user.SiteId, cached.SiteId)
+	assert.Equal(t, user.Email, cached.Email)
+	assert.Equal(t, 30, cached.Quota)
 }
 
 func TestRefreshUserGroupCacheRepairsDelayedSameVersionWrite(t *testing.T) {

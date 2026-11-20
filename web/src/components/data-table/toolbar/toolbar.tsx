@@ -163,6 +163,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   const [showFilters, setShowFilters] = useState(true)
   const narrow = useMediaQuery('(max-width: 640px)')
   const filterPanelId = React.useId()
+  const expandedFiltersId = React.useId()
   const [isSearchComposing, setIsSearchComposing] = useState(false)
 
   const filters = props.filters ?? []
@@ -340,6 +341,7 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
       variant='ghost'
       onClick={() => setExpanded((p) => !p)}
       aria-expanded={expanded}
+      aria-controls={expandedFiltersId}
       className={cn(
         'text-muted-foreground hover:text-foreground gap-1 px-2',
         props.hasExpandedActiveFilters &&
@@ -387,7 +389,11 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
 
   if (hasLeftActions) {
     return (
-      <div className={cn('flex flex-col gap-2', props.className)}>
+      <div
+        role='search'
+        aria-label={t('Filter records')}
+        className={cn('flex flex-col gap-2', props.className)}
+      >
         <div className='flex flex-wrap items-center gap-2'>
           {props.customSearch !== undefined ? props.customSearch : searchInput}
           {filterFields}
@@ -397,7 +403,10 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
         </div>
 
         {expanded && hasExpandable && (
-          <div className='flex flex-wrap items-center gap-2'>
+          <div
+            id={expandedFiltersId}
+            className='flex flex-wrap items-center gap-2'
+          >
             {props.expandable}
           </div>
         )}
@@ -418,10 +427,18 @@ export function DataTableToolbar<TData>(props: DataTableToolbarProps<TData>) {
   }
 
   return (
-    <div className={cn('flex flex-wrap items-center gap-2', props.className)}>
+    <div
+      role='search'
+      aria-label={t('Filter records')}
+      className={cn('flex flex-wrap items-center gap-2', props.className)}
+    >
       {props.customSearch !== undefined ? props.customSearch : searchInput}
       {filterFields}
-      {expanded && hasExpandable && props.expandable}
+      {expanded && hasExpandable && (
+        <div id={expandedFiltersId} className='contents'>
+          {props.expandable}
+        </div>
+      )}
 
       <div className='ms-auto flex max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-2'>
         {props.preActions}

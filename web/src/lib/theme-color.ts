@@ -19,13 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { useEffect, useState } from 'react'
 
 export function syncBrowserThemeColor() {
-  const background = getComputedStyle(document.documentElement)
+  const meta = document.querySelector('meta[name="theme-color"]')
+  if (!meta) return
+  const background = getComputedStyle(document.body)
     .getPropertyValue('--background')
     .trim()
   if (background) {
-    document
-      .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', background)
+    meta.setAttribute('content', background)
   }
 }
 

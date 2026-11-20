@@ -18,9 +18,9 @@ import (
 // The caller MUST invoke closer.Close() once the upstream call has finished
 // (typically via defer) to release the disk file / memory accounting.
 //
-// The returned body exposes its size and replay capability without exposing
-// io.Closer. Request construction uses that metadata to populate ContentLength
-// and GetBody, while the caller retains ownership of the underlying storage
+// The returned body has its own cursor, size and replay capability. Request
+// construction uses that metadata to populate ContentLength and GetBody. Closing
+// the body releases only its cursor; the caller owns the underlying storage
 // through the separately returned closer.
 func NewOutboundJSONBody(data []byte) (body common.ReplayableBody, closer io.Closer, err error) {
 	storage, err := common.CreateBodyStorage(data)

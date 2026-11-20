@@ -175,6 +175,14 @@ For commercial licensing, please contact support@quantumnous.com
 .gateway-landscape canvas[data-ready] {
   opacity: 1;
 }
+.gateway-hero[data-custom-heading] .gateway-landscape {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent calc(100% - 16rem),
+    #0002 calc(100% - 12rem),
+    #000 calc(100% - 6rem)
+  );
+}
 .gateway-motion {
   position: absolute;
   z-index: 2;
@@ -546,6 +554,10 @@ For commercial licensing, please contact support@quantumnous.com
   }
 }
 @media (max-width: 28rem) {
+  .gateway-hero[data-custom-heading] h1 {
+    max-width: 100%;
+    font-size: clamp(2.15rem, 9vw, 2.95rem);
+  }
   .gateway-connection {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.55rem;
@@ -564,5 +576,57 @@ For commercial licensing, please contact support@quantumnous.com
   .gateway-endpoint,
   .gateway-examples pre {
     padding-inline: 0.95rem;
+  }
+}
+
+@media (max-width: 22rem) {
+  .gateway-examples [data-slot='tabs-list'] {
+    overflow-x: auto;
+    padding-inline: 0.15rem;
+  }
+  .gateway-examples [data-slot='tabs-trigger'] {
+    flex: 1 0 auto;
+    min-width: 2.75rem;
+    padding-inline: 0.25rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 30rem) and (max-width: 64rem) {
+  .gateway-hero {
+    min-height: max(23rem, 100svh);
+    padding-block: 5.35rem 7.5rem;
+  }
+  .gateway-hero h1 {
+    max-width: 100%;
+    font-size: clamp(2.25rem, 5.4vw, 3.25rem);
+  }
+  .gateway-hero-content > p {
+    max-width: 54ch;
+    margin: 0.65rem auto 0.85rem;
+  }
+  .gateway-landscape {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 38%,
+      #0001 52%,
+      #0006 65%,
+      #000 80%
+    );
+  }
+  .gateway-landscape img,
+  .gateway-landscape canvas {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    left: 50%;
+    bottom: -18%;
+    object-position: 50% 34%;
+  }
+}
+
+@media (min-width: 112rem) {
+  .gateway-landscape img,
+  .gateway-landscape canvas {
+    object-position: 50% 12%;
   }
 }

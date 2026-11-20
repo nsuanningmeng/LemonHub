@@ -225,3 +225,31 @@ func TestGeneralOpenAIRequestGetSystemRoleName(t *testing.T) {
 		})
 	}
 }
+
+func TestGPT61ChatCapabilities(t *testing.T) {
+	for _, tc := range []struct {
+		model    string
+		effort   string
+		sampling bool
+	}{
+		{"gpt-6.1-sol", "", false},
+		{"gpt-6.1-sol", "none", false},
+		{"gpt-6.1-sol-2026-10-01", "none", false},
+		{"gpt-6.1-terra", "", false},
+		{"gpt-6.1-terra", "medium", false},
+		{"gpt-6.1-terra", "none", true},
+		{"gpt-6.1-terra-2026-10-01", "none", true},
+	} {
+		t.Run(tc.model+"/"+tc.effort, func(t *testing.T) {
+			capabilities := GetOpenAIChatCapabilities(tc.model, tc.effort)
+			assert.True(t, capabilities.UseMaxCompletionTokens)
+			assert.True(t, capabilities.UseDeveloperRole)
+			assert.Equal(t, tc.sampling, capabilities.SupportsTemperature)
+			assert.Equal(t, tc.sampling, capabilities.SupportsTopP)
+			assert.Equal(t, tc.sampling, capabilities.SupportsLogProbs)
+		})
+	}
+	unknown := GetOpenAIChatCapabilities("gpt-6.1-terra-custom", "medium")
+	assert.False(t, unknown.UseMaxCompletionTokens)
+	assert.True(t, unknown.SupportsTemperature)
+}

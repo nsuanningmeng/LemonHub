@@ -66,7 +66,10 @@ export function isApiSuccess(response: ApiResponse): boolean {
  * Get topup configuration info
  */
 export async function getTopupInfo(): Promise<TopupInfoResponse> {
-  const res = await api.get('/api/user/topup/info')
+  const res = await api.get('/api/user/topup/info', {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
   return res.data
 }
 

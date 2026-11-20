@@ -23,41 +23,43 @@ import { initReactI18next } from 'react-i18next'
 import { convertDetectedLanguage, toIntlLocale } from './languages'
 import en from './locales/en.json'
 
-type LocaleModule = { default: { translation: Record<string, string> } }
-
-const loadLocale: Partial<Record<string, () => Promise<LocaleModule>>> = {
-  fr: () => import('./locales/fr.json'),
-  ja: () => import('./locales/ja.json'),
-  ru: () => import('./locales/ru.json'),
-  vi: () => import('./locales/vi.json'),
+const localeLoaders: Record<
+  string,
+  () => Promise<{ default: { translation: Record<string, string> } }>
+> = {
   zhCN: () => import('./locales/zh.json'),
   zhTW: () => import('./locales/zh-TW.json'),
+  fr: () => import('./locales/fr.json'),
+  ru: () => import('./locales/ru.json'),
+  ja: () => import('./locales/ja.json'),
+  vi: () => import('./locales/vi.json'),
 }
 
-const bundledLocales: BackendModule = {
+const localeBackend: BackendModule = {
   type: 'backend',
   init() {},
-  async read(language, namespace) {
-    const load = loadLocale[language]
-    if (!load || namespace !== 'translation') return {}
-    const locale = await load()
-    return locale.default.translation
+  async read(language: string, _namespace: string) {
+    const loadLocale = localeLoaders[language]
+    if (!loadLocale) throw new Error(`Unsupported language: ${language}`)
+    const resource = await loadLocale()
+    return resource.default.translation
   },
 }
 
-// Keep assistive technology and browser typography aligned with the displayed language.
-i18n.on('languageChanged', (language) => {
-  document.documentElement.lang = toIntlLocale(language) ?? 'en'
+i18n.on('languageChanged', () => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = toIntlLocale(i18n.resolvedLanguage) ?? 'en'
+  }
 })
 
 export const i18nReady = i18n
-  .use(bundledLocales)
   .use(LanguageDetector)
+  .use(localeBackend)
   .use(initReactI18next)
   .init({
+    // Keep a bundled fallback available even when a locale chunk cannot load.
     resources: { en },
     partialBundledLanguages: true,
-    initAsync: false,
     fallbackLng: 'en',
     supportedLngs: ['en', 'zhCN', 'fr', 'ru', 'ja', 'vi', 'zhTW'],
     load: 'currentOnly',

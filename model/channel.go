@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"sync"
 
@@ -490,10 +491,12 @@ func BatchInsertChannels(channels []Channel) error {
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			panic(r)
 		}
 	}()
 
-	for _, chunk := range lo.Chunk(channels, 50) {
+	// Keep generated IDs in the caller's input slice across batch boundaries.
+	for chunk := range slices.Chunk(channels, 50) {
 		if err := tx.Create(&chunk).Error; err != nil {
 			tx.Rollback()
 			return err
@@ -840,6 +843,60 @@ func RecoverAutoDisabledChannelKey(channelId int, identity string, probeContext 
 		refreshChannelStatusCache(channelId)
 	}
 	return changed
+}
+
+// EnableChannelKeys changes only key availability and its routing eligibility.
+// The key snapshot prevents a stale caller snapshot from enabling a replacement key.
+func EnableChannelKeys(channelId int, expectedKey string, keyIndex *int) (int, error) {
+	pollingLock := GetChannelPollingLock(channelId)
+	pollingLock.Lock()
+	defer pollingLock.Unlock()
+	enabled := 0
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var channel Channel
+		if err := lockForUpdate(tx).First(&channel, channelId).Error; err != nil {
+			return err
+		}
+		if !channel.ChannelInfo.IsMultiKey || channel.Key != expectedKey {
+			return errors.New("channel keys changed; reload before enabling keys")
+		}
+		keys := channel.GetKeys()
+		if keyIndex != nil && (*keyIndex < 0 || *keyIndex >= len(keys)) {
+			return errors.New("channel key index is out of range")
+		}
+		for i := range keys {
+			if keyIndex != nil && i != *keyIndex {
+				continue
+			}
+			if status, exists := channel.ChannelInfo.MultiKeyStatusList[i]; exists && status != common.ChannelStatusEnabled {
+				enabled++
+			}
+			delete(channel.ChannelInfo.MultiKeyStatusList, i)
+			delete(channel.ChannelInfo.MultiKeyDisabledTime, i)
+			delete(channel.ChannelInfo.MultiKeyDisabledReason, i)
+		}
+		if keyIndex == nil {
+			channel.ChannelInfo.MultiKeyStatusList = map[int]int{}
+			channel.ChannelInfo.MultiKeyDisabledTime = map[int]int64{}
+			channel.ChannelInfo.MultiKeyDisabledReason = map[int]string{}
+		}
+		updates := map[string]any{"channel_info": channel.ChannelInfo}
+		info := channel.GetOtherInfo()
+		if channel.Status == common.ChannelStatusAutoDisabled && info["status_reason"] == "All keys are disabled" && hasEnabledMultiKey(keys, channel.ChannelInfo.MultiKeyStatusList) {
+			channel.Status = common.ChannelStatusEnabled
+			info["status_reason"] = ""
+			info["status_time"] = common.GetTimestamp()
+			channel.SetOtherInfo(info)
+			updates["status"] = channel.Status
+			updates["other_info"] = channel.OtherInfo
+		}
+		if err := tx.Model(&Channel{}).Where("id = ?", channelId).Updates(updates).Error; err != nil {
+			return err
+		}
+		return tx.Model(&Ability{}).Where("channel_id = ?", channelId).
+			Update("enabled", channel.Status == common.ChannelStatusEnabled).Error
+	})
+	return enabled, err
 }
 
 func UpdateChannelStatus(channelId int, usingKey string, status int, reason string) bool {

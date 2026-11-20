@@ -28,8 +28,12 @@ export function ApiKeysPrimaryButtons() {
   const { setOpen } = useApiKeys()
   return (
     <div className='flex gap-2'>
-      <Button size='sm' onClick={() => setOpen('create')}>
-        <Plus className='h-4 w-4' />
+      <Button
+        size='default'
+        className='surface-brand gap-2 bg-(--studio-brand) text-(--studio-on-brand) shadow-sm hover:bg-(--studio-brand) hover:brightness-110'
+        onClick={() => setOpen('create')}
+      >
+        <Plus aria-hidden='true' className='size-4' />
         {t('Create API Key')}
       </Button>
     </div>

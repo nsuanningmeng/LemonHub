@@ -38,7 +38,10 @@ export function AuthLayout(props: AuthLayoutProps) {
   const { status } = useStatus()
   const docsUrl = status?.docs_link || '/docs'
   const supportLinks = useTopNavLinks().filter(
-    (link) => link.href === docsUrl || link.href === '/contact'
+    (link) =>
+      link.href === docsUrl ||
+      link.href === '/contact' ||
+      (link.href === '/pricing' && !link.requiresAuth && !link.disabled)
   )
 
   return (
@@ -82,7 +85,11 @@ export function AuthLayout(props: AuthLayoutProps) {
                   className='inline-flex items-center gap-1'
                 >
                   <NavLinkItem
-                    link={link}
+                    link={
+                      link.href === '/pricing'
+                        ? { ...link, title: 'Explore models' }
+                        : link
+                    }
                     className='text-sm text-white/85 hover:text-white hover:underline'
                   />
                   <ArrowUpRight
@@ -99,9 +106,12 @@ export function AuthLayout(props: AuthLayoutProps) {
             <LanguageSwitcher />
             <ThemeSwitch />
           </div>
-          <div className='my-auto w-full min-w-0 pt-3 pb-4 md:py-5 [&_button[type=submit]]:min-h-10 [&_input:not([type=checkbox])]:min-h-10'>
+          <section
+            aria-label={t('Authentication')}
+            className='my-auto w-full min-w-0 pt-3 pb-4 md:py-5 [&_button[type=submit]]:min-h-10 [&_input:not([type=checkbox])]:min-h-10'
+          >
             {props.children}
-          </div>
+          </section>
           {supportLinks.length > 0 && (
             <nav
               aria-label={t('Resources')}
@@ -110,7 +120,11 @@ export function AuthLayout(props: AuthLayoutProps) {
               {supportLinks.map((link) => (
                 <NavLinkItem
                   key={link.href}
-                  link={link}
+                  link={
+                    link.href === '/pricing'
+                      ? { ...link, title: 'Explore models' }
+                      : link
+                  }
                   className='text-muted-foreground text-sm underline-offset-4 hover:underline'
                 />
               ))}

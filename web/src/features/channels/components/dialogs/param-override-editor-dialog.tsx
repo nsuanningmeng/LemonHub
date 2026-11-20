@@ -1771,11 +1771,11 @@ export function ParamOverrideEditorDialog(
       description={t(
         'Create request parameter override rules with a visual editor or raw JSON.'
       )}
-      contentClassName='flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-5xl'
+      contentClassName='flex max-h-[90vh] flex-col gap-0 p-0 sm:max-w-5xl sm:p-0'
       headerClassName='border-b px-6 py-4'
-      footerClassName='border-t px-6 py-4'
+      footerClassName='mx-0 mb-0 border-t px-6 py-4 sm:mx-0 sm:mb-0 sm:px-6 sm:py-4'
       contentHeight='min(72vh, 720px)'
-      bodyClassName='space-y-4'
+      bodyClassName='flex min-h-full flex-col md:h-full'
       footer={
         <>
           <Button
@@ -1792,7 +1792,7 @@ export function ParamOverrideEditorDialog(
       }
     >
       {/* Toolbar */}
-      <div className='bg-muted/30 border-b px-4 py-3'>
+      <div className='bg-muted/30 shrink-0 border-b px-4 py-3'>
         <div className='flex flex-wrap items-center gap-2'>
           <span className='text-muted-foreground text-xs font-medium'>
             {t('Mode')}
@@ -1829,7 +1829,7 @@ export function ParamOverrideEditorDialog(
               setTemplatePresetKey(v || 'operations_default')
             }
           >
-            <SelectTrigger className='h-8 w-[220px]'>
+            <SelectTrigger className='h-8 w-[220px] max-w-full'>
               <SelectValue />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
@@ -1869,7 +1869,14 @@ export function ParamOverrideEditorDialog(
         </div>
       </div>
       {/* Content */}
-      <div className='min-h-0 flex-1 overflow-hidden'>
+      <div
+        className={cn(
+          'min-h-0 flex-1',
+          editMode === 'visual' && visualMode !== 'legacy'
+            ? 'md:overflow-hidden'
+            : 'overflow-y-auto'
+        )}
+      >
         {
           <>
             {editMode === 'visual' && visualMode === 'legacy' && (
@@ -1892,9 +1899,9 @@ export function ParamOverrideEditorDialog(
               </div>
             )}
             {editMode === 'visual' && !(visualMode === 'legacy') && (
-              <div className='flex h-full'>
+              <div className='flex flex-col md:h-full md:flex-row'>
                 {/* Left sidebar */}
-                <div className='flex w-[280px] flex-shrink-0 flex-col border-r'>
+                <div className='flex h-56 min-h-0 w-full shrink-0 flex-col border-b md:h-auto md:w-[280px] md:border-r md:border-b-0'>
                   <div className='flex items-center justify-between border-b px-3 py-2'>
                     <div className='flex items-center gap-2'>
                       <span className='text-sm font-medium'>{t('Rules')}</span>
@@ -1940,7 +1947,7 @@ export function ParamOverrideEditorDialog(
                     </div>
                   </div>
 
-                  <ScrollArea className='flex-1'>
+                  <ScrollArea className='min-h-0 min-w-0 flex-1'>
                     <div className='flex flex-col gap-1 px-3 pb-3'>
                       {filteredOperations.length === 0 ? (
                         <p className='text-muted-foreground py-4 text-center text-xs'>
@@ -2050,7 +2057,7 @@ export function ParamOverrideEditorDialog(
                 </div>
 
                 {/* Right panel - Rule editor */}
-                <div className='flex min-w-0 flex-1 flex-col overflow-y-auto'>
+                <div className='flex min-w-0 flex-1 flex-col md:min-h-0 md:overflow-y-auto'>
                   {selectedOperation ? (
                     <RuleEditor
                       operation={selectedOperation}
@@ -2185,10 +2192,10 @@ function RuleEditor(ruleEditorProps: RuleEditorProps) {
     mode === 'sync_fields' ? parseSyncTargetSpec(operation.to) : null
 
   return (
-    <ScrollArea className='flex-1'>
+    <ScrollArea className='min-h-0 min-w-0 flex-1'>
       <div className='space-y-4 p-4'>
         {/* Header */}
-        <div className='flex items-center justify-between'>
+        <div className='flex flex-wrap items-center justify-between gap-2'>
           <div className='flex items-center gap-2'>
             <Badge variant='outline'>
               #{ruleEditorProps.operationIndex + 1}
@@ -2279,7 +2286,7 @@ function RuleEditor(ruleEditorProps: RuleEditorProps) {
 
         {/* Description */}
         <div className='space-y-1.5'>
-          <div className='flex items-center justify-between'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
             <label className='text-xs font-medium'>
               {t('Rule Description (optional)')}
             </label>
@@ -2329,7 +2336,7 @@ function RuleEditor(ruleEditorProps: RuleEditorProps) {
                 mode === 'prune_objects' && ruleEditorProps.pruneObjectsDraft
               ) && (
                 <div className='space-y-1.5'>
-                  <div className='flex items-center justify-between'>
+                  <div className='flex flex-wrap items-center justify-between gap-2'>
                     <label className='text-xs font-medium'>
                       {t(getModeValueLabel(mode))}
                     </label>
@@ -2449,7 +2456,7 @@ function RuleEditor(ruleEditorProps: RuleEditorProps) {
 
         {/* Conditions */}
         <div className='rounded-lg border p-3'>
-          <div className='mb-2 flex items-center justify-between'>
+          <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
             <div className='flex items-center gap-2'>
               <span className='text-sm font-medium'>{t('Conditions')}</span>
               <Select
@@ -2592,7 +2599,7 @@ function ConditionEditor(conditionEditorProps: ConditionEditorProps) {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className='space-y-3 border-t px-3 py-3'>
-            <div className='flex items-center justify-between'>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
               <span className='text-muted-foreground text-xs'>
                 {t('Condition Settings')}
               </span>
@@ -2739,7 +2746,7 @@ function ReturnErrorEditor(returnErrorEditorProps: ReturnErrorEditorProps) {
 
   return (
     <div className='rounded-lg border p-3'>
-      <div className='mb-2 flex items-center justify-between'>
+      <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
         <span className='text-sm font-medium'>
           {t('Custom Error Response')}
         </span>
@@ -2959,7 +2966,7 @@ function PruneObjectsEditor(pruneObjectsEditorProps: PruneObjectsEditorProps) {
 
   return (
     <div className='rounded-lg border p-3'>
-      <div className='mb-2 flex items-center justify-between'>
+      <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
         <span className='text-sm font-medium'>{t('Object Prune Rules')}</span>
         <div className='flex items-center gap-1'>
           <span className='text-muted-foreground text-xs'>{t('Mode')}</span>
@@ -3082,7 +3089,7 @@ function PruneObjectsEditor(pruneObjectsEditorProps: PruneObjectsEditorProps) {
           </div>
 
           <div className='bg-muted/30 mt-3 rounded-md border p-2'>
-            <div className='mb-2 flex items-center justify-between'>
+            <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
               <span className='text-xs font-medium'>
                 {t('Additional Conditions')}
               </span>

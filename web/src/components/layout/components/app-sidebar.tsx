@@ -16,11 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Command } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
-import { Sidebar, SidebarContent, SidebarRail } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarRail,
+} from '@/components/ui/sidebar'
 import { useLayout } from '@/context/layout-provider'
+import { useSearch } from '@/context/search-provider'
 import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { MOTION_TRANSITION, MOTION_VARIANTS } from '@/lib/motion'
 
@@ -48,6 +58,7 @@ export function AppSidebar() {
   const { t } = useTranslation()
   const { collapsible, variant } = useLayout()
   const { key, view, navGroups } = useSidebarView()
+  const search = useSearch()
   const shouldReduce = useReducedMotion()
 
   return (
@@ -57,7 +68,7 @@ export function AppSidebar() {
       <SidebarContent className='py-1'>
         <AnimatePresence mode='wait' initial={false}>
           <motion.nav
-            aria-label={t('Sidebar')}
+            aria-label={t('Workspace navigation')}
             key={key}
             initial={
               shouldReduce ? false : MOTION_VARIANTS.sidebarSlide.initial
@@ -80,6 +91,19 @@ export function AppSidebar() {
         </AnimatePresence>
       </SidebarContent>
 
+      <SidebarFooter className='p-2'>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip={t('Command palette')}
+              onClick={() => search.setOpen(true)}
+            >
+              <Command aria-hidden='true' />
+              <span>{t('Command palette')}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   )

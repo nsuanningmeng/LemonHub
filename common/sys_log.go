@@ -2,6 +2,8 @@ package common
 
 import (
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -13,6 +15,18 @@ import (
 // during log file rotation. Acquire RLock when reading/writing through the writers,
 // acquire Lock when swapping writers and closing old files.
 var LogWriterMu sync.RWMutex
+
+// LogWriter resolves the active output at write time so middleware created at
+// startup follows rotation instead of retaining the closed previous log file.
+var LogWriter io.Writer = currentLogWriter{}
+
+type currentLogWriter struct{}
+
+func (currentLogWriter) Write(p []byte) (int, error) {
+	LogWriterMu.RLock()
+	defer LogWriterMu.RUnlock()
+	return gin.DefaultWriter.Write(p)
+}
 
 func SysLog(s string) {
 	t := time.Now()
@@ -57,6 +71,16 @@ func LogStartupSuccess(startTime time.Time, port string) {
 	fmt.Fprintf(gin.DefaultWriter, "\n")
 	fmt.Fprintf(gin.DefaultWriter, "  \033[32m%s %s\033[0m  ready in %d ms\n", SystemName, Version, durationMs)
 	fmt.Fprintf(gin.DefaultWriter, "\n")
+
+	host, _, err := net.SplitHostPort(HTTPListenAddress(port))
+	if ip := net.ParseIP(host); err == nil && host != "" && !ip.IsUnspecified() {
+		label := "Network:"
+		if ip.IsLoopback() {
+			label = "Local:"
+		}
+		fmt.Fprintf(gin.DefaultWriter, "  ➜  \033[1m%-8s\033[0m http://%s/\n\n", label, net.JoinHostPort(host, port))
+		return
+	}
 
 	if !IsRunningInContainer() {
 		fmt.Fprintf(gin.DefaultWriter, "  ➜  \033[1mLocal:\033[0m   http://localhost:%s/\n", port)

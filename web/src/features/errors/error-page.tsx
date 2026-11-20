@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils'
 type ErrorPageProps = {
   code?: number
   title: string
-  description: string
+  description: ReactNode
   className?: string
   minimal?: boolean
   action?: ReactNode
@@ -44,7 +44,7 @@ export function ErrorPage(props: ErrorPageProps) {
         props.className
       )}
     >
-      <div className='mx-auto flex w-full max-w-xl flex-col items-center justify-center gap-2 text-center'>
+      <main className='mx-auto flex w-full max-w-xl flex-col items-center justify-center gap-2 text-center'>
         {props.code && (
           <p className='text-[7rem] leading-tight font-bold tabular-nums'>
             <span className='sr-only'>HTTP </span>
@@ -52,9 +52,9 @@ export function ErrorPage(props: ErrorPageProps) {
           </p>
         )}
         <h1 className='font-medium text-balance'>{props.title}</h1>
-        <p className='text-muted-foreground max-w-prose leading-relaxed'>
+        <div className='text-muted-foreground max-w-prose leading-relaxed'>
           {props.description}
-        </p>
+        </div>
         {(!props.minimal || props.action) && (
           <div className='mt-6 flex flex-wrap items-center justify-center gap-4'>
             {props.action}
@@ -75,7 +75,7 @@ export function ErrorPage(props: ErrorPageProps) {
             )}
           </div>
         )}
-      </div>
+      </main>
     </section>
   )
 }

@@ -148,60 +148,79 @@ export function Footer(props: FooterProps) {
   )
 
   const fallbackColumns = useMemo<FooterColumnProps[]>(
-    () => [
-      {
-        title: t('footer.columns.about.title'),
-        links: [
-          {
-            text: t('footer.columns.about.links.aboutProject'),
-            href: 'https://docs.newapi.pro/wiki/project-introduction/',
-          },
-          {
-            text: t('footer.columns.about.links.contact'),
-            href: 'https://docs.newapi.pro/support/community-interaction/',
-          },
-          {
-            text: t('footer.columns.about.links.features'),
-            href: 'https://docs.newapi.pro/wiki/features-introduction/',
-          },
-        ],
-      },
-      {
-        title: t('footer.columns.docs.title'),
-        links: [
-          {
-            text: t('footer.columns.docs.links.quickStart'),
-            href: 'https://docs.newapi.pro/getting-started/',
-          },
-          {
-            text: t('footer.columns.docs.links.installation'),
-            href: 'https://docs.newapi.pro/installation/',
-          },
-          {
-            text: t('footer.columns.docs.links.apiDocs'),
-            href: 'https://docs.newapi.pro/api/',
-          },
-        ],
-      },
-      {
-        title: t('footer.columns.related.title'),
-        links: [
-          {
-            text: t('footer.columns.related.links.oneApi'),
-            href: 'https://github.com/songquanpeng/one-api',
-          },
-          {
-            text: t('footer.columns.related.links.midjourney'),
-            href: 'https://github.com/novicezk/midjourney-proxy',
-          },
-          {
-            text: t('footer.columns.related.links.newApiKeyTool'),
-            href: 'https://github.com/Calcium-Ion/new-api-key-tool',
-          },
-        ],
-      },
-    ],
-    [t]
+    () =>
+      !isHome
+        ? [
+            {
+              title: t('Explore'),
+              links: [
+                { text: t('Model catalog'), href: '/pricing' },
+                { text: t('Playground'), href: '/playground' },
+              ],
+            },
+            {
+              title: t('Workspace'),
+              links: [
+                { text: t('API Keys'), href: '/keys' },
+                { text: t('Usage Logs'), href: '/usage-logs/common' },
+                { text: t('Wallet'), href: '/wallet' },
+              ],
+            },
+          ]
+        : [
+            {
+              title: t('footer.columns.about.title'),
+              links: [
+                {
+                  text: t('footer.columns.about.links.aboutProject'),
+                  href: 'https://docs.newapi.pro/wiki/project-introduction/',
+                },
+                {
+                  text: t('footer.columns.about.links.contact'),
+                  href: 'https://docs.newapi.pro/support/community-interaction/',
+                },
+                {
+                  text: t('footer.columns.about.links.features'),
+                  href: 'https://docs.newapi.pro/wiki/features-introduction/',
+                },
+              ],
+            },
+            {
+              title: t('footer.columns.docs.title'),
+              links: [
+                {
+                  text: t('footer.columns.docs.links.quickStart'),
+                  href: 'https://docs.newapi.pro/getting-started/',
+                },
+                {
+                  text: t('footer.columns.docs.links.installation'),
+                  href: 'https://docs.newapi.pro/installation/',
+                },
+                {
+                  text: t('footer.columns.docs.links.apiDocs'),
+                  href: 'https://docs.newapi.pro/api/',
+                },
+              ],
+            },
+            {
+              title: t('footer.columns.related.title'),
+              links: [
+                {
+                  text: t('footer.columns.related.links.oneApi'),
+                  href: 'https://github.com/songquanpeng/one-api',
+                },
+                {
+                  text: t('footer.columns.related.links.midjourney'),
+                  href: 'https://github.com/novicezk/midjourney-proxy',
+                },
+                {
+                  text: t('footer.columns.related.links.newApiKeyTool'),
+                  href: 'https://github.com/Calcium-Ion/new-api-key-tool',
+                },
+              ],
+            },
+          ],
+    [isHome, t]
   )
 
   const displayColumns = props.columns ?? fallbackColumns
@@ -252,14 +271,14 @@ export function Footer(props: FooterProps) {
           <div className='min-w-0'>
             <Link
               to='/'
-              className='group inline-flex max-w-full items-center gap-2.5'
+              className='group inline-flex max-w-full min-w-0 items-center gap-2.5'
             >
               <img
                 src={displayLogo}
                 alt={displayName}
                 className='size-7 shrink-0 object-contain'
               />
-              <span className='truncate text-base font-semibold tracking-tight'>
+              <span className='min-w-0 text-base font-semibold tracking-tight [overflow-wrap:anywhere]'>
                 {displayName}
               </span>
             </Link>

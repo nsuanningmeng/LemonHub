@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
+import { isComposingKeyboardEvent } from '@/lib/keyboard'
 
 import {
   editTagChannels,
@@ -340,7 +341,7 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
                     value={customModel}
                     onChange={(e) => setCustomModel(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
+                      if (e.key === 'Enter' && !isComposingKeyboardEvent(e)) {
                         e.preventDefault()
                         handleAddCustomModel()
                       }

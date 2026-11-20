@@ -47,6 +47,7 @@ import { Button } from '@/components/ui/button'
 import { fetchTokenKey, getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { useIsSidebarModuleVisible } from '@/hooks/use-sidebar-config'
 import { getUserModels } from '@/lib/api'
 import { ROLE } from '@/lib/roles'
 import { cn } from '@/lib/utils'
@@ -241,7 +242,10 @@ function RequestPreview(props: {
   }
 
   return (
-    <section className='bg-muted/40 min-w-0 rounded-lg border p-3 sm:p-4'>
+    <section
+      aria-label={t('First API request')}
+      className='bg-muted/40 min-w-0 rounded-lg border p-3 sm:p-4'
+    >
       <div className='flex items-center justify-between gap-3 border-b pb-3'>
         <div className='flex min-w-0 items-center gap-2'>
           <TerminalSquare className='size-4 shrink-0' aria-hidden='true' />
@@ -360,6 +364,22 @@ export function OverviewDashboard() {
   const setupGuideToggleRef = useRef<HTMLButtonElement>(null)
   const user = useAuthStore((state) => state.auth.user)
   const { items: apiInfoItems } = useApiInfo()
+  const showKeys = useIsSidebarModuleVisible('/keys')
+  const showWallet = useIsSidebarModuleVisible('/wallet')
+  const showPlayground = useIsSidebarModuleVisible('/playground')
+  const showChannels = useIsSidebarModuleVisible('/channels')
+  const showUsageLogs = useIsSidebarModuleVisible('/usage-logs')
+  const visiblePaths = useMemo<Record<DashboardActionPath, boolean>>(
+    () => ({
+      '/keys': showKeys,
+      '/wallet': showWallet,
+      '/playground': showPlayground,
+      '/channels': showChannels,
+      '/usage-logs': showUsageLogs,
+      '/pricing': true,
+    }),
+    [showKeys, showWallet, showPlayground, showChannels, showUsageLogs]
+  )
   const {
     apiInfo: showApiInfoPanel,
     announcements: showAnnouncementsPanel,
@@ -398,7 +418,7 @@ export function OverviewDashboard() {
     [apiKeysQuery.data]
   )
 
-  const startSteps = useMemo<StartStep[]>(
+  const allStartSteps = useMemo<StartStep[]>(
     () => [
       {
         title: t('Create API Key'),
@@ -423,6 +443,11 @@ export function OverviewDashboard() {
       },
     ],
     [preferredKey, remainQuota, requestCount, t, usedQuota]
+  )
+
+  const startSteps = useMemo(
+    () => allStartSteps.filter((step) => visiblePaths[step.to]),
+    [allStartSteps, visiblePaths]
   )
 
   const quickActions = useMemo<QuickAction[]>(
@@ -457,8 +482,11 @@ export function OverviewDashboard() {
   )
 
   const visibleQuickActions = useMemo(
-    () => quickActions.filter((action) => !action.adminOnly || isAdmin),
-    [isAdmin, quickActions]
+    () =>
+      quickActions.filter(
+        (action) => visiblePaths[action.to] && (!action.adminOnly || isAdmin)
+      ),
+    [isAdmin, quickActions, visiblePaths]
   )
 
   const heroSignals = useMemo<HeroSignal[]>(
@@ -503,8 +531,10 @@ export function OverviewDashboard() {
   const completedStepCount = startSteps.filter((step) => step.completed).length
   const setupComplete = completedStepCount === startSteps.length
   const setupStatusReady = apiKeysQuery.isFetched && Boolean(user)
+  const hasSetupSteps = startSteps.length > 0
   const setupGuideExpanded =
-    manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete)
+    hasSetupSteps &&
+    (manualSetupGuideExpanded ?? (setupStatusReady && !setupComplete))
   const showLeftContentPanels =
     isAdmin || showApiInfoPanel || showAnnouncementsPanel || showFAQPanel
   const showContentPanels = showLeftContentPanels || showUptimePanel
@@ -521,8 +551,15 @@ export function OverviewDashboard() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Overview')}</SectionPageLayout.Title>
+      {user?.display_name && (
+        <SectionPageLayout.Description>
+          <span className='wrap-anywhere'>
+            {t('Welcome back, {{name}}.', { name: user.display_name })}
+          </span>
+        </SectionPageLayout.Description>
+      )}
       <SectionPageLayout.Actions>
-        {setupStatusReady && setupComplete && (
+        {hasSetupSteps && setupStatusReady && setupComplete && (
           <Button
             ref={setupGuideToggleRef}
             variant='ghost'
@@ -533,6 +570,15 @@ export function OverviewDashboard() {
             onClick={handleSetupGuideToggle}
           >
             {t('Setup guide')}
+          </Button>
+        )}
+        {showPlayground && (
+          <Button
+            size='sm'
+            variant='outline'
+            render={<Link to='/playground' />}
+          >
+            {t('Open playground')}
           </Button>
         )}
       </SectionPageLayout.Actions>
@@ -557,10 +603,12 @@ export function OverviewDashboard() {
                       <ChevronUp data-icon='inline-start' />
                       {t('Hide setup guide')}
                     </Button>
-                    <Button size='sm' render={<Link to='/keys' />}>
-                      <KeyRound data-icon='inline-start' />
-                      {t('Create API Key')}
-                    </Button>
+                    {showKeys && (
+                      <Button size='sm' render={<Link to='/keys' />}>
+                        <KeyRound data-icon='inline-start' />
+                        {t('Create API Key')}
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <div className='grid items-start gap-4 p-3 sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-6'>
@@ -574,12 +622,18 @@ export function OverviewDashboard() {
                       ))}
                     </ol>
                   </div>
-                  <RequestPreview
-                    example={requestExample}
-                    signals={heroSignals}
-                  />
+                  {showKeys && (
+                    <RequestPreview
+                      example={requestExample}
+                      signals={heroSignals}
+                    />
+                  )}
                 </div>
-                <div className='border-t px-3 py-3 sm:px-5'>
+                <div
+                  role='region'
+                  aria-label={t('Workspace shortcuts')}
+                  className='border-t px-3 py-3 sm:px-5'
+                >
                   <h4 className='px-2 text-sm font-semibold'>
                     {t('Recommended actions')}
                   </h4>
@@ -620,7 +674,11 @@ export function OverviewDashboard() {
                   </div>
                 </div>
 
-                <div className='flex flex-wrap items-center gap-2'>
+                <div
+                  role='region'
+                  aria-label={t('Workspace shortcuts')}
+                  className='flex flex-wrap items-center gap-2'
+                >
                   {visibleQuickActions.map((action) => (
                     <CompactQuickAction key={action.title} action={action} />
                   ))}
@@ -638,6 +696,17 @@ export function OverviewDashboard() {
                 </div>
               </div>
             </div>
+          )}
+
+          {!setupGuideExpanded && setupComplete && (
+            <section
+              aria-label={t('Workspace shortcuts')}
+              className='flex flex-wrap gap-2'
+            >
+              {visibleQuickActions.map((action) => (
+                <CompactQuickAction key={action.to} action={action} />
+              ))}
+            </section>
           )}
 
           {showContentPanels && (

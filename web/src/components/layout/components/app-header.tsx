@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useLocation } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { ConfigDrawer } from '@/components/config-drawer'
@@ -24,9 +25,11 @@ import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Search } from '@/components/search'
 import { useNotifications } from '@/hooks/use-notifications'
+import { useSidebarView } from '@/hooks/use-sidebar-view'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
 
 import { defaultTopNavLinks } from '../config/top-nav.config'
+import { checkIsActive } from '../lib/url-utils'
 import type { TopNavLink } from '../types'
 import { Header } from './header'
 import { SystemBrand } from './system-brand'
@@ -106,6 +109,11 @@ export function AppHeader({
   showProfileDropdown = true,
 }: AppHeaderProps) {
   const { t } = useTranslation()
+  const href = useLocation({ select: (location) => location.href })
+  const { navGroups } = useSidebarView()
+  const activeItem = navGroups
+    .flatMap((group) => group.items)
+    .find((item) => checkIsActive(href, item))
   // Prioritize dynamically generated links from backend
   const dynamicLinks = useTopNavLinks()
   const links = dynamicLinks.length > 0 ? dynamicLinks : navLinks
@@ -120,7 +128,9 @@ export function AppHeader({
         <span aria-hidden='true' className='text-border text-xl font-light'>
           /
         </span>
-        {t('Console')}
+        <span className='max-w-36 truncate'>
+          {activeItem?.title ?? t('Console')}
+        </span>
       </span>
 
       {leftContent ? (

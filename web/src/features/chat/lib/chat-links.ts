@@ -89,7 +89,8 @@ export function chatLinkRequiresApiKey(url: string): boolean {
     url.includes('{key}') ||
     url.includes('{cherryConfig}') ||
     url.includes('{aionuiConfig}') ||
-    url.includes('{deepchatConfig}')
+    url.includes('{deepchatConfig}') ||
+    url.includes('{chatboxConfig}')
   )
 }
 

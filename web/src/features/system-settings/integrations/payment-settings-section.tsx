@@ -1274,14 +1274,24 @@ export function PaymentSettingsSection({
                       </code>
                     </li>
                     <li>
-                      {t('Required events:')}{' '}
-                      <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
-                        {t('checkout.session.completed')}
-                      </code>{' '}
-                      {t('and')}{' '}
-                      <code className='rounded bg-blue-100 px-1 py-0.5 text-xs dark:bg-blue-900'>
-                        {t('checkout.session.expired')}
-                      </code>
+                      {t('Required events:')}
+                      <div className='mt-1 flex flex-wrap gap-1'>
+                        {[
+                          'checkout.session.completed',
+                          'checkout.session.expired',
+                          'checkout.session.async_payment_succeeded',
+                          'checkout.session.async_payment_failed',
+                          'charge.refunded',
+                          'charge.dispute.created',
+                        ].map((eventType) => (
+                          <code
+                            key={eventType}
+                            className='rounded bg-blue-100 px-1 py-0.5 text-xs break-all dark:bg-blue-900'
+                          >
+                            {eventType}
+                          </code>
+                        ))}
+                      </div>
                     </li>
                     <li>
                       {t('Configure at:')}{' '}

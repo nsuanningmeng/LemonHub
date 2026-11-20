@@ -25,7 +25,10 @@ func isStripeWebhookConfigured() bool {
 }
 
 func isStripeWebhookEnabled() bool {
-	return isStripeTopUpEnabled()
+	// Existing checkouts can finish after new payments are disabled. Subscription
+	// checkouts also use their plan's Price rather than the wallet top-up Price.
+	// Keep signed callbacks available to settle those orders.
+	return isStripeWebhookConfigured()
 }
 
 func isCreemTopUpEnabled() bool {

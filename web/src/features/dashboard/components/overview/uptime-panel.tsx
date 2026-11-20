@@ -16,17 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { Activity, RotateCw } from 'lucide-react'
-import { memo, useEffect, useState } from 'react'
+import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { getUptimeStatus } from '@/features/dashboard/api'
-import type {
-  UptimeGroupResult,
-  UptimeMonitor,
-} from '@/features/dashboard/types'
+import type { UptimeMonitor } from '@/features/dashboard/types'
 import { cn } from '@/lib/utils'
 
 import { PanelWrapper } from '../ui/panel-wrapper'
@@ -46,52 +44,20 @@ const StatusDot = memo(function StatusDot(props: { status: number }) {
 
 export function UptimePanel() {
   const { t } = useTranslation()
-  const [groups, setGroups] = useState<UptimeGroupResult[]>([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-
-  useEffect(() => {
-    const abortController = new AbortController()
-
-    void getUptimeStatus()
-      .then((res) => {
-        if (abortController.signal.aborted) return
-        setGroups(res?.data || [])
+  const uptimeQuery = useQuery({
+    queryKey: ['uptime-status'],
+    queryFn: async () => {
+      const result = await getUptimeStatus().catch((cause: unknown) => {
+        // Monitoring failures belong to this optional panel, not the global error page.
+        throw new Error('Failed to load uptime status', { cause })
       })
-      .catch(() => {
-        if (abortController.signal.aborted) return
-        setGroups([])
-      })
-      .finally(() => {
-        if (!abortController.signal.aborted) {
-          setLoading(false)
-        }
-      })
-
-    return () => {
-      abortController.abort()
-    }
-  }, [])
-
-  const handleRefresh = () => {
-    const abortController = new AbortController()
-    setRefreshing(true)
-
-    void getUptimeStatus()
-      .then((res) => {
-        if (abortController.signal.aborted) return
-        setGroups(res?.data || [])
-      })
-      .catch(() => {
-        if (abortController.signal.aborted) return
-        setGroups([])
-      })
-      .finally(() => {
-        if (!abortController.signal.aborted) {
-          setRefreshing(false)
-        }
-      })
-  }
+      if (!result.success) throw new Error('Failed to load')
+      return result.data ?? []
+    },
+    staleTime: 60 * 1000,
+    retry: false,
+  })
+  const groups = uptimeQuery.data ?? []
 
   return (
     <PanelWrapper
@@ -104,20 +70,24 @@ export function UptimePanel() {
         </span>
       }
       description={t('Grouped monitor status from Uptime Kuma')}
-      loading={loading}
-      empty={!groups.length}
-      emptyMessage={t('No uptime monitoring configured')}
+      loading={uptimeQuery.isPending}
+      empty={uptimeQuery.isError || !groups.length}
+      emptyMessage={
+        uptimeQuery.isError
+          ? t('Failed to load')
+          : t('No uptime monitoring configured')
+      }
       headerActions={
         <Button
           variant='ghost'
           size='sm'
           aria-label={t('Refresh')}
-          onClick={handleRefresh}
-          disabled={refreshing}
+          onClick={() => void uptimeQuery.refetch()}
+          disabled={uptimeQuery.isFetching}
           className='size-7 p-0'
         >
           <RotateCw
-            className={cn('size-3.5', refreshing && 'animate-spin')}
+            className={cn('size-3.5', uptimeQuery.isFetching && 'animate-spin')}
             aria-hidden='true'
           />
         </Button>

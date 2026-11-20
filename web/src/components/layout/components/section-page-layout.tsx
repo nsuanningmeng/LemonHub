@@ -24,6 +24,9 @@ import {
   type ReactNode,
 } from 'react'
 
+import { useFixedContentLayout } from '@/hooks/use-fixed-content-layout'
+import { cn } from '@/lib/utils'
+
 import { Main } from './main'
 import { PageFooterProvider } from './page-footer'
 
@@ -60,6 +63,7 @@ export type SectionPageLayoutProps = {
 }
 
 export function SectionPageLayout(props: SectionPageLayoutProps) {
+  const fixedLayout = useFixedContentLayout()
   const [footerContainer, setFooterContainer] = useState<HTMLDivElement | null>(
     null
   )
@@ -87,7 +91,7 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
 
   return (
     <PageFooterProvider container={footerContainer}>
-      <Main>
+      <Main className={!fixedLayout ? 'overflow-y-auto' : undefined}>
         <div className='shrink-0 px-4 pt-4 pb-3 sm:px-6 sm:pt-5 sm:pb-4'>
           {breadcrumb != null && (
             <div className='mb-2 sm:mb-3'>{breadcrumb}</div>
@@ -112,11 +116,12 @@ export function SectionPageLayout(props: SectionPageLayoutProps) {
         </div>
 
         <div
-          className={
-            props.fixedContent
-              ? 'min-h-0 flex-1 overflow-hidden px-4 pt-1 pb-4 sm:px-6 sm:pt-1.5 sm:pb-6'
-              : 'min-h-0 flex-1 overflow-auto px-4 pt-1 pb-4 sm:px-6 sm:pt-1.5 sm:pb-6'
-          }
+          className={cn(
+            'min-w-0 px-4 pt-1 pb-4 sm:px-6 sm:pt-1.5 sm:pb-6',
+            fixedLayout ? 'min-h-0 flex-1' : 'shrink-0',
+            fixedLayout &&
+              (props.fixedContent ? 'overflow-hidden' : 'overflow-auto')
+          )}
         >
           {content}
         </div>

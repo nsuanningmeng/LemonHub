@@ -732,13 +732,91 @@ For commercial licensing, please contact support@quantumnous.com
 
 /* ── Content layout ───────────────────────────────────────────────────── */
 /* `centered` clamps inset content to a comfortable reading width on large screens.
- * Targets every direct child of <SidebarInset> so router outlet wrappers and
- * page content alike are centered. Only kicks in once the viewport exceeds the
- * clamp value. */
+ * Targets only the routed content. The workspace toolbar and announcement
+ * banner continue to span the entire frame. */
 @media (min-width: 1280px) {
-  [data-theme-content-layout='centered'] [data-slot='sidebar-inset'] > * {
+  [data-theme-content-layout='centered']
+    [data-slot='sidebar-inset']
+    > [data-slot='workspace-page'] {
     max-width: var(--max-content-width, 1280px);
     margin-inline: auto;
     width: 100%;
   }
+}
+
+/* Keep Astryx regions and legacy controls on the same user-selected palette.
+ * The default studio palette stays theme-owned; choosing a preset replaces
+ * every content role rather than only recoloring the original buttons. */
+[data-theme-preset],
+[data-theme-preset] [data-astryx-theme='lemonhub'] {
+  --studio-brand: var(--primary);
+  --studio-on-brand: var(--primary-foreground);
+  --brand-highlight: color-mix(in oklch, var(--primary) 16%, var(--card));
+  --brand-ink: color-mix(in oklch, var(--primary) 24%, black);
+  --overview-accent-1: var(--chart-1);
+  --overview-accent-2: var(--chart-2);
+  --overview-accent-3: var(--chart-3);
+  --tone-blue: color-mix(in oklch, var(--chart-1) 16%, var(--card));
+  --tone-blue-foreground: var(--foreground);
+  --tone-blue-strong: color-mix(
+    in oklch,
+    var(--foreground) 75%,
+    var(--chart-1)
+  );
+  --tone-blue-border: color-mix(in oklch, var(--chart-1) 30%, var(--border));
+  --tone-teal: color-mix(in oklch, var(--chart-2) 16%, var(--card));
+  --tone-teal-foreground: var(--foreground);
+  --tone-teal-strong: color-mix(
+    in oklch,
+    var(--foreground) 75%,
+    var(--chart-2)
+  );
+  --tone-teal-border: color-mix(in oklch, var(--chart-2) 30%, var(--border));
+  --tone-violet: color-mix(in oklch, var(--chart-3) 16%, var(--card));
+  --tone-violet-foreground: var(--foreground);
+  --tone-violet-strong: color-mix(
+    in oklch,
+    var(--foreground) 75%,
+    var(--chart-3)
+  );
+  --tone-violet-border: color-mix(in oklch, var(--chart-3) 30%, var(--border));
+  --tone-peach: color-mix(in oklch, var(--chart-4) 16%, var(--card));
+  --tone-peach-foreground: var(--foreground);
+  --tone-peach-strong: color-mix(
+    in oklch,
+    var(--foreground) 75%,
+    var(--chart-4)
+  );
+  --tone-peach-border: color-mix(in oklch, var(--chart-4) 30%, var(--border));
+}
+
+/* Astryx Stack spacing uses its own scale. Rebind it at the body and nested theme boundary
+ * where the density preference is applied so both component families resize together. */
+[data-theme-scale],
+[data-theme-scale] [data-astryx-theme='lemonhub'] {
+  --spacing-0: calc(var(--spacing) * 0);
+  --spacing-0-5: calc(var(--spacing) * 0.5);
+  --spacing-1: calc(var(--spacing) * 1);
+  --spacing-1-5: calc(var(--spacing) * 1.5);
+  --spacing-2: calc(var(--spacing) * 2);
+  --spacing-3: calc(var(--spacing) * 3);
+  --spacing-4: calc(var(--spacing) * 4);
+  --spacing-5: calc(var(--spacing) * 5);
+  --spacing-6: calc(var(--spacing) * 6);
+  --spacing-7: calc(var(--spacing) * 7);
+  --spacing-8: calc(var(--spacing) * 8);
+  --spacing-9: calc(var(--spacing) * 9);
+  --spacing-10: calc(var(--spacing) * 10);
+  --spacing-11: calc(var(--spacing) * 11);
+  --spacing-12: calc(var(--spacing) * 12);
+}
+
+[data-theme-radius],
+[data-theme-preset],
+[data-theme-radius] [data-astryx-theme='lemonhub'],
+[data-theme-preset] [data-astryx-theme='lemonhub'] {
+  --radius-inner: calc(var(--radius) * 0.6);
+  --radius-element: var(--radius);
+  --radius-container: calc(var(--radius) * 1.4);
+  --radius-page: calc(var(--radius) * 2.2);
 }

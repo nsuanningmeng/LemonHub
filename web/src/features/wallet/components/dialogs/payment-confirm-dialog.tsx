@@ -139,18 +139,20 @@ export function PaymentConfirmDialog({
           )}
 
           <div className='border-t pt-4'>
-            <div className='flex items-center justify-between'>
+            <div className='flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between'>
               <span className='text-muted-foreground text-sm'>
                 {t('Payment Method')}
               </span>
-              <div className='flex items-center gap-2'>
+              <div className='flex max-w-full min-w-0 items-center gap-2'>
                 {getPaymentIcon(
                   paymentMethod?.type,
-                  'h-4 w-4',
+                  'h-4 w-4 shrink-0',
                   paymentMethod?.icon,
                   paymentMethod?.name
                 )}
-                <span className='font-medium'>{paymentMethod?.name}</span>
+                <span className='min-w-0 font-medium wrap-anywhere'>
+                  {paymentMethod?.name}
+                </span>
               </div>
             </div>
           </div>

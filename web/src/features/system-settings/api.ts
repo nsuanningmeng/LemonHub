@@ -16,8 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { t } from 'i18next'
+
 import { api } from '@/lib/api'
 
+import { OptionUpdateRejectedError } from './lib/settings-action'
 import type {
   ConfirmPaymentComplianceResponse,
   FetchUpstreamRatiosRequest,
@@ -37,7 +40,15 @@ export async function getSystemOptions() {
 }
 
 export async function updateSystemOption(request: UpdateOptionRequest) {
-  const res = await api.put<UpdateOptionResponse>('/api/option/', request)
+  const res = await api.put<UpdateOptionResponse>('/api/option/', request, {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  })
+  if (!res.data.success) {
+    throw new OptionUpdateRejectedError(
+      res.data.message || t('Failed to update setting')
+    )
+  }
   return res.data
 }
 

@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { handleServerError } from '@/lib/handle-server-error'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { claimReward, getRewards, getRewardSummary } from '../api'
@@ -80,7 +79,7 @@ export function useClaimReward() {
         })
         return
       }
-      handleServerError(error)
+      // The HTTP client reports request errors; the dialog retains the inline reason.
     },
   })
 }

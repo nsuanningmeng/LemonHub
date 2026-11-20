@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react'
 
+import { syncBrowserThemeColor } from '@/lib/theme-color'
 import {
   CONTENT_LAYOUT_VALUES,
   type ContentLayout,
@@ -132,6 +133,7 @@ export function ThemeCustomizationProvider(props: {
       'data-theme-preset',
       preset === DEFAULT_THEME_CUSTOMIZATION.preset ? null : preset
     )
+    syncBrowserThemeColor()
   }, [preset])
 
   // Resolve Auto into the preset font or the browser's sans-serif while

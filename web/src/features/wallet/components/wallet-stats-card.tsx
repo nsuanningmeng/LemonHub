@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatCompactNumber, formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -25,6 +26,9 @@ import { cn } from '@/lib/utils'
 import type { UserWalletData } from '../types'
 
 interface WalletStatsCardProps {
+  error?: boolean
+  onRetry?: () => void
+  onAddFunds?: () => void
   user: UserWalletData | null
   loading?: boolean
   compactRequests?: boolean
@@ -58,7 +62,9 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   ]
 
   return (
-    <div
+    <section
+      aria-label={t('Current Balance')}
+      aria-busy={Boolean(props.loading)}
       className={cn(
         'bg-card @container/account min-w-0 overflow-hidden rounded-lg border',
         props.className
@@ -98,10 +104,35 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
               <span className='text-muted-foreground mt-1 hidden text-xs @xl/account:block'>
                 {item.description}
               </span>
+              {index === 0 && props.error && (
+                <div role='alert' className='mt-2 text-sm'>
+                  <p>{t('Failed to load')}</p>
+                  {props.onRetry && (
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      onClick={props.onRetry}
+                      className='mt-2'
+                    >
+                      {t('Retry')}
+                    </Button>
+                  )}
+                </div>
+              )}
+              {index === 0 && props.onAddFunds && (
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  className='mt-1'
+                  onClick={props.onAddFunds}
+                >
+                  {t('Add Funds')}
+                </Button>
+              )}
             </dd>
           </div>
         ))}
       </dl>
-    </div>
+    </section>
   )
 }

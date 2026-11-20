@@ -301,7 +301,9 @@ export function StatCard(props: StatCardProps) {
   }
 
   return (
-    <div
+    <article
+      aria-label={props.title}
+      aria-busy={Boolean(props.loading)}
       className={cn(
         'flex min-w-0 flex-col gap-2 @md/summary:h-full @md/summary:justify-between @md/summary:gap-4',
         props.compactMobile &&
@@ -320,9 +322,7 @@ export function StatCard(props: StatCardProps) {
           >
             <Icon />
           </IconBadge>
-          <span className='line-clamp-1 leading-snug sm:line-clamp-2'>
-            {props.title}
-          </span>
+          <h4 className='leading-snug wrap-anywhere'>{props.title}</h4>
         </div>
         {props.action && <div className='shrink-0'>{props.action}</div>}
       </div>
@@ -330,6 +330,6 @@ export function StatCard(props: StatCardProps) {
       {valueContent}
 
       <div className='hidden @md/summary:block'>{visualization}</div>
-    </div>
+    </article>
   )
 }

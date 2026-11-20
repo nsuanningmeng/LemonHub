@@ -8,7 +8,11 @@ import (
 // HTTPListenAddress preserves the gateway's public default while allowing local
 // clients, including the desktop application, to bind only to loopback.
 func HTTPListenAddress(port string) string {
-	return net.JoinHostPort(os.Getenv("BIND_ADDRESS"), port)
+	host := os.Getenv("BIND_ADDRESS")
+	if host == "" {
+		host = os.Getenv("HOST")
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // PprofListenAddress keeps unauthenticated diagnostics local unless an operator

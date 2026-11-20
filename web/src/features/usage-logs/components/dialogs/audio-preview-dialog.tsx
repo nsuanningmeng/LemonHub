@@ -26,6 +26,7 @@ import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 export interface AudioClip {
   clip_id?: string
@@ -120,9 +121,13 @@ function AudioClipCard({ clip }: { clip: AudioClip }) {
               variant='outline'
               size='sm'
               className='h-7 gap-1 text-xs'
-              onClick={() => {
-                navigator.clipboard.writeText(audioUrl)
-                toast.success(t('Copied'))
+              onClick={async () => {
+                const success = await copyToClipboard(audioUrl)
+                if (success) {
+                  toast.success(t('Copied'))
+                } else {
+                  toast.error(t('Copy failed. Please copy manually.'))
+                }
               }}
             >
               <Copy className='h-3 w-3' />

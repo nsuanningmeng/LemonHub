@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useSystemConfig } from '@/hooks/use-system-config'
 
 import {
   SettingsForm,
@@ -138,6 +139,7 @@ interface PasskeySectionProps {
 
 export function PasskeySection(props: PasskeySectionProps) {
   const { t } = useTranslation()
+  const { systemName } = useSystemConfig()
   const updateOption = useUpdateOption()
 
   const formDefaults = useMemo(
@@ -225,7 +227,9 @@ export function PasskeySection(props: PasskeySectionProps) {
                 <FormLabel>{t('Relying Party Display Name')}</FormLabel>
                 <FormControl>
                   <Input
-                    placeholder={t('e.g. New API Console')}
+                    placeholder={t('e.g. {{name}} Console', {
+                      name: systemName,
+                    })}
                     value={field.value ?? ''}
                     onChange={(event) => field.onChange(event.target.value)}
                     name={field.name}

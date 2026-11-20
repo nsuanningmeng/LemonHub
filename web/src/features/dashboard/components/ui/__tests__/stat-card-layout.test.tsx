@@ -39,3 +39,49 @@ test('large exact totals stay on one readable line without splitting digits', ()
   expect(value).not.toHaveClass('break-all')
   expect(value).toHaveAttribute('title', '1,234,567')
 })
+
+test('a loading metric announces busy state and does not expose a stale total', () => {
+  const { rerender } = render(
+    <StatCard
+      title='Requests'
+      value='456'
+      description='All requests'
+      icon={ChartNoAxesColumn}
+      loading
+    />
+  )
+  expect(screen.getByRole('article', { name: 'Requests' })).toHaveAttribute(
+    'aria-busy',
+    'true'
+  )
+  expect(screen.queryByText('456')).not.toBeInTheDocument()
+  rerender(
+    <StatCard
+      title='Requests'
+      value='456'
+      description='All requests'
+      icon={ChartNoAxesColumn}
+    />
+  )
+  expect(screen.getByRole('article', { name: 'Requests' })).toHaveAttribute(
+    'aria-busy',
+    'false'
+  )
+  expect(screen.getByText('456')).toBeVisible()
+})
+
+test('a metric failure keeps its label and description without presenting the stale total', () => {
+  render(
+    <StatCard
+      title='Requests'
+      value='456'
+      description='Requests could not be loaded'
+      icon={ChartNoAxesColumn}
+      error
+    />
+  )
+  expect(screen.getByRole('heading', { name: 'Requests' })).toBeVisible()
+  expect(screen.getByText('Requests could not be loaded')).toBeVisible()
+  expect(screen.getByText('--')).toBeVisible()
+  expect(screen.queryByText('456')).not.toBeInTheDocument()
+})

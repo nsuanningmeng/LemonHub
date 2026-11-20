@@ -286,6 +286,9 @@ type InputTokenDetails struct {
 	TextTokens              int                     `json:"text_tokens"`
 	AudioTokens             int                     `json:"audio_tokens"`
 	ImageTokens             int                     `json:"image_tokens"`
+	// Explicit-cache providers include this count in prompt_tokens. It is an
+	// alias for the cache-write total, not an additional set of tokens.
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
 }
 
 // CacheWriteTokenDetails reports disjoint cache-write counts by lifetime.
@@ -314,21 +317,12 @@ func (d InputTokenDetails) CacheWrite12hTokens() int {
 	return min(max(d.CacheWriteTokensDetails.TTL12hTokens, 0), d.CacheCreationTokensTotal())
 }
 
-// CacheCreationTokensTotal returns the cache-write token count regardless of
-// which field the upstream reported it in: Claude-derived conversions populate
-// CachedCreationTokens while OpenAI reports cache_write_tokens natively. Both
-// are billed at the cache-creation price; when both are present the larger
-// value wins so the same tokens are never double-counted. Negative upstream
-// values are clamped to zero so they can never lower a charge.
+// CacheCreationTokensTotal returns the largest cache-write count reported by
+// the upstream. Claude conversions, native OpenAI, and explicit-cache providers
+// use different aliases for the same tokens; adding them would double charge.
+// Negative counts never lower a charge.
 func (d InputTokenDetails) CacheCreationTokensTotal() int {
-	total := d.CachedCreationTokens
-	if d.CacheWriteTokens > total {
-		total = d.CacheWriteTokens
-	}
-	if total < 0 {
-		return 0
-	}
-	return total
+	return max(0, d.CachedCreationTokens, d.CacheWriteTokens, d.CacheCreationInputTokens)
 }
 
 type OutputTokenDetails struct {

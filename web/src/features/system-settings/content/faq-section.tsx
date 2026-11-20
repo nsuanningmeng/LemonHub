@@ -54,6 +54,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { SettingsSwitchField } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { isSettingsErrorReported } from '../lib/settings-action'
 
 type FAQ = {
   id: number
@@ -129,8 +130,10 @@ export function FAQSection({ enabled, data }: FAQSectionProps) {
       })
       setIsEnabled(checked)
       toast.success(t('Setting saved'))
-    } catch {
-      toast.error(t('Failed to update setting'))
+    } catch (error) {
+      if (!isSettingsErrorReported(error)) {
+        toast.error(t('Failed to update setting'))
+      }
     }
   }
 
@@ -213,8 +216,10 @@ export function FAQSection({ enabled, data }: FAQSectionProps) {
       })
       setHasChanges(false)
       toast.success(t('FAQ saved successfully'))
-    } catch {
-      toast.error(t('Failed to save FAQ'))
+    } catch (error) {
+      if (!isSettingsErrorReported(error)) {
+        toast.error(t('Failed to save FAQ'))
+      }
     }
   }
 

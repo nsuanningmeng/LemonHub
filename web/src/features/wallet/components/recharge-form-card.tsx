@@ -70,6 +70,8 @@ interface RechargeFormCardProps {
   onRedeem: () => void
   redeeming: boolean
   topupLink?: string
+  error?: boolean
+  onRetry?: () => void
   loading?: boolean
   priceRatio?: number
   usdExchangeRate?: number
@@ -101,6 +103,8 @@ export function RechargeFormCard({
   redeeming,
   topupLink,
   loading,
+  error,
+  onRetry,
   priceRatio = 1,
   usdExchangeRate = 1,
   creemProducts,
@@ -191,6 +195,28 @@ export function RechargeFormCard({
           </div>
         </CardContent>
       </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <TitledCard
+        title={t('Add Funds')}
+        icon={<WalletCards aria-hidden='true' />}
+        disableHoverEffect
+      >
+        <div
+          role='alert'
+          className='flex flex-wrap items-center justify-between gap-3 text-sm'
+        >
+          <span>{t('Failed to load')}</span>
+          {onRetry && (
+            <Button variant='outline' size='sm' onClick={onRetry}>
+              {t('Retry')}
+            </Button>
+          )}
+        </div>
+      </TitledCard>
     )
   }
 

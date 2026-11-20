@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useTranslation } from 'react-i18next'
 
+import { Button } from '@/components/ui/button'
+
 import { ErrorPage } from './error-page'
 
 export function MaintenanceError() {
@@ -26,6 +28,11 @@ export function MaintenanceError() {
     <ErrorPage
       code={503}
       title={t('Maintenance in progress')}
+      action={
+        <Button onClick={() => window.location.reload()}>
+          {t('Reload page')}
+        </Button>
+      }
       description={t(
         'The service is temporarily unavailable. Please try again later.'
       )}

@@ -63,8 +63,10 @@ interface WalletProps {
 
 export function Wallet(props: WalletProps) {
   const { t } = useTranslation()
+  const addFundsRef = useRef<HTMLElement | null>(null)
   const [user, setUser] = useState<UserWalletData | null>(null)
   const [userLoading, setUserLoading] = useState(true)
+  const [userError, setUserError] = useState(false)
   const [topupAmount, setTopupAmount] = useState(0)
   const [selectedPreset, setSelectedPreset] = useState<number | null>(null)
   const [selectedPaymentMethod, setSelectedPaymentMethod] =
@@ -84,7 +86,13 @@ export function Wallet(props: WalletProps) {
 
   const { status } = useStatus()
   const { currency } = useSystemConfig()
-  const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
+  const {
+    topupInfo,
+    presetAmounts,
+    loading: topupLoading,
+    error: topupError,
+    refetch: refetchTopupInfo,
+  } = useTopupInfo()
 
   // Calculate effective exchange rate - when display type is USD, use rate of 1
   const effectiveUsdExchangeRate = useMemo(() => {
@@ -116,13 +124,20 @@ export function Wallet(props: WalletProps) {
   const fetchUser = useCallback(async () => {
     try {
       setUserLoading(true)
-      const response = await getSelf()
+      setUserError(false)
+      const response = await getSelf({
+        skipBusinessError: true,
+        skipErrorHandler: true,
+      })
       if (response.success && response.data) {
         setUser(response.data as UserWalletData)
+      } else {
+        setUserError(true)
       }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Failed to fetch user data:', error)
+      setUserError(true)
     } finally {
       setUserLoading(false)
     }
@@ -320,7 +335,18 @@ export function Wallet(props: WalletProps) {
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
-            <WalletStatsCard user={user} loading={userLoading} />
+            <WalletStatsCard
+              user={user}
+              loading={userLoading}
+              error={userError}
+              onRetry={fetchUser}
+              onAddFunds={() => {
+                addFundsRef.current?.scrollIntoView({ block: 'start' })
+                addFundsRef.current
+                  ?.querySelector<HTMLInputElement>('#topup-amount')
+                  ?.focus({ preventScroll: true })
+              }}
+            />
 
             <div
               className={
@@ -329,7 +355,12 @@ export function Wallet(props: WalletProps) {
                   : 'grid gap-4'
               }
             >
-              <div id='wallet-add-funds' className='scroll-mt-4'>
+              <section
+                ref={addFundsRef}
+                aria-label={t('Add Funds')}
+                id='wallet-add-funds'
+                className='min-w-0 scroll-mt-4'
+              >
                 <RechargeFormCard
                   topupInfo={topupInfo}
                   presetAmounts={presetAmounts}
@@ -348,6 +379,8 @@ export function Wallet(props: WalletProps) {
                   redeeming={redeeming}
                   topupLink={topupInfo?.topup_link}
                   loading={topupLoading}
+                  error={topupError}
+                  onRetry={refetchTopupInfo}
                   priceRatio={(status?.price as number) || 1}
                   usdExchangeRate={effectiveUsdExchangeRate}
                   creemProducts={topupInfo?.creem_products}
@@ -361,14 +394,20 @@ export function Wallet(props: WalletProps) {
                     topupInfo?.enable_waffo_pancake_topup
                   }
                 />
-              </div>
+              </section>
 
-              <SubscriptionPlansCard
-                topupInfo={topupInfo}
-                onAvailabilityChange={handleSubscriptionAvailabilityChange}
-                userQuota={user?.quota}
-                onPurchaseSuccess={fetchUser}
-              />
+              <section
+                aria-label={t('Subscription Plans')}
+                hidden={!showSubscriptionPanel}
+                className='min-w-0'
+              >
+                <SubscriptionPlansCard
+                  topupInfo={topupInfo}
+                  onAvailabilityChange={handleSubscriptionAvailabilityChange}
+                  userQuota={user?.quota}
+                  onPurchaseSuccess={fetchUser}
+                />
+              </section>
             </div>
 
             <AffiliateRewardsCard

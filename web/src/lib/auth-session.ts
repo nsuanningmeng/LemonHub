@@ -75,7 +75,11 @@ const authClient = axios.create({
 })
 
 const refreshRaceDelays = [80, 200, 500] as const
-let refreshPromise: Promise<RefreshOutcome> | null = null
+let activeRefresh: {
+  epoch: number
+  controller: AbortController
+  promise: Promise<RefreshOutcome>
+} | null = null
 let authEpoch = 0
 
 class AuthRefreshSupersededError extends Error {
@@ -151,6 +155,7 @@ export function applyAuthBundle(
 ): void {
   const previousSID = useAuthStore.getState().auth.session?.sid
   authEpoch += 1
+  activeRefresh?.controller.abort()
   useAuthStore.getState().auth.setBundle(bundle)
   if (synchronizeTabs && previousSID !== bundle.session.sid) {
     publishAuthSessionEvent('authenticated', bundle.session.sid)
@@ -188,6 +193,7 @@ export function clearAuthentication(
 ): void {
   const sid = useAuthStore.getState().auth.session?.sid
   authEpoch += 1
+  activeRefresh?.controller.abort()
   useAuthStore.getState().auth.reset(bootstrapState)
   if (synchronizeTabs && sid) {
     publishAuthSessionEvent('signed_out', sid)
@@ -272,7 +278,8 @@ export function createRefreshRunner(
 }
 
 async function requestRefresh(
-  expectedSID?: string
+  expectedSID: string | undefined,
+  signal: AbortSignal
 ): Promise<AuthRefreshHTTPResponse> {
   try {
     const response = await authClient.post(
@@ -280,6 +287,7 @@ async function requestRefresh(
       undefined,
       {
         headers: expectedSID ? { 'X-Auth-Session': expectedSID } : undefined,
+        signal,
       }
     )
     return { status: response.status, data: response.data }
@@ -293,9 +301,12 @@ async function requestRefresh(
   }
 }
 
-function runRefresh(refreshEpoch: number): Promise<RefreshOutcome> {
+function runRefresh(
+  refreshEpoch: number,
+  signal: AbortSignal
+): Promise<RefreshOutcome> {
   return createRefreshRunner({
-    request: requestRefresh,
+    request: (expectedSID) => requestRefresh(expectedSID, signal),
     getExpectedSID: () => useAuthStore.getState().auth.session?.sid,
     parseBundle: (value) => (isAuthBundle(value) ? value : null),
     acceptBundle: (bundle) => applyAuthBundle(bundle, false),
@@ -308,36 +319,45 @@ function runRefresh(refreshEpoch: number): Promise<RefreshOutcome> {
     },
     markTransient: () => useAuthStore.getState().auth.setBootstrapState('idle'),
     wait: waitForRefreshRace,
-    isCurrent: () => authEpoch === refreshEpoch,
+    isCurrent: () => authEpoch === refreshEpoch && !signal.aborted,
   })()
 }
 
 async function performRefreshWithBrowserLock(
-  refreshEpoch: number
+  refreshEpoch: number,
+  signal: AbortSignal
 ): Promise<RefreshOutcome> {
   try {
     if (typeof navigator === 'undefined' || !navigator.locks) {
-      return runRefresh(refreshEpoch)
+      return await runRefresh(refreshEpoch, signal)
     }
-    return navigator.locks.request(
+    return await navigator.locks.request(
       'new-api:auth-refresh',
-      { mode: 'exclusive' },
-      () => runRefresh(refreshEpoch)
+      { mode: 'exclusive', signal },
+      () => runRefresh(refreshEpoch, signal)
     )
   } catch (error: unknown) {
-    useAuthStore.getState().auth.setBootstrapState('idle')
+    if (authEpoch === refreshEpoch && !signal.aborted) {
+      useAuthStore.getState().auth.setBootstrapState('idle')
+    }
     return { kind: 'transient_error', error }
   }
 }
 
 export function refreshAuthentication(): Promise<RefreshOutcome> {
-  if (!refreshPromise) {
+  if (!activeRefresh || activeRefresh.epoch !== authEpoch) {
     const refreshEpoch = authEpoch
-    refreshPromise = performRefreshWithBrowserLock(refreshEpoch).finally(() => {
-      refreshPromise = null
+    const controller = new AbortController()
+    const promise = performRefreshWithBrowserLock(
+      refreshEpoch,
+      controller.signal
+    ).finally(() => {
+      // An old cancelled task must not discard a newer account's active refresh.
+      if (activeRefresh?.promise === promise) activeRefresh = null
     })
+    activeRefresh = { epoch: refreshEpoch, controller, promise }
   }
-  return refreshPromise
+  return activeRefresh.promise
 }
 
 function currentValidAuthBundle(): AuthBundle | null {

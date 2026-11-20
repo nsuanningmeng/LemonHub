@@ -17,6 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test } from 'vitest'
 
@@ -69,4 +75,30 @@ test('custom footer strips executable HTML while preserving text and safe links'
   expect(footer.querySelector('[onload], script, iframe')).toBeNull()
   expect(within(footer).getByText('Unsafe link')).not.toHaveAttribute('href')
   queryClient.clear()
+})
+
+test('a long custom brand remains readable and can wrap inside the footer on narrow screens', async () => {
+  const name =
+    'ResearchWorkspaceWithAnUnbrokenNameThatExceedsASmallMobileViewport'
+  useSystemConfigStore
+    .getState()
+    .setConfig({ systemName: name, footerHtml: '' })
+  const client = new QueryClient({
+    defaultOptions: { queries: { enabled: false, retry: false } },
+  })
+  const router = createRouter({
+    routeTree: createRootRoute({ component: Footer }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  await router.load()
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
+  const brand = screen.getByText(name)
+  expect(brand).toHaveClass('min-w-0', '[overflow-wrap:anywhere]')
+  expect(brand.closest('a')).toHaveClass('min-w-0')
+  expect(screen.getByRole('img', { name })).toHaveClass('shrink-0')
+  client.clear()
 })

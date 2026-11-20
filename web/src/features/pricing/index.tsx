@@ -89,7 +89,10 @@ export function Pricing() {
 
   const handleModelClick = useCallback((modelName: string) => {
     const active = document.activeElement
-    modelTrigger.current = active instanceof HTMLButtonElement ? active : null
+    modelTrigger.current =
+      active instanceof HTMLElement && active.matches('button, tr[tabindex]')
+        ? active
+        : null
     setSelectedModelName(modelName)
   }, [])
 
@@ -165,7 +168,10 @@ export function Pricing() {
 
   return (
     <PublicLayout showMainContainer={false}>
-      <main className='mx-auto w-full max-w-[76rem] px-5 pt-24 pb-12 sm:px-8 sm:pt-28'>
+      <main
+        id='main-content'
+        className='mx-auto w-full max-w-[76rem] px-5 pt-24 pb-12 sm:px-8 sm:pt-28'
+      >
         <PageTransition>
           <header className='mb-6 grid gap-5 border-b pb-6 sm:mb-8 sm:pb-8 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] lg:items-end lg:gap-10'>
             <div>

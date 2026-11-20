@@ -53,7 +53,7 @@ export function RewardSummaryCards() {
       >
         <div className='flex justify-between gap-4'>
           <div>
-            <h2 id='reward-credit-heading' className='text-lg font-semibold'>
+            <h2 id='reward-credit-heading' className='text-base font-semibold'>
               {t('Rewards to claim')}
             </h2>
           </div>
@@ -86,7 +86,7 @@ export function RewardSummaryCards() {
       >
         <div className='flex justify-between gap-4'>
           <div>
-            <h2 id='reward-packets-heading' className='text-lg font-semibold'>
+            <h2 id='reward-packets-heading' className='text-base font-semibold'>
               {t('My red packets')}
             </h2>
             <p className='text-muted-foreground mt-1 text-sm'>

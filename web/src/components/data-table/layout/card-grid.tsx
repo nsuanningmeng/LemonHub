@@ -70,6 +70,7 @@ export interface DataTableCardGridProps<TData> {
   isLoading?: boolean
   emptyTitle?: string
   emptyDescription?: string
+  emptyAction?: React.ReactNode
   emptyIcon?: React.ReactNode
   getRowKey?: (row: Row<TData>) => string | number
   getRowClassName?: (row: Row<TData>) => string | undefined
@@ -169,6 +170,7 @@ export function DataTableCardGrid<TData>(props: DataTableCardGridProps<TData>) {
             <EmptyTitle>{resolvedEmptyTitle}</EmptyTitle>
             <EmptyDescription>{resolvedEmptyDescription}</EmptyDescription>
           </EmptyHeader>
+          {props.emptyAction}
         </Empty>
       </div>
     )

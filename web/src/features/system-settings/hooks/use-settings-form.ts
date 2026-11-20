@@ -165,7 +165,7 @@ function expandDotPaths<T extends FieldValues>(
  *
  * Key features:
  * - Initializes form with defaultValues only on mount
- * - No automatic resets that could overwrite user input
+ * - Merges refreshed saved values without overwriting pending edits
  * - Tracks changed fields to minimize API calls
  * - Provides manual reset functionality
  *
@@ -219,7 +219,13 @@ export function useSettingsForm<T extends FieldValues>({
     baselineRef.current = flattened
     defaultValuesRef.current = expandedDefaults as T
     serializedDefaultsRef.current = serialized
-    form.reset(expandedDefaults as T)
+    // Saving multiple options can publish a partial server snapshot while the
+    // remaining requests are pending. Keep those edits and advance the reset
+    // baseline to what the server has actually accepted.
+    form.reset(expandedDefaults as T, { keepDirtyValues: true })
+    // Recalculate dirty fields against that new baseline so successfully saved
+    // fields are not sent again when a later option fails and the user retries.
+    form.reset(form.getValues(), { keepDefaultValues: true })
   }, [expandedDefaults, form])
 
   const defaultCompare = (a: unknown, b: unknown): boolean => {

@@ -1,5 +1,7 @@
 package common
 
+import "strings"
+
 type DatabaseType string
 
 const (
@@ -41,4 +43,14 @@ func UsingLogDatabase(databaseType DatabaseType) bool {
 	return logDatabaseType == databaseType
 }
 
-var SQLitePath = "one-api.db?_busy_timeout=30000"
+var SQLitePath = sqliteDSN("one-api.db")
+
+// sqliteDSN preserves an explicitly configured DSN. Bare paths use the busy
+// timeout syntax supported by our pure-Go SQLite driver without changing the
+// database's journal mode or transaction locking policy.
+func sqliteDSN(path string) string {
+	if strings.Contains(path, "?") {
+		return path
+	}
+	return path + "?_pragma=busy_timeout(30000)"
+}

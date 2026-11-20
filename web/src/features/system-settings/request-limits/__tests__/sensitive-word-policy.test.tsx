@@ -79,10 +79,17 @@ describe('Sensitive word matching policy', () => {
       )
 
       await waitFor(() =>
-        expect(put).toHaveBeenCalledExactlyOnceWith('/api/option/', {
-          key: 'SensitiveWordsWholeWordEnabled',
-          value: !enabled,
-        })
+        expect(put).toHaveBeenCalledExactlyOnceWith(
+          '/api/option/',
+          {
+            key: 'SensitiveWordsWholeWordEnabled',
+            value: !enabled,
+          },
+          expect.objectContaining({
+            skipBusinessError: true,
+            skipErrorHandler: true,
+          })
+        )
       )
     }
   )

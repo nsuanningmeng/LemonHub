@@ -1,0 +1,254 @@
+{
+  "schemaVersion": 1,
+  "recipe": "astryx-oklch-v1",
+  "generatorVersion": "palette-generator-v1",
+  "candidateFormatVersion": "palette-typescript-v1",
+  "candidateSha256": "6c7f78b63365a8d1752a42dc06a5a527c414b53d86c0893b68fef0d05ffa5526",
+  "preview": {
+    "version": "palette-preview-v1",
+    "sha256": "77aeaf960f4b627818c4fd1f1f466fa5c4906f49ce87c5d61e12bf1058a07f44"
+  },
+  "request": {
+    "recipe": "astryx-oklch-v1",
+    "vibrancy": 50,
+    "neutralProfile": "neutral-v1",
+    "modeStrategy": "light-and-dark",
+    "stops": [
+      0,
+      5,
+      10,
+      15,
+      20,
+      25,
+      30,
+      35,
+      40,
+      45,
+      50,
+      55,
+      60,
+      65,
+      70,
+      75,
+      80,
+      85,
+      90,
+      95,
+      100
+    ],
+    "families": [
+      {
+        "id": "blue",
+        "name": "Workspace blue",
+        "seed": "#3559e3",
+        "kind": "chromatic",
+        "anchors": []
+      },
+      {
+        "id": "teal",
+        "name": "Connection teal",
+        "seed": "#159889",
+        "kind": "chromatic",
+        "anchors": []
+      },
+      {
+        "id": "violet",
+        "name": "Model violet",
+        "seed": "#9260d7",
+        "kind": "chromatic",
+        "anchors": []
+      },
+      {
+        "id": "peach",
+        "name": "Account peach",
+        "seed": "#d88c71",
+        "kind": "chromatic",
+        "anchors": []
+      }
+    ]
+  },
+  "diagnostics": {
+    "families": {
+      "blue": {
+        "light": {
+          "monotonic": true,
+          "minimumAdjacentDeltaE": 4.235267937764342,
+          "maximumAdjacentDeltaE": 20.13353755060197,
+          "maximumHueDrift": 0.6129766181556988,
+          "hueIdentityRisk": null,
+          "gamutMappedStops": [
+            60,
+            65,
+            70,
+            75,
+            80,
+            85,
+            90,
+            95,
+            100
+          ],
+          "anchors": []
+        },
+        "dark": {
+          "monotonic": true,
+          "minimumAdjacentDeltaE": 4.194045749458574,
+          "maximumAdjacentDeltaE": 19.451701220449824,
+          "maximumHueDrift": 0.8935488977126624,
+          "hueIdentityRisk": null,
+          "gamutMappedStops": [
+            70,
+            75,
+            80,
+            85,
+            90,
+            95,
+            100
+          ],
+          "anchors": []
+        }
+      },
+      "teal": {
+        "light": {
+          "monotonic": true,
+          "minimumAdjacentDeltaE": 4.082838604407199,
+          "maximumAdjacentDeltaE": 18.230966590437585,
+          "maximumHueDrift": 2.3554078447522215,
+          "hueIdentityRisk": null,
+          "gamutMappedStops": [
+            5,
+            10,
+            15,
+            20,
+            25,
+            30,
+            35,
+            40,
+            45,
+            50,
+            55,
+            60,
+            100
+          ],
+          "anchors": []
+        },
+        "dark": {
+          "monotonic": true,
+          "minimumAdjacentDeltaE": 4.1718111193553575,
+          "maximumAdjacentDeltaE": 18.230966590437585,
+          "maximumHueDrift": 2.3554078447522215,
+          "hueIdentityRisk": null,
+          "gamutMappedStops": [
+            5,
+            10,
+            15,
+            20,
+            25,
+            30,
+            35,
+            40,
+            45,
+            50,
+            100
+          ],
+          "anchors": []
+        }
+      },
+      "violet": {
+        "light": {
+          "monotonic": true,
+          "minimumAdjacentDeltaE": 4.234863840663036,
+          "maximumAdjacentDeltaE": 19.46748670889515,
+          "maximumHueDrift": 0.9968527908156375,
+          "hueIdentityRisk": null,
+          "gamutMappedStops": [
+            75,
+            80,
+            85,
+            90,
+            95,
+            100
+          ],
+          "anchors": []
+        },
+        "dark": {
+          "monotonic": true,
+          "minimumAdjacentDeltaE": 4.223648431856431,
+          "maximumAdjacentDeltaE": 18.903150738842754,
+          "maximumHueDrift": 1.0328809001640593,
+          "hueIdentityRisk": null,
+          "gamutMappedStops": [
+            80,
+            85,
+            90,
+            95,
+            100
+          ],
+          "anchors": []
+        }
+      },
+      "peach": {
+        "light": {
+          "monotonic": true,
+          "minimumAdjacentDeltaE": 4.2509978743992765,
+          "maximumAdjacentDeltaE": 19.346124422908343,
+          "maximumHueDrift": 10.978339236966008,
+          "hueIdentityRisk": null,
+          "gamutMappedStops": [
+            10,
+            15,
+            20,
+            25,
+            75,
+            80,
+            85,
+            90,
+            95,
+            100
+          ],
+          "anchors": []
+        },
+        "dark": {
+          "monotonic": true,
+          "minimumAdjacentDeltaE": 4.181588325068062,
+          "maximumAdjacentDeltaE": 18.783082660997856,
+          "maximumHueDrift": 9.096061821073931,
+          "hueIdentityRisk": null,
+          "gamutMappedStops": [
+            80,
+            85,
+            90,
+            95,
+            100
+          ],
+          "anchors": []
+        }
+      }
+    },
+    "coordination": [
+      {
+        "mode": "light",
+        "stop": 50,
+        "closestFamilies": [
+          "Workspace blue",
+          "Model violet"
+        ],
+        "minimumFamilyDeltaE": 10.60831916467227,
+        "strongestFamily": "Workspace blue",
+        "weakestFamily": "Connection teal",
+        "chromaRatio": 1.884193972878534
+      },
+      {
+        "mode": "dark",
+        "stop": 50,
+        "closestFamilies": [
+          "Workspace blue",
+          "Model violet"
+        ],
+        "minimumFamilyDeltaE": 9.056668078032176,
+        "strongestFamily": "Workspace blue",
+        "weakestFamily": "Connection teal",
+        "chromaRatio": 1.6039551994276633
+      }
+    ]
+  }
+}

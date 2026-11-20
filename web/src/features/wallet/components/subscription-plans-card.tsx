@@ -550,6 +550,8 @@ export function SubscriptionPlansCard({
 
               return (
                 <Card
+                  role='article'
+                  aria-label={plan.title || t('Subscription Plans')}
                   key={plan.id}
                   data-card-hover='false'
                   className={cn(
@@ -560,11 +562,11 @@ export function SubscriptionPlansCard({
                   <CardContent className='flex h-full flex-col p-3.5 sm:p-4'>
                     <div className='mb-2 flex items-start justify-between gap-3'>
                       <div className='min-w-0'>
-                        <h4 className='truncate font-semibold'>
+                        <h4 className='font-semibold wrap-anywhere'>
                           {plan.title || t('Subscription Plans')}
                         </h4>
                         {plan.subtitle && (
-                          <p className='text-muted-foreground truncate text-xs'>
+                          <p className='text-muted-foreground text-xs wrap-anywhere'>
                             {plan.subtitle}
                           </p>
                         )}
@@ -587,17 +589,17 @@ export function SubscriptionPlansCard({
                       </span>
                     </div>
 
-                    <div className='flex-1 space-y-1.5 pb-3'>
+                    <ul className='flex-1 space-y-1.5 pb-3 wrap-anywhere'>
                       {benefits.map((label) => (
-                        <div
+                        <li
                           key={label}
                           className='text-muted-foreground flex items-center gap-2 text-xs'
                         >
                           <Check className='text-primary h-3 w-3 shrink-0' />
                           <span>{label}</span>
-                        </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
 
                     <Separator className='mb-3' />
 

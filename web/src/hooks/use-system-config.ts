@@ -18,8 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useEffect, useCallback } from 'react'
 
-import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
-import { applyFaviconToDom } from '@/lib/dom-utils'
+import {
+  DEFAULT_LOGO,
+  resolveSystemLogo,
+  resolveSystemName,
+} from '@/lib/constants'
+import { applyFaviconToDom, applySystemMetadataToDom } from '@/lib/dom-utils'
 import {
   useSystemConfigStore,
   type CurrencyConfig,
@@ -38,6 +42,8 @@ interface StatusApiResponse {
   data: {
     system_name?: string
     logo?: string
+    seo_description?: string
+    seo_keywords?: string
     footer_html?: string
     demo_site_enabled?: boolean
     display_token_stat_enabled?: boolean
@@ -93,8 +99,8 @@ export function mapStatusDataToConfig(
   }
 
   return {
-    systemName: data.system_name || DEFAULT_SYSTEM_NAME,
-    logo: data.logo || DEFAULT_LOGO,
+    systemName: resolveSystemName(data.system_name),
+    logo: resolveSystemLogo(data.logo),
     footerHtml: data.footer_html,
     demoSiteEnabled: data.demo_site_enabled,
     displayTokenStatEnabled: data.display_token_stat_enabled,
@@ -110,6 +116,7 @@ async function fetchSystemConfig(): Promise<Partial<SystemConfig>> {
   const data: StatusApiResponse = await response.json()
   if (!data.success) throw new Error('API returned error')
 
+  applySystemMetadataToDom(data.data)
   return mapStatusDataToConfig(data.data)
 }
 
@@ -120,13 +127,13 @@ function preloadImage(
   onError: () => void
 ): () => void {
   const img = new Image()
-  img.onload = onLoad
-  img.onerror = onError
+  img.addEventListener('load', onLoad)
+  img.addEventListener('error', onError)
   img.src = src
 
   return () => {
-    img.onload = null
-    img.onerror = null
+    img.removeEventListener('load', onLoad)
+    img.removeEventListener('error', onError)
   }
 }
 
@@ -147,6 +154,8 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
     config,
     loading,
     loadedLogoUrl,
+    failedLogoUrl,
+    setFailedLogoUrl,
     setConfig,
     setLoadedLogoUrl,
     setLoading,
@@ -172,10 +181,13 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
 
   // Preload logo image when URL changes
   useEffect(() => {
-    const { logo } = config
+    const logo = resolveSystemLogo(config.logo)
 
-    // Skip if logo is already loaded
-    if (!logo || logo === loadedLogoUrl) return
+    if (logo === loadedLogoUrl) {
+      applyFaviconToDom(logo)
+      return
+    }
+    if (logo === failedLogoUrl) return
 
     // Preload new logo
     return preloadImage(
@@ -189,16 +201,29 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
           // eslint-disable-next-line no-console
           console.error('Failed to load logo:', logo)
         }
-        // Mark as loaded even on error to prevent infinite retry
-        setLoadedLogoUrl(logo)
+        // Keep the configured URL intact, but display the bundled fallback.
+        setFailedLogoUrl(logo)
+        setLoadedLogoUrl(DEFAULT_LOGO)
+        applyFaviconToDom(DEFAULT_LOGO)
       }
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [config.logo, loadedLogoUrl, setLoadedLogoUrl])
+  }, [
+    config.logo,
+    loadedLogoUrl,
+    failedLogoUrl,
+    setLoadedLogoUrl,
+    setFailedLogoUrl,
+  ])
+
+  const configuredLogo = resolveSystemLogo(config.logo)
+  const displayLogo =
+    configuredLogo === failedLogoUrl ? DEFAULT_LOGO : configuredLogo
 
   return {
     ...config,
+    systemName: resolveSystemName(config.systemName),
+    logo: displayLogo,
     loading,
-    logoLoaded: config.logo === loadedLogoUrl && !!loadedLogoUrl,
+    logoLoaded: displayLogo === loadedLogoUrl && !!loadedLogoUrl,
   }
 }

@@ -46,7 +46,7 @@ export function DocumentLoading() {
 
 export function DocumentTitle(props: { children: ReactNode }) {
   return (
-    <h1 className='mb-8 border-b pb-6 text-3xl font-semibold tracking-tight text-balance md:mb-10 md:text-5xl'>
+    <h1 className='mb-8 border-b pb-6 text-3xl font-semibold tracking-tight text-balance [overflow-wrap:anywhere] md:mb-10 md:text-5xl'>
       {props.children}
     </h1>
   )

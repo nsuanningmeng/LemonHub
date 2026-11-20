@@ -157,3 +157,14 @@ test('translated password reset actions wrap and grow instead of forcing a wider
     '[overflow-wrap:anywhere]'
   )
 })
+
+test('authentication keeps long forms in normal page flow and labels the form region', async () => {
+  renderAuthLayout()
+  const region = await screen.findByRole('region', { name: 'Authentication' })
+  expect(region).toHaveClass('w-full', 'min-w-0')
+  expect(region).not.toHaveClass('border', 'shadow-sm')
+  expect(screen.getByRole('main')).toContainElement(region)
+  const home = screen.getByRole('link', { name: 'Go to home' })
+  expect(home).not.toHaveClass('absolute')
+  expect(home.closest('.min-h-svh')).toHaveClass('min-w-0')
+})

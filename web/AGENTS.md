@@ -193,3 +193,51 @@
 - **2026-01-29**：重组文档结构，合并重复内容，明确主次与交叉引用。
 - **2026-01-31**：在 3.2 中补充「类型检查」要求：改动 TS/TSX 后须执行 typecheck 并修复至无错。
 - **2026-06-21**：在 3.2 中补充「Lint 检查」要求：完成代码改动前须修复所涉及文件的所有 lint error。
+
+## LemonHub 界面体系
+
+- 页面分组优先使用留白、文字层级和轻量分隔，避免整页卡片、卡中卡、重复彩色底板及装饰标签；输入控件、选中状态和有实际意义的独立内容块保留必要边界。密集信息使用列表或表格，次要筛选按需展开。
+- 标题、按钮、标签、占位符及简短提示省略多余的句末句号或装饰性省略号。长段正文保留必要标点，代码、链接、价格单位和用户内容不做统一去标点处理。
+- 页面采用冷白底色、钴蓝主操作、薄荷青连接/用量、紫色模型/智能、杏桃色账户/资金；重点区使用饱和主色，辅助色用于分区，颜色不代替业务状态文字。
+- Astryx 提供布局组件与模板参考，现有 Base UI / TanStack 控件保留业务、键盘和权限行为。
+- `themes/lemonhub/lemonhub.theme.ts` 是色彩来源：主色由 Astryx theme editor 生成，辅助色由 `studio.palette.config.json` 经 Astryx palette generator 生成，`localTokens` 分配明暗模式角色。`src/styles/theme.css` 将这些主题变量映射给旧组件，保留用户主题偏好；Astryx portable tokens 再读取同一映射。不要引入 `tailwind-theme.css` 覆盖现有同名 utilities。
+- 主题设置需要同时覆盖 Astryx 与 Base UI；`theme-presets.css` 将彩色分区、间距与圆角绑定到用户偏好。`bun run test:appearance` 使用 Playwright 验证真实 CSS 与设置控件；首次运行前安装 Chromium（`bunx playwright install chromium`），也可用 `CHROMIUM_PATH` 指定本地浏览器、`E2E_BASE_URL` 复用服务。
+- 修改 Astryx 主题源后运行 `bun run theme:build`；提交 `src/themes/lemonhub` 的构建产物，预览文件不提交。入口必须首先加载 `styles/index.css`，保证 cascade layer 顺序。
+- 深色展示区使用 `brand-inverse`，使 Astryx Text/Heading 与普通内容保持一致的前景色；彩色分区使用 `surface-blue` / `surface-teal` / `surface-violet` / `surface-peach` / `surface-brand`，嵌套白底内容使用 `surface-base` 重置前景；不要仅依赖父元素 `color`。
+- 旧站默认名称/Logo 通过 `resolveSystemName` / `resolveSystemLogo` 转换，管理员定制品牌和必要的开源署名保留。
+
+<!-- ASTRYX:START -->
+
+Astryx v0.7.16 · 174 components
+CLI: run every command as `bunx astryx <cmd>` (shown below as `astryx ...`).
+
+SETUP (once, in app entry e.g. main.tsx) — without these, components render unstyled:
+import "@astryxdesign/core/reset.css";
+import "@astryxdesign/core/astryx.css";
+
+WORKFLOW — start every page from a template, never from scratch:
+
+1. `astryx build "<idea>"` — names the template to scaffold from and the parts it lacks.
+2. `astryx template <name> <path>` — scaffold it; keep its frame, gap and padding; replace the content.
+3. `astryx template <Block>` for parts it lacks; `astryx component <Name>` to read props before using one.
+   Changing an existing page? Keep it: skip step 2 and add blocks/components inside its sections.
+   Before you deliver a build, run `astryx doctor --built <dir>`; don't deliver it if it fails.
+
+RULES:
+
+- No <div> — components handle all layout and spacing.
+- Read `astryx docs layout` before changing a template's frame.
+- Dense data = rows (Table, List/Item), not Card-wrapped lists. Badge = counts only.
+- Style with component props first, then Tailwind utilities backed by tokens. No raw hex/px.
+- THEMES: palettes and custom colors go through the theme, never :root overrides. To make or change a theme (colors, fonts, corners, spacing, a look from a picture), prefer the experimental theme editor over hand-written theme files: `astryx experimental theme editor new <name> --like neutral`, then `editor set <name> <thing> <value>` or `editor how "<what you want>"`; wire it with `astryx theme add <name>`; after each change look at it with `astryx experimental theme editor show <name> --png` and open the PNGs it writes (changes nothing in the app); a theme change is not done until you have looked at the pictures. In code, extend an imported theme to customize it; `theme eject <slug>` only forks source. See `astryx docs theme`.
+- SELF-CHECK: re-read the file; replace any style={{…}}, raw <div>/<span>, imported .css/@apply, or hardcoded/arbitrary value (bg-[#fff], p-[13px]) with the component or a token-backed utility.
+
+`astryx help` lists every command. Key ones beyond the workflow:
+search "<query>" find any component / hook / doc / template
+discover <words> integrations you could add
+docs <topic> getting-started, principles, tokens, theme … (`astryx docs` lists all)
+docs cli commands and API reference
+docs authoring build an integration package, and every field it holds
+upgrade --from <old version> --apply run after a dependency bump
+
+<!-- ASTRYX:END -->

@@ -153,7 +153,10 @@ export function PerformanceHealthPanel() {
                     key={model.model_name}
                     className='flex items-center justify-between gap-2 rounded px-1.5 py-1'
                   >
-                    <span className='min-w-0 flex-1 truncate font-mono text-[11px]'>
+                    <span
+                      title={model.model_name}
+                      className='min-w-0 flex-1 truncate font-mono text-[11px]'
+                    >
                       {model.model_name}
                     </span>
                     <span className='inline-flex shrink-0 items-center gap-1'>

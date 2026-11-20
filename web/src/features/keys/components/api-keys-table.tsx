@@ -16,13 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { VStack } from '@astryxdesign/core/VStack'
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
 import type { Table as TanstackTable } from '@tanstack/react-table'
 import { KeyRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import {
   DISABLED_ROW_DESKTOP,
@@ -31,6 +31,7 @@ import {
   useDebouncedColumnFilter,
   useDataTable,
 } from '@/components/data-table'
+import { ErrorState } from '@/components/error-state'
 import { StatusBadge } from '@/components/status-badge'
 import {
   Empty,
@@ -59,6 +60,8 @@ import {
 } from '../types'
 import { ApiKeyCell, UnlimitedQuotaBadge } from './api-keys-cells'
 import { useApiKeysColumns } from './api-keys-columns'
+import { ApiKeysOverview } from './api-keys-overview'
+import { ApiKeysPrimaryButtons } from './api-keys-primary-buttons'
 import { useApiKeys } from './api-keys-provider'
 import { DataTableBulkActions } from './data-table-bulk-actions'
 import { DataTableRowActions } from './data-table-row-actions'
@@ -100,11 +103,11 @@ function ApiKeysMobileSkeleton() {
 function ApiKeysMobileList({
   table,
   isLoading,
-  emptyDescription,
+  isFiltered,
 }: {
   table: TanstackTable<ApiKey>
   isLoading: boolean
-  emptyDescription: string
+  isFiltered: boolean
 }) {
   const { t } = useTranslation()
   const rows = table.getRowModel().rows
@@ -116,12 +119,24 @@ function ApiKeysMobileList({
       <div className='rounded-lg border p-8'>
         <Empty className='border-none p-0'>
           <EmptyHeader>
-            <EmptyMedia variant='icon'>
-              <KeyRound aria-hidden='true' className='size-5' />
+            <EmptyMedia
+              variant='icon'
+              className='bg-brand-highlight/25 text-foreground'
+            >
+              <KeyRound className='size-6' />
             </EmptyMedia>
             <EmptyTitle>{t('No API Keys Found')}</EmptyTitle>
-            <EmptyDescription>{emptyDescription}</EmptyDescription>
+            <EmptyDescription>
+              {isFiltered
+                ? t(
+                    'No keys match these filters. Try another name, key or status.'
+                  )
+                : t(
+                    'Create your first key to connect an app to your model workspace.'
+                  )}
+            </EmptyDescription>
           </EmptyHeader>
+          {!isFiltered && <ApiKeysPrimaryButtons />}
         </Empty>
       </div>
     )
@@ -144,7 +159,7 @@ function ApiKeysMobileList({
           >
             <div className='flex items-start justify-between gap-3'>
               <div className='min-w-0'>
-                <div className='truncate text-sm font-semibold'>
+                <div className='text-sm font-semibold wrap-anywhere'>
                   {apiKey.name}
                 </div>
               </div>
@@ -153,6 +168,7 @@ function ApiKeysMobileList({
                   label={t(statusConfig.label)}
                   variant={statusConfig.variant}
                   copyable={false}
+                  className='shrink-0'
                 />
               )}
             </div>
@@ -240,7 +256,7 @@ export function ApiKeysTable() {
 
   // Fetch data with React Query
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: [
       'keys',
       pagination.pageIndex + 1,
@@ -266,7 +282,7 @@ export function ApiKeysTable() {
           })
 
       if (!result.success) {
-        toast.error(
+        throw new Error(
           result.message ||
             t(
               shouldSearch
@@ -274,7 +290,6 @@ export function ApiKeysTable() {
                 : ERROR_MESSAGES.LOAD_FAILED
             )
         )
-        return { items: [], total: 0 }
       }
 
       return {
@@ -309,54 +324,78 @@ export function ApiKeysTable() {
     ensurePageInRange,
   })
 
-  const emptyDescription =
-    shouldSearch || status
-      ? t('No records found. Try adjusting your filters.')
-      : t('No API keys available. Create your first API key to get started.')
+  const isFiltered = shouldSearch || status !== undefined
 
   return (
-    <DataTablePage
-      table={table}
-      columns={columns}
-      isLoading={isLoading}
-      isFetching={isFetching}
-      emptyTitle={t('No API Keys Found')}
-      emptyDescription={emptyDescription}
-      emptyIcon={<KeyRound aria-hidden='true' className='size-5' />}
-      skeletonKeyPrefix='api-keys-skeleton'
-      applyHeaderSize
-      toolbarProps={{
-        searchPlaceholder: t('Key name'),
-        searchDebounceMs: 500,
-        additionalSearch: (
-          <Input
-            placeholder={t('API key')}
-            aria-label={t('API key')}
-            value={tokenFilterInput}
-            onChange={(e) => setTokenFilterInput(e.target.value)}
-            className='w-full sm:w-50 lg:w-60'
-          />
-        ),
-        filters: [
-          {
-            columnId: 'status',
-            title: t('Status'),
-            options: API_KEY_STATUS_OPTIONS,
-            singleSelect: true,
-          },
-        ],
-      }}
-      mobile={
-        <ApiKeysMobileList
-          table={table}
+    <VStack gap={4} className='min-w-0'>
+      {!isError && (
+        <ApiKeysOverview
+          keys={apiKeys}
+          total={data?.total ?? 0}
           isLoading={isLoading}
-          emptyDescription={emptyDescription}
+          filtered={isFiltered}
         />
-      }
-      getRowClassName={(row) =>
-        isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
-      }
-      bulkActions={<DataTableBulkActions table={table} />}
-    />
+      )}
+      <DataTablePage
+        table={table}
+        columns={columns}
+        isLoading={isLoading}
+        isFetching={isFetching}
+        error={
+          isError ? (
+            <ErrorState
+              title={t(ERROR_MESSAGES.LOAD_FAILED)}
+              description={error.message}
+              onRetry={() => void refetch()}
+            />
+          ) : undefined
+        }
+        emptyTitle={t('No API Keys Found')}
+        emptyDescription={
+          isFiltered
+            ? t('No keys match these filters. Try another name, key or status.')
+            : t(
+                'Create your first key to connect an app to your model workspace.'
+              )
+        }
+        emptyIcon={<KeyRound aria-hidden='true' className='size-6' />}
+        emptyAction={!isFiltered ? <ApiKeysPrimaryButtons /> : undefined}
+        fixedHeight={false}
+        skeletonKeyPrefix='api-keys-skeleton'
+        applyHeaderSize
+        toolbarProps={{
+          searchPlaceholder: t('Filter by name...'),
+          searchDebounceMs: 500,
+          additionalSearch: (
+            <Input
+              placeholder={t('API key')}
+              aria-label={t('API key')}
+              value={tokenFilterInput}
+              onChange={(e) => setTokenFilterInput(e.target.value)}
+              className='w-full sm:w-50 lg:w-60'
+            />
+          ),
+          filters: [
+            {
+              columnId: 'status',
+              title: t('Status'),
+              options: API_KEY_STATUS_OPTIONS,
+              singleSelect: true,
+            },
+          ],
+        }}
+        mobile={
+          <ApiKeysMobileList
+            table={table}
+            isLoading={isLoading}
+            isFiltered={isFiltered}
+          />
+        }
+        getRowClassName={(row) =>
+          isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
+        }
+        bulkActions={<DataTableBulkActions table={table} />}
+      />
+    </VStack>
   )
 }

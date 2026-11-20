@@ -23,7 +23,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
@@ -66,6 +66,7 @@ test('a configured URL keeps embedded content below navigation and within the re
   const client = new QueryClient({
     defaultOptions: { queries: { enabled: false, retry: false } },
   })
+  client.setQueryDefaults(['home-page-content'], { enabled: true })
   vi.spyOn(api, 'get').mockResolvedValue({
     data: { success: true, data: 'https://support.example.test/' },
   })
@@ -84,5 +85,100 @@ test('a configured URL keeps embedded content below navigation and within the re
   expect(frame.closest('main')).toHaveClass('pt-16')
   expect(frame).toHaveClass('w-full', 'h-[calc(100svh-4rem)]')
   expect(frame).toHaveAttribute('src', 'https://support.example.test/')
+  client.clear()
+})
+
+test('configured HTML remains below the fixed header and supplies the skip-link main target', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { enabled: false, retry: false } },
+  })
+  client.setQueryDefaults(['home-page-content'], { enabled: true })
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: { success: true, data: '<h1>Custom studio</h1>' },
+  })
+  const router = createRouter({
+    routeTree: createRootRoute({ component: Home }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  await router.load()
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
+  await waitFor(() =>
+    expect(document.querySelector('.custom-home-content')).toBeInTheDocument()
+  )
+  expect(screen.getByRole('main')).toHaveAttribute('id', 'main-content')
+  expect(screen.getByRole('main')).toHaveClass('pt-16')
+  expect(
+    screen.getByRole('main').querySelector('.custom-home-content')
+  ).toBeInTheDocument()
+  client.clear()
+})
+
+test('configured Markdown renders readable headings and links in the standard main area', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { enabled: false, retry: false } },
+  })
+  client.setQueryDefaults(['home-page-content'], { enabled: true })
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: '# Team workspace\n\n[Read the guide](https://docs.example.test/)',
+    },
+  })
+  const router = createRouter({
+    routeTree: createRootRoute({ component: Home }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  await router.load()
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
+  const title = await screen.findByRole('heading', { name: 'Team workspace' })
+  expect(title.closest('main')).toHaveAttribute('id', 'main-content')
+  expect(screen.getByRole('link', { name: 'Read the guide' })).toHaveAttribute(
+    'href',
+    'https://docs.example.test/'
+  )
+  client.clear()
+})
+
+test('a complete HTML home preserves body and root styles in its own document', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { enabled: false, retry: false } },
+  })
+  client.setQueryDefaults(['home-page-content'], { enabled: true })
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: '<!doctype html><html lang="zh-CN"><head><style>:root { --page-bg: cyan; } body { margin: 0; background: var(--page-bg); }</style></head><body class="studio"><h1>Studio</h1></body></html>',
+    },
+  })
+  const router = createRouter({
+    routeTree: createRootRoute({ component: Home }),
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  await router.load()
+  render(
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  )
+  const frame = await screen.findByTitle('Custom Home Page')
+  const doc = new DOMParser().parseFromString(
+    frame.getAttribute('srcdoc') ?? '',
+    'text/html'
+  )
+  expect(doc.documentElement.lang).toBe('zh-CN')
+  expect(doc.body.classList.contains('studio')).toBe(true)
+  expect(doc.head.querySelector('style')?.textContent).toContain(
+    'body { margin: 0; background: var(--page-bg); }'
+  )
+  expect(frame.closest('main')).toHaveClass('pt-16')
+  expect(frame).toHaveClass('h-[calc(100svh-4rem)]')
   client.clear()
 })

@@ -107,7 +107,15 @@ export const PricingTable = memo(function PricingTable(
             key={row.id}
             row={row}
             cellRenderColumns={columns}
-            className='hover:bg-muted/30 cursor-pointer transition-colors'
+            tabIndex={onModelClick ? 0 : undefined}
+            className='hover:bg-muted/30 focus-visible:ring-ring cursor-pointer transition-colors focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset'
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget || !onModelClick) return
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleRowClick(row.original)
+              }
+            }}
             onClick={() => handleRowClick(row.original)}
           />
         )}

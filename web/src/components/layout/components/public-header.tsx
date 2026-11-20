@@ -242,7 +242,7 @@ export function PublicHeader(props: PublicHeaderProps) {
 
           {props.showNavigation !== false && (
             <nav
-              aria-label={t('Platform')}
+              aria-label={t('Main navigation')}
               className={
                 isHome
                   ? 'hidden min-w-0 items-center gap-1 lg:flex'
@@ -291,7 +291,12 @@ export function PublicHeader(props: PublicHeaderProps) {
                   (isAuthenticated ? (
                     <ProfileDropdown />
                   ) : (
-                    <Button size='sm' render={<Link to='/sign-in' />}>
+                    <Button
+                      nativeButton={false}
+                      role='link'
+                      size='sm'
+                      render={<Link to='/sign-in' />}
+                    >
                       {t('Sign in')}
                       {!isHome && <ArrowUpRight aria-hidden='true' />}
                     </Button>
@@ -337,7 +342,10 @@ export function PublicHeader(props: PublicHeaderProps) {
                   </SheetClose>
                 </div>
                 {props.showNavigation !== false && (
-                  <nav className='flex flex-col px-4 py-3'>
+                  <nav
+                    aria-label={t('Mobile navigation')}
+                    className='flex flex-col px-4 py-3'
+                  >
                     <NavLinkList
                       links={props.mobileLinks ?? links}
                       onNavigate={(event, link) =>
@@ -360,6 +368,8 @@ export function PublicHeader(props: PublicHeaderProps) {
                   >
                     <Button
                       className='h-11 w-full'
+                      role='link'
+                      nativeButton={false}
                       render={
                         <Link
                           to={isAuthenticated ? '/dashboard' : '/sign-in'}

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -35,13 +35,19 @@ interface PanelWrapperProps {
 }
 
 function PanelHeader(props: {
+  id: string
   title: ReactNode
   description?: ReactNode
   actions?: ReactNode
 }) {
   const heading = (
     <div className='flex min-w-0 flex-col gap-1'>
-      <h3 className='text-base font-semibold tracking-tight'>{props.title}</h3>
+      <h3
+        id={props.id}
+        className='text-base font-semibold tracking-tight break-words'
+      >
+        {props.title}
+      </h3>
       {props.description != null && (
         <div className='text-muted-foreground text-xs'>{props.description}</div>
       )}
@@ -64,6 +70,7 @@ function PanelHeader(props: {
 
 export function PanelWrapper(props: PanelWrapperProps) {
   const { t } = useTranslation()
+  const titleId = useId()
   const resolvedEmptyMessage = props.emptyMessage ?? t('No data available')
   const frameClassName = cn(
     'min-w-0 overflow-hidden rounded-lg border bg-card',
@@ -74,7 +81,7 @@ export function PanelWrapper(props: PanelWrapperProps) {
   if (props.loading) {
     content = (
       <div
-        aria-busy='true'
+        role='status'
         aria-label={t('Loading')}
         className='space-y-2 px-4 py-5 sm:px-5'
       >
@@ -84,7 +91,10 @@ export function PanelWrapper(props: PanelWrapperProps) {
     )
   } else if (props.empty) {
     content = (
-      <p className='text-muted-foreground px-4 py-5 text-sm sm:px-5'>
+      <p
+        role='status'
+        className='text-muted-foreground px-4 py-5 text-sm sm:px-5'
+      >
         {resolvedEmptyMessage}
       </p>
     )
@@ -97,11 +107,16 @@ export function PanelWrapper(props: PanelWrapperProps) {
   }
 
   return (
-    <section className={frameClassName}>
+    <section
+      aria-labelledby={titleId}
+      aria-busy={Boolean(props.loading)}
+      className={frameClassName}
+    >
       <PanelHeader
+        id={titleId}
         title={props.title}
         description={props.description}
-        actions={props.loading ? undefined : props.headerActions}
+        actions={props.headerActions}
       />
       {content}
     </section>

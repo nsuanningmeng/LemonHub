@@ -16,22 +16,30 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useContext } from 'react'
+
 import { cn } from '@/lib/utils'
+
+import { MainRegionContext } from './main-region-context'
 
 type MainProps = React.HTMLAttributes<HTMLElement> & {
   fluid?: boolean
 }
 
 export function Main({ className, fluid = true, ...props }: MainProps) {
+  const withinMain = useContext(MainRegionContext)
+  const Container = withinMain ? 'div' : 'main'
   return (
-    <div
-      className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-hidden',
-        !fluid &&
-          '@7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl',
-        className
-      )}
-      {...props}
-    />
+    <MainRegionContext.Provider value={true}>
+      <Container
+        className={cn(
+          'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
+          !fluid &&
+            '@7xl/content:mx-auto @7xl/content:w-full @7xl/content:max-w-7xl',
+          className
+        )}
+        {...props}
+      />
+    </MainRegionContext.Provider>
   )
 }

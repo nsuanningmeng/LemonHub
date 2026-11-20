@@ -178,7 +178,7 @@ export function formatChartTime(
 
 /**
  * Add time duration to a date
- * @param months Number of months to add
+ * @param months Calendar months to add, clamped to the target month’s last day
  * @param days Number of days to add
  * @param hours Number of hours to add
  * @param baseDate Base date to add time to (defaults to now)
@@ -194,8 +194,7 @@ export function addTimeToDate(
     return undefined
   }
 
-  const result = new Date(baseDate)
-  result.setMonth(result.getMonth() + months)
+  const result = dayjs(baseDate).add(months, 'month').toDate()
   result.setDate(result.getDate() + days)
   result.setHours(result.getHours() + hours)
 

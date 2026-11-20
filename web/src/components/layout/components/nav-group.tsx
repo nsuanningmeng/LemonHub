@@ -152,6 +152,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
         tooltip={item.title}
         render={
           <Link
+            aria-current={checkIsActive(href, item) ? 'page' : undefined}
             to={item.url}
             preload={isMobile ? false : undefined}
             onClick={() => setOpenMobile(false)}
@@ -214,6 +215,9 @@ function SidebarMenuCollapsible({
                 isActive={checkIsActive(href, subItem)}
                 render={
                   <Link
+                    aria-current={
+                      checkIsActive(href, subItem) ? 'page' : undefined
+                    }
                     to={subItem.url}
                     preload={isMobile ? false : undefined}
                     onClick={() => setOpenMobile(false)}

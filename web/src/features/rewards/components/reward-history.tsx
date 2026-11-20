@@ -46,10 +46,7 @@ export function RewardHistory() {
     : t('No rewards claimed yet')
   if (history.isPending) emptyMessage = t('Loading...')
   return (
-    <section
-      aria-labelledby='reward-history-heading'
-      className='bg-card rounded-3xl border p-5 sm:p-7'
-    >
+    <section aria-labelledby='reward-history-heading' className='min-w-0 py-4'>
       <h2 id='reward-history-heading' className='mb-5 text-lg font-semibold'>
         {t('Reward history')}
       </h2>

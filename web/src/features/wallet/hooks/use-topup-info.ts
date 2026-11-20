@@ -55,7 +55,7 @@ function parseJsonArray(data: unknown): unknown[] {
 
 function parsePaymentMethods(
   data: unknown,
-  stripeMinTopup: number
+  topupInfo: TopupInfo
 ): PaymentMethod[] {
   return parseJsonArray(data)
     .filter(
@@ -74,11 +74,19 @@ function parsePaymentMethods(
         icon: typeof item.icon === 'string' ? item.icon : undefined,
         min_topup:
           type === 'stripe' && normalizedMinTopup <= 0
-            ? stripeMinTopup
+            ? topupInfo.stripe_min_topup
             : normalizedMinTopup,
       }
     })
     .filter((item) => item.name && item.type && item.type !== 'waffo')
+    .filter((item) => {
+      if (topupInfo.payment_compliance_confirmed === false) return false
+      if (item.type === 'stripe') return topupInfo.enable_stripe_topup
+      if (item.type === 'waffo_pancake') {
+        return !!topupInfo.enable_waffo_pancake_topup
+      }
+      return topupInfo.enable_online_topup
+    })
 }
 
 function parseWaffoPayMethods(data: unknown): WaffoPayMethod[] {
@@ -167,16 +175,19 @@ export function useTopupInfo() {
   const [topupInfo, setTopupInfo] = useState<TopupInfo | null>(null)
   const [presetAmounts, setPresetAmounts] = useState<PresetAmount[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   const fetchTopupInfo = useCallback(async () => {
     try {
       setLoading(true)
+      setError(false)
 
       const response = await getTopupInfo()
 
       if (!response.success || !response.data) {
         // eslint-disable-next-line no-console
         console.error('Failed to fetch topup info:', response.message)
+        setError(true)
         return
       }
 
@@ -184,7 +195,7 @@ export function useTopupInfo() {
         ...response.data,
         pay_methods: parsePaymentMethods(
           response.data.pay_methods,
-          response.data.stripe_min_topup
+          response.data
         ),
         amount_options: parseAmountOptions(response.data.amount_options),
         discount: parseDiscountMap(response.data.discount),
@@ -210,6 +221,7 @@ export function useTopupInfo() {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Failed to fetch topup info:', err)
+      setError(true)
     } finally {
       setLoading(false)
     }
@@ -231,6 +243,7 @@ export function useTopupInfo() {
     topupInfo,
     presetAmounts,
     loading,
+    error,
     refetch: fetchTopupInfo,
   }
 }
