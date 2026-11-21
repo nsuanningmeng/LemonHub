@@ -6442,6 +6442,20 @@
     "API examples": "API の使用例",
     "Failed to load API key": "API キーを読み込めませんでした",
     "No enabled API keys found. Create or enable one first.": "有効な API キーがありません。キーを作成するか、既存のキーを有効にしてください",
-    "Unable to generate chat link. Please check your API keys.": "チャットリンクを生成できませんでした。API キーを確認してください"
+    "Unable to generate chat link. Please check your API keys.": "チャットリンクを生成できませんでした。API キーを確認してください",
+    "Website traffic": "サイトのアクセス統計",
+    "Page views": "ページビュー数",
+    "Unique visitors": "ユニーク訪問者数",
+    "New visitors": "新規訪問者数",
+    "Page loads and navigations on this site": "サイト内でページを開く、再読み込みする、別のページに移動するたびに1回と数えます",
+    "Browsers counted once in the selected period": "選択した期間中、同じブラウザーからの訪問は1回と数えます",
+    "Browsers first seen during the selected period": "選択した期間中に初めてサイトを訪れたブラウザーの数",
+    "Daily traffic (UTC)": "日別のアクセス統計（UTC）",
+    "Date (UTC)": "日付（UTC）",
+    "No page views recorded in this period.": "この期間のページビューは記録されていません。",
+    "Failed to load website traffic": "サイトのアクセス統計を読み込めませんでした",
+    "Returning visitors": "再訪問者数",
+    "Browsers that visited before this period and returned during it": "選択した期間より前にサイトを訪れ、期間中に再訪したブラウザーの数",
+    "Page views per visitor": "訪問者あたりの平均ページビュー数"
   }
 }

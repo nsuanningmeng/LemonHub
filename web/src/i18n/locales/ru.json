@@ -6442,6 +6442,20 @@
     "API examples": "Примеры API",
     "Failed to load API key": "Не удалось загрузить ключ API",
     "No enabled API keys found. Create or enable one first.": "Нет активных ключей API. Создайте ключ или включите существующий",
-    "Unable to generate chat link. Please check your API keys.": "Не удалось создать ссылку на чат. Проверьте ключи API"
+    "Unable to generate chat link. Please check your API keys.": "Не удалось создать ссылку на чат. Проверьте ключи API",
+    "Website traffic": "Посещаемость сайта",
+    "Page views": "Просмотры страниц",
+    "Unique visitors": "Уникальные посетители",
+    "New visitors": "Новые посетители",
+    "Page loads and navigations on this site": "Загрузки страниц и переходы между страницами сайта",
+    "Browsers counted once in the selected period": "Каждый браузер учитывается один раз за выбранный период",
+    "Browsers first seen during the selected period": "Браузеры, с которых впервые посетили сайт за выбранный период",
+    "Daily traffic (UTC)": "Посещаемость по дням (UTC)",
+    "Date (UTC)": "Дата (UTC)",
+    "No page views recorded in this period.": "За этот период просмотров страниц не зарегистрировано.",
+    "Failed to load website traffic": "Не удалось загрузить статистику посещаемости сайта",
+    "Returning visitors": "Вернувшиеся посетители",
+    "Browsers that visited before this period and returned during it": "Браузеры, с которых заходили на сайт до начала периода и вернулись в течение него",
+    "Page views per visitor": "Просмотры страниц на посетителя"
   }
 }

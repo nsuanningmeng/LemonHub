@@ -6442,6 +6442,20 @@
     "API examples": "API 範例",
     "Failed to load API key": "載入 API 金鑰失敗",
     "No enabled API keys found. Create or enable one first.": "目前沒有已啟用的 API 金鑰，請先建立或啟用金鑰",
-    "Unable to generate chat link. Please check your API keys.": "無法產生聊天連結，請檢查 API 金鑰"
+    "Unable to generate chat link. Please check your API keys.": "無法產生聊天連結，請檢查 API 金鑰",
+    "Website traffic": "網站流量統計",
+    "Page views": "網頁瀏覽量",
+    "Unique visitors": "不重複訪客數",
+    "New visitors": "新訪客數",
+    "Page loads and navigations on this site": "每次開啟、重新整理或切換頁面都算一次瀏覽",
+    "Browsers counted once in the selected period": "所選期間內，同一瀏覽器只計算一次",
+    "Browsers first seen during the selected period": "在所選期間內首次造訪本站的瀏覽器數量",
+    "Daily traffic (UTC)": "每日流量統計（UTC）",
+    "Date (UTC)": "日期（UTC）",
+    "No page views recorded in this period.": "此期間沒有網頁瀏覽紀錄。",
+    "Failed to load website traffic": "無法載入網站流量統計",
+    "Returning visitors": "回訪訪客數",
+    "Browsers that visited before this period and returned during it": "在所選期間前曾造訪本站，並於期間內再次造訪的瀏覽器數量",
+    "Page views per visitor": "每位訪客平均瀏覽頁數"
   }
 }

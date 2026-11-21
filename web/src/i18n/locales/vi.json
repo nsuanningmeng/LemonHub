@@ -6442,6 +6442,20 @@
     "API examples": "Ví dụ API",
     "Failed to load API key": "Không thể tải khóa API",
     "No enabled API keys found. Create or enable one first.": "Chưa có khóa API nào được bật. Hãy tạo khóa mới hoặc bật một khóa hiện có",
-    "Unable to generate chat link. Please check your API keys.": "Không thể tạo liên kết trò chuyện. Hãy kiểm tra khóa API"
+    "Unable to generate chat link. Please check your API keys.": "Không thể tạo liên kết trò chuyện. Hãy kiểm tra khóa API",
+    "Website traffic": "Lưu lượng truy cập trang web",
+    "Page views": "Lượt xem trang",
+    "Unique visitors": "Khách truy cập riêng biệt",
+    "New visitors": "Khách truy cập mới",
+    "Page loads and navigations on this site": "Số lần tải trang và chuyển trang trên trang web này",
+    "Browsers counted once in the selected period": "Mỗi trình duyệt chỉ được tính một lần trong khoảng thời gian đã chọn",
+    "Browsers first seen during the selected period": "Số trình duyệt lần đầu truy cập trang web trong khoảng thời gian đã chọn",
+    "Daily traffic (UTC)": "Lưu lượng truy cập hằng ngày (UTC)",
+    "Date (UTC)": "Ngày (UTC)",
+    "No page views recorded in this period.": "Không ghi nhận lượt xem trang nào trong khoảng thời gian này.",
+    "Failed to load website traffic": "Không thể tải thống kê truy cập trang web",
+    "Returning visitors": "Khách truy cập quay lại",
+    "Browsers that visited before this period and returned during it": "Số trình duyệt đã truy cập trang web từ trước và quay lại trong khoảng thời gian đã chọn",
+    "Page views per visitor": "Số lượt xem trang trung bình trên mỗi khách truy cập"
   }
 }

@@ -6442,6 +6442,20 @@
     "API examples": "Exemples d’API",
     "Failed to load API key": "Impossible de charger la clé API",
     "No enabled API keys found. Create or enable one first.": "Aucune clé API active. Créez ou activez une clé",
-    "Unable to generate chat link. Please check your API keys.": "Impossible de générer le lien de chat. Vérifiez vos clés API"
+    "Unable to generate chat link. Please check your API keys.": "Impossible de générer le lien de chat. Vérifiez vos clés API",
+    "Website traffic": "Trafic du site",
+    "Page views": "Pages vues",
+    "Unique visitors": "Visiteurs uniques",
+    "New visitors": "Nouveaux visiteurs",
+    "Page loads and navigations on this site": "Chaque chargement de page ou passage à une autre page du site compte pour une vue",
+    "Browsers counted once in the selected period": "Chaque navigateur est compté une seule fois sur la période sélectionnée",
+    "Browsers first seen during the selected period": "Navigateurs ayant accédé au site pour la première fois pendant la période sélectionnée",
+    "Daily traffic (UTC)": "Trafic quotidien (UTC)",
+    "Date (UTC)": "Date (UTC)",
+    "No page views recorded in this period.": "Aucune page vue sur cette période.",
+    "Failed to load website traffic": "Impossible de charger les statistiques de trafic du site",
+    "Returning visitors": "Visiteurs récurrents",
+    "Browsers that visited before this period and returned during it": "Navigateurs ayant déjà visité le site avant la période sélectionnée et y étant revenus pendant celle-ci",
+    "Page views per visitor": "Pages vues par visiteur"
   }
 }

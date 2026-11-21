@@ -194,6 +194,17 @@ export interface DashboardFilters {
   username?: string
 }
 
+export interface WebsiteTrafficCounts {
+  page_views: number
+  unique_visitors: number
+  new_visitors: number
+}
+
+export interface WebsiteTrafficReport {
+  summary: WebsiteTrafficCounts
+  daily: (WebsiteTrafficCounts & { date: string })[]
+}
+
 export type ConsumptionDistributionChartType = 'bar' | 'area'
 
 export type ModelAnalyticsChartTab = 'trend' | 'proportion' | 'top'

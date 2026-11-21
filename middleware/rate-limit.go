@@ -202,6 +202,14 @@ func GlobalAPIRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+func SiteVisitRateLimit() gin.HandlerFunc {
+	limit := common.GetEnvOrDefault("SITE_VISIT_IP_RATE_LIMIT", 120)
+	if limit <= 0 {
+		limit = 120
+	}
+	return rateLimitFactory(limit, 60, "SITE_VISIT")
+}
+
 // PaymentWebhookRateLimit is a GENEROUS per-IP backstop for payment provider notify webhooks.
 // These routes are intentionally kept off the global API rate limit (a 429 would strand a paid
 // order whose gateway only retries a few times), but must not be left fully unthrottled: a flood

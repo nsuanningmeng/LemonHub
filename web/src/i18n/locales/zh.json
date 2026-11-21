@@ -6509,6 +6509,20 @@
     "API examples": "API 示例",
     "Failed to load API key": "加载 API 密钥失败",
     "No enabled API keys found. Create or enable one first.": "当前没有已启用的 API 密钥，请先创建或启用密钥",
-    "Unable to generate chat link. Please check your API keys.": "无法生成聊天链接，请检查 API 密钥"
+    "Unable to generate chat link. Please check your API keys.": "无法生成聊天链接，请检查 API 密钥",
+    "Website traffic": "网站访问统计",
+    "Page views": "页面浏览量",
+    "Unique visitors": "独立访客数",
+    "New visitors": "新增访客数",
+    "Page loads and navigations on this site": "每次打开、刷新或切换页面均计为一次浏览",
+    "Browsers counted once in the selected period": "所选时段内，同一浏览器只计一次",
+    "Browsers first seen during the selected period": "在所选时段内首次访问本站的浏览器数",
+    "Daily traffic (UTC)": "每日访问统计（UTC）",
+    "Date (UTC)": "日期（UTC）",
+    "No page views recorded in this period.": "此时段内暂无页面浏览记录。",
+    "Failed to load website traffic": "无法加载网站访问统计",
+    "Returning visitors": "回访访客数",
+    "Browsers that visited before this period and returned during it": "在所选时段开始前访问过本站，并在时段内再次访问的浏览器数",
+    "Page views per visitor": "每位访客平均浏览页数"
   }
 }

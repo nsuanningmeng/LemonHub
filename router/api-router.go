@@ -19,6 +19,11 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 
+	// Page navigation has its own IP budget so counting visits cannot exhaust
+	// the user's dashboard API allowance. The collector returns no report data.
+	router.POST("/api/site-analytics/visit", middleware.RouteTag("api"), middleware.DisableCache(), middleware.SiteVisitRateLimit(), controller.RecordSiteVisit)
+	apiRouter.GET("/site-analytics", middleware.DisableCache(), middleware.AdminAuth(), controller.GetSiteAnalytics)
+
 	// Payment gateway notify callbacks (server-to-server) are registered on a sibling /api group
 	// that deliberately OMITS gzip + the global API rate limit:
 	//   - gzip would compress the plain "success" ack; EasyPay does a literal body=="success"

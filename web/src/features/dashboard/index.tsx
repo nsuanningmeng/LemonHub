@@ -50,6 +50,8 @@ import {
   type DashboardSectionId,
   DASHBOARD_DEFAULT_SECTION,
   DASHBOARD_SECTION_IDS,
+  getDashboardSectionMeta,
+  isAdminDashboardSection,
 } from './section-registry'
 import type {
   DashboardChartPreferences,
@@ -107,6 +109,10 @@ const LazyUserCharts = lazy(() =>
   import('./components/users/user-charts').then((m) => ({
     default: m.UserCharts,
   }))
+)
+
+const LazyWebsiteTraffic = lazy(
+  () => import('./components/traffic/website-traffic')
 )
 
 const LazyFlowCharts = lazy(() =>
@@ -181,21 +187,6 @@ function PerformanceOverviewFallback() {
   )
 }
 
-const SECTION_META: Record<DashboardSectionId, { titleKey: string }> = {
-  overview: {
-    titleKey: 'Overview',
-  },
-  models: {
-    titleKey: 'Model Call Analytics',
-  },
-  flow: {
-    titleKey: 'Flow',
-  },
-  users: {
-    titleKey: 'User Analytics',
-  },
-}
-
 export function Dashboard() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -248,12 +239,14 @@ export function Dashboard() {
     []
   )
 
-  const meta = SECTION_META[activeSection] ?? SECTION_META.overview
+  const meta = getDashboardSectionMeta(activeSection)
   const isAdmin = Boolean(userRole && userRole >= ROLE.ADMIN)
   const visibleSections = useMemo(
     () =>
       DASHBOARD_SECTION_IDS.filter(
-        (section) => section !== 'overview' && (section !== 'users' || isAdmin)
+        (section) =>
+          section !== 'overview' &&
+          (isAdmin || !isAdminDashboardSection(section))
       ),
     [isAdmin]
   )
@@ -337,7 +330,7 @@ export function Dashboard() {
                 <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
                   {visibleSections.map((section) => (
                     <TabsTrigger key={section} value={section}>
-                      {t(SECTION_META[section].titleKey)}
+                      {t(getDashboardSectionMeta(section).titleKey)}
                     </TabsTrigger>
                   ))}
                 </TabsList>
@@ -396,13 +389,20 @@ export function Dashboard() {
               </FadeIn>
             </>
           )}
-          {activeSection === 'users' && (
+          {activeSection === 'users' && isAdmin && (
             <FadeIn>
               <Suspense fallback={<ModelChartsFallback />}>
                 <LazyUserCharts
                   filters={userChartsFilters}
                   onFiltersChange={setUserChartsFilters}
                 />
+              </Suspense>
+            </FadeIn>
+          )}
+          {activeSection === 'traffic' && isAdmin && (
+            <FadeIn>
+              <Suspense fallback={<ModelChartsFallback />}>
+                <LazyWebsiteTraffic />
               </Suspense>
             </FadeIn>
           )}

@@ -22,6 +22,7 @@ import type {
   FlowQuotaDataItem,
   QuotaDataItem,
   UptimeGroupResult,
+  WebsiteTrafficReport,
 } from './types'
 
 // ============================================================================
@@ -65,6 +66,20 @@ export async function getUserQuotaDataByUsers(params: {
     { params }
   )
   return res.data
+}
+
+export async function getWebsiteTraffic(
+  days: number
+): Promise<WebsiteTrafficReport> {
+  const res = await api.get<{
+    success: boolean
+    data?: WebsiteTrafficReport
+    message?: string
+  }>('/api/site-analytics', { params: { days } })
+  if (!res.data.success || !res.data.data) {
+    throw new Error(res.data.message || 'Failed to load website traffic')
+  }
+  return res.data.data
 }
 
 export async function getFlowQuotaDates(

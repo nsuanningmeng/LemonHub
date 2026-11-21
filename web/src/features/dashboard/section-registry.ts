@@ -16,9 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { redirect } from '@tanstack/react-router'
 import type { TFunction } from 'i18next'
 
 import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 /**
  * Dashboard page section definitions
@@ -45,11 +48,22 @@ const DASHBOARD_SECTIONS = [
     adminOnly: true,
     build: () => null,
   },
+  {
+    id: 'traffic',
+    titleKey: 'Website traffic',
+    adminOnly: true,
+    build: () => null,
+  },
 ] as const
 
 export type DashboardSectionId = (typeof DASHBOARD_SECTIONS)[number]['id']
 
-const ADMIN_ONLY_SECTIONS = new Set<string>(['users'])
+export function isAdminDashboardSection(id: string): boolean {
+  return DASHBOARD_SECTIONS.some(
+    (section) =>
+      section.id === id && 'adminOnly' in section && section.adminOnly
+  )
+}
 
 const dashboardRegistry = createSectionRegistry<
   DashboardSectionId,
@@ -64,6 +78,24 @@ const dashboardRegistry = createSectionRegistry<
 
 export const DASHBOARD_SECTION_IDS = dashboardRegistry.sectionIds
 export const DASHBOARD_DEFAULT_SECTION = dashboardRegistry.defaultSection
+export const getDashboardSectionMeta = dashboardRegistry.getSectionMeta
+
+export function requireDashboardSectionAccess({
+  params,
+}: {
+  params: { section: string }
+}) {
+  if (!DASHBOARD_SECTION_IDS.some((id) => id === params.section)) {
+    throw redirect({
+      to: '/dashboard/$section',
+      params: { section: DASHBOARD_DEFAULT_SECTION },
+    })
+  }
+  const role = useAuthStore.getState().auth.user?.role ?? ROLE.GUEST
+  if (isAdminDashboardSection(params.section) && role < ROLE.ADMIN) {
+    throw redirect({ to: '/403' })
+  }
+}
 
 export function getDashboardSectionNavItems(
   t: TFunction,
@@ -72,6 +104,6 @@ export function getDashboardSectionNavItems(
   const all = dashboardRegistry.getSectionNavItems(t)
   if (options?.isAdmin) return all
   return all.filter(
-    (_, idx) => !ADMIN_ONLY_SECTIONS.has(DASHBOARD_SECTIONS[idx].id)
+    (_, idx) => !isAdminDashboardSection(DASHBOARD_SECTIONS[idx].id)
   )
 }

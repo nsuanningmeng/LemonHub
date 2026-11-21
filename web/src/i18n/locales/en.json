@@ -6509,6 +6509,20 @@
     "API examples": "API examples",
     "Failed to load API key": "Failed to load the API key",
     "No enabled API keys found. Create or enable one first.": "No enabled API keys found. Create or enable one first",
-    "Unable to generate chat link. Please check your API keys.": "Unable to generate the chat link. Check your API keys"
+    "Unable to generate chat link. Please check your API keys.": "Unable to generate the chat link. Check your API keys",
+    "Website traffic": "Website traffic",
+    "Page views": "Page views",
+    "Unique visitors": "Unique visitors",
+    "New visitors": "New visitors",
+    "Page loads and navigations on this site": "Page loads and navigations on this site",
+    "Browsers counted once in the selected period": "Browsers counted once in the selected period",
+    "Browsers first seen during the selected period": "Browsers first seen during the selected period",
+    "Daily traffic (UTC)": "Daily traffic (UTC)",
+    "Date (UTC)": "Date (UTC)",
+    "No page views recorded in this period.": "No page views recorded in this period.",
+    "Failed to load website traffic": "Failed to load website traffic",
+    "Returning visitors": "Returning visitors",
+    "Browsers that visited before this period and returned during it": "Browsers that visited before this period and returned during it",
+    "Page views per visitor": "Page views per visitor"
   }
 }

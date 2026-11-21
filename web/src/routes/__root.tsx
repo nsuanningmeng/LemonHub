@@ -35,6 +35,7 @@ import { saveAffiliateCode } from '@/features/auth/lib/storage'
 import { GeneralError } from '@/features/errors/general-error'
 import { NotFoundError } from '@/features/errors/not-found-error'
 import { getSetupStatus } from '@/features/setup/api'
+import { useSiteVisitTracking } from '@/hooks/use-site-visit-tracking'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import {
   bootstrapAuthentication,
@@ -49,6 +50,7 @@ import { useAuthStore } from '@/stores/auth-store'
 function RootComponent() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  useSiteVisitTracking()
   const isHome = useLocation({
     select: (location) => location.pathname === '/',
   })
