@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -111,6 +113,63 @@ func TestSiteAnalyticsReusesBrowserCookieAndReportsVisitsToAdmin(t *testing.T) {
 		views += day.PageViews
 	}
 	assert.Equal(t, 2, views)
+}
+
+func TestSiteAnalyticsSeparatesMainAndSubSiteVisitsByRequestHost(t *testing.T) {
+	setupLoginOriginRouter(t)
+	db := model.DB
+	require.NoError(t, db.AutoMigrate(&model.Site{}, &model.SiteDomain{}, &model.SiteTrafficVisit{}))
+	const mainHost = "portal.example"
+	const tenantHost = "partner.example"
+	site := model.Site{Name: "Partner"}
+	require.NoError(t, db.Create(&site).Error)
+	domain := model.SiteDomain{SiteId: site.Id, Domain: tenantHost}
+	require.NoError(t, db.Create(&domain).Error)
+	t.Cleanup(func() {
+		assert.NoError(t, db.Delete(&domain).Error)
+		assert.NoError(t, db.Delete(&site).Error)
+		assert.NoError(t, model.ReloadSiteCache())
+	})
+	require.NoError(t, model.ReloadSiteCache())
+
+	admin := model.User{
+		Username: "platform-admin", AffCode: "traffic-sites", Role: common.RoleAdminUser, Status: common.UserStatusEnabled,
+	}
+	admin.SetAccessToken("traffic-sites-admin-pat")
+	require.NoError(t, db.Create(&admin).Error)
+	// Register the real routes after the host resolver, as in main.go.
+	engine := gin.New()
+	engine.Use(middleware.SiteResolver())
+	SetApiRouter(engine)
+
+	for _, host := range []string{mainHost, tenantHost, tenantHost} {
+		request := httptest.NewRequest(http.MethodPost, "https://"+host+siteAnalyticsPath+"/visit", nil)
+		request.Header.Set("X-Site-Visit", "1")
+		response := httptest.NewRecorder()
+		engine.ServeHTTP(response, request)
+		require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	}
+	for _, tc := range []struct {
+		host  string
+		count int64
+	}{{mainHost, 1}, {tenantHost, 2}} {
+		t.Run(tc.host, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, "https://"+tc.host+siteAnalyticsPath, nil)
+			request.Header.Set("Authorization", "Bearer "+admin.GetAccessToken())
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			var report struct {
+				Success bool                    `json:"success"`
+				Data    model.SiteTrafficReport `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &report))
+			require.True(t, report.Success, response.Body.String())
+			assert.Equal(t, model.SiteTrafficCounts{
+				PageViews: tc.count, UniqueVisitors: tc.count, NewVisitors: tc.count,
+			}, report.Data.Summary)
+		})
+	}
 }
 
 func TestSiteAnalyticsSkipsOptedOutAndInvalidVisits(t *testing.T) {

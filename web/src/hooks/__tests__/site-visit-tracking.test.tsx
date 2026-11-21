@@ -90,12 +90,24 @@ test('counts a page open and completed path changes, including revisits, without
     credentials: 'same-origin',
     referrerPolicy: 'no-referrer',
     keepalive: true,
+    signal: expect.any(AbortSignal),
   })
 
   await act(() => router.navigate({ to: '/about' }))
   expect(send).toHaveBeenCalledTimes(2)
   await act(() => router.navigate({ to: '/' }))
   expect(send).toHaveBeenCalledTimes(3)
+
+  await act(async () => {
+    window.dispatchEvent(new PageTransitionEvent('pageshow'))
+  })
+  expect(send).toHaveBeenCalledTimes(3)
+  await act(async () => {
+    window.dispatchEvent(
+      new PageTransitionEvent('pageshow', { persisted: true })
+    )
+  })
+  expect(send).toHaveBeenCalledTimes(4)
 })
 
 test('counts only the displayed destination when preloading and following a redirect', async () => {
@@ -150,6 +162,79 @@ test('keeps rendering and records later visits after a network failure', async (
 
   expect(screen.getByRole('heading', { name: 'About' })).toBeVisible()
   expect(send).toHaveBeenCalledTimes(2)
+})
+
+test('waits for the first visit response across two independent router roots on the same origin', async () => {
+  const pendingLocks = new Map<string, Promise<void>>()
+  const request = vi.fn((name: string, submit: () => Promise<void>) => {
+    const previous = pendingLocks.get(name) ?? Promise.resolve()
+    const pending = previous.then(submit)
+    pendingLocks.set(name, pending)
+    return pending
+  })
+  Object.defineProperty(navigator, 'locks', {
+    configurable: true,
+    value: { request },
+  })
+  let finishFirstVisit!: (response: Response) => void
+  const send = vi
+    .fn<typeof fetch>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishFirstVisit = resolve
+        })
+    )
+    .mockResolvedValue(new Response())
+  vi.stubGlobal('fetch', send)
+  try {
+    await act(async () => {
+      openSite()
+      openSite()
+    })
+    expect(screen.getAllByRole('heading', { name: 'Home' })).toHaveLength(2)
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(send).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      finishFirstVisit(new Response(null, { status: 204 }))
+    })
+    expect(send).toHaveBeenCalledTimes(2)
+  } finally {
+    Reflect.deleteProperty(navigator, 'locks')
+  }
+})
+
+test('aborts a stalled visit so the next navigation can report', async () => {
+  const send = vi
+    .fn<typeof fetch>()
+    .mockImplementationOnce(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(init.signal?.reason)
+          )
+        })
+    )
+    .mockResolvedValue(new Response())
+  vi.stubGlobal('fetch', send)
+  vi.useFakeTimers()
+  try {
+    let router!: ReturnType<typeof openSite>
+    await act(async () => {
+      router = openSite()
+    })
+    await act(() => router.navigate({ to: '/about' }))
+    expect(send).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    expect(send.mock.calls[0]?.[1]?.signal?.aborted).toBe(true)
+    expect(send).toHaveBeenCalledTimes(2)
+  } finally {
+    vi.useRealTimers()
+  }
 })
 
 test.each([

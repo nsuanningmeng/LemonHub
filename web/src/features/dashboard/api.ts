@@ -71,11 +71,20 @@ export async function getUserQuotaDataByUsers(params: {
 export async function getWebsiteTraffic(
   days: number
 ): Promise<WebsiteTrafficReport> {
-  const res = await api.get<{
-    success: boolean
-    data?: WebsiteTrafficReport
-    message?: string
-  }>('/api/site-analytics', { params: { days } })
+  const res = await api
+    .get<{
+      success: boolean
+      data?: WebsiteTrafficReport
+      message?: string
+    }>('/api/site-analytics', {
+      params: { days },
+      skipBusinessError: true,
+      skipErrorHandler: true,
+    })
+    .catch((cause: unknown) => {
+      // Let the report's Retry button recover even when the server returns 500.
+      throw new Error('Failed to load website traffic', { cause })
+    })
   if (!res.data.success || !res.data.data) {
     throw new Error(res.data.message || 'Failed to load website traffic')
   }

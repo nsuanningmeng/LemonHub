@@ -19,8 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, expect, test, vi } from 'vitest'
+import { AxiosError } from 'axios'
+import i18next from 'i18next'
+import { I18nextProvider } from 'react-i18next'
+import { toast } from 'sonner'
+import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest'
 
+import { createLocaleI18n } from '@/i18n/__tests__/helpers'
 import { api } from '@/lib/api'
 
 import WebsiteTraffic from '../website-traffic'
@@ -49,12 +54,24 @@ const weekResponse = {
   },
 }
 
+const needsAnimationsStub = !Element.prototype.getAnimations
+beforeAll(() => {
+  if (needsAnimationsStub) Element.prototype.getAnimations = () => []
+})
+afterAll(() => {
+  if (needsAnimationsStub) {
+    Reflect.deleteProperty(Element.prototype, 'getAnimations')
+  }
+})
+
 let client: QueryClient
-function renderTraffic() {
+function renderTraffic(locale = i18next) {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <WebsiteTraffic />
+      <I18nextProvider i18n={locale}>
+        <WebsiteTraffic />
+      </I18nextProvider>
     </QueryClientProvider>
   )
 }
@@ -80,10 +97,27 @@ test('shows the distinct visitor total for the period and the latest day first',
     '2026-11-21',
     '2026-11-20',
   ])
-  expect(get).toHaveBeenCalledWith('/api/site-analytics', {
-    params: { days: 7 },
-  })
+  expect(get).toHaveBeenCalledWith(
+    '/api/site-analytics',
+    expect.objectContaining({ params: { days: 7 } })
+  )
 })
+
+test.each(['zhCN', 'zhTW'] as const)(
+  'renders the totals, average and daily table with the %s interface language',
+  async (language) => {
+    const locale = await createLocaleI18n(language)
+    vi.spyOn(api, 'get').mockResolvedValue(weekResponse)
+    renderTraffic(locale)
+    const table = await screen.findByRole('table', {
+      name: locale.t('Daily traffic (UTC)'),
+    })
+    expect(within(table).getAllByRole('rowheader')).toHaveLength(2)
+    const views = screen.getByRole('group', { name: locale.t('Page views') })
+    expect(within(views).getByText('7')).toBeVisible()
+    expect(screen.getByText('3.5')).toBeVisible()
+  }
+)
 
 test('selecting another period replaces the report with its own empty state', async () => {
   const get = vi
@@ -117,9 +151,10 @@ test('selecting another period replaces the report with its own empty state', as
   expect(
     screen.getAllByRole('definition').map((metric) => metric.textContent)
   ).toEqual(['0', '—'])
-  expect(get).toHaveBeenLastCalledWith('/api/site-analytics', {
-    params: { days: 1 },
-  })
+  expect(get).toHaveBeenLastCalledWith(
+    '/api/site-analytics',
+    expect.objectContaining({ params: { days: 1 } })
+  )
 })
 
 test('a failed report shows a retry that recovers the data', async () => {
@@ -133,4 +168,51 @@ test('a failed report shows a retry that recovers the data', async () => {
   expect(screen.queryByRole('group', { name: 'Page views' })).toBeNull()
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
   expect(await screen.findByRole('table')).toBeVisible()
+})
+
+test('an HTTP 500 stays in the report and a manual retry recovers the data', async () => {
+  const originalAdapter = api.defaults.adapter
+  const notify = vi.spyOn(toast, 'error')
+  let recovered = false
+  api.defaults.adapter = async (config) => {
+    if (!recovered) {
+      throw new AxiosError(
+        'Unavailable',
+        AxiosError.ERR_BAD_RESPONSE,
+        config,
+        undefined,
+        {
+          status: 500,
+          statusText: 'Server Error',
+          data: { success: false, message: 'Unavailable' },
+          headers: {},
+          config,
+        }
+      )
+    }
+    return {
+      ...weekResponse,
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }
+  }
+  try {
+    renderTraffic()
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Failed to load website traffic'
+    )
+    // The app's global query handler redirects HTTP 500 AxiosErrors to /500.
+    expect(client.getQueryCache().getAll()[0].state.error).not.toBeInstanceOf(
+      AxiosError
+    )
+    expect(notify).not.toHaveBeenCalled()
+
+    recovered = true
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('table')).toBeVisible()
+  } finally {
+    api.defaults.adapter = originalAdapter
+  }
 })

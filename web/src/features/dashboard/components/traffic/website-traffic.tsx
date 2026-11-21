@@ -32,6 +32,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { getWebsiteTraffic } from '@/features/dashboard/api'
+import { toIntlLocale } from '@/i18n/languages'
 
 import { PanelWrapper } from '../ui/panel-wrapper'
 import { StatCard } from '../ui/stat-card'
@@ -43,6 +44,7 @@ export default function WebsiteTraffic() {
     queryKey: ['dashboard', 'site-analytics', days],
     queryFn: () => getWebsiteTraffic(days),
     staleTime: 60_000,
+    retry: false,
   })
   const metrics = [
     {
@@ -73,7 +75,8 @@ export default function WebsiteTraffic() {
     { value: 30, label: t('30 Days') },
   ]
   const report = query.data
-  const formatCount = new Intl.NumberFormat(i18n.language).format
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const formatCount = new Intl.NumberFormat(locale).format
 
   return (
     <div className='space-y-4'>
@@ -162,7 +165,7 @@ export default function WebsiteTraffic() {
                   ? '—'
                   : (
                       report.summary.page_views / report.summary.unique_visitors
-                    ).toLocaleString(i18n.language, {
+                    ).toLocaleString(locale, {
                       maximumFractionDigits: 1,
                     })}
               </dd>
@@ -172,8 +175,6 @@ export default function WebsiteTraffic() {
             title={t('Daily traffic (UTC)')}
             empty={report.summary.page_views === 0}
             emptyMessage={t('No page views recorded in this period.')}
-            contentClassName='p-0 sm:p-0'
-            height='h-28'
           >
             <Table aria-label={t('Daily traffic (UTC)')}>
               <TableHeader>

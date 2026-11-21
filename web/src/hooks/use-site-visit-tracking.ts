@@ -19,6 +19,24 @@ For commercial licensing, please contact support@quantumnous.com
 import { useRouterState } from '@tanstack/react-router'
 import { useEffect, useRef } from 'react'
 
+async function sendSiteVisit(): Promise<void> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 5_000)
+  try {
+    await fetch('/api/site-analytics/visit', {
+      method: 'POST',
+      headers: { 'X-Site-Visit': '1' },
+      mode: 'same-origin',
+      credentials: 'same-origin',
+      referrerPolicy: 'no-referrer',
+      keepalive: true,
+      signal: controller.signal,
+    })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 export function useSiteVisitTracking(): void {
   const pathname = useRouterState({
     select: (state) => (state.isLoading ? undefined : state.location.pathname),
@@ -27,32 +45,42 @@ export function useSiteVisitTracking(): void {
   const delivery = useRef(Promise.resolve())
 
   useEffect(() => {
-    if (!pathname || lastPathname.current === pathname) return
-    lastPathname.current = pathname
+    if (!pathname) return
 
-    if (
-      !navigator.cookieEnabled ||
-      navigator.doNotTrack === '1' ||
-      ('globalPrivacyControl' in navigator &&
-        navigator.globalPrivacyControl === true)
-    ) {
-      return
+    function recordVisit() {
+      if (
+        !navigator.cookieEnabled ||
+        navigator.doNotTrack === '1' ||
+        ('globalPrivacyControl' in navigator &&
+          navigator.globalPrivacyControl === true)
+      ) {
+        return
+      }
+
+      // Let the first response establish the visitor cookie shared by all tabs.
+      delivery.current = delivery.current
+        .then(() =>
+          navigator.locks
+            ? navigator.locks.request('lemonhub-site-visit', sendSiteVisit)
+            : sendSiteVisit()
+        )
+        .catch(() => {
+          // A failed visit must not block subsequent navigation or collection.
+        })
     }
 
-    // Let the server set its visitor cookie before sending the next page view.
-    delivery.current = delivery.current
-      .then(async () => {
-        await fetch('/api/site-analytics/visit', {
-          method: 'POST',
-          headers: { 'X-Site-Visit': '1' },
-          mode: 'same-origin',
-          credentials: 'same-origin',
-          referrerPolicy: 'no-referrer',
-          keepalive: true,
-        })
-      })
-      .catch(() => {
-        // Navigation and later page views can proceed if this request fails.
-      })
+    if (lastPathname.current !== pathname) {
+      lastPathname.current = pathname
+      recordVisit()
+    }
+
+    function onPageShow(event: PageTransitionEvent) {
+      // A history restoration can display the same document without remounting React.
+      if (event.persisted && window.location.pathname === pathname) {
+        recordVisit()
+      }
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
   }, [pathname])
 }
